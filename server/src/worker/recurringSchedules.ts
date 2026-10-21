@@ -348,12 +348,10 @@ export class RecurringScheduleCoordinator {
         ),
         ...desiredConditional,
       ];
-      this.state = {
-        desired,
-        forbidden,
-        reconciliationHealthy: false,
-      };
-
+      // Keep the previously published state while the Redis round-trips run
+      // so a no-op reconcile does not flap /ready, and so health never
+      // inspects a half-applied definition set. Failures publish false below
+      // (or via the catch in reconcileCurrentState).
       const removals = await removeRecurringSchedules(this.queue, forbidden);
       if (conditional.staleWalletScheduleForbidden) {
         removals[STALE_WALLET_PURGE_RESULT_ID] =

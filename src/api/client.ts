@@ -37,9 +37,9 @@ import { downloadBlob } from "../utils/download";
 import { getApiBaseUrl, joinApiBaseUrl } from "./baseUrl";
 import { runSharedAuthAttempt } from "./authCoordination";
 import {
+  getAccessExpiresAtMs,
   refreshAccessToken,
   scheduleRefreshFromHeader,
-  RefreshFailedError,
 } from "./refresh";
 import {
   ACCESS_EXPIRES_AT_HEADER,
@@ -557,9 +557,17 @@ export class ApiClient {
     const retryContext = input.retryContext ?? input.endpoint;
     const retryBudget = input.retryBudget ?? createRetryBudget(retryOptions);
 
+    // Snapshot per attempt so the refresh can tell a cross-tab rotation from a
+    // server rejection of the token this request actually sent.
+    let expiryAtRequestStart: number | null = null;
+    const operation = () => {
+      expiryAtRequestStart = getAccessExpiresAtMs();
+      return input.operation();
+    };
+
     try {
       return await withRetry(
-        input.operation,
+        operation,
         retryOptions,
         retryContext,
         retryBudget,
@@ -595,11 +603,8 @@ export class ApiClient {
         })
       ) {
         try {
-          await refreshAccessToken();
-        } catch (refreshErr) {
-          if (refreshErr instanceof RefreshFailedError) {
-            throw error;
-          }
+          await refreshAccessToken({ expiryAtRequestStart });
+        } catch {
           throw error;
         }
 

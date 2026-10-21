@@ -10,6 +10,7 @@ import { createCircuitBreaker, CircuitBreaker } from '../../circuitBreaker';
 import { BasePriceProvider } from './base';
 import type { PriceProviderRuntimeOptions } from './base';
 import type { IPriceProviderWithHistory, PriceData, PriceHistoryPoint } from '../types';
+import { assertNonEmptyPriceMap, coinGeckoUtcDate, utcDayLabel } from '../historicalLookup';
 
 interface CoinGeckoPriceResponse {
   bitcoin: {
@@ -86,16 +87,9 @@ export class CoinGeckoPriceProvider extends BasePriceProvider implements IPriceP
   async getHistoricalPrice(date: Date, currency: string): Promise<PriceData> {
     const currencyLower = currency.toLowerCase();
 
-    // Format date as DD-MM-YYYY (CoinGecko format)
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const year = date.getFullYear();
-    const dateStr = `${day}-${month}-${year}`;
-
-    const data = await this.httpGet<CoinGeckoHistoryResponse>(
-      `https://api.coingecko.com/api/v3/coins/bitcoin/history`,
-      { date: dateStr }
-    );
+    // DD-MM-YYYY (CoinGecko format) of the UTC day
+    const dateStr = coinGeckoUtcDate(date);
+    const data = await this.fetchHistory(dateStr);
 
     const price = data.market_data?.current_price?.[currencyLower];
 
@@ -109,6 +103,22 @@ export class CoinGeckoPriceProvider extends BasePriceProvider implements IPriceP
       currency: currency.toUpperCase(),
       timestamp: date,
     };
+  }
+
+  /**
+   * Get the whole per-currency price map (lower-case keys) for the UTC day of
+   * a date. A missing or empty map is reported as not available.
+   */
+  async getHistoricalPriceMap(date: Date): Promise<Record<string, number>> {
+    const data = await this.fetchHistory(coinGeckoUtcDate(date));
+    return assertNonEmptyPriceMap(data.market_data?.current_price, utcDayLabel(date));
+  }
+
+  private fetchHistory(dateStr: string): Promise<CoinGeckoHistoryResponse> {
+    return this.httpGet<CoinGeckoHistoryResponse>(
+      'https://api.coingecko.com/api/v3/coins/bitcoin/history',
+      { date: dateStr }
+    );
   }
 
   /**

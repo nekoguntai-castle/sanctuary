@@ -393,6 +393,26 @@ describe('useDraftManagement', () => {
     );
   });
 
+  it.each([
+    ['keeps the endpoint bound to its recipient', 'bc1qrecipient', 'https://merchant.example/pj'],
+    ['drops an endpoint bound to another address', 'bc1qother', undefined],
+  ])('re-saving a payjoin draft %s', async (_label, payjoinAddress, expected) => {
+    const deps = createDeps({
+      state: createState({
+        transactionType: 'standard',
+        payjoinUrl: 'https://merchant.example/pj',
+        payjoinAddress,
+      }),
+    });
+    const { result } = renderHook(() => useDraftManagement(deps));
+
+    await act(async () => {
+      await result.current.saveDraft();
+    });
+
+    expect(mocks.createDraft.mock.calls[0][1].payjoinUrl).toBe(expected);
+  });
+
   it('saves a typed all-uppercase bech32 recipient in canonical lowercase', async () => {
     const deps = createDeps({
       state: createState({ outputs: [{ address: 'BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4', amount: '10000', sendMax: false }] }),

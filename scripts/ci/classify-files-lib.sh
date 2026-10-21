@@ -23,6 +23,128 @@ is_frontend_file() {
       return 0
       ;;
   esac
+  is_root_vitest_input_file "$1"
+}
+
+# Repo files outside the frontend trees that a root Vitest suite reads (by
+# readFileSync, a relative import, or an import reached transitively from one).
+# Exact paths only, never directory globs: a glob would also claim proof inputs
+# that verify-vectors re-runs and would weaken the test.yml script drift check.
+# tests/ci/vitestRepoInputsClassified.test.ts keeps the list honest; add a path
+# here when it reports one. server/src/** stays out (a known residual).
+# POSIX sh: the pre-commit hook sources this library under sh.
+is_root_vitest_input_file() {
+  case "$1" in
+    .github/workflows/verify-vectors.yml|\
+    .nvmrc|\
+    config/address-key-corpus-sources.json|\
+    config/hardware-physical-evidence-trust.json|\
+    config/hardware-wallet-implementation-inventory.json|\
+    config/jade-emulator-proof.json|\
+    config/jade-protocol-harness.json|\
+    config/ledger-emulator/Dockerfile|\
+    config/ledger-emulator/automation.json|\
+    config/ledger-emulator/proof.json|\
+    config/signing-dependency-scope.json|\
+    config/trezor-emulator-proof.json|\
+    docker-compose.yml|\
+    docker/compose/tor.yml|\
+    docker/monitoring/alert_rules.yml|\
+    docker/monitoring/grafana/dashboards/sanctuary-wallet-sync.json|\
+    docker/monitoring/loki-config.yml|\
+    docker/monitoring/promtail-config.yml|\
+    docker/nginx/default-ssl.conf.template|\
+    docker/nginx/default.conf.template|\
+    docker/nginx/docker-entrypoint.sh|\
+    docker/tor/payjoin-ingress.conf|\
+    docs/architecture/containers.md|\
+    docs/site/package-lock.json|\
+    docs/site/package.json|\
+    docs/site/src/plugins/remark-mermaid-click-rewrite.mjs|\
+    scripts/architecture/extract-call-graphs.mjs|\
+    scripts/architecture/generate-graphs.mjs|\
+    scripts/check-architecture-boundaries.mjs|\
+    scripts/check-bitcoin-network-boundaries.mjs|\
+    scripts/check-safety-catch-guards.mjs|\
+    scripts/check-server-cycle-baseline.mjs|\
+    scripts/ci/check-trezor-transport-provenance.sh|\
+    scripts/ci/docker-endpoint-lib.sh|\
+    scripts/ci/docker-exec-tcp-forwarder.mjs|\
+    scripts/ci/download-verified-source.sh|\
+    scripts/ci/hardware-compatibility-report.ts|\
+    scripts/ci/jade-vendor-protocol-harness.py|\
+    scripts/ci/resolve-trezor-publish-binding.sh|\
+    scripts/ci/run-jade-emulator-proof.sh|\
+    scripts/ci/run-jade-protocol-harness.sh|\
+    scripts/ci/run-ledger-emulator-proof.sh|\
+    scripts/ci/run-psbt-core-subject.sh|\
+    scripts/ci/run-trezor-emulator-proof.sh|\
+    scripts/ci/validate-jade-protocol-manifest.jq|\
+    scripts/demo/lib/api-client.mjs|\
+    scripts/demo/lib/env.mjs|\
+    scripts/demo/lib/seed.mjs|\
+    scripts/demo/manifest.json|\
+    scripts/diagnose-wallet-sync.sh|\
+    scripts/generate-address-key-corpora.mjs|\
+    scripts/generate-readme.sh|\
+    scripts/generate-signer-inventory.mjs|\
+    scripts/ops/runtime-environment.mjs|\
+    scripts/quality/architecture-boundary-exceptions.json|\
+    scripts/quality/architecture-exception-budget.mjs|\
+    scripts/quality/bitcoin-network-boundary-allowlist.json|\
+    scripts/quality/check-large-files.mjs|\
+    scripts/quality/check-semgrep-baseline.mjs|\
+    scripts/quality/large-file-classification.json|\
+    scripts/quality/safety-catch-allowlist.json|\
+    scripts/quality/server-cycle-baseline.json|\
+    scripts/release/canary/fleet-manifest.json|\
+    scripts/support-package-runner.mjs|\
+    scripts/verify-addresses/docker-compose.yml|\
+    scripts/verify-addresses/generate-vectors.ts|\
+    scripts/verify-addresses/implementations/bitcoincore.ts|\
+    scripts/verify-addresses/implementations/bitcoinjs.ts|\
+    scripts/verify-addresses/implementations/go-verify.go|\
+    scripts/verify-addresses/implementations/go.mod|\
+    scripts/verify-addresses/implementations/go.sum|\
+    scripts/verify-addresses/implementations/go.ts|\
+    scripts/verify-addresses/implementations/python-verify.py|\
+    scripts/verify-addresses/implementations/python.ts|\
+    scripts/verify-addresses/output/verified-vectors.ts|\
+    scripts/verify-addresses/outputFile.ts|\
+    scripts/verify-addresses/python-verifier.Dockerfile|\
+    scripts/verify-addresses/requirements.in|\
+    scripts/verify-addresses/requirements.lock|\
+    scripts/verify-addresses/sourceManifest.ts|\
+    scripts/verify-addresses/standardsOracle.ts|\
+    scripts/verify-addresses/testCases.ts|\
+    scripts/verify-addresses/types.ts|\
+    scripts/verify-addresses/verify-repeatable.sh|\
+    scripts/verify-addresses/xpub.ts|\
+    scripts/verify-psbt/implementations/bitcoincore.ts|\
+    scripts/verify-psbt/package-lock.json|\
+    scripts/verify-psbt/package.json|\
+    scripts/verify-psbt/proof-manifest.json|\
+    scripts/verify-psbt/provenance.ts|\
+    scripts/verify-psbt/types.ts|\
+    server/Dockerfile|\
+    server/prisma/schema.prisma|\
+    server/prisma/seed.ts|\
+    server/tests/fixtures/bip173-bip350-test-vectors.ts|\
+    server/tests/fixtures/bip174-test-vectors.ts|\
+    server/tests/fixtures/bip32-test-vectors.ts|\
+    server/tests/fixtures/bitcoin-core-key-io-vectors.ts|\
+    server/tests/fixtures/generated-psbt-vectors.ts|\
+    server/tests/fixtures/generated-signed-psbt-vectors.ts|\
+    server/tests/fixtures/generated/address-key-corpora.ts|\
+    server/tests/fixtures/hardware-signed-psbt-vectors.ts|\
+    server/tests/fixtures/verified-address-vectors.ts|\
+    server/tests/helpers/hardwareSignedEvidenceProvenance.ts|\
+    server/tests/helpers/hardwareSignedFixtureIntake.ts|\
+    server/tests/helpers/hardwareSignedPolicyBinding.ts|\
+    server/tests/helpers/hardwareSignedPsbtReplay.ts)
+      return 0
+      ;;
+  esac
   return 1
 }
 
@@ -34,6 +156,19 @@ is_backend_file() {
   esac
   case "$1" in
     server/*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+# Repo files outside server/ that a server/tests Vitest suite reads. Adapters
+# treat a match like is_backend_file (lane flag and backend_files entry). Every
+# entry is also a root Vitest input. Kept honest by
+# tests/ci/vitestRepoInputsClassified.test.ts.
+is_backend_vitest_input_file() {
+  case "$1" in
+    config/hardware-physical-evidence-trust.json|config/jade-emulator-proof.json|config/jade-protocol-harness.json|scripts/verify-psbt/proof-manifest.json)
       return 0
       ;;
   esac
@@ -370,6 +505,10 @@ is_test_lane_infrastructure_file() {
 # separate lanes with their own triggers and classifiers, and editing them cannot
 # change what test.yml runs — forcing a full test scan for them re-ran the three
 # heaviest lanes for nothing.
+#
+# Workflows a Vitest suite reads (verify-vectors.yml) are exact-path frontend
+# inputs (is_root_vitest_input_file), not full-scan triggers, and proof inputs
+# re-run through verify-vectors (classify-verify-vectors-scope.sh), not a full scan.
 #
 # Composite actions stay in: test.yml consumes them, and a change to one can
 # change how its jobs behave. Note `*` in a bash `case` pattern matches `/` too,

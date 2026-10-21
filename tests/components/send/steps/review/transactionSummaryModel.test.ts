@@ -89,6 +89,32 @@ describe('transactionSummaryModel totals', () => {
   });
 });
 
+describe('transactionSummaryModel totals for a payjoin proposal under review', () => {
+  const payment = [{ address: 'bc1qpay', amount: '10000', sendMax: false }];
+  const proposal = txData({
+    fee: 223,
+    effectiveAmount: 9900,
+    outputs: [{ address: 'bc1qpay', amount: 10000 }],
+  });
+
+  it("shows the sender's net spend, not the receiver's fee share", () => {
+    expect(getTotalSendingSats(payment, 0, 0, 10000, proposal, true)).toBe(9900);
+    // P + originalFee 123: the receiver's 100-sat fee share is not charged to the sender.
+    expect(getTotalIncludingFeeSats(payment, 0, 10000, 223, proposal, true)).toBe(10123);
+  });
+
+  it('keeps the non-proposal totals unchanged', () => {
+    expect(getTotalSendingSats(payment, 0, 0, 10000, proposal, false)).toBe(10000);
+    expect(getTotalIncludingFeeSats(payment, 0, 10000, 223, proposal, false)).toBe(10223);
+  });
+
+  it('falls back to the non-proposal total when the proposal carries no net spend', () => {
+    const noNet = { ...proposal, effectiveAmount: undefined };
+    expect(getTotalSendingSats(payment, 0, 0, 10000, noNet, true)).toBe(10000);
+    expect(getTotalIncludingFeeSats(payment, 0, 10000, 223, noNet, true)).toBe(10223);
+  });
+});
+
 describe('getBuiltChangeSats', () => {
   it('adds decoy change to the primary change', () => {
     expect(getBuiltChangeSats(txData({ changeAmount: 0, decoyOutputs: [{ address: 'a', amount: 3000 }, { address: 'b', amount: 4000 }] }))).toBe(7000);

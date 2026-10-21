@@ -58,6 +58,7 @@ export function createInitialState(defaultFeeRate = 1): TransactionState {
 
     // Payjoin
     payjoinUrl: null,
+    payjoinAddress: null,
     payjoinStatus: 'idle',
 
     // Signing state

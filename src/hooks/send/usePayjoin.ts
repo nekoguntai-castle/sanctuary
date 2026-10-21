@@ -23,6 +23,7 @@ import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 import { createLogger } from '../../utils/logger';
 import { toHex } from '../../utils/bufferUtils';
 import type { PayjoinAttemptStatus, TransactionState } from '../../contexts/send/types';
+import { getBoundPayjoinUrl } from '../../contexts/send/reducerParts/payjoin';
 import { requiresApproval, type TransactionData } from './types';
 import type { BroadcastFailureInfo, BroadcastOverrides } from './useBroadcast';
 import type { SignedArtifactOrigin } from './useQrSigning';
@@ -119,21 +120,24 @@ export interface PayjoinRoundOneRequest {
 }
 
 interface PayjoinCandidate {
-  state: Pick<TransactionState, 'payjoinUrl' | 'outputs' | 'isDraftMode' | 'draftId'>;
+  state: Pick<
+    TransactionState,
+    'transactionType' | 'payjoinUrl' | 'payjoinAddress' | 'outputs' | 'isDraftMode' | 'draftId'
+  >;
   wallet: Pick<Wallet, 'type' | 'scriptType'>;
   txData: TransactionData | null;
 }
 
 /**
  * A send that may negotiate a payjoin once it holds an uploaded/QR signature:
- * single-sig native segwit or taproot, one output, no draft, no approval hold
- * (decision C-D3). The server refuses the other cases independently.
+ * single-sig native segwit or taproot, an endpoint bound to the single output's
+ * address, no draft, no approval hold (decision C-D3). The server refuses the
+ * other cases independently.
  */
 export function isPayjoinCandidate({ state, wallet, txData }: PayjoinCandidate): boolean {
-  if (!state.payjoinUrl || !txData) return false;
+  if (!getBoundPayjoinUrl(state) || !txData) return false;
   const scriptType = txData.signingContext?.scriptType ?? wallet.scriptType ?? '';
-  return state.outputs.length === 1
-    && !state.isDraftMode
+  return !state.isDraftMode
     && !state.draftId
     && !isMultisigType(wallet.type)
     && PAYJOIN_SCRIPT_TYPES.has(scriptType)
@@ -163,8 +167,8 @@ export function resolvePayjoinRoundOne(inputs: RoundOneInputs): PayjoinRoundOneR
       signedPsbt,
       signedDevices: new Set(inputs.signedDevices),
     },
-    // isPayjoinCandidate already required a payjoin URL.
-    payjoinUrl: inputs.state.payjoinUrl as string,
+    // isPayjoinCandidate already required a bound payjoin URL.
+    payjoinUrl: getBoundPayjoinUrl(inputs.state) as string,
     network: (inputs.network || 'mainnet') as NetworkType,
   };
 }

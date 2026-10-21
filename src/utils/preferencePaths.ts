@@ -95,15 +95,21 @@ export function getPreferencePatchKeys(patch: PreferenceRecord): string[] {
   return keys;
 }
 
-/** Applies the backend's top-level preference patch semantics on the client. */
+/**
+ * Applies the backend's preference patch semantics on the client: top-level
+ * keys replace, except `telegram`, which is merged one level deep so a patch
+ * without `wallets` keeps the per-wallet settings.
+ */
 export function mergePreferencePatch(
   preferences: unknown,
   patch: PreferenceRecord,
 ): PreferenceRecord {
-  return {
-    ...asPreferenceRecord(preferences),
-    ...patch,
-  };
+  const current = asPreferenceRecord(preferences);
+  const merged = { ...current, ...patch };
+  if (isPreferenceRecord(current.telegram) && isPreferenceRecord(patch.telegram)) {
+    merged.telegram = { ...current.telegram, ...patch.telegram };
+  }
+  return merged;
 }
 
 /** Captures previous top-level values so failed optimistic writes can roll back narrowly. */

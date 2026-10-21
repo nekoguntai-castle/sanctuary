@@ -33,6 +33,7 @@ import {
 import { useBroadcast } from './useBroadcast';
 import type { ApprovalAction, TransactionData, UseSendTransactionActionsProps, UseSendTransactionActionsResult } from './types';
 import type { OutputEntry, TransactionState } from '../../contexts/send/types';
+import { getBoundPayjoinUrl } from '../../contexts/send/reducerParts/payjoin';
 import type { Wallet } from '../../types';
 import {
   parsePositiveSatoshiAmount,
@@ -176,7 +177,7 @@ const getSendIdentity = (walletId: string, wallet: Wallet, state: TransactionSta
   subtractFees: state.subtractFees,
   useDecoys: state.useDecoys,
   decoyCount: state.decoyCount,
-  payjoinUrl: state.payjoinUrl,
+  payjoinUrl: getBoundPayjoinUrl(state),
 });
 
 const isAbortError = (error: unknown): boolean =>
@@ -380,7 +381,7 @@ export function useSendTransactionActions({
     if (roundOne) {
       return negotiatePayjoin(roundContext(payjoin.beginPayjoinRound(roundOne.original)), roundOne);
     }
-    if (state.payjoinUrl) payjoin.setPayjoinStatus('skipped');
+    if (getBoundPayjoinUrl(state)) payjoin.setPayjoinStatus('skipped');
     return broadcastPsbt(signedPsbt, rawTxHex);
   }, [payjoin, roundContext, walletId, wallet, state, txData, unsignedPsbt, signedRawTx, signedDevices, broadcastPsbt]);
 

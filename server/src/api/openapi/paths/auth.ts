@@ -330,7 +330,9 @@ export const authPaths = {
     patch: {
       tags: ['Auth'],
       summary: 'Update user preferences',
-      description: 'Merge new preferences into the authenticated user profile.',
+      description: 'Merge new preferences into the authenticated user profile. Top-level keys replace the stored '
+        + 'value, except `telegram` is merged one level deep: a patch without `wallets` keeps the stored per-wallet '
+        + 'Telegram settings, and an explicit `wallets` replaces them.',
       security: bearerAuth,
       requestBody: jsonRequestBody('#/components/schemas/UpdateUserPreferencesRequest'),
       responses: {

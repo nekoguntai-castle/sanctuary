@@ -220,7 +220,7 @@ describe('TelegramSettings branch coverage', () => {
     clearTimeoutSpy.mockRestore();
   });
 
-  it('falls back telegram wallets to empty object when user preferences omit wallets', async () => {
+  it('saves and toggles without copying the login-time per-wallet telegram settings', async () => {
     const user = userEvent.setup();
     mockState.user = {
       id: 'user-1',
@@ -229,24 +229,21 @@ describe('TelegramSettings branch coverage', () => {
           enabled: false,
           botToken: '',
           chatId: '',
+          wallets: { w1: { enabled: true } },
         },
       },
     } as any;
 
     render(<TelegramSettings />);
 
-    const tokenInput = screen.getByPlaceholderText('123456789:ABCdefGHIjklMNOpqrsTUVwxyz');
-    const chatInput = screen.getByPlaceholderText('123456789');
-    await user.type(tokenInput, 'bot-token');
-    await user.type(chatInput, 'chat-id');
+    await user.type(screen.getByPlaceholderText('123456789:ABCdefGHIjklMNOpqrsTUVwxyz'), 'bot-token');
+    await user.type(screen.getByPlaceholderText('123456789'), 'chat-id');
 
     await user.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => {
-      expect(mockState.updatePreferences).toHaveBeenCalledWith(expect.objectContaining({
-        telegram: expect.objectContaining({
-          wallets: {},
-        }),
-      }));
+      expect(mockState.updatePreferences).toHaveBeenCalledWith({
+        telegram: { botToken: 'bot-token', chatId: 'chat-id', enabled: false },
+      });
     });
 
     const disabledLabel = screen.getByText('Disabled');
@@ -254,10 +251,11 @@ describe('TelegramSettings branch coverage', () => {
     expect(toggleButton).not.toBeNull();
     await user.click(toggleButton as HTMLButtonElement);
 
-    expect(mockState.updatePreferences).toHaveBeenLastCalledWith(expect.objectContaining({
-      telegram: expect.objectContaining({
-        wallets: {},
-      }),
-    }));
+    expect(mockState.updatePreferences).toHaveBeenLastCalledWith({
+      telegram: { botToken: 'bot-token', chatId: 'chat-id', enabled: true },
+    });
+    for (const [patch] of mockState.updatePreferences.mock.calls) {
+      expect(patch.telegram).not.toHaveProperty('wallets');
+    }
   });
 });

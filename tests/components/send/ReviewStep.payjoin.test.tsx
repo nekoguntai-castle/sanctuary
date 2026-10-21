@@ -3,7 +3,7 @@
  * proposal panel, USB buttons hidden for the proposal, and Save draft locked.
  */
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReviewStep } from '../../../src/components/send/steps/ReviewStep';
@@ -11,6 +11,7 @@ import * as CurrencyContext from '../../../src/contexts/CurrencyContext';
 import * as SendContext from '../../../src/contexts/send';
 import { PAYJOIN_SIGN_TWICE_NOTICE } from '../../../src/components/send/steps/review/PayjoinProposalPanel';
 import { testPsbtSigningContext } from '../../fixtures/psbtSigningContext';
+import { PAYMENT, psbtWithOutputs } from '../../fixtures/payjoinPsbt';
 
 vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
@@ -42,7 +43,7 @@ vi.mock('../../../src/api/bitcoin', () => ({
 }));
 
 const txData = {
-  psbtBase64: 'psbt',
+  psbtBase64: psbtWithOutputs([[PAYMENT, 10000]]),
   intentId: 'intent-1',
   intentDigest: 'a'.repeat(64),
   fee: 123,
@@ -65,6 +66,7 @@ const context = (state: Record<string, unknown> = {}) => ({
     useDecoys: false,
     decoyCount: 0,
     payjoinUrl: 'https://merchant.example/payjoin',
+    payjoinAddress: 'bc1qrecipient',
     isDraftMode: false,
     draftId: null,
     ...state,
@@ -100,6 +102,7 @@ describe('ReviewStep payjoin', () => {
   it.each([
     ['without a payjoin URL', { payjoinUrl: null }, 'idle'],
     ['for a bound draft', { draftId: 'draft-1' }, 'idle'],
+    ['for an unbound recipient', { payjoinAddress: 'bc1qother' }, 'idle'],
     ['once the round has started', {}, 'negotiating'],
   ] as const)('shows no sign-twice notice %s', (_label, state, payjoinStatus) => {
     vi.mocked(SendContext.useSendTransaction).mockReturnValue(context(state) as any);
@@ -114,7 +117,9 @@ describe('ReviewStep payjoin', () => {
     const onDownloadPsbt = vi.fn();
     const onSendWithoutPayjoin = vi.fn().mockResolvedValue(true);
     const onSaveDraft = vi.fn();
+    // The receiver adds 5000 sats and keeps 100 of them as its fee share.
     const proposal = { ...txData, intentId: 'intent-2', fee: 223, effectiveAmount: 9900,
+      psbtBase64: psbtWithOutputs([[PAYMENT, 14900]], 2), totalInput: 15123, totalOutput: 14900,
       utxos: [...txData.utxos, { txid: 'b'.repeat(64), vout: 2, amount: 5000 }] };
 
     render(
@@ -131,6 +136,12 @@ describe('ReviewStep payjoin', () => {
     );
 
     expect(screen.getByLabelText('Payjoin proposal')).toBeInTheDocument();
+    // The summary agrees with the panel: net spend 9900, and P + original fee 123 in total.
+    const summaryRow = (label: string) => screen.getByText(label).closest('.justify-between') as HTMLElement;
+    expect(within(summaryRow('Total Sending')).getByText('9900 sats')).toBeInTheDocument();
+    expect(within(summaryRow('Total (including fee)')).getByText('10123 sats')).toBeInTheDocument();
+    // The recipient row keeps the payment the user requested.
+    expect(within(summaryRow('bc1qrecipient')).getByText('10000 sats')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /USB \(My Ledger\)/ })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Save as Draft/ })).toBeDisabled();
 

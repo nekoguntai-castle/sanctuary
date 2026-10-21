@@ -84,7 +84,7 @@ classify_full_scan_trigger_file() {
     append_file frontend_files "$file"
   fi
 
-  if is_backend_file "$file"; then
+  if is_backend_file "$file" || is_backend_vitest_input_file "$file"; then
     backend_changed=true
     append_file backend_files "$file"
   fi
@@ -235,7 +235,7 @@ while IFS= read -r file; do
     build_changed=true
   fi
 
-  if is_backend_file "$file"; then
+  if is_backend_file "$file" || is_backend_vitest_input_file "$file"; then
     backend_changed=true
     append_file backend_files "$file"
   fi

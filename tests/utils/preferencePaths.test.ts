@@ -106,6 +106,37 @@ describe('preference path utilities', () => {
     });
   });
 
+  it('merges a telegram patch one level deep, matching the backend', () => {
+    expect(mergePreferencePatch({
+      telegram: { botToken: 'a', wallets: { w1: { enabled: true } } },
+    }, {
+      telegram: { enabled: false },
+    })).toEqual({
+      telegram: { botToken: 'a', enabled: false, wallets: { w1: { enabled: true } } },
+    });
+  });
+
+  it('replaces telegram wallets when the patch carries them explicitly', () => {
+    expect(mergePreferencePatch({
+      telegram: { botToken: 'a', wallets: { w1: { enabled: true } } },
+    }, {
+      telegram: { wallets: {} },
+    })).toEqual({
+      telegram: { botToken: 'a', wallets: {} },
+    });
+  });
+
+  it('keeps telegram untouched by a patch that does not carry it', () => {
+    expect(mergePreferencePatch({
+      telegram: { botToken: 'a', wallets: { w1: { enabled: true } } },
+    }, {
+      darkMode: false,
+    })).toEqual({
+      telegram: { botToken: 'a', wallets: { w1: { enabled: true } } },
+      darkMode: false,
+    });
+  });
+
   it('rolls back only keys approved by the generation guard', () => {
     const snapshot = capturePreferenceRollback({ darkMode: true }, ['darkMode', 'fiatCurrency']);
 

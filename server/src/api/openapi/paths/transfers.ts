@@ -205,7 +205,10 @@ export const transferPaths = {
     post: {
       tags: ['Transfers'],
       summary: 'Confirm ownership transfer',
-      description: 'Confirm an accepted transfer as the initiator and execute the ownership change.',
+      description:
+        'Confirm an accepted transfer as the initiator and execute the ownership change. ' +
+        'With keepExistingUsers=false, every other direct member and any group grant are removed, ' +
+        'leaving the recipient as the only member.',
       security: bearerAuth,
       parameters: [transferIdParameter],
       responses: {

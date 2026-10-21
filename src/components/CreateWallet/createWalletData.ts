@@ -1,6 +1,7 @@
 import { WalletType, type Device, type DeviceAccount } from '../../types';
 import {
   accountPurposeForWalletType,
+  WalletScriptType,
   type DeviceAccountPurpose,
 } from '@sanctuary/shared/constants/walletIdentity';
 import {
@@ -55,6 +56,97 @@ export function getExactAccount(
   return matches.length === 1 ? matches[0] : null;
 }
 
+/** Single-sig script types in picker order; the first supported one is the signer's default. */
+export const SINGLE_SIG_SCRIPT_ORDER: readonly ScriptType[] = [
+  WalletScriptType.NATIVE_SEGWIT,
+  WalletScriptType.TAPROOT,
+  WalletScriptType.NESTED_SEGWIT,
+  WalletScriptType.LEGACY,
+];
+
+/** Script types for which the device has exactly one matching account. */
+export function getSupportedScriptTypes(
+  device: Device,
+  walletType: WalletType,
+  network: TabNetwork
+): ScriptType[] {
+  return SINGLE_SIG_SCRIPT_ORDER.filter(type => getExactAccount(device, walletType, type, network) !== null);
+}
+
+/**
+ * Single-sig signers are listed when they support any script type (the type is
+ * chosen afterwards); multisig keeps the exact match on its fixed script type.
+ */
+function isDeviceCompatible(
+  device: Device,
+  walletType: WalletType,
+  scriptType: ScriptType,
+  network: TabNetwork
+): boolean {
+  if (walletType === WalletType.SINGLE_SIG) {
+    return getSupportedScriptTypes(device, walletType, network).length > 0;
+  }
+  return getExactAccount(device, walletType, scriptType, network) !== null;
+}
+
+export interface SignerBinding {
+  scriptType: ScriptType;
+  account: DeviceAccount;
+}
+
+/**
+ * The account a signer would be bound to. Single-sig keeps the current script
+ * type when the device supports it, else takes the device's first supported
+ * type; multisig stays on the current (fixed) script type.
+ */
+export function resolveSignerBinding(
+  device: Device,
+  walletType: WalletType,
+  scriptType: ScriptType,
+  network: TabNetwork
+): SignerBinding | null {
+  const supported = walletType === WalletType.SINGLE_SIG
+    ? getSupportedScriptTypes(device, walletType, network)
+    : [scriptType];
+  const resolved: ScriptType | undefined = supported.includes(scriptType) ? scriptType : supported[0];
+  if (!resolved) return null;
+  const account = getExactAccount(device, walletType, resolved, network);
+  return account ? { scriptType: resolved, account } : null;
+}
+
+function findSelectedSingleSigDevice(selected: SelectedSigner[], devices: Device[]): Device | undefined {
+  const deviceId = selected[0]?.deviceId;
+  return deviceId === undefined ? undefined : devices.find(candidate => candidate.id === deviceId);
+}
+
+/** Script types the step-3 picker may offer: the selected single-sig signer's, or all of them. */
+export function getSelectionScriptTypes(
+  selected: SelectedSigner[],
+  devices: Device[],
+  walletType: WalletType | null,
+  network: TabNetwork
+): ScriptType[] {
+  const device = walletType === WalletType.SINGLE_SIG ? findSelectedSingleSigDevice(selected, devices) : undefined;
+  return device ? getSupportedScriptTypes(device, WalletType.SINGLE_SIG, network) : [...SINGLE_SIG_SCRIPT_ORDER];
+}
+
+/**
+ * Rebind a single-sig selection to another script type in place. Returns the
+ * selection unchanged when nothing is selected, and null when the selected
+ * signer has no exact account for that type (the caller then ignores the change).
+ */
+export function rebindSingleSigSelection(
+  selected: SelectedSigner[],
+  devices: Device[],
+  scriptType: ScriptType,
+  network: TabNetwork
+): SelectedSigner[] | null {
+  if (selected.length === 0) return selected;
+  const device = findSelectedSingleSigDevice(selected, devices);
+  const account = device ? getExactAccount(device, WalletType.SINGLE_SIG, scriptType, network) : null;
+  return account ? [{ deviceId: selected[0].deviceId, deviceAccountId: account.id }] : null;
+}
+
 export function getCompatibleDevices(
   devices: Device[],
   walletType: WalletType | null,
@@ -62,7 +154,7 @@ export function getCompatibleDevices(
   network: TabNetwork
 ): Device[] {
   if (!walletType) return devices;
-  return devices.filter(device => getExactAccount(device, walletType, scriptType, network) !== null);
+  return devices.filter(device => isDeviceCompatible(device, walletType, scriptType, network));
 }
 
 export function getIncompatibleDevices(
@@ -72,7 +164,7 @@ export function getIncompatibleDevices(
   network: TabNetwork
 ): Device[] {
   if (!walletType) return [];
-  return devices.filter(device => getExactAccount(device, walletType, scriptType, network) === null);
+  return devices.filter(device => !isDeviceCompatible(device, walletType, scriptType, network));
 }
 
 export function getNextSelectedSigners(

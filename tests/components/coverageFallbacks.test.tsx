@@ -97,6 +97,7 @@ describe('coverage fallback branches', () => {
         network="mainnet"
         scriptType="native_segwit"
         setScriptType={vi.fn()}
+        supportedScriptTypes={['native_segwit']}
         quorumM={2}
         setQuorumM={vi.fn()}
         availableDevices={[]}

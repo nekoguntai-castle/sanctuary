@@ -12,16 +12,18 @@ const testnet3Defaults = getNodeNetworkDefaults('testnet3');
 const testnet4Defaults = getNodeNetworkDefaults('testnet4');
 const signetDefaults = getNodeNetworkDefaults('signet');
 
+// Fee estimators default to '' (Electrum), matching the server's no-row
+// default and what runtime does with an unset fee estimator.
 export const DEFAULT_NODE_CONFIG: NodeConfigType = {
   type: 'electrum',
   explorerUrl: getDefaultNodeExternalServiceUrl('mainnet'),
-  feeEstimatorUrl: getDefaultNodeExternalServiceUrl('mainnet'),
+  feeEstimatorUrl: '',
   testnet3ExplorerUrl: getDefaultNodeExternalServiceUrl('testnet3'),
-  testnet3FeeEstimatorUrl: getDefaultNodeExternalServiceUrl('testnet3'),
+  testnet3FeeEstimatorUrl: '',
   testnet4ExplorerUrl: getDefaultNodeExternalServiceUrl('testnet4'),
-  testnet4FeeEstimatorUrl: getDefaultNodeExternalServiceUrl('testnet4'),
+  testnet4FeeEstimatorUrl: '',
   signetExplorerUrl: getDefaultNodeExternalServiceUrl('signet'),
-  signetFeeEstimatorUrl: getDefaultNodeExternalServiceUrl('signet'),
+  signetFeeEstimatorUrl: '',
   mempoolEstimator: DEFAULT_NODE_MEMPOOL_ESTIMATOR,
   mainnetMode: mainnetDefaults.mode,
   mainnetSingletonHost: mainnetDefaults.singletonHost,

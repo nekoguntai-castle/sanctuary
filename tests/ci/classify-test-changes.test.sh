@@ -91,6 +91,9 @@ run_classifier() {
 # narrower lane owns them) or scripts/ownership (quality/architecture own it).
 transitive_dependencies() {
   local rel="$1" dir
+  # The predicate library names paths as case-pattern data (including proof
+  # scripts that only Vitest suites read); it calls or sources none of them.
+  [ "$rel" != "scripts/ci/classify-files-lib.sh" ] || return 0
   dir="$(dirname "$rel")"
   # Each grep may legitimately match nothing, so tolerate exit 1 under set -e.
   {
@@ -103,6 +106,12 @@ transitive_dependencies() {
   } | while IFS= read -r dep; do
     realpath -m --relative-to="$ROOT_DIR" "$ROOT_DIR/$dep"
   done
+}
+
+# A Vitest-input exact path is not a classification for a script test.yml runs:
+# it selects only the lane of the reader suite, not every lane the script wraps.
+is_lane_frontend_file() {
+  is_frontend_file "$1" && ! is_root_vitest_input_file "$1"
 }
 
 assert_every_test_workflow_script_is_classified() {
@@ -134,7 +143,7 @@ assert_every_test_workflow_script_is_classified() {
     [ -f "$ROOT_DIR/$path" ] || continue
     [[ "$path" != "scripts/ownership/"* ]] || continue
     ! is_test_lane_excluded_file "$path" || continue
-    if ! { is_full_scan_trigger_file "$path" || is_frontend_file "$path" || is_test_suite_file "$path" \
+    if ! { is_full_scan_trigger_file "$path" || is_lane_frontend_file "$path" || is_test_suite_file "$path" \
       || is_critical_mutation_file "$path" || is_backend_file "$path"; }; then
       fail "test.yml reaches $path but no classifier predicate covers it"
     fi
@@ -830,6 +839,43 @@ EOF_DOC
     assert_exact_output "$output_file" "backend_changed" "false"
     assert_exact_output "$output_file" "test_suite_changed" "false"
     assert_exact_output "$output_file" "shared_changed" "false"
+  done
+
+  # Repo files a Vitest suite reads select the lane of that suite by exact path
+  # (tests/ci/vitestRepoInputsClassified.test.ts keeps the list complete), and
+  # none forces a full scan. Entries are path:frontend_changed:backend_changed.
+  local vitest_input input_path expect_frontend expect_backend
+  for vitest_input in \
+    docker/nginx/default.conf.template:true:false \
+    docker-compose.yml:true:false \
+    docker/compose/tor.yml:true:false \
+    docker/monitoring/alert_rules.yml:true:false \
+    scripts/diagnose-wallet-sync.sh:true:false \
+    scripts/generate-readme.sh:true:false \
+    scripts/release/canary/fleet-manifest.json:true:false \
+    scripts/quality/safety-catch-allowlist.json:true:false \
+    .github/workflows/verify-vectors.yml:true:false \
+    config/jade-emulator-proof.json:true:true \
+    config/hardware-physical-evidence-trust.json:true:true \
+    .nvmrc:true:false \
+    docs/site/package.json:true:false \
+    docs/site/package-lock.json:true:false \
+    server/Dockerfile:true:true \
+    .github/workflows/quality.yml:false:false; do
+    IFS=: read -r input_path expect_frontend expect_backend <<< "$vitest_input"
+    base_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+    mkdir -p "$repo_dir/$(dirname "$input_path")"
+    printf 'input %s\n' "$input_path" > "$repo_dir/$input_path"
+    git -C "$repo_dir" add "$input_path"
+    git -C "$repo_dir" commit -qm "vitest input $input_path"
+    head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+    run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
+    assert_exact_output "$output_file" "full_scan" "false"
+    assert_exact_output "$output_file" "frontend_changed" "$expect_frontend"
+    assert_exact_output "$output_file" "backend_changed" "$expect_backend"
+    [ "$expect_frontend" = "false" ] || assert_contains_output "$output_file" "frontend_files" "$input_path"
+    [ "$expect_backend" = "false" ] || assert_contains_output "$output_file" "backend_files" "$input_path"
   done
 
   assert_every_test_workflow_script_is_classified

@@ -60,6 +60,15 @@ export interface UserPreferences {
   favoriteThemes?: ThemeOption[]; // User's favorite color themes
 }
 
+/**
+ * A preference update. `telegram` is merged one level deep on the server and in
+ * the optimistic client state, so a patch may carry only some Telegram fields
+ * (omitting `wallets` preserves the per-wallet settings).
+ */
+export type UserPreferencesPatch = {
+  [K in keyof UserPreferences as K extends 'telegram' ? never : K]?: UserPreferences[K];
+} & { telegram?: Partial<TelegramConfig> };
+
 export interface User {
   id: string;
   username: string;

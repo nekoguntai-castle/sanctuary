@@ -13,12 +13,14 @@ import type { CreateWalletState, CreateWalletStep, ScriptType } from './types';
 import {
   buildCreateWalletPayload,
   canAdvanceCreateWalletStep,
-  getExactAccount,
   getCompatibleDevices,
   getIncompatibleDevices,
   getNextCreateWalletStep,
   getNextSelectedSigners,
+  getSelectionScriptTypes,
+  rebindSingleSigSelection,
   reconcileSelectedSigners,
+  resolveSignerBinding,
 } from './createWalletData';
 
 const log = createLogger('CreateWallet');
@@ -117,6 +119,10 @@ export function useCreateWalletController() {
     () => getIncompatibleDevices(availableDevices, walletType, scriptType, selectedNetwork),
     [availableDevices, scriptType, selectedNetwork, walletType]
   );
+  const supportedScriptTypes = useMemo(
+    () => getSelectionScriptTypes(selectedSigners, availableDevices, walletType, selectedNetwork),
+    [availableDevices, selectedNetwork, selectedSigners, walletType]
+  );
   const selectedDeviceIds = useMemo(
     () => new Set(selectedSigners.map(signer => signer.deviceId)),
     [selectedSigners]
@@ -141,28 +147,37 @@ export function useCreateWalletController() {
     setWalletType(nextWalletType);
   }, [walletType]);
   const selectScriptType = useCallback((nextScriptType: ScriptType) => {
+    if (walletType === WalletType.SINGLE_SIG) {
+      // Rebind in place; a type the selected signer lacks is ignored (the picker disables it).
+      const rebound = rebindSingleSigSelection(selectedSigners, availableDevices, nextScriptType, selectedNetwork);
+      if (!rebound) return;
+      setSelectedSigners(rebound);
+      setScriptType(nextScriptType);
+      return;
+    }
     if (scriptType !== nextScriptType) {
       setSelectedSigners([]);
       setStep(currentStep => currentStep === 1 ? currentStep : 2);
     }
     setScriptType(nextScriptType);
-  }, [scriptType]);
+  }, [availableDevices, scriptType, selectedNetwork, selectedSigners, walletType]);
   const toggleDevice = useCallback(
     (deviceId: string) => {
       if (!walletType || refreshStatus !== 'ready') return;
       const device = availableDevices.find(candidate => candidate.id === deviceId);
       if (!device) return;
-      const account = getExactAccount(device, walletType, scriptType, selectedNetwork);
-      if (!account) return;
+      const binding = resolveSignerBinding(device, walletType, scriptType, selectedNetwork);
+      if (!binding) return;
+      setScriptType(binding.scriptType);
       setSelectedSigners(current => getNextSelectedSigners(current, walletType, {
         deviceId,
-        deviceAccountId: account.id,
+        deviceAccountId: binding.account.id,
       }));
     },
     [availableDevices, refreshStatus, scriptType, selectedNetwork, walletType]
   );
   const getDisplayAccountForNetwork = useCallback(
-    (device: Device, type: WalletType) => getExactAccount(device, type, scriptType, selectedNetwork),
+    (device: Device, type: WalletType) => resolveSignerBinding(device, type, scriptType, selectedNetwork)?.account ?? null,
     [scriptType, selectedNetwork]
   );
 
@@ -222,6 +237,7 @@ export function useCreateWalletController() {
     setWalletName,
     scriptType,
     setScriptType: selectScriptType,
+    supportedScriptTypes,
     network: selectedNetwork,
     quorumM,
     setQuorumM: setDesiredQuorumM,

@@ -55,18 +55,20 @@ async function fillIncidentForm(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('Approximate incident time'), '2026-08-02T12:30');
 }
 
-describe('SupportPackageCard', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.mocked(supportPackageApi.getIncidentCaptureStatus).mockResolvedValue({ state: 'inactive' });
-    vi.mocked(supportPackageApi.previewSupportPackage).mockResolvedValue(artifact('shareable_aggregate'));
-    vi.mocked(supportPackageApi.previewIncidentSupportPackage).mockResolvedValue(artifact('single_incident'));
-    vi.mocked(supportPackageApi.armIncidentCapture).mockResolvedValue({
-      state: 'ready',
-      expiresIn: 'under_fifteen_minutes',
-    });
-    vi.mocked(supportPackageApi.teardownIncidentCapture).mockResolvedValue({ state: 'inactive' });
+function resetSupportPackageMocks() {
+  vi.clearAllMocks();
+  vi.mocked(supportPackageApi.getIncidentCaptureStatus).mockResolvedValue({ state: 'inactive' });
+  vi.mocked(supportPackageApi.previewSupportPackage).mockResolvedValue(artifact('shareable_aggregate'));
+  vi.mocked(supportPackageApi.previewIncidentSupportPackage).mockResolvedValue(artifact('single_incident'));
+  vi.mocked(supportPackageApi.armIncidentCapture).mockResolvedValue({
+    state: 'ready',
+    expiresIn: 'under_fifteen_minutes',
   });
+  vi.mocked(supportPackageApi.teardownIncidentCapture).mockResolvedValue({ state: 'inactive' });
+}
+
+describe('SupportPackageCard', () => {
+  beforeEach(resetSupportPackageMocks);
 
   it('discloses aggregate exclusions, incident limitations, capture behavior, and old-package risk', async () => {
     render(<SupportPackageCard />);
@@ -150,7 +152,8 @@ describe('SupportPackageCard', () => {
 
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/ready/i));
     expect(supportPackageApi.armIncidentCapture).toHaveBeenCalledOnce();
-    expect(screen.getByLabelText('Transaction ID')).toBeDisabled();
+    expect(screen.getByLabelText('Transaction ID')).toBeEnabled();
+    expect(armButton).toBeDisabled();
 
     await user.click(screen.getByRole('button', { name: /Stop Controlled Capture/i }));
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/inactive/i));
@@ -251,5 +254,77 @@ describe('SupportPackageCard', () => {
     await user.click(screen.getByRole('button', { name: /Generate Aggregate Preview/i }));
     rejectStatus(new Error('stale private failure'));
     await waitFor(() => expect(screen.getByText(/Local preview · shareable_aggregate/i)).toBeInTheDocument());
+  });
+});
+
+describe('SupportPackageCard during an active capture', () => {
+  beforeEach(resetSupportPackageMocks);
+
+  function armButton() {
+    return screen.getByRole('button', { name: /Arm Controlled Capture/i });
+  }
+
+  it('lets an admin re-enter the armed selectors after remount and include the capture in the incident preview', async () => {
+    vi.mocked(supportPackageApi.getIncidentCaptureStatus).mockResolvedValue({ state: 'ready' });
+    const user = userEvent.setup();
+    render(<SupportPackageCard />);
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/ready/i));
+
+    for (const label of ['Transaction ID', 'Sender wallet', 'Receiver wallet', 'Approximate incident time']) {
+      expect(screen.getByLabelText(label)).toBeEnabled();
+    }
+    expect(screen.getByText(/Re-enter the exact transaction ID, sender wallet and receiver wallet it was armed with, and the approximate time/i))
+      .toBeInTheDocument();
+
+    await fillIncidentForm(user);
+    await user.click(screen.getByLabelText(/confirm that I intend to generate it locally/i));
+    await user.click(screen.getByRole('button', { name: /Generate Incident Preview/i }));
+
+    await waitFor(() => expect(supportPackageApi.previewIncidentSupportPackage).toHaveBeenCalledWith({
+      txid: 'a'.repeat(64),
+      senderWalletId: 'sender-1',
+      receiverWalletId: 'receiver-2',
+      approximateIncidentTime: expect.stringMatching(/^2026-08-02T/),
+    }));
+    expect(armButton()).toBeDisabled();
+  });
+
+  it('keeps Arm disabled while a capture is tearing down', async () => {
+    vi.mocked(supportPackageApi.getIncidentCaptureStatus).mockResolvedValue({ state: 'tearing_down' });
+    const user = userEvent.setup();
+    render(<SupportPackageCard />);
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/tearing down/i));
+    await fillIncidentForm(user);
+    await user.click(screen.getByLabelText(/intend to arm a short-lived diagnostic capture/i));
+
+    expect(armButton()).toBeDisabled();
+  });
+
+  it('keeps Arm disabled once an arm attempt reports a partial capture', async () => {
+    vi.mocked(supportPackageApi.armIncidentCapture).mockResolvedValue({ state: 'partial' });
+    const user = userEvent.setup();
+    render(<SupportPackageCard />);
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/inactive/i));
+    await fillIncidentForm(user);
+    await user.click(screen.getByLabelText(/intend to arm a short-lived diagnostic capture/i));
+    await user.click(armButton());
+
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/partial/i));
+    expect(armButton()).toBeDisabled();
+  });
+
+  it.each([
+    ['inactive', () => Promise.resolve({ state: 'inactive' as const }), /inactive/i],
+    ['invalid', () => Promise.resolve({ state: 'invalid' as const }), /invalid/i],
+    ['unavailable (null)', () => Promise.reject(new Error('private')), /unavailable/i],
+  ])('enables Arm for a %s capture status once selectors and confirmation are complete', async (_name, status, label) => {
+    vi.mocked(supportPackageApi.getIncidentCaptureStatus).mockImplementation(status);
+    const user = userEvent.setup();
+    render(<SupportPackageCard />);
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(label));
+    await fillIncidentForm(user);
+    await user.click(screen.getByLabelText(/intend to arm a short-lived diagnostic capture/i));
+
+    expect(armButton()).toBeEnabled();
   });
 });

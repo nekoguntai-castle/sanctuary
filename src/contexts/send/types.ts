@@ -93,6 +93,8 @@ export interface TransactionState {
 
   // Payjoin
   payjoinUrl: string | null;
+  /** The BIP21 address the endpoint came with; read the URL through getBoundPayjoinUrl. */
+  payjoinAddress: string | null;
   payjoinStatus: PayjoinAttemptStatus;
 
   // Signing state
@@ -144,7 +146,7 @@ export type TransactionAction =
   | { type: 'SET_SCANNING_OUTPUT_INDEX'; index: number | null }
 
   // Payjoin
-  | { type: 'SET_PAYJOIN_URL'; url: string | null }
+  | { type: 'SET_PAYJOIN_URL'; url: string | null; address: string | null }
   | { type: 'SET_PAYJOIN_STATUS'; status: PayjoinAttemptStatus }
 
   // Coin control
@@ -213,6 +215,7 @@ export interface SerializableTransactionState {
   useDecoys: boolean;
   decoyCount: number;
   payjoinUrl: string | null;
+  payjoinAddress: string | null;
   payjoinStatus: PayjoinAttemptStatus;
   signingDeviceId: string | null;
   expandedDeviceId: string | null;

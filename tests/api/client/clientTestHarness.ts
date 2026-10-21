@@ -26,7 +26,7 @@ vi.mock('../../../src/api/refresh', async () => {
   return {
     ...actual,
     scheduleRefreshFromHeader: (iso: string) => clientApiMocks.mockScheduleRefreshFromHeader(iso),
-    refreshAccessToken: () => clientApiMocks.mockRefreshAccessToken(),
+    refreshAccessToken: (...args: unknown[]) => clientApiMocks.mockRefreshAccessToken(...args),
   };
 });
 

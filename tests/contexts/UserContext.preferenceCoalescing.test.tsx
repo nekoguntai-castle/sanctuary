@@ -43,6 +43,15 @@ function PreferenceValueConsumer() {
       <button data-testid="login" onClick={() => login('testuser', 'password')}>Login</button>
       <button data-testid="logout" onClick={logout}>Logout</button>
       <button data-testid="update-prefs" onClick={() => updatePreferences({ darkMode: false })}>Dark</button>
+      <button
+        data-testid="update-telegram-twice"
+        onClick={() => {
+          void updatePreferences({ telegram: { botToken: 'bot' } });
+          void updatePreferences({ telegram: { enabled: true } });
+        }}
+      >
+        Telegram
+      </button>
     </div>
   );
 }
@@ -90,6 +99,21 @@ describe('preference write coalescing', () => {
     });
     // The point of the change: five writes, one PATCH.
     expect(authApi.updatePreferences).toHaveBeenCalledTimes(1);
+  });
+
+  it('merges two partial telegram writes in one batch one level deep, like the server', async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.updatePreferences).mockResolvedValue(mockUser);
+
+    await renderLoggedIn(user);
+    await user.click(screen.getByTestId('update-telegram-twice'));
+
+    await waitFor(() => {
+      expect(authApi.updatePreferences).toHaveBeenCalledTimes(1);
+    });
+    expect(authApi.updatePreferences).toHaveBeenCalledWith({
+      telegram: { botToken: 'bot', enabled: true },
+    });
   });
 
   it('persists on the max-wait bound while the write stream is still running', async () => {

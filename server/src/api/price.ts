@@ -8,6 +8,7 @@ import { Router, Request, Response } from "express";
 import expressRateLimit from "express-rate-limit";
 import { z } from "zod";
 import { getPriceService } from "../services/price";
+import { normalizeCurrencyCode } from "../services/price/historicalLookup";
 import { createLogger } from "../utils/logger";
 import {
   authenticate,
@@ -46,6 +47,15 @@ const ProviderTestBodySchema = z.object({
 const ProviderEnablementBodySchema = z.object({
   enabled: z.boolean(),
 });
+
+/** A single-valued currency query parameter, trimmed and upper-cased */
+function readCurrencyQuery(value: unknown): string {
+  if (value === undefined) return "USD";
+  if (typeof value !== "string") {
+    throw new InvalidInputError("currency must be a single value", "currency");
+  }
+  return normalizeCurrencyCode(value);
+}
 
 const router = Router();
 const log = createLogger("PRICE:ROUTE");
@@ -399,7 +409,8 @@ router.post(
 router.get(
   "/historical",
   asyncHandler(async (req, res) => {
-    const { date, currency = "USD" } = req.query;
+    const { date } = req.query;
+    const currency = readCurrencyQuery(req.query.currency);
 
     if (!date) {
       throw new InvalidInputError(
@@ -421,14 +432,11 @@ router.get(
       throw new InvalidInputError("Date cannot be in the future");
     }
 
-    const price = await priceService.getHistoricalPrice(
-      currency as string,
-      parsedDate,
-    );
+    const price = await priceService.getHistoricalPrice(currency, parsedDate);
 
     res.json({
       date: parsedDate.toISOString(),
-      currency: currency,
+      currency,
       price,
       provider: "coingecko",
     });
@@ -442,7 +450,8 @@ router.get(
 router.get(
   "/history",
   asyncHandler(async (req, res) => {
-    const { days = "30", currency = "USD" } = req.query;
+    const { days = "30" } = req.query;
+    const currency = readCurrencyQuery(req.query.currency);
 
     const daysResult = HistoryDaysSchema.safeParse(days);
     if (!daysResult.success) {
@@ -450,7 +459,7 @@ router.get(
     }
 
     const history = await priceService.getPriceHistory(
-      currency as string,
+      currency,
       daysResult.data,
     );
 

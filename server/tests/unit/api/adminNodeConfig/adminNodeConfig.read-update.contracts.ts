@@ -25,12 +25,14 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
         port: '50002',
         hasPassword: false,
         poolEnabled: true,
+        explorerUrl: 'https://mempool.space',
+        feeEstimatorUrl: '',
         testnet3ExplorerUrl: 'https://mempool.space/testnet',
-        testnet3FeeEstimatorUrl: 'https://mempool.space/testnet',
+        testnet3FeeEstimatorUrl: '',
         testnet4ExplorerUrl: 'https://mempool.space/testnet4',
-        testnet4FeeEstimatorUrl: 'https://mempool.space/testnet4',
+        testnet4FeeEstimatorUrl: '',
         signetExplorerUrl: 'https://mempool.space/signet',
-        signetFeeEstimatorUrl: 'https://mempool.space/signet',
+        signetFeeEstimatorUrl: '',
         mempoolEstimator: DEFAULT_NODE_MEMPOOL_ESTIMATOR,
       });
       expect(response.body.servers).toEqual([]);
@@ -78,10 +80,11 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
 
       expect(response.status).toBe(200);
       expect(response.body.allowSelfSignedCert).toBe(false);
-      expect(response.body.feeEstimatorUrl).toBe('https://mempool.space');
+      expect(response.body.feeEstimatorUrl).toBe('');
       expect(response.body.testnet3ExplorerUrl).toBe('https://mempool.space/testnet');
       expect(response.body.testnet3FeeEstimatorUrl).toBe('');
-      expect(response.body.testnet4FeeEstimatorUrl).toBe('https://mempool.space/testnet4');
+      expect(response.body.testnet4FeeEstimatorUrl).toBe('');
+      expect(response.body.signetFeeEstimatorUrl).toBe('');
       expect(response.body.signetExplorerUrl).toBe('https://mempool.space/signet');
       expect(response.body.mempoolEstimator).toBe(DEFAULT_NODE_MEMPOOL_ESTIMATOR);
       expect(response.body.poolLoadBalancing).toBe('round_robin');
@@ -452,9 +455,35 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
 
       expect(response.status).toBe(200);
       expect(response.body.allowSelfSignedCert).toBe(false);
-      expect(response.body.feeEstimatorUrl).toBe('https://mempool.space');
+      expect(response.body.feeEstimatorUrl).toBe('');
       expect(response.body.mempoolEstimator).toBe(DEFAULT_NODE_MEMPOOL_ESTIMATOR);
       expect(response.body.poolLoadBalancing).toBe('round_robin');
+    });
+
+    it('keeps an Electrum fee source when a NULL-fee config response is saved back unchanged', async () => {
+      const nullFeeConfig = buildNodeConfig({
+        id: 'default-existing',
+        feeEstimatorUrl: null,
+        testnet3FeeEstimatorUrl: null,
+        testnet4FeeEstimatorUrl: null,
+        signetFeeEstimatorUrl: null,
+      });
+      mockPrismaClient.nodeConfig.findFirst.mockResolvedValue(nullFeeConfig);
+      const read = await request(getAdminNodeConfigApp()).get('/api/v1/admin/node-config');
+      expect(read.status).toBe(200);
+
+      mockPrismaClient.nodeConfig.update.mockResolvedValue(nullFeeConfig);
+      const { servers: _servers, hasPassword: _hasPassword, ...echoed } = read.body;
+      await request(getAdminNodeConfigApp()).put('/api/v1/admin/node-config').send(echoed);
+
+      expect(mockPrismaClient.nodeConfig.update).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({
+          feeEstimatorUrl: '',
+          testnet3FeeEstimatorUrl: '',
+          testnet4FeeEstimatorUrl: '',
+          signetFeeEstimatorUrl: '',
+        }),
+      }));
     });
 
     it('creates a default config when none exists', async () => {

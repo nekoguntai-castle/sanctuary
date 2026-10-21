@@ -2,6 +2,7 @@ import { fireEvent,render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe,expect,it,vi } from 'vitest';
 import { ConfigurationStep } from '../../../src/components/CreateWallet/ConfigurationStep';
+import type { ScriptType } from '../../../src/components/CreateWallet/types';
 import { WalletType } from '../../../src/types';
 
 vi.mock('lucide-react', () => ({
@@ -19,6 +20,7 @@ describe('ConfigurationStep branch coverage', () => {
     quorumM: 2,
     setQuorumM: vi.fn(),
     selectedDeviceCount: 3,
+    supportedScriptTypes: ['native_segwit', 'taproot', 'nested_segwit', 'legacy'] as ScriptType[],
   };
 
   it('shows single-sig placeholder and no network warning on mainnet', () => {
@@ -76,6 +78,30 @@ describe('ConfigurationStep branch coverage', () => {
     expect(setScriptType).toHaveBeenNthCalledWith(2, 'taproot');
     expect(setScriptType).toHaveBeenNthCalledWith(3, 'nested_segwit');
     expect(setScriptType).toHaveBeenNthCalledWith(4, 'legacy');
+  });
+
+  it('disables script types the selected signer has no account for', async () => {
+    const user = userEvent.setup();
+    const setScriptType = vi.fn();
+    render(
+      <ConfigurationStep
+        {...baseProps}
+        scriptType="nested_segwit"
+        supportedScriptTypes={['nested_segwit']}
+        setScriptType={setScriptType}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: /Nested Segwit/i })).toBeEnabled();
+    for (const name of [/Native Segwit/i, /Taproot/i, /Legacy/i]) {
+      const option = screen.getByRole('button', { name });
+      expect(option).toBeDisabled();
+      expect(option).toHaveTextContent('Not available on the selected signer');
+    }
+    expect(screen.getAllByText('Not available on the selected signer')).toHaveLength(3);
+
+    await user.click(screen.getByRole('button', { name: /Taproot/i }));
+    expect(setScriptType).not.toHaveBeenCalled();
   });
 
   it('renders multisig placeholder, hides script section, and updates quorum slider', async () => {

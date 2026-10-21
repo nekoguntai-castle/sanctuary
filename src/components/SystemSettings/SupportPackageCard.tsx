@@ -27,6 +27,18 @@ const INCIDENT_NOTICE =
 const CONTROLLED_CAPTURE_NOTICE =
   'Controlled capture observes only a future manual reproduction for up to 15 minutes. It does not send a transaction, retry a job, contact Telegram, or change wallet or provider state.';
 
+// Selectors are never persisted or returned by the server, so after a remount
+// during an active capture the admin re-enters them to match the armed session.
+const ACTIVE_CAPTURE_SELECTOR_NOTICE =
+  'A controlled capture is active. Re-enter the exact transaction ID, sender wallet and receiver wallet it was armed with, and the approximate time, to include its evidence in the incident preview.';
+
+// Only these states accept a new arm; the server refuses every other phase.
+const ARMABLE_CAPTURE_STATES: ReadonlySet<IncidentCaptureStatus['state']> = new Set(['inactive', 'invalid']);
+
+function canArmCapture(status: IncidentCaptureStatus | null): boolean {
+  return status === null || ARMABLE_CAPTURE_STATES.has(status.state);
+}
+
 const INPUT_CLASS =
   'w-full rounded-md border border-sanctuary-200 surface-muted px-3 py-2 text-sm dark:border-sanctuary-700';
 const SAFE_FACT_KEY = /(bucket|count|coverage|state|outcome|failure|observation|present|enabled|registered|retention|attempt)/i;
@@ -280,27 +292,28 @@ export const SupportPackageCard: React.FC = () => {
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="sm:col-span-2 text-sm text-sanctuary-700 dark:text-sanctuary-300">
               Transaction ID
-              <Input aria-label="Transaction ID" disabled={captureIsActive} value={txid} onChange={(event) => updateIncidentField(() => setTxid(event.target.value))} className="mt-1 font-mono" />
+              <Input aria-label="Transaction ID" value={txid} onChange={(event) => updateIncidentField(() => setTxid(event.target.value))} className="mt-1 font-mono" />
             </label>
             <label className="text-sm text-sanctuary-700 dark:text-sanctuary-300">
               Sender wallet
-              <select aria-label="Sender wallet" className={`${INPUT_CLASS} mt-1`} disabled={walletsLoading || captureIsActive} value={senderWalletId} onChange={(event) => updateIncidentField(() => setSenderWalletId(event.target.value))}>
+              <select aria-label="Sender wallet" className={`${INPUT_CLASS} mt-1`} disabled={walletsLoading} value={senderWalletId} onChange={(event) => updateIncidentField(() => setSenderWalletId(event.target.value))}>
                 <option value="">Select sender wallet</option>
                 {wallets.map((wallet) => <option key={wallet.id} value={wallet.id}>{wallet.name}</option>)}
               </select>
             </label>
             <label className="text-sm text-sanctuary-700 dark:text-sanctuary-300">
               Receiver wallet
-              <select aria-label="Receiver wallet" className={`${INPUT_CLASS} mt-1`} disabled={walletsLoading || captureIsActive} value={receiverWalletId} onChange={(event) => updateIncidentField(() => setReceiverWalletId(event.target.value))}>
+              <select aria-label="Receiver wallet" className={`${INPUT_CLASS} mt-1`} disabled={walletsLoading} value={receiverWalletId} onChange={(event) => updateIncidentField(() => setReceiverWalletId(event.target.value))}>
                 <option value="">Select receiver wallet</option>
                 {wallets.map((wallet) => <option key={wallet.id} value={wallet.id}>{wallet.name}</option>)}
               </select>
             </label>
             <label className="sm:col-span-2 text-sm text-sanctuary-700 dark:text-sanctuary-300">
               Approximate incident time
-              <Input type="datetime-local" aria-label="Approximate incident time" disabled={captureIsActive} value={approximateIncidentTime} onChange={(event) => updateIncidentField(() => setApproximateIncidentTime(event.target.value))} className="mt-1" />
+              <Input type="datetime-local" aria-label="Approximate incident time" value={approximateIncidentTime} onChange={(event) => updateIncidentField(() => setApproximateIncidentTime(event.target.value))} className="mt-1" />
             </label>
           </div>
+          {captureIsActive && <NoticeAlert message={ACTIVE_CAPTURE_SELECTOR_NOTICE} />}
           <label className="flex items-start gap-2 text-sm text-sanctuary-700 dark:text-sanctuary-300">
             <input type="checkbox" checked={incidentConfirmed} onChange={(event) => { setIncidentConfirmed(event.target.checked); clearIncidentArtifact(); }} className="mt-0.5 h-4 w-4" />
             I understand the incident profile contains privacy-minimized evidence about one selected
@@ -333,7 +346,7 @@ export const SupportPackageCard: React.FC = () => {
               <Button
                 variant="secondary"
                 size="sm"
-                disabled={!captureConfirmed || !incidentRequest || busyAction !== null || captureStatus?.state === 'ready'}
+                disabled={!captureConfirmed || !incidentRequest || busyAction !== null || !canArmCapture(captureStatus)}
                 onClick={() => void runAction('arm', async () => {
                   setCaptureStatus(await armIncidentCapture(incidentRequest!));
                 }, 'Controlled capture could not be armed.')}

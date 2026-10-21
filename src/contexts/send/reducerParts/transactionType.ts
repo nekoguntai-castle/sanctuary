@@ -23,10 +23,15 @@ export function reduceTransactionType(
     outputsValid = [null];
   }
 
+  // A different send type no longer carries the payjoin endpoint the BIP21 recipient came with.
+  const keepsPayjoin = action.txType === state.transactionType;
+
   return {
     ...state,
     transactionType: action.txType,
     outputs,
     outputsValid,
+    payjoinUrl: keepsPayjoin ? state.payjoinUrl : null,
+    payjoinAddress: keepsPayjoin ? state.payjoinAddress : null,
   };
 }

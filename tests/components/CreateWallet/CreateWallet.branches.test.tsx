@@ -5,12 +5,20 @@ import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { CreateWallet } from '../../../src/components/CreateWallet';
 import { useCreateWalletController } from '../../../src/components/CreateWallet/useCreateWalletController';
 
+/** Step-2 readout for the nested-only signer: its display path, or why there is none. */
+function nestedOnlyPathReadout(compatibleDevices: any[], walletType: string, getDisplayAccount: any): string {
+  const nestedOnly = compatibleDevices.find(device => device.id === 'nested-only');
+  if (!nestedOnly) return 'unlisted';
+  return getDisplayAccount(nestedOnly, walletType)?.derivationPath ?? 'none';
+}
+
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   getDevices: vi.fn(),
   mutateAsync: vi.fn(),
   handleError: vi.fn(),
   selectedNetwork: 'mainnet',
+  configProps: null as any,
 }));
 
 vi.mock('react-router-dom', async () => {
@@ -93,23 +101,31 @@ vi.mock('../../../src/components/CreateWallet/SignerSelectionStep', () => ({
         <span data-testid="incompatible-count">{incompatibleDevices.length}</span>
         <span data-testid="exact-display">{exact ? getDisplayAccount(exact, walletType)?.id ?? 'null' : 'null'}</span>
         <span data-testid="mismatch-display">{mismatch ? String(getDisplayAccount(mismatch, 'single_sig')) : 'null'}</span>
+        <span data-testid="nested-only-path">{nestedOnlyPathReadout(compatibleDevices, walletType, getDisplayAccount)}</span>
         <button onClick={() => toggleDevice('multi-one')}>toggle-multi-one</button>
         <button onClick={() => toggleDevice('multi-one')}>toggle-multi-one-again</button>
         <button onClick={() => toggleDevice('multi-two')}>toggle-multi-two</button>
         <button onClick={() => toggleDevice('single-only')}>toggle-single</button>
         <button onClick={() => toggleDevice('ambiguous-single')}>toggle-ambiguous</button>
+        <button onClick={() => toggleDevice('nested-only')}>toggle-nested-only</button>
+        <button onClick={() => toggleDevice('native-taproot')}>toggle-native-taproot</button>
       </div>
     );
   },
 }));
 
 vi.mock('../../../src/components/CreateWallet/ConfigurationStep', () => ({
-  ConfigurationStep: ({ setWalletName, setScriptType }: any) => (
-    <div data-testid="config-step">
-      <button onClick={() => setWalletName('Branch Wallet')}>set-name</button>
-      <button onClick={() => setScriptType('nested_segwit')}>change-script</button>
-    </div>
-  ),
+  ConfigurationStep: (props: any) => {
+    mocks.configProps = props;
+    return (
+      <div data-testid="config-step">
+        <span data-testid="config-script">{props.scriptType}</span>
+        <button onClick={() => props.setWalletName('Branch Wallet')}>set-name</button>
+        <button onClick={() => props.setScriptType('nested_segwit')}>change-script</button>
+        <button onClick={() => props.setScriptType('taproot')}>change-taproot</button>
+      </div>
+    );
+  },
 }));
 
 vi.mock('../../../src/components/CreateWallet/ReviewStep', () => ({
@@ -283,7 +299,7 @@ describe('CreateWallet branch coverage', () => {
     });
   });
 
-  it('clears exact signer bindings when script type changes', async () => {
+  it('ignores a script type the selected signer has no account for', async () => {
     const user = userEvent.setup();
     render(
       <MemoryRouter>
@@ -297,8 +313,16 @@ describe('CreateWallet branch coverage', () => {
     await user.click(screen.getByRole('button', { name: /next step/i }));
     await user.click(screen.getByRole('button', { name: 'change-script' }));
 
-    expect(screen.getByTestId('signer-step')).toBeInTheDocument();
-    expect(screen.getByTestId('compatible-count')).toHaveTextContent('0');
+    // single-only has no 49' account: defensive no-op, binding and step intact.
+    expect(screen.getByTestId('config-step')).toBeInTheDocument();
+    expect(screen.getByTestId('config-script')).toHaveTextContent('native_segwit');
+    await user.click(screen.getByRole('button', { name: 'set-name' }));
+    await user.click(screen.getByRole('button', { name: /next step/i }));
+    await user.click(screen.getByRole('button', { name: /construct wallet/i }));
+    await waitFor(() => expect(mocks.mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
+      scriptType: 'native_segwit',
+      signers: [{ deviceId: 'single-only', deviceAccountId: 'a1', signerIndex: 0 }],
+    })));
   });
 
   it('clears exact signer bindings and hidden script state when wallet type changes', async () => {
@@ -313,7 +337,7 @@ describe('CreateWallet branch coverage', () => {
     await user.click(screen.getByRole('button', { name: /next step/i }));
     await user.click(screen.getByRole('button', { name: 'toggle-single' }));
     await user.click(screen.getByRole('button', { name: /next step/i }));
-    await user.click(screen.getByRole('button', { name: 'change-script' }));
+    await user.click(screen.getByRole('button', { name: /back/i }));
     await user.click(screen.getByRole('button', { name: /back/i }));
     await user.click(screen.getByRole('button', { name: 'pick-multi' }));
     await user.click(screen.getByRole('button', { name: /next step/i }));
@@ -322,6 +346,67 @@ describe('CreateWallet branch coverage', () => {
     await user.click(screen.getByRole('button', { name: /next step/i }));
 
     expect(screen.getByTestId('signer-step')).toBeInTheDocument();
+  });
+
+  it('lists a nested-only signer with its path and creates a nested segwit wallet from it', async () => {
+    const user = userEvent.setup();
+    mocks.getDevices.mockResolvedValueOnce([{
+      id: 'nested-only',
+      label: 'Nested Only',
+      accounts: [{ id: 'n49', purpose: 'single_sig', scriptType: 'nested_segwit', derivationPath: "m/49'/0'/0'" }],
+    }]);
+    render(<MemoryRouter><CreateWallet /></MemoryRouter>);
+
+    await user.click(screen.getByRole('button', { name: 'pick-single' }));
+    await user.click(screen.getByRole('button', { name: /next step/i }));
+    expect(screen.getByTestId('compatible-count')).toHaveTextContent('1');
+    expect(screen.getByTestId('nested-only-path')).toHaveTextContent("m/49'/0'/0'");
+
+    await user.click(screen.getByRole('button', { name: 'toggle-nested-only' }));
+    await user.click(screen.getByRole('button', { name: /next step/i }));
+    expect(screen.getByTestId('config-script')).toHaveTextContent('nested_segwit');
+    expect(mocks.configProps.supportedScriptTypes).toEqual(['nested_segwit']);
+
+    await user.click(screen.getByRole('button', { name: 'set-name' }));
+    await user.click(screen.getByRole('button', { name: /next step/i }));
+    await user.click(screen.getByRole('button', { name: /construct wallet/i }));
+    await waitFor(() => expect(mocks.mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'single_sig',
+      scriptType: 'nested_segwit',
+      signers: [{ deviceId: 'nested-only', deviceAccountId: 'n49', signerIndex: 0 }],
+    })));
+  });
+
+  it('rebinds the selected signer in place when switching to another supported script type', async () => {
+    const user = userEvent.setup();
+    mocks.getDevices.mockResolvedValueOnce([{
+      id: 'native-taproot',
+      label: 'Native Taproot',
+      accounts: [
+        { id: 'n84', purpose: 'single_sig', scriptType: 'native_segwit', derivationPath: "m/84'/0'/0'" },
+        { id: 't86', purpose: 'single_sig', scriptType: 'taproot', derivationPath: "m/86'/0'/0'" },
+      ],
+    }]);
+    render(<MemoryRouter><CreateWallet /></MemoryRouter>);
+
+    await user.click(screen.getByRole('button', { name: 'pick-single' }));
+    await user.click(screen.getByRole('button', { name: /next step/i }));
+    await user.click(screen.getByRole('button', { name: 'toggle-native-taproot' }));
+    await user.click(screen.getByRole('button', { name: /next step/i }));
+    expect(screen.getByTestId('config-script')).toHaveTextContent('native_segwit');
+    expect(mocks.configProps.supportedScriptTypes).toEqual(['native_segwit', 'taproot']);
+
+    await user.click(screen.getByRole('button', { name: 'change-taproot' }));
+    expect(screen.getByTestId('config-step')).toBeInTheDocument();
+    expect(screen.getByTestId('config-script')).toHaveTextContent('taproot');
+
+    await user.click(screen.getByRole('button', { name: 'set-name' }));
+    await user.click(screen.getByRole('button', { name: /next step/i }));
+    await user.click(screen.getByRole('button', { name: /construct wallet/i }));
+    await waitFor(() => expect(mocks.mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
+      scriptType: 'taproot',
+      signers: [{ deviceId: 'native-taproot', deviceAccountId: 't86', signerIndex: 0 }],
+    })));
   });
 
   it('clears exact signer bindings when the active network changes', async () => {
@@ -360,6 +445,12 @@ describe('CreateWallet branch coverage', () => {
     act(() => view.result.current.toggleDevice('single-only'));
     expect(view.result.current.selectedSigners).toEqual([]);
 
+    // Without a single-sig wallet type the script type is set directly.
+    act(() => view.result.current.setScriptType('native_segwit'));
+    act(() => view.result.current.setScriptType('taproot'));
+    expect(view.result.current.scriptType).toBe('taproot');
+    expect(view.result.current.step).toBe(1);
+
     act(() => view.result.current.setWalletType('single_sig'));
     act(() => view.result.current.setWalletType('single_sig'));
     act(() => view.result.current.setScriptType('native_segwit'));
@@ -375,6 +466,23 @@ describe('CreateWallet branch coverage', () => {
     await waitFor(() => expect(view.result.current.network).toBe('testnet3'));
     expect(view.result.current.step).toBe(1);
     expect(view.result.current.selectedSigners).toEqual([]);
+  });
+
+  it('returns a multisig wizard past step 1 to signer selection when its script type changes', async () => {
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <MemoryRouter>{children}</MemoryRouter>
+    );
+    const view = renderHook(() => useCreateWalletController(), { wrapper });
+    await waitFor(() => expect(view.result.current.availableDevices).toHaveLength(5));
+
+    act(() => view.result.current.setWalletType('multi_sig'));
+    act(() => view.result.current.handleNext());
+    expect(view.result.current.step).toBe(2);
+
+    act(() => view.result.current.setScriptType('nested_segwit'));
+    expect(view.result.current.scriptType).toBe('nested_segwit');
+    expect(view.result.current.selectedSigners).toEqual([]);
+    expect(view.result.current.step).toBe(2);
   });
 
   it('re-clamps the quorum to the selected signer count after a deselect', async () => {

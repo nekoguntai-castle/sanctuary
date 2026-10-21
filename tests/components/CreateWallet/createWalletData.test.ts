@@ -13,7 +13,11 @@ import {
   getNextCreateWalletStep,
   getNextSelectedSigners,
   getRequiredAccountPurpose,
+  getSelectionScriptTypes,
+  getSupportedScriptTypes,
+  rebindSingleSigSelection,
   reconcileSelectedSigners,
+  resolveSignerBinding,
 } from '../../../src/components/CreateWallet/createWalletData';
 
 const singleMainnetDevice = {
@@ -25,6 +29,19 @@ const singleMainnetDevice = {
       scriptType: WalletScriptType.NATIVE_SEGWIT,
       derivationPath: "m/84'/0'/0'",
       xpub: 'xpub-single-mainnet',
+    },
+  ],
+};
+
+const nestedOnlyDevice = {
+  id: 'nested-only',
+  accounts: [
+    {
+      id: 'nested-only-account',
+      purpose: DeviceAccountPurpose.SINGLE_SIG,
+      scriptType: WalletScriptType.NESTED_SEGWIT,
+      derivationPath: "m/49'/0'/0'",
+      xpub: 'ypub-nested-only',
     },
   ],
 };
@@ -178,6 +195,65 @@ describe('createWalletData', () => {
     ]);
     expect(getCompatibleDevices(devices, null, WalletScriptType.NATIVE_SEGWIT, 'mainnet')).toBe(devices);
     expect(getIncompatibleDevices(devices, null, WalletScriptType.NATIVE_SEGWIT, 'mainnet')).toEqual([]);
+  });
+
+  it('lists the single-sig script types a device has exactly one account for', () => {
+    expect(getSupportedScriptTypes(nestedOnlyDevice as any, WalletType.SINGLE_SIG, 'mainnet'))
+      .toEqual([WalletScriptType.NESTED_SEGWIT]);
+    const nativeAmbiguousTaproot = {
+      id: 'ambiguous-native',
+      accounts: [
+        { id: 'n0', purpose: DeviceAccountPurpose.SINGLE_SIG, scriptType: WalletScriptType.NATIVE_SEGWIT, derivationPath: "m/84'/0'/0'" },
+        { id: 'n1', purpose: DeviceAccountPurpose.SINGLE_SIG, scriptType: WalletScriptType.NATIVE_SEGWIT, derivationPath: "m/84'/0'/1'" },
+        { id: 't0', purpose: DeviceAccountPurpose.SINGLE_SIG, scriptType: WalletScriptType.TAPROOT, derivationPath: "m/86'/0'/0'" },
+      ],
+    };
+    expect(getSupportedScriptTypes(nativeAmbiguousTaproot as any, WalletType.SINGLE_SIG, 'mainnet'))
+      .toEqual([WalletScriptType.TAPROOT]);
+    expect(getSupportedScriptTypes(nestedOnlyDevice as any, WalletType.SINGLE_SIG, 'testnet3')).toEqual([]);
+  });
+
+  it('lists a single-sig device whose only account is not the current script type', () => {
+    const devices = [singleMainnetDevice, nestedOnlyDevice, multisigTestnetDevice] as any[];
+
+    expect(getCompatibleDevices(devices, WalletType.SINGLE_SIG, WalletScriptType.NATIVE_SEGWIT, 'mainnet')
+      .map(device => device.id)).toEqual(['single-mainnet', 'nested-only']);
+    expect(getIncompatibleDevices(devices, WalletType.SINGLE_SIG, WalletScriptType.NATIVE_SEGWIT, 'mainnet')
+      .map(device => device.id)).toEqual(['multi-testnet']);
+    // Multisig stays exact-match on the fixed script type.
+    expect(getCompatibleDevices(devices, WalletType.MULTI_SIG, WalletScriptType.NATIVE_SEGWIT, 'testnet3')
+      .map(device => device.id)).toEqual(['multi-testnet']);
+  });
+
+  it('binds a signer to the current script type when supported, else to its first supported type', () => {
+    expect(resolveSignerBinding(singleMainnetDevice as any, WalletType.SINGLE_SIG, WalletScriptType.TAPROOT, 'mainnet'))
+      .toEqual({ scriptType: WalletScriptType.NATIVE_SEGWIT, account: singleMainnetDevice.accounts[0] });
+    expect(resolveSignerBinding(nestedOnlyDevice as any, WalletType.SINGLE_SIG, WalletScriptType.NESTED_SEGWIT, 'mainnet')?.account.id)
+      .toBe('nested-only-account');
+    expect(resolveSignerBinding(nestedOnlyDevice as any, WalletType.SINGLE_SIG, WalletScriptType.NATIVE_SEGWIT, 'testnet3')).toBeNull();
+    expect(resolveSignerBinding(multisigTestnetDevice as any, WalletType.MULTI_SIG, WalletScriptType.NATIVE_SEGWIT, 'testnet3')?.account.id)
+      .toBe('multi-testnet-account');
+    expect(resolveSignerBinding(singleMainnetDevice as any, WalletType.MULTI_SIG, WalletScriptType.NATIVE_SEGWIT, 'mainnet')).toBeNull();
+  });
+
+  it('offers the selected single-sig signer script types, or every type without one', () => {
+    const devices = [singleMainnetDevice, nestedOnlyDevice] as any[];
+    const nested = [{ deviceId: 'nested-only', deviceAccountId: 'nested-only-account' }];
+
+    expect(getSelectionScriptTypes(nested, devices, WalletType.SINGLE_SIG, 'mainnet')).toEqual([WalletScriptType.NESTED_SEGWIT]);
+    expect(getSelectionScriptTypes([], devices, WalletType.SINGLE_SIG, 'mainnet')).toHaveLength(4);
+    expect(getSelectionScriptTypes(nested, devices, WalletType.MULTI_SIG, 'mainnet')).toHaveLength(4);
+  });
+
+  it('rebinds a single-sig selection in place and refuses types the signer lacks', () => {
+    const devices = [nestedOnlyDevice] as any[];
+    const nested = [{ deviceId: 'nested-only', deviceAccountId: 'stale-account' }];
+
+    expect(rebindSingleSigSelection([], devices, WalletScriptType.TAPROOT, 'mainnet')).toEqual([]);
+    expect(rebindSingleSigSelection(nested, devices, WalletScriptType.NESTED_SEGWIT, 'mainnet'))
+      .toEqual([{ deviceId: 'nested-only', deviceAccountId: 'nested-only-account' }]);
+    expect(rebindSingleSigSelection(nested, devices, WalletScriptType.TAPROOT, 'mainnet')).toBeNull();
+    expect(rebindSingleSigSelection(nested, [], WalletScriptType.NESTED_SEGWIT, 'mainnet')).toBeNull();
   });
 
   it('preserves selection order while toggling exact signer bindings', () => {

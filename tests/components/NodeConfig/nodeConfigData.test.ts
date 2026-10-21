@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ElectrumServer, NodeConfig } from '../../../src/types';
 import {
+  DEFAULT_NODE_CONFIG,
   getExternalServicesSummary,
   getNetworksSummary,
   getProxySummary,
@@ -63,5 +64,17 @@ describe('nodeConfigData', () => {
     expect(getProxySummary(null)).toBe('Disabled');
     expect(getProxySummary({ proxyEnabled: true, proxyHost: 'tor' } as NodeConfig)).toBe('Bundled Tor');
     expect(getProxySummary({ proxyEnabled: true, proxyHost: 'proxy.local', proxyPort: 9050 } as NodeConfig)).toBe('proxy.local:9050');
+  });
+
+  // Consistency guard: the server's no-row default and NULL rows project fee
+  // estimators as '' (Electrum, what runtime uses), so the frontend mirror must too.
+  it('defaults every network fee source to Electrum, matching the server default', () => {
+    expect(DEFAULT_NODE_CONFIG.feeEstimatorUrl).toBe('');
+    expect(DEFAULT_NODE_CONFIG.testnet3FeeEstimatorUrl).toBe('');
+    expect(DEFAULT_NODE_CONFIG.testnet4FeeEstimatorUrl).toBe('');
+    expect(DEFAULT_NODE_CONFIG.signetFeeEstimatorUrl).toBe('');
+    expect(DEFAULT_NODE_CONFIG.explorerUrl).toBe('https://mempool.space');
+    expect(getExternalServicesSummary({ explorerUrl: 'https://mempool.space', feeEstimatorUrl: '' } as NodeConfig))
+      .toBe('mempool.space \u2022 Electrum');
   });
 });

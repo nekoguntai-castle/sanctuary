@@ -19,6 +19,7 @@ import type {
   VerifyEmailResponse,
 } from '@sanctuary/shared/types/api';
 import type { TelegramConfig, WalletTelegramSettings } from '../types';
+import type { UserPreferencesPatch } from '../types/user';
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('AuthApi');
@@ -130,7 +131,7 @@ export async function getCurrentUser(): Promise<User> {
 /**
  * Update user preferences
  */
-export async function updatePreferences(preferences: Partial<AuthUserPreferences>): Promise<User> {
+export async function updatePreferences(preferences: UserPreferencesPatch): Promise<User> {
   return apiClient.patch<User>('/auth/me/preferences', preferences);
 }
 

@@ -23,6 +23,14 @@ const apiErrorResponse = {
   },
 } as const;
 
+const agentForbiddenResponse = {
+  ...apiErrorResponse,
+  description:
+    'Forbidden: the agent is not active, the credential is not scoped for the request, or the agent ' +
+    'user no longer has access to the funding or operational wallet ' +
+    '(details.reason = agent_user_wallet_access_lost, details.wallet = funding | operational).',
+} as const;
+
 export const agentPaths = {
   '/agent/wallets/{fundingWalletId}/summary': {
     get: {
@@ -42,7 +50,7 @@ export const agentPaths = {
         },
         400: apiErrorResponse,
         401: apiErrorResponse,
-        403: apiErrorResponse,
+        403: agentForbiddenResponse,
       },
     },
   },
@@ -64,7 +72,7 @@ export const agentPaths = {
         },
         400: apiErrorResponse,
         401: apiErrorResponse,
-        403: apiErrorResponse,
+        403: agentForbiddenResponse,
       },
     },
   },
@@ -94,7 +102,7 @@ export const agentPaths = {
         },
         400: apiErrorResponse,
         401: apiErrorResponse,
-        403: apiErrorResponse,
+        403: agentForbiddenResponse,
       },
     },
   },
@@ -124,7 +132,7 @@ export const agentPaths = {
         },
         400: apiErrorResponse,
         401: apiErrorResponse,
-        403: apiErrorResponse,
+        403: agentForbiddenResponse,
         409: apiErrorResponse,
       },
     },
@@ -155,7 +163,7 @@ export const agentPaths = {
         },
         400: apiErrorResponse,
         401: apiErrorResponse,
-        403: apiErrorResponse,
+        403: agentForbiddenResponse,
         404: apiErrorResponse,
       },
     },

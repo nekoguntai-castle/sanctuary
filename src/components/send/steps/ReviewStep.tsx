@@ -142,8 +142,11 @@ export function ReviewStep({
       estimatedFee,
       changeAmount,
       getAddressLabel,
+      payjoinStatus,
+      payjoinOriginalTxData,
+      network: wallet.network,
     });
-  }, [state.outputs, state.selectedUTXOs, utxos, spendableUtxos, txData, selectedTotal, totalOutputAmount, estimatedFee, changeAmount, getAddressLabel]);
+  }, [state.outputs, state.selectedUTXOs, utxos, spendableUtxos, txData, selectedTotal, totalOutputAmount, estimatedFee, changeAmount, getAddressLabel, payjoinStatus, payjoinOriginalTxData, wallet.network]);
 
   // Transaction type label
   const txTypeLabel = useMemo(() => {
@@ -201,6 +204,7 @@ export function ReviewStep({
         flowData={flowData}
         txData={txData}
         payjoinStatus={payjoinStatus}
+        payjoinOriginalTxData={payjoinOriginalTxData}
         changeAmount={changeAmount}
         selectedTotal={selectedTotal}
         estimatedFee={estimatedFee}

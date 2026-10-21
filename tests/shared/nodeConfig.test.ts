@@ -215,7 +215,7 @@ describe('shared node config projection helpers', () => {
     ).toBe('');
     expect(
       getNodeExternalServiceResponseUrl({}, 'testnet4', 'feeEstimator'),
-    ).toBe('https://mempool.space/testnet4');
+    ).toBe('');
     expect(getNodeMempoolApiBase(config, 'mainnet')).toBe(
       'https://explorer.example/base/api',
     );
@@ -227,5 +227,25 @@ describe('shared node config projection helpers', () => {
     );
     expect(hasConfiguredNodeMempoolFeeEstimator(config, 'mainnet')).toBe(false);
     expect(hasConfiguredNodeMempoolFeeEstimator(config, 'testnet4')).toBe(true);
+  });
+
+  it('projects unset fee estimators as Electrum ("") to match runtime, keeping explorer defaults', () => {
+    const nullFees = {
+      feeEstimatorUrl: null,
+      testnet3FeeEstimatorUrl: null,
+      testnet4FeeEstimatorUrl: null,
+      signetFeeEstimatorUrl: null,
+      explorerUrl: null,
+    };
+    for (const network of ['mainnet', 'testnet3', 'testnet4', 'signet'] as const) {
+      expect(getNodeExternalServiceResponseUrl(nullFees, network, 'feeEstimator')).toBe('');
+      expect(hasConfiguredNodeMempoolFeeEstimator(nullFees, network)).toBe(false);
+    }
+    expect(getNodeExternalServiceResponseUrl(nullFees, 'mainnet', 'explorer')).toBe('https://mempool.space');
+    expect(getNodeExternalServiceResponseUrl({ feeEstimatorUrl: '   ' }, 'mainnet', 'feeEstimator')).toBe('');
+    expect(getNodeExternalServiceResponseUrl({ feeEstimatorUrl: '' }, 'mainnet', 'feeEstimator')).toBe('');
+    expect(
+      getNodeExternalServiceResponseUrl({ feeEstimatorUrl: 'https://fees.example' }, 'mainnet', 'feeEstimator'),
+    ).toBe('https://fees.example');
   });
 });

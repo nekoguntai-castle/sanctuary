@@ -14,6 +14,7 @@ import { useErrorHandler } from '../useErrorHandler';
 import { canonicalSegwitAddressCase } from '@sanctuary/shared/utils/bitcoin';
 import { createLogger } from '../../utils/logger';
 import type { OutputEntry, TransactionState } from '../../contexts/send/types';
+import { getBoundPayjoinUrl } from '../../contexts/send/reducerParts/payjoin';
 import type { CreateDraftRequest } from '../../api/drafts';
 import { UNATTRIBUTED_SIGNATURE_ID, type TransactionData } from './types';
 import type { SendOperationLease } from './useSendOperationOwner';
@@ -99,7 +100,7 @@ const buildDraftRequest = (
     outputs: getDraftOutputs(currentTxData, apiOutputs),
     inputs: getDraftInputs(currentTxData),
     decoyOutputs: currentTxData.decoyOutputs,
-    payjoinUrl: state.payjoinUrl || undefined,
+    payjoinUrl: getBoundPayjoinUrl(state) || undefined,
     psbtBase64: currentTxData.psbtBase64,
     intentId: currentTxData.intentId,
     intentDigest: currentTxData.intentDigest,

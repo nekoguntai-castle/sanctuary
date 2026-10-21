@@ -8,6 +8,7 @@ import {
   mockRefreshAccessToken,
   mockScheduleRefreshFromHeader,
 } from './clientTestHarness';
+import { __seedAccessExpiresAtMsForTests } from '../../../src/api/refresh';
 
 export const registerApiClientCookieAuthContracts = () => {
   describe('cookie auth + CSRF + X-Access-Expires-At + 401 interceptor', () => {
@@ -155,6 +156,44 @@ export const registerApiClientCookieAuthContracts = () => {
       expect(mockRefreshAccessToken).toHaveBeenCalledTimes(1);
       expect(mockFetch).toHaveBeenCalledTimes(2);
       expect(result).toEqual({ ok: true });
+    });
+
+    it('passes the access expiry seen at request start to refreshAccessToken', async () => {
+      const requestStartExpiry = Date.now() + 10 * 60 * 60 * 1000;
+      __seedAccessExpiresAtMsForTests(requestStartExpiry);
+      mockFetch
+        .mockResolvedValueOnce(errorResponse(401, { message: 'Unauthorized' }))
+        .mockResolvedValueOnce(okResponse({ ok: true }));
+      mockRefreshAccessToken.mockResolvedValue(undefined);
+
+      try {
+        await apiClient.get('/wallets', undefined, { enabled: false });
+        expect(mockRefreshAccessToken).toHaveBeenCalledWith({ expiryAtRequestStart: requestStartExpiry });
+      } finally {
+        __seedAccessExpiresAtMsForTests(null);
+      }
+    });
+
+    it('uses the last retry attempt expiry snapshot when a safe read retries before its 401', async () => {
+      const firstExpiry = Date.now() + 5 * 60 * 60 * 1000;
+      const rotatedExpiry = Date.now() + 10 * 60 * 60 * 1000;
+      __seedAccessExpiresAtMsForTests(firstExpiry);
+      mockFetch
+        .mockImplementationOnce(async () => {
+          __seedAccessExpiresAtMsForTests(rotatedExpiry);
+          return errorResponse(503, { message: 'unavailable' });
+        })
+        .mockResolvedValueOnce(errorResponse(401, { message: 'Unauthorized' }))
+        .mockResolvedValueOnce(okResponse({ ok: true }));
+      mockRefreshAccessToken.mockResolvedValue(undefined);
+
+      try {
+        await apiClient.get('/wallets', undefined, { maxRetries: 1, initialDelayMs: 1 });
+        expect(mockRefreshAccessToken).toHaveBeenCalledTimes(1);
+        expect(mockRefreshAccessToken).toHaveBeenCalledWith({ expiryAtRequestStart: rotatedExpiry });
+      } finally {
+        __seedAccessExpiresAtMsForTests(null);
+      }
     });
 
     it('does not refresh or replay a step-up wrong-password 401 (one request, one budget unit)', async () => {

@@ -172,6 +172,8 @@ function buildDraftInitialState(
   showInfo: (message: string) => void,
   walletType: WalletType | string
 ): Partial<SerializableTransactionState> {
+  const outputs = buildDraftOutputs(draftData);
+  const payjoinUrl = draftData.payjoinUrl || null;
   const draftInitial: Partial<SerializableTransactionState> = {
     currentStep: 'review',
     completedSteps: ['type', 'outputs'],
@@ -183,9 +185,11 @@ function buildDraftInitialState(
     replacesTxid: draftData.replacesTxid ?? null,
     unsignedPsbt: draftData.signedPsbtBase64 || draftData.psbtBase64,
     signedDevices: resolveDraftSignedDevices(draftData, walletType),
-    payjoinUrl: draftData.payjoinUrl || null,
+    payjoinUrl,
+    // A restored endpoint is bound to the restored first output (drafts never negotiate a payjoin).
+    payjoinAddress: payjoinUrl ? outputs[0].address : null,
     payjoinStatus: 'idle',
-    outputs: buildDraftOutputs(draftData),
+    outputs,
   };
 
   applyDraftUtxoSelection(draftInitial, draftData, utxos, showInfo);

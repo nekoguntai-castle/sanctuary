@@ -1,3 +1,5 @@
+import * as bitcoin from 'bitcoinjs-lib';
+import * as ecc from '@bitcoinerlab/secp256k1';
 import type { TransactionState } from '../../../../contexts/send/types';
 import type { TransactionData } from '../../../../hooks/send/types';
 import type { AddressLookupResult } from '../../../../api/bitcoin';
@@ -5,7 +7,16 @@ import type { UTXO, Wallet } from '../../../../types';
 import type { FlowInput, FlowOutput } from '../../../TransactionFlowPreview';
 import { UNATTRIBUTED_SIGNATURE_ID, requiresApproval } from '../../../../hooks/send/types';
 import type { ApprovalAction } from '../../../../hooks/send/types';
+import { createLogger } from '../../../../utils/logger';
 import { getBuiltChangeSats } from './transactionSummaryModel';
+import { isPayjoinProposalReview } from './PayjoinProposalPanel';
+
+// Decoding a payjoin proposal's P2TR outputs to addresses needs the ECC library.
+bitcoin.initEccLib(ecc);
+
+const log = createLogger('reviewStepData');
+
+const RECEIVER_INPUT_LABEL = 'Receiver input';
 
 export interface ReviewFlowData {
   inputs: FlowInput[];
@@ -25,6 +36,20 @@ interface BuildReviewFlowDataParams {
   estimatedFee: number;
   changeAmount: number;
   getAddressLabel: (address: string) => string | undefined;
+  payjoinStatus: string;
+  /** The signed original while a payjoin proposal is under review. */
+  payjoinOriginalTxData: TransactionData | null;
+  network: Wallet['network'];
+}
+
+/**
+ * bitcoinjs network for a wallet network. Unlike the signer binding's
+ * mainnet/testnet split, regtest keeps its own bech32 prefix (bcrt1).
+ */
+export function toBitcoinJsNetwork(network: Wallet['network']): bitcoin.Network {
+  if (!network || network === 'mainnet') return bitcoin.networks.bitcoin;
+  if (network === 'regtest') return bitcoin.networks.regtest;
+  return bitcoin.networks.testnet;
 }
 
 export function getLookupAddressesForReview(
@@ -243,18 +268,68 @@ function buildReviewOutputs(params: BuildReviewFlowDataParams): FlowOutput[] {
   return outputs;
 }
 
+interface ReviewProposal {
+  proposal: TransactionData;
+  original: TransactionData;
+}
+
+function getReviewProposal(params: BuildReviewFlowDataParams): ReviewProposal | null {
+  if (!params.txData || !isPayjoinProposalReview(params.payjoinStatus, params.payjoinOriginalTxData)) return null;
+  return { proposal: params.txData, original: params.payjoinOriginalTxData };
+}
+
+/**
+ * The proposal's own outputs (the receiver's output grows by its input less
+ * its fee share), so the preview sums to the proposal's total output. Change
+ * is the wallet's change address or a Stonewall decoy. Null when the PSBT does
+ * not decode; the caller then shows the built outputs.
+ */
+function buildProposalReviewOutputs(
+  proposal: TransactionData,
+  network: Wallet['network'],
+  getAddressLabel: (address: string) => string | undefined
+): FlowOutput[] | null {
+  const changeAddresses = new Set([proposal.changeAddress, ...(proposal.decoyOutputs ?? []).map(decoy => decoy.address)]);
+  try {
+    const bitcoinNetwork = toBitcoinJsNetwork(network);
+    return bitcoin.Psbt.fromBase64(proposal.psbtBase64).txOutputs.map(output => {
+      const address = bitcoin.address.fromOutputScript(output.script, bitcoinNetwork);
+      return {
+        address,
+        amount: Number(output.value),
+        isChange: changeAddresses.has(address),
+        label: getAddressLabel(address),
+      };
+    });
+  } catch (error) {
+    log.debug('Could not decode the payjoin proposal outputs; showing the built outputs', { error });
+    return null;
+  }
+}
+
+function labelReceiverInputs(inputs: FlowInput[], original: TransactionData): FlowInput[] {
+  const originalOutpoints = new Set(original.utxos.map(utxo => `${utxo.txid}:${utxo.vout}`));
+  return inputs.map(input => (
+    originalOutpoints.has(`${input.txid}:${input.vout}`) ? input : { ...input, label: RECEIVER_INPUT_LABEL }
+  ));
+}
+
 export function buildReviewFlowData(params: BuildReviewFlowDataParams): ReviewFlowData {
   const actualChangeAmount = params.txData?.changeAmount ?? params.changeAmount;
+  const review = getReviewProposal(params);
+  const inputs = buildReviewInputs(
+    params.state,
+    params.utxos,
+    params.spendableUtxos,
+    params.txData,
+    params.getAddressLabel
+  );
+  const proposalOutputs = review
+    && buildProposalReviewOutputs(review.proposal, params.network, params.getAddressLabel);
 
   return {
-    inputs: buildReviewInputs(
-      params.state,
-      params.utxos,
-      params.spendableUtxos,
-      params.txData,
-      params.getAddressLabel
-    ),
-    outputs: buildReviewOutputs(params),
+    inputs: review ? labelReceiverInputs(inputs, review.original) : inputs,
+    outputs: proposalOutputs || buildReviewOutputs(params),
     totalInput: params.txData?.totalInput ?? params.selectedTotal,
     totalOutput: params.txData?.totalOutput ?? (params.totalOutputAmount + actualChangeAmount),
     fee: params.txData?.fee ?? params.estimatedFee,

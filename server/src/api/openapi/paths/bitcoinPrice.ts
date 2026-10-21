@@ -321,7 +321,11 @@ export const pricePaths = {
           "Historical price data",
           "#/components/schemas/PriceHistoricalResponse",
         ),
-        400: apiErrorResponse,
+        400: {
+          ...apiErrorResponse,
+          description:
+            "Invalid date, a date before 2013-04-28, or a currency absent from the provider's price map for that day",
+        },
         500: apiErrorResponse,
       },
     },
@@ -350,7 +354,10 @@ export const pricePaths = {
           "Price history data",
           "#/components/schemas/PriceHistoryResponse",
         ),
-        400: apiErrorResponse,
+        400: {
+          ...apiErrorResponse,
+          description: "Invalid days or unsupported currency",
+        },
         500: apiErrorResponse,
       },
     },

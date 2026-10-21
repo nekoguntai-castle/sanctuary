@@ -150,6 +150,7 @@ export const createState = (override?: Partial<TransactionState>): TransactionSt
   useDecoys: false,
   decoyCount: 0,
   payjoinUrl: null,
+  payjoinAddress: null,
   payjoinStatus: 'idle',
   signingDeviceId: null,
   expandedDeviceId: null,
@@ -217,6 +218,7 @@ export const payjoinSuccess = (proposalPsbt: string) => ({
 export const payjoinState = () => createState({
   outputs: [{ address: 'bc1qrecipient', amount: '10000', sendMax: false }],
   payjoinUrl: 'https://merchant.example/payjoin',
+  payjoinAddress: 'bc1qrecipient',
 });
 
 const withSenderSignature = (psbtBase64: string): string => {

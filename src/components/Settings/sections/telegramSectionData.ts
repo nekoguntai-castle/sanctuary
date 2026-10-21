@@ -1,4 +1,6 @@
-import type { TelegramConfig, User } from '../../../types';
+import type { TelegramConfig } from '../../../types';
+
+type TelegramGlobalSettings = Pick<TelegramConfig, 'botToken' | 'chatId' | 'enabled'>;
 
 export interface TelegramTestResult {
   success: boolean;
@@ -17,29 +19,17 @@ export interface TelegramChatIdResponse {
   error?: string;
 }
 
+/**
+ * The global Telegram save never sends `wallets`: the server merges `telegram`
+ * one level deep, so per-wallet settings written since login are preserved
+ * instead of being replaced by the login-time copy.
+ */
 export function buildTelegramPreferences({
   botToken,
   chatId,
   enabled,
-  user,
-}: {
-  botToken: string;
-  chatId: string;
-  enabled: boolean;
-  user: User | null;
-}): { telegram: TelegramConfig } {
-  return {
-    telegram: {
-      botToken,
-      chatId,
-      enabled,
-      wallets: getTelegramWallets(user),
-    },
-  };
-}
-
-export function getTelegramWallets(user: User | null): TelegramConfig['wallets'] {
-  return user?.preferences?.telegram?.wallets || {};
+}: TelegramGlobalSettings): { telegram: TelegramGlobalSettings } {
+  return { telegram: { botToken, chatId, enabled } };
 }
 
 export function telegramTestResultMessage(result: TelegramConfigTestResponse): TelegramTestResult {

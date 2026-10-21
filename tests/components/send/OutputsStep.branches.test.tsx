@@ -101,6 +101,7 @@ function makeContext(overrides: Record<string, unknown> = {}) {
       decoyCount: 2,
       scanningOutputIndex: null,
       payjoinUrl: null,
+      payjoinAddress: null,
       payjoinStatus: 'idle',
     },
     dispatch: mockDispatch,
@@ -313,7 +314,14 @@ describe('OutputsStep branch coverage', () => {
     capture.outputRows[0].onAddressChange(0, `bitcoin:${MAINNET_ADDRESS}?amount=0.001&pj=https://payjoin.example`);
     expect(mockUpdateOutputAddress).toHaveBeenCalledWith(0, MAINNET_ADDRESS);
     expect(mockUpdateOutputAmount).toHaveBeenCalledWith(0, '0.001');
-    expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_PAYJOIN_URL', url: 'https://payjoin.example' });
+    expect(mockDispatch).toHaveBeenCalledWith({
+      type: 'SET_PAYJOIN_URL',
+      url: 'https://payjoin.example',
+      address: MAINNET_ADDRESS,
+    });
+    // The address write runs first, so the reducer cannot clear the new binding.
+    expect(mockUpdateOutputAddress.mock.invocationCallOrder.at(-1))
+      .toBeLessThan(mockDispatch.mock.invocationCallOrder.at(-1) as number);
 
     vi.mocked(bip21.parseBip21Uri).mockReturnValueOnce({
       address: TESTNET_ADDRESS,
@@ -322,7 +330,7 @@ describe('OutputsStep branch coverage', () => {
     } as never);
     vi.mocked(validate.addressMatchesNetwork).mockReturnValueOnce(false);
     capture.outputRows[0].onAddressChange(0, `bitcoin:${TESTNET_ADDRESS}?amount=0.002&pj=https://payjoin.bad`);
-    expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_PAYJOIN_URL', url: null });
+    expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_PAYJOIN_URL', url: null, address: null });
     expect(loggerSpies.warn).toHaveBeenCalledWith(
       'Payjoin disabled: Address network mismatch',
       expect.objectContaining({ walletNetwork: 'mainnet' }),
@@ -341,7 +349,7 @@ describe('OutputsStep branch coverage', () => {
     capture.outputRows[0].onAddressChange(0, 'bitcoin:bc1qaddressonly');
     expect(mockUpdateOutputAddress).toHaveBeenCalledWith(0, 'bc1qaddressonly');
     expect(mockUpdateOutputAmount).not.toHaveBeenCalled();
-    expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_PAYJOIN_URL', url: null });
+    expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_PAYJOIN_URL', url: null, address: null });
 
     vi.mocked(bip21.parseBip21Uri).mockImplementationOnce(() => {
       throw new Error('parse failed');
@@ -350,9 +358,11 @@ describe('OutputsStep branch coverage', () => {
     capture.outputRows[0].onAddressChange(0, 'bitcoin:throws');
     expect(mockUpdateOutputAddress).not.toHaveBeenCalled();
 
+    mockDispatch.mockClear();
     capture.outputRows[0].onAddressChange(0, 'bc1qplain');
     expect(mockUpdateOutputAddress).toHaveBeenCalledWith(0, 'bc1qplain');
-    expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_PAYJOIN_URL', url: null });
+    // The reducer owns clearing an unbound endpoint; a plain edit dispatches nothing.
+    expect(mockDispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'SET_PAYJOIN_URL' }));
 
     view.unmount();
     capture.outputRows = [];
@@ -370,6 +380,44 @@ describe('OutputsStep branch coverage', () => {
     vi.mocked(validate.addressMatchesNetwork).mockReturnValueOnce(true);
     capture.outputRows[0].onAddressChange(0, 'bitcoin:bc1qfallback?pj=https://payjoin.fallback');
     expect(validate.addressMatchesNetwork).toHaveBeenCalledWith('bc1qfallback', 'mainnet');
+  });
+
+  it.each([
+    ['two outputs', [MAINNET_ADDRESS, TESTNET_ADDRESS], MAINNET_ADDRESS],
+    ['a recipient other than the bound address', [TESTNET_ADDRESS], MAINNET_ADDRESS],
+  ])('passes no payjoin endpoint to the rows for %s', async (_label, addresses, bound) => {
+    vi.mocked(SendContext.useSendTransaction).mockReturnValue(
+      makeContext({
+        state: {
+          ...makeContext().state,
+          outputs: addresses.map((address) => ({ address, amount: '1000', sendMax: false })),
+          outputsValid: addresses.map(() => null),
+          payjoinUrl: 'https://payjoin.example',
+          payjoinAddress: bound,
+        },
+      }) as never,
+    );
+
+    render(<OutputsStep />);
+    await waitFor(() => expect(capture.outputRows[0]).toBeDefined());
+    expect(capture.outputRows[0].payjoinUrl).toBeNull();
+  });
+
+  it('passes the bound payjoin endpoint to its single recipient row', async () => {
+    vi.mocked(SendContext.useSendTransaction).mockReturnValue(
+      makeContext({
+        state: {
+          ...makeContext().state,
+          outputs: [{ address: MAINNET_ADDRESS, amount: '1000', sendMax: false }],
+          payjoinUrl: 'https://payjoin.example',
+          payjoinAddress: MAINNET_ADDRESS,
+        },
+      }) as never,
+    );
+
+    render(<OutputsStep />);
+    await waitFor(() => expect(capture.outputRows[0]).toBeDefined());
+    expect(capture.outputRows[0].payjoinUrl).toBe('https://payjoin.example');
   });
 
   it('handles scan toggles, BTC amount conversion, blur cleanup, and display formatting branches', async () => {

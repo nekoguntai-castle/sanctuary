@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import axios from 'axios';
 
 vi.mock('axios', () => ({
@@ -17,10 +17,38 @@ vi.mock('../../../../src/utils/logger', () => ({
 }));
 
 import { CoinGeckoPriceProvider } from '../../../../src/services/price/providers/coingecko';
+import { HistoricalPriceUnavailableError } from '../../../../src/services/price/historicalLookup';
+
+/** Kolkata local wall-clock view (UTC+05:30) of a UTC instant. */
+const KOLKATA_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+function kolkataView(date: Date): Date {
+  return new Date(date.getTime() + KOLKATA_OFFSET_MS);
+}
+
+/** Simulate a UTC+05:30 process zone through the local Date getters. */
+function simulateKolkataZone(): void {
+  vi.spyOn(Date.prototype, 'getDate').mockImplementation(function (this: Date) {
+    return kolkataView(this).getUTCDate();
+  });
+  vi.spyOn(Date.prototype, 'getMonth').mockImplementation(function (this: Date) {
+    return kolkataView(this).getUTCMonth();
+  });
+  vi.spyOn(Date.prototype, 'getFullYear').mockImplementation(function (this: Date) {
+    return kolkataView(this).getUTCFullYear();
+  });
+}
+
+function requestedHistoryDate(): unknown {
+  return (vi.mocked(axios.get).mock.calls[0]?.[1] as { params?: { date?: string } })?.params?.date;
+}
 
 describe('CoinGeckoPriceProvider', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('fetches current price with rounded 24h change', async () => {
@@ -164,5 +192,43 @@ describe('CoinGeckoPriceProvider', () => {
     await expect(provider.getPriceHistory(7, 'USD')).rejects.toThrow(
       'Invalid response format from CoinGecko'
     );
+  });
+
+  it('returns the whole current_price map for a day', async () => {
+    const currentPrice = { usd: 42001.2, eur: 39000, brl: 210000 };
+    vi.mocked(axios.get).mockResolvedValueOnce({
+      data: { market_data: { current_price: currentPrice } },
+    } as any);
+
+    const provider = new CoinGeckoPriceProvider();
+    await expect(
+      provider.getHistoricalPriceMap(new Date('2025-01-05T12:00:00.000Z'))
+    ).resolves.toEqual(currentPrice);
+    expect(requestedHistoryDate()).toBe('05-01-2025');
+  });
+
+  it.each([
+    ['without market_data', {}],
+    ['with an empty current_price', { market_data: { current_price: {} } }],
+  ])('reports a day map response %s as not available', async (_label, data) => {
+    vi.mocked(axios.get).mockResolvedValueOnce({ data } as any);
+
+    const provider = new CoinGeckoPriceProvider();
+    const result = provider.getHistoricalPriceMap(new Date('2025-01-05T12:00:00.000Z'));
+    await expect(result).rejects.toBeInstanceOf(HistoricalPriceUnavailableError);
+    await expect(result).rejects.toThrow('not available on 2025-01-05');
+  });
+
+  it('requests the UTC day for an instant that is the next local day in UTC+05:30', async () => {
+    simulateKolkataZone();
+    vi.mocked(axios.get).mockResolvedValue({
+      data: { market_data: { current_price: { usd: 90000 } } },
+    } as any);
+
+    const provider = new CoinGeckoPriceProvider();
+    // Local midnight 2026-01-02 in Asia/Kolkata is 2026-01-01 18:30 UTC.
+    await provider.getHistoricalPrice(new Date('2026-01-01T18:30:00.000Z'), 'usd');
+
+    expect(requestedHistoryDate()).toBe('01-01-2026');
   });
 });

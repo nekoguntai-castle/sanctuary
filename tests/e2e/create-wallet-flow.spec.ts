@@ -621,18 +621,73 @@ test.describe('Create wallet flow', () => {
     await main.getByRole('button', { name: 'Next Step' }).click();
 
     await main.locator('input[type="text"]').first().fill('Taproot Wallet');
+    // The signer has no Nested or Legacy account, so those options are unavailable.
+    await expect(main.getByRole('button', { name: /Nested Segwit/i })).toBeDisabled();
+    await expect(main.getByRole('button', { name: /Legacy/i })).toBeDisabled();
     await main.getByRole('button', { name: /Taproot/i }).click();
 
-    // Script changes invalidate the signer until an exact Taproot account is selected.
-    await expect(main.getByText('Select Signers')).toBeVisible();
-    await main.getByText('Create Coldcard').click();
-    await main.getByRole('button', { name: 'Next Step' }).click();
+    // The selected signer is rebound to its Taproot account in place.
     await expect(main.getByText('Configuration')).toBeVisible();
     await main.getByRole('button', { name: 'Next Step' }).click();
 
     // Review should show taproot as text in the details
     await expect(main.getByText('Review Wallet Details')).toBeVisible();
     await expect(main.getByText(/taproot/i).first()).toBeVisible();
+
+    const createRequest = page.waitForRequest(request => (
+      request.method() === 'POST' && new URL(request.url()).pathname.endsWith('/wallets')
+    ));
+    await main.getByRole('button', { name: 'Construct Wallet' }).click();
+    expect((await createRequest).postDataJSON()).toMatchObject({
+      scriptType: 'taproot',
+      signers: [{ deviceId: DEVICE_1_ID, deviceAccountId: 'acct-create-1-taproot', signerIndex: 0 }],
+    });
+
+    expect(unhandledRequests).toEqual([]);
+  });
+
+  test('signer with only a nested segwit account creates a nested segwit wallet', async ({ page }) => {
+    const nestedOnlyDevice = {
+      ...DEVICE_2,
+      label: 'Nested Trezor',
+      accounts: [{
+        id: 'acct-create-2-nested',
+        purpose: 'single_sig',
+        scriptType: 'nested_segwit',
+        derivationPath: "m/49'/0'/0'",
+        xpub: 'ypub-create-trezor-nested',
+      }],
+    };
+    const unhandledRequests = await mockCreateWalletApi(page, { devices: [nestedOnlyDevice] });
+    const main = page.getByRole('main');
+
+    await page.goto('/#/wallets/create');
+    await main.getByRole('button', { name: 'Single Signature' }).click();
+    await main.getByRole('button', { name: 'Next Step' }).click();
+
+    // Listed with its 49' path even though the default script type is native segwit.
+    await expect(main.getByText('Nested Trezor')).toBeVisible();
+    await expect(main.getByText("m/49'/0'/0'")).toBeVisible();
+    await main.getByText('Nested Trezor').click();
+    await main.getByRole('button', { name: 'Next Step' }).click();
+
+    await expect(main.getByText('Configuration')).toBeVisible();
+    await expect(main.getByRole('button', { name: /Nested Segwit/i })).toBeEnabled();
+    await expect(main.getByRole('button', { name: /Native Segwit/i })).toBeDisabled();
+    await main.locator('input[type="text"]').first().fill('Nested Wallet');
+    await main.getByRole('button', { name: 'Next Step' }).click();
+
+    await expect(main.getByText('Review Wallet Details')).toBeVisible();
+    const createRequest = page.waitForRequest(request => (
+      request.method() === 'POST' && new URL(request.url()).pathname.endsWith('/wallets')
+    ));
+    await main.getByRole('button', { name: 'Construct Wallet' }).click();
+    expect((await createRequest).postDataJSON()).toMatchObject({
+      type: 'single_sig',
+      scriptType: 'nested_segwit',
+      signers: [{ deviceId: DEVICE_2_ID, deviceAccountId: 'acct-create-2-nested', signerIndex: 0 }],
+    });
+    await expect(page).toHaveURL(new RegExp(`#/wallets/${CREATED_WALLET_ID}`), { timeout: 10000 });
 
     expect(unhandledRequests).toEqual([]);
   });

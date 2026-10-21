@@ -216,6 +216,7 @@ describe('ReviewStep', () => {
         state: {
           ...defaultContext.state,
           payjoinUrl: 'https://payjoin.example.com',
+          payjoinAddress: 'bc1qtest...',
         },
       } as any);
 

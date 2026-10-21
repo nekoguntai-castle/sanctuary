@@ -2,6 +2,8 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Express } from "express";
 import request from "supertest";
 
+import { InvalidInputError } from "../../../src/errors/ApiError";
+
 import {
   createPriceTestApp,
   mockPriceService,
@@ -74,6 +76,46 @@ describe("Price API historical routes", () => {
       expect(response.body.message).toContain("cannot be in the future");
     });
 
+    it("returns the service's 400 for an unsupported currency", async () => {
+      mockPriceService.getHistoricalPrice.mockRejectedValue(
+        new InvalidInputError("Unsupported currency: ZZZ", "currency"),
+      );
+
+      const response = await request(app).get(
+        "/api/v1/price/historical?date=2023-01-15&currency=zzz",
+      );
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toBe("Unsupported currency: ZZZ");
+    });
+
+    it("rejects a repeated currency parameter with 400", async () => {
+      mockPriceService.getHistoricalPrice.mockResolvedValue(32000);
+
+      const response = await request(app).get(
+        "/api/v1/price/historical?date=2023-01-15&currency=usd&currency=eur",
+      );
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toContain("currency");
+      expect(mockPriceService.getHistoricalPrice).not.toHaveBeenCalled();
+    });
+
+    it("responds with the upper-cased currency", async () => {
+      mockPriceService.getHistoricalPrice.mockResolvedValue(32000);
+
+      const response = await request(app).get(
+        "/api/v1/price/historical?date=2023-01-15&currency=eur",
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.body.currency).toBe("EUR");
+      expect(mockPriceService.getHistoricalPrice).toHaveBeenCalledWith(
+        "EUR",
+        expect.any(Date),
+      );
+    });
+
     it("should return 500 on service error", async () => {
       mockPriceService.getHistoricalPrice.mockRejectedValue(
         new Error("Data not available"),
@@ -141,6 +183,43 @@ describe("Price API historical routes", () => {
       const response = await request(app).get("/api/v1/price/history?days=400");
 
       expect(response.status).toBe(400);
+    });
+
+    it("returns the service's 400 for an unsupported currency", async () => {
+      mockPriceService.getPriceHistory.mockRejectedValue(
+        new InvalidInputError("Unsupported currency: ZZZ", "currency"),
+      );
+
+      const response = await request(app).get(
+        "/api/v1/price/history?currency=zzz",
+      );
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toBe("Unsupported currency: ZZZ");
+    });
+
+    it("rejects a repeated currency parameter with 400", async () => {
+      mockPriceService.getPriceHistory.mockResolvedValue([]);
+
+      const response = await request(app).get(
+        "/api/v1/price/history?currency=usd&currency=eur",
+      );
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toContain("currency");
+      expect(mockPriceService.getPriceHistory).not.toHaveBeenCalled();
+    });
+
+    it("responds with the upper-cased currency", async () => {
+      mockPriceService.getPriceHistory.mockResolvedValue([]);
+
+      const response = await request(app).get(
+        "/api/v1/price/history?currency=eur",
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.body.currency).toBe("EUR");
+      expect(mockPriceService.getPriceHistory).toHaveBeenCalledWith("EUR", 30);
     });
 
     it("should return 500 on service error", async () => {

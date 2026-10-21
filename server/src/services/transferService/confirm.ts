@@ -12,10 +12,17 @@ import { createLogger } from '../../utils/logger';
 import { NotFoundError, ForbiddenError, InvalidInputError, ConflictError } from '../../errors';
 import { isExpired, formatTransfer } from './helpers';
 import { withSerializableRetry } from './serializableRetry';
-import type { PrismaTx, Transfer } from './types';
+import type { PrismaTx, Transfer, TransferWithUsers } from './types';
 import { invalidateWebSocketWalletAccess } from '../websocketAuthorizationInvalidation';
+import { auditService, AuditAction, AuditCategory } from '../auditService';
 
 const log = createLogger('TRANSFER:SVC');
+
+/** Access removed by a keepExistingUsers=false transfer, for the audit entry. */
+interface AccessRemoval {
+  removedUserIds: string[];
+  removedGroupId: string | null;
+}
 
 /**
  * Confirm and execute transfer (owner action)
@@ -62,7 +69,7 @@ export async function confirmTransfer(
         data: { status: 'expired' },
       });
       // Return instead of throwing so the expired transition commits first.
-      return { expired: true, walletId: null };
+      return { expired: true, walletId: null, removal: null };
     }
 
     await transferRepository.lockResourceOwnership(
@@ -72,14 +79,14 @@ export async function confirmTransfer(
     );
 
     // Execute the ownership transfer based on resource type
-    if (current.resourceType === 'wallet') {
-      await executeWalletTransferTx(tx, current);
-    } else {
-      await executeDeviceTransferTx(tx, current);
-    }
+    const isWallet = current.resourceType === 'wallet';
+    const removal = isWallet
+      ? await executeWalletTransferTx(tx, current)
+      : await executeDeviceTransferTx(tx, current);
     return {
       expired: false,
-      walletId: current.resourceType === 'wallet' ? current.resourceId : null,
+      walletId: isWallet ? current.resourceId : null,
+      removal,
     };
   });
 
@@ -100,6 +107,10 @@ export async function confirmTransfer(
     throw new NotFoundError(`Transfer '${transferId}' not found`);
   }
 
+  if (result.removal) {
+    await auditAccessRemoval(updated, result.removal);
+  }
+
   log.info('Transfer confirmed and executed', {
     transferId,
     resourceType: transfer.resourceType,
@@ -112,9 +123,84 @@ export async function confirmTransfer(
 }
 
 /**
+ * Record the access a keepExistingUsers=false transfer removed. Written after
+ * commit; auditService.log swallows its own failures.
+ */
+async function auditAccessRemoval(transfer: TransferWithUsers, removal: AccessRemoval): Promise<void> {
+  const isWallet = transfer.resourceType === 'wallet';
+  await auditService.log({
+    userId: transfer.fromUserId,
+    username: transfer.fromUser?.username ?? 'unknown',
+    action: isWallet ? AuditAction.WALLET_UNSHARE : AuditAction.DEVICE_UNSHARE,
+    category: isWallet ? AuditCategory.WALLET : AuditCategory.DEVICE,
+    details: {
+      reason: 'ownership_transfer',
+      transferId: transfer.id,
+      removedUserIds: removal.removedUserIds,
+      removedGroupId: removal.removedGroupId,
+    },
+  });
+}
+
+/**
+ * The membership and group-grant operations for one shared resource, bound to
+ * the transfer's tx client so revocation stays inside the serializable tx.
+ */
+interface ResourceAccessOps {
+  findOtherMembers(): Promise<Array<{ id: string; userId: string }>>;
+  deleteMembers(ids: string[]): Promise<unknown>;
+  readGroupId(): Promise<string | null>;
+  clearGroup(): Promise<unknown>;
+}
+
+function walletAccessOps(tx: PrismaTx, walletId: string, newOwnerId: string): ResourceAccessOps {
+  return {
+    findOtherMembers: () => tx.walletUser.findMany({
+      where: { walletId, userId: { not: newOwnerId } },
+      select: { id: true, userId: true },
+    }),
+    deleteMembers: ids => tx.walletUser.deleteMany({ where: { id: { in: ids } } }),
+    readGroupId: async () =>
+      (await tx.wallet.findUniqueOrThrow({ where: { id: walletId }, select: { groupId: true } })).groupId,
+    clearGroup: () => tx.wallet.update({ where: { id: walletId }, data: { groupId: null, groupRole: 'viewer' } }),
+  };
+}
+
+function deviceAccessOps(tx: PrismaTx, deviceId: string, newOwnerId: string): ResourceAccessOps {
+  return {
+    findOtherMembers: () => tx.deviceUser.findMany({
+      where: { deviceId, userId: { not: newOwnerId } },
+      select: { id: true, userId: true },
+    }),
+    deleteMembers: ids => tx.deviceUser.deleteMany({ where: { id: { in: ids } } }),
+    readGroupId: async () =>
+      (await tx.device.findUniqueOrThrow({ where: { id: deviceId }, select: { groupId: true } })).groupId,
+    clearGroup: () => tx.device.update({ where: { id: deviceId }, data: { groupId: null, groupRole: 'viewer' } }),
+  };
+}
+
+/**
+ * Remove every member except the new owner and clear the group grant.
+ */
+async function revokeOtherAccess(ops: ResourceAccessOps): Promise<AccessRemoval> {
+  const members = await ops.findOtherMembers();
+  if (members.length > 0) {
+    await ops.deleteMembers(members.map(member => member.id));
+  }
+  const groupId = await ops.readGroupId();
+  if (groupId) {
+    await ops.clearGroup();
+  }
+  return { removedUserIds: members.map(member => member.userId), removedGroupId: groupId };
+}
+
+/**
  * Execute wallet ownership transfer (uses existing transaction)
  */
-async function executeWalletTransferTx(tx: PrismaTx, transfer: OwnershipTransfer): Promise<void> {
+async function executeWalletTransferTx(
+  tx: PrismaTx,
+  transfer: OwnershipTransfer,
+): Promise<AccessRemoval | null> {
   const walletId = transfer.resourceId;
 
   // 1. Find current owner's WalletUser record
@@ -148,7 +234,8 @@ async function executeWalletTransferTx(tx: PrismaTx, transfer: OwnershipTransfer
     });
   }
 
-  // 3. Handle previous owner based on keepExistingUsers flag
+  // 3. Handle previous owner and other members based on keepExistingUsers flag
+  let removal: AccessRemoval | null = null;
   if (transfer.keepExistingUsers) {
     // Downgrade to viewer
     await tx.walletUser.update({
@@ -156,10 +243,8 @@ async function executeWalletTransferTx(tx: PrismaTx, transfer: OwnershipTransfer
       data: { role: 'viewer' },
     });
   } else {
-    // Remove access entirely
-    await tx.walletUser.delete({
-      where: { id: currentOwner.id },
-    });
+    // Remove all existing access, including the previous owner's
+    removal = await revokeOtherAccess(walletAccessOps(tx, walletId, transfer.toUserId));
   }
 
   // 4. Update transfer status
@@ -170,12 +255,16 @@ async function executeWalletTransferTx(tx: PrismaTx, transfer: OwnershipTransfer
       confirmedAt: new Date(),
     },
   });
+  return removal;
 }
 
 /**
  * Execute device ownership transfer (uses existing transaction)
  */
-async function executeDeviceTransferTx(tx: PrismaTx, transfer: OwnershipTransfer): Promise<void> {
+async function executeDeviceTransferTx(
+  tx: PrismaTx,
+  transfer: OwnershipTransfer,
+): Promise<AccessRemoval | null> {
   const deviceId = transfer.resourceId;
 
   // 1. Find current owner's DeviceUser record
@@ -213,16 +302,15 @@ async function executeDeviceTransferTx(tx: PrismaTx, transfer: OwnershipTransfer
     });
   }
 
-  // 4. Handle previous owner
+  // 4. Handle previous owner and other members
+  let removal: AccessRemoval | null = null;
   if (transfer.keepExistingUsers) {
     await tx.deviceUser.update({
       where: { id: currentOwner.id },
       data: { role: 'viewer' },
     });
   } else {
-    await tx.deviceUser.delete({
-      where: { id: currentOwner.id },
-    });
+    removal = await revokeOtherAccess(deviceAccessOps(tx, deviceId, transfer.toUserId));
   }
 
   // 5. Update transfer status
@@ -233,4 +321,5 @@ async function executeDeviceTransferTx(tx: PrismaTx, transfer: OwnershipTransfer
       confirmedAt: new Date(),
     },
   });
+  return removal;
 }

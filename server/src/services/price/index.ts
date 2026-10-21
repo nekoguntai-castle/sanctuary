@@ -37,6 +37,18 @@ import type {
   PriceHistoryPoint,
 } from "./types";
 import { hasHistoricalSupport } from "./types";
+import {
+  HISTORICAL_UNAVAILABLE_TTL_SEC,
+  HistoricalPriceMapUnsupportedError,
+  HistoricalPriceUnavailableError,
+  assertNonEmptyPriceMap,
+  isHistoricalPassThroughError,
+  normalizeCurrencyCode,
+  resolveHistoricalCurrencyPrice,
+  resolveSupportedCurrency,
+  toHistoricalUtcDay,
+  utcDayLabel,
+} from "./historicalLookup";
 
 const log = createLogger("PRICE:SVC");
 
@@ -68,6 +80,11 @@ class PriceService {
   private registryReload: Promise<void> = Promise.resolve();
   private providerPriceRequests = new Map<string, Promise<PriceData>>();
   private aggregatedPriceRequests = new Map<string, Promise<AggregatedPrice>>();
+  private historicalPriceRequests = new Map<
+    string,
+    Promise<Record<string, number>>
+  >();
+  private priceHistoryRequests = new Map<string, Promise<PriceHistoryPoint[]>>();
 
   constructor() {
     this.registry = createPriceProviderRegistry();
@@ -118,8 +135,7 @@ class PriceService {
     this.registry = nextRegistry;
     this.enabledProviderNames = [...enabledProviderNames];
     this.initialized = true;
-    this.providerPriceRequests.clear();
-    this.aggregatedPriceRequests.clear();
+    this.clearInFlightRequests();
     try {
       await this.clearCache();
     } finally {
@@ -423,7 +439,11 @@ class PriceService {
   }
 
   /**
-   * Get historical price for a specific date
+   * Get historical price for a specific date.
+   *
+   * One upstream call per UTC day serves every currency: the day's whole
+   * price map is single-flighted and cached by date, and each caller resolves
+   * its own currency from it.
    */
   async getHistoricalPrice(
     currency: string = "USD",
@@ -431,48 +451,15 @@ class PriceService {
   ): Promise<number> {
     await this.ensureInitialized();
 
+    const code = normalizeCurrencyCode(currency);
+    const day = toHistoricalUtcDay(date);
+
     try {
-      const normalizedDate = new Date(date);
-      normalizedDate.setHours(0, 0, 0, 0);
-
-      const cacheKey = `historical:${currency}:${normalizedDate.toISOString()}`;
-      const cached = await priceCache.get<CachedHistorical>(cacheKey);
-
-      if (cached && cached.price !== undefined) {
-        log.debug(
-          `Using cached historical price for ${currency} on ${normalizedDate.toDateString()}`,
-        );
-        return cached.price;
-      }
-
-      // Find a provider with historical support
-      const provider = await this.getHistoricalProvider();
-
-      if (!provider) {
-        throw new Error("No provider available with historical price support");
-      }
-
-      const priceData = await provider.getHistoricalPrice(
-        normalizedDate,
-        currency,
-      );
-
-      await priceCache.set<CachedHistorical>(
-        cacheKey,
-        {
-          price: priceData.price,
-          provider: priceData.provider,
-          currency: priceData.currency,
-        },
-        CacheTTL.priceHistory,
-      );
-
-      log.debug(
-        `Fetched historical price from ${priceData.provider}: ${priceData.price} ${priceData.currency}`,
-      );
-
-      return priceData.price;
+      const priceMap = await this.getHistoricalPriceMap(day);
+      // Per caller, outside the date-keyed shared promise
+      return resolveHistoricalCurrencyPrice(priceMap, code);
     } catch (error) {
+      if (isHistoricalPassThroughError(error)) throw error;
       log.error("Failed to fetch historical price", {
         error: getErrorMessage(error),
       });
@@ -480,6 +467,58 @@ class PriceService {
         `Failed to fetch historical price: ${getErrorMessage(error)}`,
       );
     }
+  }
+
+  private async getHistoricalPriceMap(
+    day: Date,
+  ): Promise<Record<string, number>> {
+    const dayLabel = utcDayLabel(day);
+    const cacheKey = `historical:${dayLabel}`;
+    const cached = await priceCache.get<Record<string, number>>(cacheKey);
+    if (cached) {
+      log.debug(`Using cached historical prices for ${dayLabel}`);
+      return cached;
+    }
+    if (await priceCache.get<boolean>(`${cacheKey}:unavailable`)) {
+      throw new HistoricalPriceUnavailableError(dayLabel);
+    }
+
+    return this.singleFlight(this.historicalPriceRequests, cacheKey, () =>
+      this.fetchHistoricalPriceMap(day, cacheKey),
+    );
+  }
+
+  private async fetchHistoricalPriceMap(
+    day: Date,
+    cacheKey: string,
+  ): Promise<Record<string, number>> {
+    const provider = await this.getHistoricalProvider();
+    if (!provider) {
+      throw new Error("No provider available with historical price support");
+    }
+    if (!provider.getHistoricalPriceMap) {
+      throw new HistoricalPriceMapUnsupportedError(provider.name);
+    }
+
+    const priceMap = await provider
+      .getHistoricalPriceMap(day)
+      .then((map) => assertNonEmptyPriceMap(map, utcDayLabel(day)))
+      .catch(async (error: unknown) => {
+        if (error instanceof HistoricalPriceUnavailableError) {
+          await priceCache.set(
+            `${cacheKey}:unavailable`,
+            true,
+            HISTORICAL_UNAVAILABLE_TTL_SEC,
+          );
+        }
+        throw error;
+      });
+
+    await priceCache.set(cacheKey, priceMap, CacheTTL.priceHistory);
+    log.debug(`Fetched historical prices from ${provider.name}`, {
+      day: utcDayLabel(day),
+    });
+    return priceMap;
   }
 
   /**
@@ -491,38 +530,30 @@ class PriceService {
   ): Promise<PriceHistoryPoint[]> {
     await this.ensureInitialized();
 
+    // A missing history provider is a server state, not a bad currency: report
+    // it before the allowlist so it matches /price/historical (500, not 400).
+    const historyProvider = this.registry.getAll().find(hasHistoricalSupport);
+    if (!historyProvider) {
+      throw new Error("No provider available with price history support");
+    }
+
+    // Static allowlist before any health check or upstream request
+    const code = resolveSupportedCurrency(currency, historyProvider);
+    const cacheKey = `history:${code}:${days}d`;
+
     try {
-      const cacheKey = `history:${currency}:${days}d`;
       const cached = await priceCache.get<CachedHistorical>(cacheKey);
 
       if (cached && cached.prices) {
-        log.debug(`Using cached price history for ${currency} (${days} days)`);
+        log.debug(`Using cached price history for ${code} (${days} days)`);
         return cached.prices;
       }
 
-      const provider = await this.getHistoricalProvider();
-
-      if (!provider) {
-        throw new Error("No provider available with price history support");
-      }
-
-      const priceHistory = await provider.getPriceHistory(days, currency);
-
-      await priceCache.set<CachedHistorical>(
-        cacheKey,
-        {
-          provider: "coingecko",
-          price: priceHistory[priceHistory.length - 1]?.price || 0,
-          currency,
-          prices: priceHistory,
-        },
-        CacheTTL.priceHistory,
+      return await this.singleFlight(this.priceHistoryRequests, cacheKey, () =>
+        this.fetchPriceHistory(code, days, cacheKey),
       );
-
-      log.debug(`Fetched price history: ${priceHistory.length} data points`);
-
-      return priceHistory;
     } catch (error) {
+      if (isHistoricalPassThroughError(error)) throw error;
       log.error("Failed to fetch price history", {
         error: getErrorMessage(error),
       });
@@ -530,6 +561,35 @@ class PriceService {
         `Failed to fetch price history: ${getErrorMessage(error)}`,
       );
     }
+  }
+
+  private async fetchPriceHistory(
+    currency: string,
+    days: number,
+    cacheKey: string,
+  ): Promise<PriceHistoryPoint[]> {
+    const provider = await this.getHistoricalProvider();
+
+    if (!provider) {
+      throw new Error("No provider available with price history support");
+    }
+
+    const priceHistory = await provider.getPriceHistory(days, currency);
+
+    await priceCache.set<CachedHistorical>(
+      cacheKey,
+      {
+        provider: "coingecko",
+        price: priceHistory[priceHistory.length - 1]?.price || 0,
+        currency,
+        prices: priceHistory,
+      },
+      CacheTTL.priceHistory,
+    );
+
+    log.debug(`Fetched price history: ${priceHistory.length} data points`);
+
+    return priceHistory;
   }
 
   /**
@@ -698,9 +758,15 @@ class PriceService {
   async shutdown(): Promise<void> {
     await this.registry.shutdown();
     this.initialized = false;
+    this.clearInFlightRequests();
+    log.info("Price service shut down");
+  }
+
+  private clearInFlightRequests(): void {
     this.providerPriceRequests.clear();
     this.aggregatedPriceRequests.clear();
-    log.info("Price service shut down");
+    this.historicalPriceRequests.clear();
+    this.priceHistoryRequests.clear();
   }
 
   /**

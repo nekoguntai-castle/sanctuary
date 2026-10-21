@@ -255,6 +255,99 @@ describe('refresh module — freshness check short-circuit', () => {
   });
 });
 
+function unauthorizedRefreshResponse() {
+  return {
+    ok: false,
+    status: 401,
+    headers: { get: () => null },
+    json: async () => ({ message: 'Unauthorized' }),
+  };
+}
+
+async function holdAuthLockUntilReleased(): Promise<() => void> {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  void navigator.locks.request('sanctuary-auth-refresh', { mode: 'exclusive' }, () => gate);
+  await Promise.resolve();
+  return release;
+}
+
+describe('refresh module — 401 recovery with a request-start expiry snapshot', () => {
+  it('refreshes (and logs out on 401) when the expiry is fresh but unchanged since the request started', async () => {
+    const snapshot = Date.now() + 10 * 60 * 60 * 1000;
+    __seedAccessExpiresAtMsForTests(snapshot);
+    mockFetch.mockResolvedValueOnce(unauthorizedRefreshResponse());
+    const logoutListener = vi.fn();
+    onTerminalLogout(logoutListener);
+
+    await expect(refreshAccessToken({ expiryAtRequestStart: snapshot }))
+      .rejects.toBeInstanceOf(RefreshFailedError);
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(logoutListener).toHaveBeenCalledTimes(1);
+  });
+
+  it('short-circuits when another tab rotated the token after the request started', async () => {
+    const current = Date.now() + 10 * 60 * 60 * 1000;
+    __seedAccessExpiresAtMsForTests(current);
+    mockFetch.mockImplementation(() => {
+      throw new Error('refresh should NOT have fetched');
+    });
+
+    await refreshAccessToken({ expiryAtRequestStart: current - 60_000 });
+
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('re-runs the check for a joiner whose snapshot matches the expiry a short-circuited refresh left behind', async () => {
+    const first = Date.now() + 5 * 60 * 60 * 1000;
+    const rotated = Date.now() + 10 * 60 * 60 * 1000;
+    __seedAccessExpiresAtMsForTests(first);
+    const logoutListener = vi.fn();
+    onTerminalLogout(logoutListener);
+    mockFetch.mockResolvedValueOnce(unauthorizedRefreshResponse());
+    const release = await holdAuthLockUntilReleased();
+
+    const r1 = refreshAccessToken({ expiryAtRequestStart: first });
+    const otherTab = new BroadcastChannel('sanctuary-auth');
+    otherTab.postMessage({ type: 'refresh-complete', expiresAtIso: new Date(rotated).toISOString() });
+    otherTab.close();
+    const r2 = refreshAccessToken({ expiryAtRequestStart: rotated });
+    release();
+
+    await expect(r1).resolves.toBeUndefined();
+    await expect(r2).rejects.toBeInstanceOf(RefreshFailedError);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(logoutListener).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not re-run for a joiner whose snapshot predates a real refresh', async () => {
+    const requestStart = Date.now() + 10 * 60 * 60 * 1000;
+    __seedAccessExpiresAtMsForTests(requestStart);
+    mockFetch.mockResolvedValueOnce(authResponse(isoInFuture(12 * 60 * 60 * 1000)));
+
+    const r1 = refreshAccessToken({ expiryAtRequestStart: requestStart });
+    const r2 = refreshAccessToken({ expiryAtRequestStart: requestStart });
+
+    await expect(Promise.all([r1, r2])).resolves.toEqual([undefined, undefined]);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(getAccessExpiresAtMs()).not.toBe(requestStart);
+  });
+
+  it('propagates a terminal rejection to joiners without a second fetch', async () => {
+    const snapshot = Date.now() + 10 * 60 * 60 * 1000;
+    __seedAccessExpiresAtMsForTests(snapshot);
+    mockFetch.mockResolvedValueOnce(unauthorizedRefreshResponse());
+
+    const r1 = refreshAccessToken({ expiryAtRequestStart: snapshot });
+    const r2 = refreshAccessToken({ expiryAtRequestStart: snapshot });
+
+    await expect(r1).rejects.toBeInstanceOf(RefreshFailedError);
+    await expect(r2).rejects.toBeInstanceOf(RefreshFailedError);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('refresh module — terminal failure', () => {
   it('throws RefreshFailedError on 401 and fires terminal-logout listeners', async () => {
     mockFetch.mockResolvedValueOnce({

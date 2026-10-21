@@ -100,6 +100,12 @@ export interface IPriceProviderWithHistory extends IPriceProvider {
   getHistoricalPrice(date: Date, currency: string): Promise<PriceData>;
 
   /**
+   * Get the whole per-currency price map (lower-case keys) for the UTC day of
+   * a date, from a single upstream call
+   */
+  getHistoricalPriceMap?(date: Date): Promise<Record<string, number>>;
+
+  /**
    * Get price history over a date range
    */
   getPriceHistory(days: number, currency: string): Promise<PriceHistoryPoint[]>;

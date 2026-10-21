@@ -215,7 +215,7 @@ else
       render_regression_run="true"
       build_run="true"
     fi
-    if is_backend_file "$file"; then
+    if is_backend_file "$file" || is_backend_vitest_input_file "$file"; then
       backend_unit_run="true"
       backend_unit_files+=("$file")
     fi

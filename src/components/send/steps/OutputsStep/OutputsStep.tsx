@@ -8,6 +8,7 @@
 import { useEffect, useCallback, useMemo, useState } from 'react';
 import { WizardNavigation } from '../../WizardNavigation';
 import { useSendTransaction } from '../../../../contexts/send';
+import { getBoundPayjoinUrl } from '../../../../contexts/send/reducerParts/payjoin';
 import { useCurrency } from '../../../../contexts/CurrencyContext';
 import { parseBip21Uri } from '../../../../utils/bip21Parser';
 import { btcAmountToSatoshiString, parsePositiveSatoshiAmount } from '../../../../utils/sendAmount';
@@ -138,6 +139,7 @@ export function OutputsStep() {
           return;
         }
 
+        // The address is written before the endpoint is bound to it, so the reducer keeps the new binding.
         updateOutputAddress(index, parsed.address);
         if (parsed.amount) {
           updateOutputAmount(index, parsed.amount.toString());
@@ -147,16 +149,16 @@ export function OutputsStep() {
           const addressMatches = addressMatchesNetwork(parsed.address, walletNetwork);
 
           if (addressMatches) {
-            dispatch({ type: 'SET_PAYJOIN_URL', url: parsed.payjoinUrl });
+            dispatch({ type: 'SET_PAYJOIN_URL', url: parsed.payjoinUrl, address: parsed.address });
           } else {
-            dispatch({ type: 'SET_PAYJOIN_URL', url: null });
+            dispatch({ type: 'SET_PAYJOIN_URL', url: null, address: null });
             log.warn('Payjoin disabled: Address network mismatch', {
               walletNetwork,
               message: 'Payjoin requires sender and receiver to be on the same network',
             });
           }
         } else {
-          dispatch({ type: 'SET_PAYJOIN_URL', url: null });
+          dispatch({ type: 'SET_PAYJOIN_URL', url: null, address: null });
         }
         return;
       } catch (error) {
@@ -165,12 +167,9 @@ export function OutputsStep() {
       }
     }
 
+    // A plain edit that replaces the bound address is cleared by the reducer.
     updateOutputAddress(index, value);
-
-    if (index === 0 && state.payjoinUrl) {
-      dispatch({ type: 'SET_PAYJOIN_URL', url: null });
-    }
-  }, [updateOutputAddress, updateOutputAmount, dispatch, state.payjoinUrl, walletNetwork]);
+  }, [updateOutputAddress, updateOutputAmount, dispatch, walletNetwork]);
 
   const outputAddressValidations = useMemo(
     () => state.outputs.map((output) => validateOutputAddress(output.address, walletNetwork)),
@@ -304,7 +303,7 @@ export function OutputsStep() {
         outputValidationMessages={outputValidationMessages}
         transactionType={state.transactionType}
         scanningOutputIndex={state.scanningOutputIndex}
-        payjoinUrl={state.payjoinUrl}
+        payjoinUrl={getBoundPayjoinUrl(state)}
         payjoinStatus={state.payjoinStatus}
         walletAddresses={walletAddresses}
         unit={unit}

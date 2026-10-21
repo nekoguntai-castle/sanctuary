@@ -53,7 +53,7 @@ export function getPayjoinSummaryLabel(payjoinStatus: string): string {
     : 'Payjoin enabled';
 }
 
-export function getTotalSendingSats(
+function getRequestedSendingSats(
   outputs: SummaryOutput[],
   selectedTotal: number,
   estimatedFee: number,
@@ -74,6 +74,23 @@ export function getTotalSendingSats(
   return selectedTotal - estimatedFee;
 }
 
+/**
+ * For a payjoin proposal under review (`proposal`), the sender's real cost is
+ * the server's net spend (external outputs minus the receiver's inputs), not
+ * the requested payment: the receiver's fee share is not the sender's.
+ */
+export function getTotalSendingSats(
+  outputs: SummaryOutput[],
+  selectedTotal: number,
+  estimatedFee: number,
+  totalOutputAmount: number,
+  txData?: TransactionData | null,
+  proposal = false
+): number {
+  const requested = getRequestedSendingSats(outputs, selectedTotal, estimatedFee, totalOutputAmount, txData);
+  return proposal ? txData?.effectiveAmount ?? requested : requested;
+}
+
 export function getNetworkFeeSats(txData: TransactionData | null | undefined, estimatedFee: number): number {
   return txData?.fee || estimatedFee;
 }
@@ -83,9 +100,10 @@ export function getTotalIncludingFeeSats(
   selectedTotal: number,
   totalOutputAmount: number,
   networkFee: number,
-  txData?: TransactionData | null
+  txData?: TransactionData | null,
+  proposal = false
 ): number {
-  if (txData) return getTotalSendingSats(outputs, selectedTotal, 0, totalOutputAmount, txData) + networkFee;
+  if (txData) return getTotalSendingSats(outputs, selectedTotal, 0, totalOutputAmount, txData, proposal) + networkFee;
   if (!hasSendMaxOutput(outputs)) return totalOutputAmount + networkFee;
   return selectedTotal;
 }

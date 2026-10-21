@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mockPrismaClient } from '../../../mocks/prisma';
-import { deviceId, mockCheckDeviceOwnerAccess, mockCheckWalletOwnerAccess, mockInvalidateWebSocketWalletAccess, ownerId, recipientId, transferId, walletId } from './transferServiceTestHarness';
+import { deviceId, mockAuditLog, mockCheckDeviceOwnerAccess, mockCheckWalletOwnerAccess, mockInvalidateWebSocketWalletAccess, ownerId, recipientId, transferId, walletId } from './transferServiceTestHarness';
 import {
   initiateTransfer,
   acceptTransfer,
@@ -235,7 +235,7 @@ export const registerTransferConfirmContracts = () => {
       ).rejects.toThrow(/owner no longer owns this wallet/i);
     });
 
-    it('should confirm wallet transfer by upgrading existing recipient and removing old owner', async () => {
+    it('should confirm wallet transfer by upgrading existing recipient and removing all other access', async () => {
       const baseTransfer = {
         id: transferId,
         resourceType: 'wallet',
@@ -258,7 +258,8 @@ export const registerTransferConfirmContracts = () => {
       mockPrismaClient.wallet.findUnique.mockResolvedValue({ id: walletId, name: 'Wallet X' });
 
       const walletUpdateSpy = vi.fn().mockResolvedValue({});
-      const walletDeleteSpy = vi.fn().mockResolvedValue({});
+      const walletDeleteManySpy = vi.fn().mockResolvedValue({ count: 2 });
+      const walletGroupUpdateSpy = vi.fn().mockResolvedValue({});
       mockPrismaClient.$transaction.mockImplementation(async (callback) => {
         const txMock = {
           $executeRaw: vi.fn().mockResolvedValue(0),
@@ -270,9 +271,19 @@ export const registerTransferConfirmContracts = () => {
             findFirst: vi.fn()
               .mockResolvedValueOnce({ id: 'wu-owner', userId: ownerId, role: 'owner' })
               .mockResolvedValueOnce({ id: 'wu-recipient', userId: recipientId, role: 'viewer' }),
+            // A shared signer remains besides the old owner.
+            findMany: vi.fn().mockResolvedValue([
+              { id: 'wu-owner', userId: ownerId },
+              { id: 'wu-signer', userId: 'signer-1' },
+            ]),
             create: vi.fn(),
             update: walletUpdateSpy,
-            delete: walletDeleteSpy,
+            delete: vi.fn(),
+            deleteMany: walletDeleteManySpy,
+          },
+          wallet: {
+            findUniqueOrThrow: vi.fn().mockResolvedValue({ groupId: 'g1' }),
+            update: walletGroupUpdateSpy,
           },
         };
         return callback(txMock as any);
@@ -284,9 +295,21 @@ export const registerTransferConfirmContracts = () => {
         where: { id: 'wu-recipient' },
         data: { role: 'owner' },
       });
-      expect(walletDeleteSpy).toHaveBeenCalledWith({
-        where: { id: 'wu-owner' },
+      expect(walletDeleteManySpy).toHaveBeenCalledWith({
+        where: { id: { in: ['wu-owner', 'wu-signer'] } },
       });
+      expect(walletGroupUpdateSpy).toHaveBeenCalledWith({
+        where: { id: walletId },
+        data: { groupId: null, groupRole: 'viewer' },
+      });
+      expect(mockAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+        action: 'wallet.unshare',
+        details: expect.objectContaining({
+          reason: 'ownership_transfer',
+          removedUserIds: [ownerId, 'signer-1'],
+          removedGroupId: 'g1',
+        }),
+      }));
       expect(mockInvalidateWebSocketWalletAccess).toHaveBeenCalledWith(walletId);
     });
 
@@ -352,7 +375,7 @@ export const registerTransferConfirmContracts = () => {
       });
     });
 
-    it('should confirm device transfer by creating recipient access and removing old owner', async () => {
+    it('should confirm device transfer by creating recipient access and removing all other access', async () => {
       const baseTransfer = {
         id: transferId,
         resourceType: 'device',
@@ -375,7 +398,8 @@ export const registerTransferConfirmContracts = () => {
       mockPrismaClient.device.findUnique.mockResolvedValue({ id: deviceId, label: 'Coldcard' });
 
       const deviceUserCreateSpy = vi.fn().mockResolvedValue({});
-      const deviceUserDeleteSpy = vi.fn().mockResolvedValue({});
+      const deviceUserDeleteManySpy = vi.fn().mockResolvedValue({ count: 2 });
+      const deviceUpdateSpy = vi.fn().mockResolvedValue({});
       mockPrismaClient.$transaction.mockImplementation(async (callback) => {
         const txMock = {
           $executeRaw: vi.fn().mockResolvedValue(0),
@@ -384,15 +408,22 @@ export const registerTransferConfirmContracts = () => {
             update: vi.fn().mockResolvedValue({}),
           },
           device: {
-            update: vi.fn().mockResolvedValue({}),
+            findUniqueOrThrow: vi.fn().mockResolvedValue({ groupId: 'g1' }),
+            update: deviceUpdateSpy,
           },
           deviceUser: {
             findFirst: vi.fn()
               .mockResolvedValueOnce({ id: 'du-owner', userId: ownerId, role: 'owner' })
               .mockResolvedValueOnce(null),
+            // A shared viewer remains besides the old owner.
+            findMany: vi.fn().mockResolvedValue([
+              { id: 'du-owner', userId: ownerId },
+              { id: 'du-viewer', userId: 'viewer-1' },
+            ]),
             create: deviceUserCreateSpy,
             update: vi.fn(),
-            delete: deviceUserDeleteSpy,
+            delete: vi.fn(),
+            deleteMany: deviceUserDeleteManySpy,
           },
         };
         return callback(txMock as any);
@@ -407,9 +438,21 @@ export const registerTransferConfirmContracts = () => {
           role: 'owner',
         },
       });
-      expect(deviceUserDeleteSpy).toHaveBeenCalledWith({
-        where: { id: 'du-owner' },
+      expect(deviceUserDeleteManySpy).toHaveBeenCalledWith({
+        where: { id: { in: ['du-owner', 'du-viewer'] } },
       });
+      expect(deviceUpdateSpy).toHaveBeenCalledWith({
+        where: { id: deviceId },
+        data: { groupId: null, groupRole: 'viewer' },
+      });
+      expect(mockAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+        action: 'device.unshare',
+        details: expect.objectContaining({
+          reason: 'ownership_transfer',
+          removedUserIds: [ownerId, 'viewer-1'],
+          removedGroupId: 'g1',
+        }),
+      }));
     });
 
     it('should reject device confirm when owner no longer has device access', async () => {

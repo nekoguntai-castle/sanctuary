@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type React from 'react';
-import type { User, UserPreferences } from '../types';
+import type { User } from '../types';
+import type { UserPreferencesPatch } from '../types/user';
 import * as authApi from '../api/auth';
 import { ApiError } from '../api/client';
 import {
@@ -71,7 +72,7 @@ interface PreferenceMutationArgs {
 
 interface PreferenceMutationController {
   resetPreferenceTracking: () => void;
-  updatePreferences: (prefs: Partial<UserPreferences>) => Promise<PreferenceSaveResult>;
+  updatePreferences: (prefs: UserPreferencesPatch) => Promise<PreferenceSaveResult>;
   /** Sends any buffered write immediately. Used before logout tears the session down. */
   flushPreferenceWrites: () => Promise<PreferenceSaveResult>;
 }
@@ -273,7 +274,7 @@ export function useUserPreferenceMutation({
   }, [clearBatchTimers]);
 
   const updatePreferences = useCallback(
-    (newPrefs: Partial<UserPreferences>): Promise<PreferenceSaveResult> => {
+    (newPrefs: UserPreferencesPatch): Promise<PreferenceSaveResult> => {
       const currentUser = userRef.current;
       if (!currentUser) return Promise.resolve({ ok: true });
 
@@ -332,7 +333,8 @@ export function useUserPreferenceMutation({
         }
       }
 
-      batch.patch = { ...batch.patch, ...preferencePatch };
+      // Same merge semantics as the server, so partial telegram writes coalesce.
+      batch.patch = mergePreferencePatch(batch.patch, preferencePatch);
 
       // Re-stamp on every write so the batch keeps ownership of its keys, and
       // keep the batch visible to in-flight siblings deciding whether to adopt

@@ -132,6 +132,56 @@ export function registerAuthProfileSessionsTests(): void {
       });
     });
 
+    it('merges a telegram patch one level deep so per-wallet settings survive a global save', async () => {
+      mockPrismaClient.user.findUnique.mockResolvedValue({
+        preferences: {
+          telegram: { botToken: 'a', chatId: '1', enabled: true, wallets: { w1: { enabled: true } } },
+        },
+      });
+      mockPrismaClient.user.update.mockResolvedValue({ id: 'test-user-id', preferences: {} });
+
+      const response = await request(app)
+        .patch('/api/v1/auth/me/preferences')
+        .send({ telegram: { enabled: false } });
+
+      expect(response.status).toBe(200);
+      const persisted = mockPrismaClient.user.update.mock.calls[0][0].data.preferences;
+      expect(persisted.telegram).toEqual({
+        botToken: 'a',
+        chatId: '1',
+        enabled: false,
+        wallets: { w1: { enabled: true } },
+      });
+    });
+
+    it('still replaces telegram wallets when the patch carries an explicit wallets key', async () => {
+      mockPrismaClient.user.findUnique.mockResolvedValue({
+        preferences: { telegram: { botToken: 'a', enabled: true, wallets: { w1: { enabled: true } } } },
+      });
+      mockPrismaClient.user.update.mockResolvedValue({ id: 'test-user-id', preferences: {} });
+
+      const response = await request(app)
+        .patch('/api/v1/auth/me/preferences')
+        .send({ telegram: { wallets: {} } });
+
+      expect(response.status).toBe(200);
+      const persisted = mockPrismaClient.user.update.mock.calls[0][0].data.preferences;
+      expect(persisted.telegram.wallets).toEqual({});
+    });
+
+    it('keeps stored telegram settings untouched by a patch without telegram', async () => {
+      const telegram = { botToken: 'a', enabled: true, wallets: { w1: { enabled: true } } };
+      mockPrismaClient.user.findUnique.mockResolvedValue({ preferences: { telegram } });
+      mockPrismaClient.user.update.mockResolvedValue({ id: 'test-user-id', preferences: {} });
+
+      const response = await request(app)
+        .patch('/api/v1/auth/me/preferences')
+        .send({ darkMode: false });
+
+      expect(response.status).toBe(200);
+      expect(mockPrismaClient.user.update.mock.calls[0][0].data.preferences.telegram).toEqual(telegram);
+    });
+
     it('should merge with default preferences for new users', async () => {
       mockPrismaClient.user.findUnique.mockResolvedValue({ preferences: null });
       mockPrismaClient.user.update.mockResolvedValue({

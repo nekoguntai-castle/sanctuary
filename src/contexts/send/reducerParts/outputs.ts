@@ -1,4 +1,5 @@
 import type { OutputEntry, TransactionAction, TransactionState } from '../types';
+import { clearPayjoinIfUnbound } from './payjoin';
 import type { ReducerResult } from './types';
 
 function copyOutputs(outputs: OutputEntry[]): OutputEntry[] {
@@ -16,7 +17,7 @@ function disableSendMaxOnOtherOutputs(
   });
 }
 
-export function reduceOutputCollection(
+function reduceOutputCollectionChange(
   state: TransactionState,
   action: TransactionAction
 ): ReducerResult {
@@ -60,7 +61,24 @@ export function reduceOutputCollection(
   return undefined;
 }
 
+/** Output changes that drop the payjoin endpoint's bound address also drop the endpoint. */
+export function reduceOutputCollection(
+  state: TransactionState,
+  action: TransactionAction
+): ReducerResult {
+  const next = reduceOutputCollectionChange(state, action);
+  return next && clearPayjoinIfUnbound(state, next);
+}
+
 export function reduceOutputEditing(
+  state: TransactionState,
+  action: TransactionAction
+): ReducerResult {
+  const next = reduceOutputEdit(state, action);
+  return next && clearPayjoinIfUnbound(state, next);
+}
+
+function reduceOutputEdit(
   state: TransactionState,
   action: TransactionAction
 ): ReducerResult {

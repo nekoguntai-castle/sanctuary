@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { PrismaClient } from '../../../src/generated/prisma/client';
 import { ConflictError, ForbiddenError, InvalidInputError } from '../../../src/errors';
-import { transferRepository } from '../../../src/repositories';
+import { transferRepository, walletRepository } from '../../../src/repositories';
 import {
   cancelTransfer,
   confirmTransfer,
@@ -261,6 +261,94 @@ describeIntegration('ownership transfer consistency', () => {
       await initiation;
     }
   });
+
+  it('keepExistingUsers=false leaves the new owner as the only member with no group grant', async () => {
+    const fixture = await createSharedWalletFixture(prisma);
+    const transfer = await createAcceptedTransfer(
+      prisma, fixture.owner.id, fixture.recipient.id, fixture.wallet.id, false,
+    );
+
+    await confirmTransfer(fixture.owner.id, transfer.id);
+
+    await expect(prisma.walletUser.findMany({
+      where: { walletId: fixture.wallet.id },
+      select: { userId: true, role: true },
+    })).resolves.toEqual([{ userId: fixture.recipient.id, role: 'owner' }]);
+    await expect(prisma.wallet.findUniqueOrThrow({
+      where: { id: fixture.wallet.id },
+      select: { groupId: true, groupRole: true },
+    })).resolves.toEqual({ groupId: null, groupRole: 'viewer' });
+    for (const user of [fixture.owner, fixture.signer, fixture.viewer, fixture.groupMember]) {
+      await expect(walletRepository.hasAccess(fixture.wallet.id, user.id)).resolves.toBe(false);
+    }
+    await expect(walletRepository.hasAccess(fixture.wallet.id, fixture.recipient.id)).resolves.toBe(true);
+    const audit = await prisma.auditLog.findFirstOrThrow({ where: { action: 'wallet.unshare' } });
+    expect(audit.details).toMatchObject({
+      reason: 'ownership_transfer',
+      transferId: transfer.id,
+      removedGroupId: fixture.group.id,
+    });
+    expect([...(audit.details as { removedUserIds: string[] }).removedUserIds].sort()).toEqual(
+      [fixture.owner.id, fixture.signer.id, fixture.viewer.id].sort(),
+    );
+  });
+
+  it('keepExistingUsers=true keeps shared members, the group grant and the old owner as viewer', async () => {
+    const fixture = await createSharedWalletFixture(prisma);
+    const transfer = await createAcceptedTransfer(
+      prisma, fixture.owner.id, fixture.recipient.id, fixture.wallet.id, true,
+    );
+
+    await confirmTransfer(fixture.owner.id, transfer.id);
+
+    await expect(prisma.walletUser.findMany({
+      where: { walletId: fixture.wallet.id },
+      orderBy: { userId: 'asc' },
+      select: { userId: true, role: true },
+    })).resolves.toEqual([
+      { userId: fixture.owner.id, role: 'viewer' },
+      { userId: fixture.recipient.id, role: 'owner' },
+      { userId: fixture.signer.id, role: 'signer' },
+      { userId: fixture.viewer.id, role: 'viewer' },
+    ].sort((left, right) => left.userId.localeCompare(right.userId)));
+    await expect(prisma.wallet.findUniqueOrThrow({
+      where: { id: fixture.wallet.id },
+      select: { groupId: true, groupRole: true },
+    })).resolves.toEqual({ groupId: fixture.group.id, groupRole: 'signer' });
+    await expect(walletRepository.hasAccess(fixture.wallet.id, fixture.groupMember.id)).resolves.toBe(true);
+    await expect(prisma.auditLog.count({ where: { action: 'wallet.unshare' } })).resolves.toBe(0);
+  });
+
+  it('keepExistingUsers=false removes direct and group device grants', async () => {
+    const fixture = await createSharedDeviceFixture(prisma);
+    const transfer = await prisma.ownershipTransfer.create({
+      data: {
+        resourceType: 'device',
+        resourceId: fixture.device.id,
+        fromUserId: fixture.owner.id,
+        toUserId: fixture.recipient.id,
+        status: 'accepted',
+        acceptedAt: new Date(),
+        expiresAt: new Date(Date.now() + 60_000),
+        keepExistingUsers: false,
+      },
+    });
+
+    await confirmTransfer(fixture.owner.id, transfer.id);
+
+    // Only direct (DeviceUser) and group grants are revoked. Access derived from
+    // membership of a wallet that contains the device is a recorded residual
+    // (accessControl.ts), so no device hasAccess assertion is made here.
+    await expect(prisma.deviceUser.findMany({
+      where: { deviceId: fixture.device.id },
+      select: { userId: true, role: true },
+    })).resolves.toEqual([{ userId: fixture.recipient.id, role: 'owner' }]);
+    await expect(prisma.device.findUniqueOrThrow({
+      where: { id: fixture.device.id },
+      select: { userId: true, groupId: true, groupRole: true },
+    })).resolves.toEqual({ userId: fixture.recipient.id, groupId: null, groupRole: 'viewer' });
+    await expect(prisma.auditLog.count({ where: { action: 'device.unshare' } })).resolves.toBe(1);
+  });
 });
 
 function createDeferred<T>() {
@@ -314,6 +402,7 @@ async function createAcceptedTransfer(
   ownerId: string,
   recipientId: string,
   walletId: string,
+  keepExistingUsers = true,
 ) {
   return prisma.ownershipTransfer.create({
     data: {
@@ -324,6 +413,7 @@ async function createAcceptedTransfer(
       status: 'accepted',
       acceptedAt: new Date(),
       expiresAt: new Date(Date.now() + 60_000),
+      keepExistingUsers,
     },
   });
 }
@@ -342,6 +432,54 @@ async function createTransferFixture(prisma: PrismaClient) {
     },
   });
   return { owner, recipient, wallet };
+}
+
+async function createSharedWalletFixture(prisma: PrismaClient) {
+  const { owner, recipient, wallet } = await createTransferFixture(prisma);
+  const signer = await createUser(prisma, 'signer');
+  const viewer = await createUser(prisma, 'viewer');
+  const groupMember = await createUser(prisma, 'group-member');
+  const group = await prisma.group.create({
+    data: { name: 'Transfer group', members: { create: { userId: groupMember.id } } },
+  });
+  await prisma.walletUser.createMany({
+    data: [
+      { walletId: wallet.id, userId: signer.id, role: 'signer' },
+      { walletId: wallet.id, userId: viewer.id, role: 'viewer' },
+    ],
+  });
+  await prisma.wallet.update({
+    where: { id: wallet.id },
+    data: { groupId: group.id, groupRole: 'signer' },
+  });
+  return { owner, recipient, signer, viewer, groupMember, group, wallet };
+}
+
+async function createSharedDeviceFixture(prisma: PrismaClient) {
+  const owner = await createUser(prisma, 'device-owner');
+  const recipient = await createUser(prisma, 'device-recipient');
+  const viewer = await createUser(prisma, 'device-viewer');
+  const groupMember = await createUser(prisma, 'device-group-member');
+  const group = await prisma.group.create({
+    data: { name: 'Device group', members: { create: { userId: groupMember.id } } },
+  });
+  const device = await prisma.device.create({
+    data: {
+      userId: owner.id,
+      type: 'trezor',
+      label: 'Transfer device',
+      fingerprint: randomUUID().slice(0, 8),
+      xpub: `xpub-${randomUUID()}`,
+      groupId: group.id,
+      users: {
+        create: [
+          { userId: owner.id, role: 'owner' },
+          { userId: viewer.id, role: 'viewer' },
+        ],
+      },
+    },
+  });
+  return { owner, recipient, device };
 }
 
 async function createUser(prisma: PrismaClient, prefix: string) {

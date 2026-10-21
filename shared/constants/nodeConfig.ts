@@ -506,14 +506,20 @@ export function getNodeExternalServiceUrl(
 }
 
 /**
- * Resolve the URL exposed in admin responses. Empty strings are preserved so
- * the UI can round-trip an intentionally cleared optional service field.
+ * Resolve the URL exposed in admin responses. A fee estimator that is unset,
+ * empty or blank projects to `''` (Electrum), which is what runtime uses for
+ * it (`hasConfiguredNodeMempoolFeeEstimator`), so display, runtime and a
+ * saved-back response agree. Explorers fall back to the network default, as
+ * runtime does; an explicitly cleared explorer `''` is preserved.
  */
 export function getNodeExternalServiceResponseUrl(
   source: NodeNetworkConfigSource | null | undefined,
   network: NetworkType,
   kind: NodeExternalServiceKind,
 ): string {
+  if (kind === 'feeEstimator') {
+    return getConfiguredNodeExternalServiceUrl(source, network, kind) ?? '';
+  }
   const field = getNodeExternalServiceFieldName(network, kind);
   const value = readStringField(source, field);
   return value ?? getDefaultNodeExternalServiceUrl(network);

@@ -42,6 +42,53 @@ function freshHeartbeatRecords(
   );
 }
 
+function createHeldReconcileQueue() {
+  let hold = false;
+  let entered!: () => void;
+  let release!: (error?: Error) => void;
+  const midFlight = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const gate = new Promise<void>((resolve, reject) => {
+    release = (error?: Error) => (error ? reject(error) : resolve());
+  });
+  const queue = {
+    scheduleRecurring: vi.fn(async () => {
+      if (hold) {
+        entered();
+        await gate;
+      }
+      return { status: 'unchanged' };
+    }),
+    removeRecurring: vi.fn().mockResolvedValue({ status: 'absent' }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test double for WorkerJobQueue
+  } as any;
+  return { queue, midFlight, release, holdNext: () => { hold = true; } };
+}
+
+async function startHeldSecondReconcile() {
+  const held = createHeldReconcileQueue();
+  let autopilotEnabled = false;
+  const coordinator = new RecurringScheduleCoordinator(
+    held.queue,
+    config,
+    async () => ({
+      autopilotEnabled,
+      intelligenceEnabled: false,
+      staleWalletScheduleForbidden: false,
+    }),
+  );
+  await expect(coordinator.reconcile()).resolves.toEqual(
+    expect.objectContaining({ healthy: true }),
+  );
+  const previous = coordinator.getState();
+  autopilotEnabled = true;
+  held.holdNext();
+  const second = coordinator.reconcile();
+  await held.midFlight;
+  return { coordinator, previous, second, release: held.release };
+}
+
 describe('recurring schedule contracts', () => {
   it('fails closed when the compatibility baseline loses the stale definition', () => {
     expect(requireStaleWalletSchedule(buildBaselineRecurringSchedules(config))).toMatchObject({
@@ -751,5 +798,38 @@ describe('recurring schedule contracts', () => {
     await expect(coordinator.reconcile()).resolves.toEqual(
       expect.objectContaining({ healthy: true }),
     );
+  });
+
+  it('keeps the previous healthy state published while a reconcile is in flight', async () => {
+    const { coordinator, previous, second, release } =
+      await startHeldSecondReconcile();
+
+    expect(previous.reconciliationHealthy).toBe(true);
+    expect(coordinator.getState().reconciliationHealthy).toBe(true);
+    expect(coordinator.getState()).toEqual(previous);
+
+    release();
+    await expect(second).resolves.toEqual(
+      expect.objectContaining({ healthy: true }),
+    );
+    const next = coordinator.getState();
+    expect(next.reconciliationHealthy).toBe(true);
+    expect(next.desired.map(({ name }) => name)).toContain(
+      'autopilot:record-fees',
+    );
+    expect(next.forbidden.map(({ name }) => name)).not.toContain(
+      'autopilot:record-fees',
+    );
+  });
+
+  it('fails closed when an in-flight reconcile fails after holding the previous state', async () => {
+    const { coordinator, previous, second, release } =
+      await startHeldSecondReconcile();
+
+    expect(coordinator.getState()).toEqual(previous);
+
+    release(new Error('Redis unavailable'));
+    await expect(second).rejects.toThrow('Redis unavailable');
+    expect(coordinator.getState().reconciliationHealthy).toBe(false);
   });
 });

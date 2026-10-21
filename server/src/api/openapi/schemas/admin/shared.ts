@@ -186,6 +186,9 @@ export const adminSuccessResponseSchema = {
   required: ['success'],
 } as const;
 
+const FEE_ESTIMATOR_URL_DESCRIPTION =
+  "Mempool API fee estimator URL. An empty string means fees come from the Electrum server (also returned when unset).";
+
 export const nodeConfigResponseProperties = {
   type: { type: 'string', enum: [...NODE_CONFIG_TYPE_VALUES] },
   host: { type: 'string' },
@@ -195,13 +198,13 @@ export const nodeConfigResponseProperties = {
   user: { type: 'string', nullable: true },
   hasPassword: { type: 'boolean' },
   explorerUrl: { type: 'string', nullable: true },
-  feeEstimatorUrl: { type: 'string', nullable: true },
+  feeEstimatorUrl: { type: 'string', nullable: true, description: FEE_ESTIMATOR_URL_DESCRIPTION },
   testnet3ExplorerUrl: { type: 'string', nullable: true },
-  testnet3FeeEstimatorUrl: { type: 'string', nullable: true },
+  testnet3FeeEstimatorUrl: { type: 'string', nullable: true, description: FEE_ESTIMATOR_URL_DESCRIPTION },
   testnet4ExplorerUrl: { type: 'string', nullable: true },
-  testnet4FeeEstimatorUrl: { type: 'string', nullable: true },
+  testnet4FeeEstimatorUrl: { type: 'string', nullable: true, description: FEE_ESTIMATOR_URL_DESCRIPTION },
   signetExplorerUrl: { type: 'string', nullable: true },
-  signetFeeEstimatorUrl: { type: 'string', nullable: true },
+  signetFeeEstimatorUrl: { type: 'string', nullable: true, description: FEE_ESTIMATOR_URL_DESCRIPTION },
   mempoolEstimator: nodeMempoolEstimatorSchema,
   poolEnabled: { type: 'boolean' },
   poolMinConnections: { type: 'integer', minimum: 0 },

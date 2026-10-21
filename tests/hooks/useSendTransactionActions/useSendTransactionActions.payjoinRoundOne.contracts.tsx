@@ -310,6 +310,7 @@ export const registerUseSendTransactionActionsPayjoinRoundOneContracts = () => {
       ['no transaction', { txData: null }],
       ['no payjoin URL', { state: createState({ outputs: payjoinState().outputs }) }],
       ['two outputs', { state: { ...payjoinState(), outputs: [...payjoinState().outputs, ...payjoinState().outputs] } }],
+      ['an unbound recipient', { state: { ...payjoinState(), payjoinAddress: 'bc1qother' } }],
       ['draft mode', { state: { ...payjoinState(), isDraftMode: true } }],
       ['a bound draft', { state: { ...payjoinState(), draftId: 'draft-1' } }],
       ['a multisig wallet', { wallet: { ...baseWallet, type: 'multi_sig' } }],

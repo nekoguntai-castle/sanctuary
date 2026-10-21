@@ -1,24 +1,14 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import * as bitcoin from 'bitcoinjs-lib';
 import { describe, expect, it, vi } from 'vitest';
 import {
   PayjoinProposalPanel,
   PayjoinRoundOneNotice,
   PAYJOIN_SIGN_TWICE_NOTICE,
 } from '../../../src/components/send/steps/review/PayjoinProposalPanel';
+import { CHANGE, PAYMENT, psbtWithOutputs } from '../../fixtures/payjoinPsbt';
 
 const format = (sats: number) => `${sats} sats`;
 
-const PAYMENT = new Uint8Array([0x00, 0x14, ...new Array(20).fill(0x11)]);
-const CHANGE = new Uint8Array([0x00, 0x14, ...new Array(20).fill(0x22)]);
-
-/** An unsigned PSBT with these outputs; only the outputs matter to the panel. */
-const psbtWithOutputs = (outputs: Array<[Uint8Array, number]>): string => {
-  const psbt = new bitcoin.Psbt();
-  psbt.addInput({ hash: 'a'.repeat(64), index: 0 });
-  outputs.forEach(([script, value]) => psbt.addOutput({ script, value: BigInt(value) }));
-  return psbt.toBase64();
-};
 
 const original = {
   psbtBase64: psbtWithOutputs([[PAYMENT, 10000], [CHANGE, 4000]]),

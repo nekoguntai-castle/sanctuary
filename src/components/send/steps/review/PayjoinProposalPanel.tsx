@@ -24,6 +24,17 @@ export function PayjoinRoundOneNotice({ visible }: { visible: boolean }) {
   );
 }
 
+/**
+ * A payjoin proposal is the transaction under review: round two, with the
+ * signed original still held. The review summary and this panel share it.
+ */
+export function isPayjoinProposalReview(
+  status: string,
+  originalTxData: TransactionData | null | undefined
+): originalTxData is TransactionData {
+  return (status === 'awaiting-signature' || status === 'broadcasting') && Boolean(originalTxData);
+}
+
 interface PayjoinProposalPanelProps {
   status: PayjoinAttemptStatus;
   originalTxData: TransactionData | null;
@@ -127,8 +138,7 @@ export function PayjoinProposalPanel({
   onSendWithoutPayjoin,
 }: PayjoinProposalPanelProps) {
   if (status === 'negotiating') return <NegotiatingPanel onSendWithoutPayjoin={onSendWithoutPayjoin} />;
-  const roundTwo = status === 'awaiting-signature' || status === 'broadcasting';
-  if (!roundTwo || !originalTxData || !proposalTxData) return null;
+  if (!isPayjoinProposalReview(status, originalTxData) || !proposalTxData) return null;
 
   const summary = summarizeProposal(originalTxData, proposalTxData);
   const locked = busy || status === 'broadcasting';

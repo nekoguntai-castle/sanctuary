@@ -34,22 +34,33 @@ const DEFAULT_PREFERENCES = {
   },
 } as const;
 
-function getPreferenceRecord(preferences: unknown): Record<string, unknown> {
-  if (preferences === null || typeof preferences !== 'object' || Array.isArray(preferences)) {
-    return {};
-  }
-  return preferences as Record<string, unknown>;
+function isPreferenceRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+function getPreferenceRecord(preferences: unknown): Record<string, unknown> {
+  return isPreferenceRecord(preferences) ? preferences : {};
+}
+
+/**
+ * Top-level keys replace, except `telegram`, which merges one level deep so a
+ * global Telegram save (which omits `wallets`) cannot replace per-wallet
+ * settings written since the client loaded them; an explicit `wallets` key
+ * still replaces.
+ */
 function mergePreferences(
   existingPreferences: unknown,
   newPreferences: PreferencesInput,
 ): Prisma.InputJsonObject {
+  const existingRecord = getPreferenceRecord(existingPreferences);
   const mergedPreferences = {
     ...DEFAULT_PREFERENCES,
-    ...getPreferenceRecord(existingPreferences),
+    ...existingRecord,
     ...newPreferences,
   };
+  if (isPreferenceRecord(existingRecord.telegram) && newPreferences.telegram) {
+    mergedPreferences.telegram = { ...existingRecord.telegram, ...newPreferences.telegram };
+  }
 
   return canonicalizeUserPreferencesPatch(mergedPreferences) as Prisma.InputJsonObject;
 }

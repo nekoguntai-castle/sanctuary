@@ -1,5 +1,6 @@
 import type { TwoFactorDisableRequest, TwoFactorEnableResponse } from '../api/twoFactor';
-import type { User, UserPreferences } from '../types';
+import type { User } from '../types';
+import type { UserPreferencesPatch } from '../types/user';
 import type { PreferenceSaveResult } from './useUserPreferenceMutation';
 
 export interface TwoFactorPending {
@@ -36,7 +37,7 @@ export interface UserContextType {
   cancel2FA: () => void;
   register: (username: string, password: string, email: string) => Promise<RegistrationResult>;
   logout: () => void;
-  updatePreferences: (prefs: Partial<UserPreferences>) => Promise<PreferenceSaveResult>;
+  updatePreferences: (prefs: UserPreferencesPatch) => Promise<PreferenceSaveResult>;
   /** Returns null for duplicate, retired or unauthenticated calls; current-session errors reject. */
   enableTwoFactor: (code: string) => Promise<TwoFactorEnableResponse | null>;
   /** Returns null for duplicate, retired or unauthenticated calls; current-session errors reject. */

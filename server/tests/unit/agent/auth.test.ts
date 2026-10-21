@@ -7,11 +7,18 @@ const mocks = vi.hoisted(() => ({
     updateApiKeyLastUsedIfStale: vi.fn(),
   },
   getClientInfo: vi.fn(),
+  walletRepository: {
+    hasAccess: vi.fn(),
+  },
 }));
 
 vi.mock('../../../src/repositories/agentRepository', () => ({
   AGENT_ACTION_CREATE_FUNDING_DRAFT: 'create_funding_draft',
   agentRepository: mocks.agentRepository,
+}));
+
+vi.mock('../../../src/repositories/walletRepository', () => ({
+  walletRepository: mocks.walletRepository,
 }));
 
 vi.mock('../../../src/services/auditService', () => ({
@@ -33,6 +40,42 @@ import {
 import { ForbiddenError, UnauthorizedError } from '../../../src/errors/ApiError';
 import { hashLegacyApiKeyLookup } from '../../../src/utils/apiKeyHash';
 
+function activeAgentKey(apiKey: string) {
+  return {
+    id: 'key-access',
+    keyPrefix: apiKey.slice(0, 16),
+    keyHash: hashAgentApiKey(apiKey),
+    revokedAt: null,
+    expiresAt: null,
+    scope: { allowedActions: ['create_funding_draft'] },
+    agent: {
+      id: 'agent-access',
+      name: 'Access Agent',
+      status: 'active',
+      revokedAt: null,
+      userId: 'user-1',
+      fundingWalletId: 'funding-wallet',
+      operationalWalletId: 'operational-wallet',
+      signerDeviceId: null,
+      user: { id: 'user-1', username: 'alice', isAdmin: false },
+    },
+  };
+}
+
+function denyWalletAccess(walletId: string) {
+  mocks.walletRepository.hasAccess.mockImplementation(async (id: string) => id !== walletId);
+}
+
+async function expectWalletAccessLost(apiKey: string, wallet: 'funding' | 'operational') {
+  const error = await authenticateAgentRequest(reqWithAuth(`Bearer ${apiKey}`)).catch((caught: unknown) => caught);
+  expect(error).toBeInstanceOf(ForbiddenError);
+  expect(error).toMatchObject({
+    message: `Agent user no longer has access to the ${wallet} wallet`,
+    details: { reason: 'agent_user_wallet_access_lost', wallet },
+  });
+  expect(mocks.agentRepository.updateApiKeyLastUsedIfStale).not.toHaveBeenCalled();
+}
+
 function reqWithAuth(authorization?: string): Request {
   return {
     headers: { authorization },
@@ -43,6 +86,7 @@ describe('agent auth helpers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getClientInfo.mockReturnValue({ ipAddress: '127.0.0.1', userAgent: 'agent-runtime' });
+    mocks.walletRepository.hasAccess.mockResolvedValue(true);
   });
 
   it('generates, prefixes, hashes, and validates agent API keys', () => {
@@ -216,5 +260,34 @@ describe('agent auth helpers', () => {
     });
 
     await expect(authenticateAgentRequest(reqWithAuth(`Bearer ${apiKey}`))).rejects.toThrow(ForbiddenError);
+  });
+
+  it('refuses a key whose user lost access to the funding wallet', async () => {
+    const apiKey = 'agt_' + 'f'.repeat(64);
+    mocks.agentRepository.findApiKeyByHash.mockResolvedValueOnce(activeAgentKey(apiKey));
+    denyWalletAccess('funding-wallet');
+
+    await expectWalletAccessLost(apiKey, 'funding');
+  });
+
+  it('refuses a key whose user lost access to the operational wallet', async () => {
+    const apiKey = 'agt_' + '1'.repeat(64);
+    mocks.agentRepository.findApiKeyByHash.mockResolvedValueOnce(activeAgentKey(apiKey));
+    denyWalletAccess('operational-wallet');
+
+    await expectWalletAccessLost(apiKey, 'operational');
+  });
+
+  it('checks the agent user still has access to both wallets', async () => {
+    const apiKey = 'agt_' + '2'.repeat(64);
+    mocks.agentRepository.findApiKeyByHash.mockResolvedValueOnce(activeAgentKey(apiKey));
+
+    await expect(authenticateAgentRequest(reqWithAuth(`Bearer ${apiKey}`))).resolves.toMatchObject({
+      keyId: 'key-access',
+      userId: 'user-1',
+    });
+    expect(mocks.walletRepository.hasAccess).toHaveBeenCalledWith('funding-wallet', 'user-1');
+    expect(mocks.walletRepository.hasAccess).toHaveBeenCalledWith('operational-wallet', 'user-1');
+    expect(mocks.agentRepository.updateApiKeyLastUsedIfStale).toHaveBeenCalledTimes(1);
   });
 });

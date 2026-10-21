@@ -1,7 +1,8 @@
 import crypto from 'node:crypto';
 import type { Request } from 'express';
 import { agentRepository, AGENT_ACTION_CREATE_FUNDING_DRAFT } from '../repositories/agentRepository';
-import { ForbiddenError, UnauthorizedError } from '../errors/ApiError';
+import { walletRepository } from '../repositories/walletRepository';
+import { ErrorCodes, ForbiddenError, UnauthorizedError } from '../errors/ApiError';
 import { getClientInfo } from '../services/auditService';
 import { hashApiKeyLookup, hashLegacyApiKeyLookup } from '../utils/apiKeyHash';
 
@@ -100,6 +101,36 @@ async function findAgentApiKeyForToken(token: string) {
   return null;
 }
 
+/**
+ * Agent keys act for their user, so they stop working once that user loses
+ * access to either linked wallet (share removal, ownership transfer). Agent
+ * state is not mutated; restoring access restores the key.
+ */
+async function assertAgentUserWalletAccess(agent: {
+  userId: string;
+  fundingWalletId: string;
+  operationalWalletId: string;
+}): Promise<void> {
+  const [hasFundingAccess, hasOperationalAccess] = await Promise.all([
+    walletRepository.hasAccess(agent.fundingWalletId, agent.userId),
+    walletRepository.hasAccess(agent.operationalWalletId, agent.userId),
+  ]);
+  if (!hasFundingAccess) {
+    throw walletAccessLostError('funding');
+  }
+  if (!hasOperationalAccess) {
+    throw walletAccessLostError('operational');
+  }
+}
+
+function walletAccessLostError(wallet: 'funding' | 'operational'): ForbiddenError {
+  return new ForbiddenError(
+    `Agent user no longer has access to the ${wallet} wallet`,
+    ErrorCodes.FORBIDDEN,
+    { reason: 'agent_user_wallet_access_lost', wallet },
+  );
+}
+
 export async function authenticateAgentRequest(req: Request): Promise<AgentRequestContext> {
   const token = extractBearerToken(req.headers.authorization);
   if (!token || !validateAgentApiKeyFormat(token)) {
@@ -123,6 +154,9 @@ export async function authenticateAgentRequest(req: Request): Promise<AgentReque
   if (key.agent.revokedAt || key.agent.status !== 'active') {
     throw new ForbiddenError('Agent is not active');
   }
+
+  // Before recording use, so a refused call does not refresh lastUsedAt.
+  await assertAgentUserWalletAccess(key.agent);
 
   const { ipAddress, userAgent } = getClientInfo(req);
   await agentRepository.updateApiKeyLastUsedIfStale(key.id, new Date(Date.now() - LAST_USED_THROTTLE_MS), {

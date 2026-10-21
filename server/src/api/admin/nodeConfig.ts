@@ -153,7 +153,8 @@ router.get('/node-config', authenticate, requireAdmin, asyncHandler(async (_req,
   const nodeConfig = await nodeConfigRepository.findDefaultWithServers();
 
   if (!nodeConfig) {
-    // Return default configuration if none exists - use public Blockstream server
+    // Return default configuration if none exists - use public Blockstream server.
+    // Fee estimators are '' (Electrum): runtime uses Electrum fees without a row.
     return res.json({
       type: 'electrum',
       host: mainnetDefaults.singletonHost,
@@ -163,13 +164,13 @@ router.get('/node-config', authenticate, requireAdmin, asyncHandler(async (_req,
       user: null,
       hasPassword: false,
       explorerUrl: getDefaultNodeExternalServiceUrl('mainnet'),
-      feeEstimatorUrl: getDefaultNodeExternalServiceUrl('mainnet'),
+      feeEstimatorUrl: '',
       testnet3ExplorerUrl: getDefaultNodeExternalServiceUrl('testnet3'),
-      testnet3FeeEstimatorUrl: getDefaultNodeExternalServiceUrl('testnet3'),
+      testnet3FeeEstimatorUrl: '',
       testnet4ExplorerUrl: getDefaultNodeExternalServiceUrl('testnet4'),
-      testnet4FeeEstimatorUrl: getDefaultNodeExternalServiceUrl('testnet4'),
+      testnet4FeeEstimatorUrl: '',
       signetExplorerUrl: getDefaultNodeExternalServiceUrl('signet'),
-      signetFeeEstimatorUrl: getDefaultNodeExternalServiceUrl('signet'),
+      signetFeeEstimatorUrl: '',
       mempoolEstimator: DEFAULT_NODE_MEMPOOL_ESTIMATOR,
       poolEnabled: true,
       poolMinConnections: mainnetDefaults.poolMin,

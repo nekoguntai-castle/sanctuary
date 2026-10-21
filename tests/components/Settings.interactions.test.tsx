@@ -356,7 +356,6 @@ const registerTelegramHappyPathTest = (): void => {
           botToken: "bot-token",
           chatId: "987654321",
           enabled: false,
-          wallets: {},
         },
       });
     });
@@ -374,7 +373,6 @@ const registerTelegramHappyPathTest = (): void => {
           botToken: "bot-token",
           chatId: "987654321",
           enabled: true,
-          wallets: {},
         },
       });
     });

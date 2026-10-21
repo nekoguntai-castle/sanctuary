@@ -167,6 +167,22 @@ describe("ExternalServicesSection", () => {
     expect(explorerInput).toHaveValue("");
   });
 
+  it("shows an empty fee estimator as the Electrum fee source with no URL input", () => {
+    render(
+      <ExternalServicesSection
+        nodeConfig={createNodeConfig({ feeEstimatorUrl: "" })}
+        onConfigChange={vi.fn()}
+        expanded
+        onToggle={vi.fn()}
+        summary="Electrum fee source"
+      />,
+    );
+
+    expect(screen.getByRole("radio", { name: "Electrum Server" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "Mempool API" })).not.toBeChecked();
+    expect(screen.queryByText("Mempool API URL")).not.toBeInTheDocument();
+  });
+
   it("switches fee source and updates fee URL/estimator fields", async () => {
     const user = userEvent.setup();
     const onConfigChange = vi.fn();

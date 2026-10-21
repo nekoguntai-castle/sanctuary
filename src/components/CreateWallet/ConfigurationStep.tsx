@@ -19,6 +19,8 @@ interface ConfigurationStepProps {
   network: Network;
   scriptType: ScriptType;
   setScriptType: (type: ScriptType) => void;
+  /** Single-sig script types the selected signer has exactly one account for. */
+  supportedScriptTypes: ScriptType[];
   quorumM: number;
   setQuorumM: (m: number) => void;
   selectedDeviceCount: number;
@@ -33,6 +35,7 @@ export const ConfigurationStep: React.FC<ConfigurationStepProps> = ({
   network,
   scriptType,
   setScriptType,
+  supportedScriptTypes,
   quorumM,
   setQuorumM,
   selectedDeviceCount,
@@ -79,12 +82,16 @@ export const ConfigurationStep: React.FC<ConfigurationStepProps> = ({
                       ].map(opt => (
                           <button
                               key={opt.id}
+                              disabled={!supportedScriptTypes.includes(opt.id)}
                               onClick={() => setScriptType(opt.id as ScriptType)}
-                              className={`text-left p-3 rounded-lg border flex items-center justify-between ${scriptType === opt.id ? 'border-sanctuary-600 bg-sanctuary-50 dark:border-sanctuary-400 dark:bg-sanctuary-800' : 'border-sanctuary-200 dark:border-sanctuary-800'}`}
+                              className={`text-left p-3 rounded-lg border flex items-center justify-between disabled:cursor-not-allowed disabled:opacity-50 ${scriptType === opt.id ? 'border-sanctuary-600 bg-sanctuary-50 dark:border-sanctuary-400 dark:bg-sanctuary-800' : 'border-sanctuary-200 dark:border-sanctuary-800'}`}
                           >
                               <div>
                                   <div className="text-sm font-medium">{opt.label}</div>
                                   <div className="text-xs text-sanctuary-500">{opt.desc}</div>
+                                  {!supportedScriptTypes.includes(opt.id) && (
+                                      <div className="text-xs text-sanctuary-500 mt-0.5">Not available on the selected signer</div>
+                                  )}
                               </div>
                               {scriptType === opt.id && <Check className="w-4 h-4 text-sanctuary-600 dark:text-sanctuary-400" />}
                           </button>

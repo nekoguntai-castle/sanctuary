@@ -36,6 +36,7 @@ export const CreateWallet: React.FC = () => {
                   network={wallet.network}
                   scriptType={wallet.scriptType}
                   setScriptType={wallet.setScriptType}
+                  supportedScriptTypes={wallet.supportedScriptTypes}
                   quorumM={wallet.quorumM}
                   setQuorumM={wallet.setQuorumM}
                   availableDevices={wallet.availableDevices}

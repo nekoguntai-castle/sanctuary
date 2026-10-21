@@ -37,7 +37,8 @@ describe('SignerSelectionStep', () => {
     );
 
     expect(screen.getByText('1 device hidden')).toBeInTheDocument();
-    expect(screen.getByText(/Ledger doesn't have exactly one matching single-sig account/i)).toBeInTheDocument();
+    // Single-sig lists a signer with any script type, so the network is the only scope.
+    expect(screen.getByText("Ledger doesn't have exactly one matching single-sig account for this network.")).toBeInTheDocument();
     expect(screen.getByText(/No devices with exactly one matching single-sig account found/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /review accounts/i }));
@@ -69,7 +70,7 @@ describe('SignerSelectionStep', () => {
     );
 
     expect(screen.getByText('2 devices hidden')).toBeInTheDocument();
-    expect(screen.getByText(/Jade, Trezor don't have exactly one matching multisig account/i)).toBeInTheDocument();
+    expect(screen.getByText("Jade, Trezor don't have exactly one matching multisig account for this network and script type.")).toBeInTheDocument();
     expect(screen.getByText(/Don't see your device\? It needs exactly one matching multisig account\./i)).toBeInTheDocument();
     expect(screen.queryByText(/No devices with exactly one matching multisig account found/i)).not.toBeInTheDocument();
 

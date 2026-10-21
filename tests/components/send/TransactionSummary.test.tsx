@@ -1,4 +1,4 @@
-import { fireEvent,render,screen } from '@testing-library/react';
+import { fireEvent,render,screen,within } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
 import { TransactionSummary } from '../../../src/components/send/steps/review/TransactionSummary';
 
@@ -12,6 +12,19 @@ vi.mock('../../../src/components/FiatDisplay', () => ({
   FiatDisplay: ({ sats }: { sats: number }) => <span>{`fiat:${sats}`}</span>,
 }));
 
+const BOUND_ADDRESS = 'bc1qbound';
+
+/** One standard recipient whose address carries the payjoin endpoint. */
+function boundPayjoinState(base: Record<string, unknown>) {
+  return {
+    ...base,
+    transactionType: 'standard',
+    outputs: [{ address: BOUND_ADDRESS, amount: '500', sendMax: false }],
+    payjoinUrl: 'https://payjoin.example',
+    payjoinAddress: BOUND_ADDRESS,
+  };
+}
+
 function buildProps(overrides: Record<string, unknown> = {}) {
   const goToStep = vi.fn();
   return {
@@ -23,6 +36,7 @@ function buildProps(overrides: Record<string, unknown> = {}) {
         { address: 'bc1qrecipient1', amount: '800', sendMax: false },
       ],
       payjoinUrl: 'https://payjoin.example',
+      payjoinAddress: 'bc1qrecipient0',
       rbfEnabled: true,
       useDecoys: true,
       decoyCount: 2,
@@ -58,7 +72,8 @@ describe('TransactionSummary', () => {
 
     expect(screen.getByText('Review Transaction')).toBeInTheDocument();
     expect(screen.getByTestId('tx-flow-preview')).toHaveTextContent('estimate');
-    expect(screen.getByText('Payjoin enabled')).toBeInTheDocument();
+    // Two recipients: the endpoint is not bound to a single remaining recipient.
+    expect(screen.queryByText('Payjoin enabled')).not.toBeInTheDocument();
     expect(screen.getByText('2000 sats')).toBeInTheDocument();
     expect(screen.getByText('2400 sats')).toBeInTheDocument();
     expect(screen.getAllByText('Change').length).toBeGreaterThan(0);
@@ -79,10 +94,11 @@ describe('TransactionSummary', () => {
   it('renders draft mode with locked parameters and fallback payjoin text', () => {
     const props = buildProps({
       state: {
-        transactionType: 'consolidation',
+        transactionType: 'standard',
         feeRate: 2,
         outputs: [{ address: 'bc1qdraft', amount: '500', sendMax: false }],
         payjoinUrl: 'https://payjoin.example',
+        payjoinAddress: 'bc1qdraft',
         rbfEnabled: false,
         useDecoys: false,
         decoyCount: 0,
@@ -241,8 +257,35 @@ describe('TransactionSummary', () => {
     ['skipped', 'Payjoin (not used)'],
     ['idle', 'Payjoin enabled'],
   ])('labels the %s payjoin status', (payjoinStatus, label) => {
-    render(<TransactionSummary {...buildProps({ payjoinStatus })} />);
+    const props = buildProps({ payjoinStatus });
+    render(<TransactionSummary {...props} state={boundPayjoinState(props.state) as any} />);
 
     expect(screen.getByText(label)).toBeInTheDocument();
+  });
+
+  it('shows the payjoin badge only for a single bound recipient', () => {
+    const props = buildProps({ payjoinStatus: 'idle' });
+    const { rerender } = render(<TransactionSummary {...props} state={boundPayjoinState(props.state) as any} />);
+    expect(screen.getByText('Payjoin enabled')).toBeInTheDocument();
+
+    rerender(
+      <TransactionSummary
+        {...props}
+        state={{ ...boundPayjoinState(props.state), payjoinAddress: 'bc1qother' } as any}
+      />,
+    );
+    expect(screen.queryByText('Payjoin enabled')).not.toBeInTheDocument();
+  });
+
+  it('keeps the ordinary totals outside a payjoin proposal review', () => {
+    const props = buildProps({
+      payjoinStatus: 'awaiting-signature',
+      txData: { fee: 400, effectiveAmount: 1, outputs: [{ address: 'bc1qrecipient0', amount: 2000 }] },
+    });
+    render(<TransactionSummary {...props} />);
+
+    const row = (label: string) => screen.getByText(label).closest('.justify-between') as HTMLElement;
+    expect(within(row('Total Sending')).getByText('2000 sats')).toBeInTheDocument();
+    expect(within(row('Total (including fee)')).getByText('2400 sats')).toBeInTheDocument();
   });
 });

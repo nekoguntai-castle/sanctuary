@@ -8,7 +8,24 @@ OutputEntry,
 TransactionAction,
 WizardStep
 } from '../../../src/contexts/send/types';
+import { getBoundPayjoinUrl } from '../../../src/contexts/send/reducerParts/payjoin';
 import { registerOutputManagementReducerContracts } from './reducer/reducer.output.contracts';
+
+const PJ_URL = 'https://receiver.example/pj';
+// Pattern-valid bech32 (canonicalSegwitAddressCase only lowercases a valid all-uppercase address).
+const MAINNET = `bc1q${'a'.repeat(38)}`;
+const OTHER = `bc1q${'c'.repeat(38)}`;
+
+function boundState(addresses: string[], bound: string, txType: 'standard' | 'consolidation' = 'standard') {
+  return {
+    ...createInitialState(),
+    transactionType: txType,
+    outputs: addresses.map((address) => ({ address, amount: '1000', sendMax: false })),
+    outputsValid: addresses.map(() => null),
+    payjoinUrl: PJ_URL,
+    payjoinAddress: bound,
+  };
+}
 
 describe('transactionReducer', () => {
   describe('createInitialState', () => {
@@ -177,11 +194,13 @@ describe('transactionReducer', () => {
       const action: TransactionAction = {
         type: 'SET_PAYJOIN_URL',
         url: 'https://example.com/payjoin',
+        address: 'bc1qbound',
       };
 
       const newState = transactionReducer(state, action);
 
       expect(newState.payjoinUrl).toBe('https://example.com/payjoin');
+      expect(newState.payjoinAddress).toBe('bc1qbound');
     });
 
     it('should set payjoin status', () => {
@@ -587,6 +606,101 @@ describe('transactionReducer', () => {
       expect(newState.outputs[1].sendMax).toBe(true);
       expect(newState.outputs[0]).not.toBe(firstOutput);
       expect(newState.outputs[1]).not.toBe(secondOutput);
+    });
+  });
+
+  describe('payjoin binding', () => {
+    it('clears the endpoint when the bound output is removed', () => {
+      const next = transactionReducer(boundState([OTHER, MAINNET], MAINNET), { type: 'REMOVE_OUTPUT', index: 1 });
+
+      expect(next.payjoinUrl).toBeNull();
+      expect(next.payjoinAddress).toBeNull();
+    });
+
+    it('clears the endpoint on a transaction type switch', () => {
+      const next = transactionReducer(boundState([MAINNET], MAINNET), {
+        type: 'SET_TRANSACTION_TYPE',
+        txType: 'consolidation',
+      });
+
+      expect(next.payjoinUrl).toBeNull();
+      expect(next.payjoinAddress).toBeNull();
+    });
+
+    it('clears the endpoint when the bound address is replaced', () => {
+      const next = transactionReducer(boundState([MAINNET], MAINNET), {
+        type: 'SET_OUTPUT_ADDRESS',
+        index: 0,
+        address: OTHER,
+      });
+
+      expect(next.payjoinUrl).toBeNull();
+      expect(next.payjoinAddress).toBeNull();
+    });
+
+    it('clears the endpoint when UPDATE_OUTPUT replaces the bound address', () => {
+      const next = transactionReducer(boundState([MAINNET], MAINNET), {
+        type: 'UPDATE_OUTPUT',
+        index: 0,
+        field: 'address',
+        value: OTHER,
+      });
+
+      expect(next.payjoinUrl).toBeNull();
+    });
+
+    it('keeps the binding when an unrelated output is removed', () => {
+      const next = transactionReducer(boundState([MAINNET, OTHER], MAINNET), { type: 'REMOVE_OUTPUT', index: 1 });
+
+      expect(next.payjoinUrl).toBe(PJ_URL);
+      expect(next.payjoinAddress).toBe(MAINNET);
+      expect(getBoundPayjoinUrl(next)).toBe(PJ_URL);
+    });
+
+    it('clears the endpoint through the consolidation auto-fill path', () => {
+      let state = transactionReducer(boundState([MAINNET], MAINNET), {
+        type: 'SET_TRANSACTION_TYPE',
+        txType: 'consolidation',
+      });
+      state = transactionReducer(state, { type: 'SET_OUTPUT_ADDRESS', index: 0, address: MAINNET });
+
+      expect(state.payjoinUrl).toBeNull();
+      expect(state.payjoinAddress).toBeNull();
+    });
+
+    it('keeps the binding when the type is re-selected unchanged', () => {
+      const next = transactionReducer(boundState([MAINNET], MAINNET), {
+        type: 'SET_TRANSACTION_TYPE',
+        txType: 'standard',
+      });
+
+      expect(next.payjoinUrl).toBe(PJ_URL);
+      expect(next.payjoinAddress).toBe(MAINNET);
+    });
+
+    it('leaves a binding whose address is not among the outputs to the selector', () => {
+      const next = transactionReducer(boundState([OTHER, ''], MAINNET), {
+        type: 'SET_OUTPUT_ADDRESS',
+        index: 1,
+        address: MAINNET,
+      });
+
+      expect(next.payjoinUrl).toBe(PJ_URL);
+      expect(getBoundPayjoinUrl(next)).toBeNull();
+    });
+
+    it.each([
+      ['two outputs', boundState([MAINNET, OTHER], MAINNET)],
+      ['a different remaining address', boundState([OTHER], MAINNET)],
+      ['a non-standard type', boundState([MAINNET], MAINNET, 'consolidation')],
+      ['no bound address', { ...boundState([MAINNET], MAINNET), payjoinAddress: null }],
+      ['a pattern-invalid uppercase placeholder', boundState(['BC1QRECIPIENT'], 'bc1qrecipient')],
+    ])('getBoundPayjoinUrl returns null for %s', (_label, state) => {
+      expect(getBoundPayjoinUrl(state)).toBeNull();
+    });
+
+    it('getBoundPayjoinUrl equates the uppercase and lowercase forms of a valid bech32 address', () => {
+      expect(getBoundPayjoinUrl(boundState([MAINNET.toUpperCase()], MAINNET))).toBe(PJ_URL);
     });
   });
 

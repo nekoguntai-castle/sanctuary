@@ -96,7 +96,7 @@ export function useTelegramSettings() {
     setSaveSuccess(false);
 
     try {
-      const result = await updatePreferences(buildTelegramPreferences({ botToken, chatId, enabled, user }));
+      const result = await updatePreferences(buildTelegramPreferences({ botToken, chatId, enabled }));
       if (result.ok) {
         showSaveSuccess(setSaveSuccess, successTimeoutRef);
       } else {
@@ -112,7 +112,7 @@ export function useTelegramSettings() {
     const newEnabled = !enabled;
     setEnabled(newEnabled);
 
-    const result = await updatePreferences(buildTelegramPreferences({ botToken, chatId, enabled: newEnabled, user }));
+    const result = await updatePreferences(buildTelegramPreferences({ botToken, chatId, enabled: newEnabled }));
     if (!result.ok) {
       setEnabled(!newEnabled);
       log.warn('Failed to toggle Telegram notifications', { error: result.error });

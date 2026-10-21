@@ -9,6 +9,11 @@ import {
   TRANSFER_STATUS_VALUES,
 } from '../../../services/transferService/types';
 
+const KEEP_EXISTING_USERS_DESCRIPTION =
+  'When true, every existing member keeps access and the previous owner becomes a viewer. ' +
+  'When false, the confirm removes all existing access (including the previous owner\'s): ' +
+  'every other direct member and any group grant.';
+
 export const transferSchemas = {
   TransferUser: {
     type: 'object',
@@ -35,7 +40,7 @@ export const transferSchemas = {
       expiresAt: { type: 'string', format: 'date-time' },
       message: { type: 'string', nullable: true },
       declineReason: { type: 'string', nullable: true },
-      keepExistingUsers: { type: 'boolean' },
+      keepExistingUsers: { type: 'boolean', description: KEEP_EXISTING_USERS_DESCRIPTION },
       fromUser: { $ref: '#/components/schemas/TransferUser' },
       toUser: { $ref: '#/components/schemas/TransferUser' },
       resourceName: { type: 'string' },
@@ -66,7 +71,7 @@ export const transferSchemas = {
       resourceId: { type: 'string', minLength: 1 },
       toUserId: { type: 'string', minLength: 1 },
       message: { type: 'string' },
-      keepExistingUsers: { type: 'boolean', default: true },
+      keepExistingUsers: { type: 'boolean', default: true, description: KEEP_EXISTING_USERS_DESCRIPTION },
       expiresInDays: {
         type: 'integer',
         minimum: 1,

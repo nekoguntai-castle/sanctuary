@@ -439,6 +439,33 @@ main() {
   assert_eq "proof-source doc -> full_scan" "true" "$(json_query "$plan" full_scan)"
   assert_eq "proof-source doc -> backend_unit" "true" "$(json_query "$plan" lanes.backend_unit.run)"
 
+  # ---- Repo files a Vitest suite reads select the lane of the reader ------
+  base="$head"
+  mkdir -p "$repo/docker/nginx"
+  printf 'server {}\n' > "$repo/docker/nginx/default.conf.template"
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm 'nginx template only'
+  head="$(git -C "$repo" rev-parse HEAD)"
+
+  plan="$(EVENT_NAME=pull_request run_planner "$repo" "$base" "$head")"
+  assert_eq "nginx template -> frontend_unit" "true" "$(json_query "$plan" lanes.frontend_unit.run)"
+  assert_eq "nginx template -> no backend_unit" "false" "$(json_query "$plan" lanes.backend_unit.run)"
+  assert_eq "nginx template -> no full_scan" "false" "$(json_query "$plan" full_scan)"
+
+  base="$head"
+  mkdir -p "$repo/config"
+  printf '{}\n' > "$repo/config/jade-emulator-proof.json"
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm 'jade proof config only'
+  head="$(git -C "$repo" rev-parse HEAD)"
+
+  plan="$(EVENT_NAME=pull_request run_planner "$repo" "$base" "$head")"
+  assert_eq "jade proof config -> frontend_unit" "true" "$(json_query "$plan" lanes.frontend_unit.run)"
+  assert_eq "jade proof config -> backend_unit" "true" "$(json_query "$plan" lanes.backend_unit.run)"
+  assert_eq "jade proof config -> backend_unit files" '["config/jade-emulator-proof.json"]' \
+    "$(json_query "$plan" lanes.backend_unit.files)"
+  assert_eq "jade proof config -> no full_scan" "false" "$(json_query "$plan" full_scan)"
+
   # ---- workflow_dispatch --full forces full tier --------------------------
   plan="$(EVENT_NAME=workflow_dispatch run_planner "$repo" "$base" "$head" --full)"
   assert_eq "dispatch --full tier=full" "full" "$(json_query "$plan" tier)"

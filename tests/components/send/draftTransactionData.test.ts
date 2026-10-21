@@ -203,6 +203,27 @@ describe('buildInitialState — RBF replacesTxid linkage', () => {
 
     expect(initialState?.replacesTxid).toBeNull();
   });
+
+  it('binds a restored payjoin endpoint to the first restored output', () => {
+    const initialState = buildInitialState({
+      addresses: [],
+      draftData: { ...baseDraftData, payjoinUrl: 'https://merchant.example/pj' },
+      showInfo: () => undefined,
+      utxos: [],
+      walletType: WalletType.SINGLE_SIG,
+    });
+
+    expect(initialState?.payjoinUrl).toBe('https://merchant.example/pj');
+    expect(initialState?.payjoinAddress).toBe('bc1qrecipient');
+  });
+
+  it('restores no payjoin binding for a draft without an endpoint', () => {
+    const initialState = buildInitialState({
+      addresses: [], draftData: baseDraftData, showInfo: () => undefined, utxos: [], walletType: WalletType.SINGLE_SIG,
+    });
+
+    expect(initialState?.payjoinAddress).toBeNull();
+  });
 });
 
 describe('buildInitialState — resumed draft with an unattributed uploaded signature', () => {

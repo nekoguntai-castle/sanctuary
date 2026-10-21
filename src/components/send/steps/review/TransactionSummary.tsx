@@ -7,6 +7,7 @@ import {
 import { TransactionFlowPreview, FlowInput, FlowOutput } from '../../../TransactionFlowPreview';
 import { FiatDisplay } from '../../../FiatDisplay';
 import type { WizardStep, TransactionState } from '../../../../contexts/send/types';
+import { getBoundPayjoinUrl } from '../../../../contexts/send/reducerParts/payjoin';
 import type { TransactionData } from '../../../../hooks/send/useSendTransactionActions';
 import {
   getCoinControlLabel,
@@ -17,6 +18,7 @@ import {
   getTotalIncludingFeeSats,
   getTotalSendingSats,
 } from './transactionSummaryModel';
+import { isPayjoinProposalReview } from './PayjoinProposalPanel';
 
 interface TransactionSummaryProps {
   state: TransactionState;
@@ -29,6 +31,8 @@ interface TransactionSummaryProps {
   };
   txData?: TransactionData | null;
   payjoinStatus: string;
+  /** The signed original while a payjoin proposal is under review. */
+  payjoinOriginalTxData?: TransactionData | null;
   changeAmount: number;
   selectedTotal: number;
   estimatedFee: number;
@@ -88,6 +92,7 @@ export function TransactionSummary({
   flowData,
   txData,
   payjoinStatus,
+  payjoinOriginalTxData,
   changeAmount,
   selectedTotal,
   estimatedFee,
@@ -102,19 +107,24 @@ export function TransactionSummary({
     goToStep(step);
   };
   const networkFee = getNetworkFeeSats(txData, estimatedFee);
+  const hasBoundPayjoin = Boolean(getBoundPayjoinUrl(state));
+  // Round two: the totals show the sender's net spend, matching the proposal panel.
+  const proposal = isPayjoinProposalReview(payjoinStatus, payjoinOriginalTxData);
   const totalSendingSats = getTotalSendingSats(
     state.outputs,
     selectedTotal,
     estimatedFee,
     totalOutputAmount,
-    txData
+    txData,
+    proposal
   );
   const totalIncludingFeeSats = getTotalIncludingFeeSats(
     state.outputs,
     selectedTotal,
     totalOutputAmount,
     networkFee,
-    txData
+    txData,
+    proposal
   );
 
   return (
@@ -203,7 +213,7 @@ export function TransactionSummary({
                 index={index}
                 outputCount={state.outputs.length}
                 txData={txData}
-                showPayjoin={Boolean(state.payjoinUrl) && index === 0}
+                showPayjoin={hasBoundPayjoin && index === 0}
                 payjoinStatus={payjoinStatus}
                 format={format}
               />

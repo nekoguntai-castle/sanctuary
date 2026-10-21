@@ -18,6 +18,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Draft creation now refuses (400 `metadata_mismatch`) a draft whose recipient, amount, fee, totals, selected UTXOs or RBF flag disagree with its signing intent, so the stored review fields and UTXO locks describe the transaction actually signed. Broadcast also checks an intent-bound draft's own fields even when the request supplies the canonical values.
 - Scheduled backups no longer fail with EACCES on new or existing installs: a one-shot `backup-volume-init` service repairs `backup_data` ownership for the worker on every start, the backend mounts the volume read-only so the support package reports real backups, and the job fails fast with an actionable message when the directory is not writable.
+- A payjoin endpoint is bound to the BIP21 recipient it came with and dropped when that recipient is removed or replaced, or the send type changes, so the signed original is never sent to another recipient's payjoin server. Round-two review totals show the sender's real net spend, and the flow preview shows the proposal's outputs (including Taproot).
+- Ownership transfers with "keep existing users" off now remove every other wallet/device member and the group grant, audited as `wallet.unshare`/`device.unshare`; agent API keys are refused (403 `agent_user_wallet_access_lost`) once their user loses access to the funding or operational wallet.
+- A 401 on a token whose expiry still looks fresh now refreshes, so a revoked session reaches logout instead of failing requests until the token expires.
+- A global Telegram save no longer reverts per-wallet Telegram settings made elsewhere.
+- Controlled-capture selectors can be re-entered after leaving and returning to the support package card, so an armed capture stays readable; Arm stays disabled until the capture is inactive.
+- Node Config shows Electrum for unset fee estimators, matching what runtime uses, and saving no longer switches fees to mempool.space.
+- Create Wallet lists single-sig signers that only have Taproot, Nested SegWit or Legacy accounts, offers only the selected signer's script types and rebinds the account in place when the type changes.
+- `/price/history` rejects unsupported currencies before contacting CoinGecko (no circuit-breaker trips), and `/price/historical` fetches one price map per UTC day (single-flight, cached by date), returning 400 for a currency absent from that map, an invalid date or a date before 2013-04-28.
+- The worker's `/ready` no longer reports not-ready for a moment during each no-op recurring-schedule reconcile.
+- CI: a PR touching only a repo file that a Vitest suite reads (nginx/compose templates, proof configs, `verify-vectors.yml`, `.nvmrc`, verifier modules) now selects that suite's lane, and a drift guard keeps the list complete.
 
 ## [0.8.77] - 2026-10-12
 

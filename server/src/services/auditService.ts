@@ -79,6 +79,7 @@ export enum AuditAction {
   DEVICE_REGISTER = 'device.register',
   DEVICE_DELETE = 'device.delete',
   DEVICE_UPDATE = 'device.update',
+  DEVICE_UNSHARE = 'device.unshare',
 
   // Admin operations
   NODE_CONFIG_UPDATE = 'admin.node_config_update',

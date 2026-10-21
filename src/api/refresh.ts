@@ -238,6 +238,41 @@ export class RefreshTransientError extends Error {
   }
 }
 
+export interface RefreshAccessTokenOptions {
+  /**
+   * The in-memory expiry when the request that drew the 401 was sent. A
+   * fresh expiry only short-circuits the refresh when it differs from this
+   * snapshot (another tab rotated the token meanwhile); an unchanged fresh
+   * expiry means the server rejected a token we still believe valid (e.g. a
+   * revoked session), so the refresh must really run.
+   */
+  expiryAtRequestStart?: number | null;
+}
+
+function hasFreshExpiryRotatedSince(options: RefreshAccessTokenOptions): boolean {
+  if (accessExpiresAtMs === null || accessExpiresAtMs <= Date.now() + REFRESH_LEAD_TIME_MS) {
+    return false;
+  }
+  return options.expiryAtRequestStart === undefined
+    || accessExpiresAtMs !== options.expiryAtRequestStart;
+}
+
+/**
+ * A caller that joins an in-flight refresh may be joining one that
+ * short-circuited on an expiry this caller's request already used. When its
+ * snapshot still equals the settled expiry, it re-runs the check on its own
+ * merits; a rejected shared refresh rejects the joiner without another fetch.
+ */
+async function joinInFlightRefresh(
+  shared: Promise<void>,
+  options: RefreshAccessTokenOptions,
+): Promise<void> {
+  await shared;
+  if (accessExpiresAtMs === options.expiryAtRequestStart) {
+    await refreshAccessToken(options);
+  }
+}
+
 /**
  * Public refresh entry point. Returns a promise that resolves once the
  * access cookie has been rotated (or short-circuited because another
@@ -248,8 +283,12 @@ export class RefreshTransientError extends Error {
  * Single-flight within a tab: concurrent callers share one Promise so
  * the Web Lock is acquired exactly once per logical refresh cycle.
  */
-export function refreshAccessToken(): Promise<void> {
-  if (inFlightRefresh) return inFlightRefresh;
+export function refreshAccessToken(options: RefreshAccessTokenOptions = {}): Promise<void> {
+  if (inFlightRefresh) {
+    return options.expiryAtRequestStart === undefined
+      ? inFlightRefresh
+      : joinInFlightRefresh(inFlightRefresh, options);
+  }
 
   const promise = (async () => {
     const refreshSignal = AbortSignal.timeout(REFRESH_REQUEST_TIMEOUT_MS);
@@ -261,8 +300,7 @@ export function refreshAccessToken(): Promise<void> {
       // Freshness check inside the lock. If another tab refreshed while
       // we were waiting and its broadcast arrived, our in-memory
       // accessExpiresAtMs is now fresh enough that we can short-circuit.
-      if (accessExpiresAtMs !== null
-          && accessExpiresAtMs > Date.now() + REFRESH_LEAD_TIME_MS) {
+      if (hasFreshExpiryRotatedSince(options)) {
         log.debug('Refresh short-circuited by fresh in-memory expiry');
         return;
       }

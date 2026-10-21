@@ -35,6 +35,7 @@ describe('send/types', () => {
     useDecoys: false,
     decoyCount: 0,
     payjoinUrl: null,
+    payjoinAddress: null,
     payjoinStatus: 'idle',
     signingDeviceId: null,
     expandedDeviceId: null,
@@ -118,6 +119,7 @@ describe('send/types', () => {
         feeRate: 5,
         rbfEnabled: false,
         payjoinUrl: 'https://payjoin.example.com',
+        payjoinAddress: 'bc1qbound',
         error: 'Some error',
       });
 
@@ -128,6 +130,7 @@ describe('send/types', () => {
       expect(serialized.feeRate).toBe(5);
       expect(serialized.rbfEnabled).toBe(false);
       expect(serialized.payjoinUrl).toBe('https://payjoin.example.com');
+      expect(serialized.payjoinAddress).toBe('bc1qbound');
       expect(serialized.error).toBe('Some error');
     });
 

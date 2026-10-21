@@ -274,6 +274,13 @@ main() {
     unset "$leaked_var"
   done
 
+  # The hook sources the classifier library under POSIX sh, so the exact-path
+  # Vitest-input predicates must run there too.
+  (cd "$ROOT_DIR" && sh -c '. scripts/ci/classify-files-lib.sh; is_root_vitest_input_file docker-compose.yml') \
+    || fail "is_root_vitest_input_file must run under POSIX sh"
+  (cd "$ROOT_DIR" && sh -c '. scripts/ci/classify-files-lib.sh; is_backend_vitest_input_file config/jade-emulator-proof.json') \
+    || fail "is_backend_vitest_input_file must run under POSIX sh"
+
   echo "pre-commit agent gate regression checks passed"
 }
 

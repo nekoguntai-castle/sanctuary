@@ -21,6 +21,7 @@ interface CreateWalletStepContentProps {
   network: Network;
   scriptType: ScriptType;
   setScriptType: (scriptType: ScriptType) => void;
+  supportedScriptTypes: ScriptType[];
   quorumM: number;
   setQuorumM: (quorumM: number) => void;
   availableDevices: Device[];
@@ -45,6 +46,7 @@ export const CreateWalletStepContent: React.FC<CreateWalletStepContentProps> = (
   network,
   scriptType,
   setScriptType,
+  supportedScriptTypes,
   quorumM,
   setQuorumM,
   availableDevices,
@@ -81,6 +83,7 @@ export const CreateWalletStepContent: React.FC<CreateWalletStepContentProps> = (
         network={network}
         scriptType={scriptType}
         setScriptType={setScriptType}
+        supportedScriptTypes={supportedScriptTypes}
         quorumM={quorumM}
         setQuorumM={setQuorumM}
         selectedDeviceCount={selectedDeviceIds.size}

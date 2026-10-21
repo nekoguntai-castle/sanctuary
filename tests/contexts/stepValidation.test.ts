@@ -34,6 +34,7 @@ describe('stepValidation', () => {
     useDecoys: false,
     decoyCount: 0,
     payjoinUrl: null,
+    payjoinAddress: null,
     payjoinStatus: 'idle',
     signingDeviceId: null,
     expandedDeviceId: null,
