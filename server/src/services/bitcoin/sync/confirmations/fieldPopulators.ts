@@ -6,7 +6,7 @@
  */
 
 import { createLogger } from '../../../../utils/logger';
-import type { RawTransaction, TransactionInput, TransactionOutput } from '../types';
+import type { RawTransaction, TransactionOutput } from '../types';
 import type { PopulationStats } from './types';
 import { transactionOutputAddresses } from '../transactionOutputEvidence';
 export { populateFee } from './feePopulation';
@@ -20,7 +20,7 @@ type AddressLookup = Map<string, string>;
  */
 export function populateBlockHeight(
   tx: { blockHeight: number | null; txid: string },
-  txDetails: RawTransaction,
+  txDetails: RawTransaction | undefined,
   txHeightFromHistory: Map<string, number>,
   currentHeight: number,
   updates: Record<string, unknown>,
@@ -96,12 +96,10 @@ const findTransactionAddressId = (
   walletAddressLookup: AddressLookup,
   walletAddressSet: Set<string>
 ): string | undefined => {
+  // Only received rows: a sent row's wallet address would come from its inputs'
+  // previous outputs, which the authenticated projection does not carry.
   if (isReceivedType(type)) {
     return findReceivedAddressId(txDetails.vout || [], walletAddressLookup, walletAddressSet);
-  }
-
-  if (isSentType(type)) {
-    return findSentAddressId(txDetails.vin || [], walletAddressLookup, walletAddressSet);
   }
 
   return undefined;
@@ -109,10 +107,6 @@ const findTransactionAddressId = (
 
 const isReceivedType = (type: string): boolean => {
   return type === 'received' || type === 'receive';
-};
-
-const isSentType = (type: string): boolean => {
-  return type === 'sent' || type === 'send';
 };
 
 const findReceivedAddressId = (
@@ -130,29 +124,6 @@ const findReceivedAddressId = (
   }
 
   return undefined;
-};
-
-const findSentAddressId = (
-  inputs: TransactionInput[],
-  walletAddressLookup: AddressLookup,
-  walletAddressSet: Set<string>
-): string | undefined => {
-  for (const input of inputs) {
-    const addressId = findWalletAddressId(
-      getInputAddresses(input),
-      walletAddressLookup,
-      walletAddressSet
-    );
-    if (addressId) return addressId;
-  }
-
-  return undefined;
-};
-
-const getInputAddresses = (input: TransactionInput): string[] => {
-  const inputAddress = input.prevout?.scriptPubKey?.address ||
-    input.prevout?.scriptPubKey?.addresses?.[0];
-  return inputAddress ? [inputAddress] : [];
 };
 
 const findWalletAddressId = (

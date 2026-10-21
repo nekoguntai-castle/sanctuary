@@ -315,6 +315,24 @@ describe('webhook endpoint service', () => {
     expect(mockSendWebhookDelivery).not.toHaveBeenCalled();
   });
 
+  it('refuses to replay a delivery retired by an endpoint change', async () => {
+    mockFindDeliveryById.mockResolvedValueOnce(makeDelivery({ status: 'dead' }));
+    mockMarkDeliveryPendingForReplay.mockResolvedValue({
+      count: 0,
+      delivery: null,
+      refusal: 'endpoint_identity_changed',
+    });
+
+    await expect(replayWalletWebhookDelivery('wallet-1', 'endpoint-1', 'delivery-1', 'owner'))
+      .rejects.toMatchObject({
+        statusCode: 409,
+        message: expect.stringContaining('retired'),
+        details: { reason: 'endpoint_identity_changed' },
+      });
+    expect(mockQueueWebhookDeliveryNotification).not.toHaveBeenCalled();
+    expect(mockSendWebhookDelivery).not.toHaveBeenCalled();
+  });
+
   it('converts endpoint and delivery records with null optional fields', () => {
     expect(toWebhookEndpointResponse(makeEndpoint(), 'viewer')).toMatchObject({
       configuredHeaderNames: [],

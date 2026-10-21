@@ -235,6 +235,13 @@ export async function replayWalletWebhookDelivery(
   }
 
   const replayReset = await webhookRepository.markDeliveryPendingForReplay(delivery.id);
+  if (replayReset.refusal === 'endpoint_identity_changed') {
+    throw new ConflictError(
+      'Webhook delivery was retired because the endpoint destination or signing secret changed; it cannot be replayed',
+      undefined,
+      { deliveryId: delivery.id, reason: 'endpoint_identity_changed' },
+    );
+  }
   if (replayReset.count !== 1 || !replayReset.delivery) {
     throw new ConflictError('Webhook delivery replay already in progress', undefined, {
       deliveryId: delivery.id,

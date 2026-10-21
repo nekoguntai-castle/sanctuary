@@ -7,59 +7,67 @@ import {
   mockGetNodeClient,
   mockRecalculateWalletBalances,
 } from './confirmationsTestHarness';
+import {
+  buildTransaction,
+  nodeDetails,
+  serveNodeTransactions,
+  walletOutput,
+} from './confirmationsNodeFixtures';
 import { populateMissingTransactionFields } from '../../../../../../src/services/bitcoin/sync/confirmations';
+
+const WALLET = walletOutput(1);
+const CHANGE = walletOutput(2);
+const EXTERNAL = walletOutput(3);
+const SENDER = walletOutput(4);
 
 export function registerPopulateMissingTransactionFieldsMainFlowContracts() {
   it('populates block/fee/address fields, uses history + prev tx cache, and recalculates balances when amount changes', async () => {
+    const prevFee = buildTransaction({
+      inputs: [{ txid: '11'.repeat(32), vout: 0 }],
+      outputs: [{ script: WALLET.script, valueSats: BigInt(100_000) }],
+    });
+    const senderParent = buildTransaction({
+      inputs: [{ txid: '12'.repeat(32), vout: 0 }],
+      outputs: [{ script: SENDER.script, valueSats: BigInt(40_000) }],
+    });
+    const consolidationParent = buildTransaction({
+      inputs: [{ txid: '13'.repeat(32), vout: 0 }],
+      outputs: [{ script: WALLET.script, valueSats: BigInt(100_000) }],
+    });
+    const txSent = buildTransaction({
+      inputs: [{ txid: prevFee.getId(), vout: 0 }],
+      outputs: [
+        { script: EXTERNAL.script, valueSats: BigInt(90_000) },
+        { script: WALLET.script, valueSats: BigInt(5_000) },
+      ],
+    });
+    const txRecvNoDetails = buildTransaction({
+      inputs: [{ txid: '14'.repeat(32), vout: 0 }],
+      outputs: [{ script: WALLET.script, valueSats: BigInt(30_000) }],
+    });
+    const txRecvDetailed = buildTransaction({
+      inputs: [{ txid: senderParent.getId(), vout: 0 }],
+      outputs: [{ script: WALLET.script, valueSats: BigInt(30_000) }],
+    });
+    const txConsolidate = buildTransaction({
+      inputs: [{ txid: consolidationParent.getId(), vout: 0 }],
+      outputs: [{ script: WALLET.script, valueSats: BigInt(98_000) }],
+    });
     const mockClient = {
       getAddressHistory: vi.fn(async (address: string) => {
-        if (address === 'wallet-addr') {
-          return [{ tx_hash: 'tx-recv-nodetails', height: 995 }];
+        if (address === WALLET.address) {
+          return [{ tx_hash: txRecvNoDetails.getId(), height: 995 }];
         }
         return [];
       }),
-      getTransaction: vi.fn(async (txid: string) => {
-        const txMap: Record<string, unknown> = {
-          'tx-sent': {
-            confirmations: 2,
-            vin: [{ txid: 'prev-fee', vout: 0 }],
-            vout: [
-              { value: 0.0009, scriptPubKey: { address: 'external-addr', addresses: ['external-addr'] } },
-              { value: 0.00005, scriptPubKey: { address: 'wallet-addr', addresses: ['wallet-addr'] } },
-            ],
-          },
-          'tx-recv-nodetails': null,
-          'tx-recv-detailed': {
-            time: 1700000000,
-            vin: [
-              {
-                prevout: {
-                  value: 0.0004,
-                  scriptPubKey: { address: 'sender-addr', addresses: ['sender-addr'] },
-                },
-              },
-            ],
-            vout: [{ value: 0.0003, scriptPubKey: { address: 'wallet-addr', addresses: ['wallet-addr'] } }],
-          },
-          'tx-consolidate': {
-            blockheight: 999,
-            fee: 0.00002,
-            vin: [
-              {
-                prevout: {
-                  value: 0.001,
-                  scriptPubKey: { address: 'wallet-addr', addresses: ['wallet-addr'] },
-                },
-              },
-            ],
-            vout: [{ value: 0.00098, scriptPubKey: { address: 'wallet-addr', addresses: ['wallet-addr'] } }],
-          },
-          'prev-fee': {
-            vout: [{ value: 0.001, scriptPubKey: { address: 'wallet-addr', addresses: ['wallet-addr'] } }],
-          },
-        };
-        return (txMap[txid] as any) ?? null;
-      }),
+      getTransaction: serveNodeTransactions([
+        [txSent.getId(), nodeDetails(txSent, { confirmations: 2 })],
+        [txRecvDetailed.getId(), nodeDetails(txRecvDetailed, { time: 1700000000 })],
+        [txConsolidate.getId(), nodeDetails(txConsolidate, { blockheight: 999 })],
+        [prevFee.getId(), nodeDetails(prevFee)],
+        [senderParent.getId(), nodeDetails(senderParent)],
+        [consolidationParent.getId(), nodeDetails(consolidationParent)],
+      ]),
     };
 
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ network: 'mainnet' });
@@ -67,7 +75,7 @@ export function registerPopulateMissingTransactionFieldsMainFlowContracts() {
     mockPrismaClient.transaction.findMany.mockResolvedValue([
       {
         id: 't1',
-        txid: 'tx-sent',
+        txid: txSent.getId(),
         type: 'sent',
         amount: BigInt(-95000),
         fee: null,
@@ -79,7 +87,7 @@ export function registerPopulateMissingTransactionFieldsMainFlowContracts() {
       },
       {
         id: 't2',
-        txid: 'tx-recv-nodetails',
+        txid: txRecvNoDetails.getId(),
         type: 'received',
         amount: BigInt(30000),
         fee: null,
@@ -91,7 +99,7 @@ export function registerPopulateMissingTransactionFieldsMainFlowContracts() {
       },
       {
         id: 't3',
-        txid: 'tx-recv-detailed',
+        txid: txRecvDetailed.getId(),
         type: 'received',
         amount: BigInt(30000),
         fee: null,
@@ -103,7 +111,7 @@ export function registerPopulateMissingTransactionFieldsMainFlowContracts() {
       },
       {
         id: 't4',
-        txid: 'tx-consolidate',
+        txid: txConsolidate.getId(),
         type: 'consolidation',
         amount: BigInt(0),
         fee: null,
@@ -115,8 +123,8 @@ export function registerPopulateMissingTransactionFieldsMainFlowContracts() {
       },
     ]);
     mockPrismaClient.address.findMany.mockResolvedValue([
-      { id: 'addr-1', address: 'wallet-addr' },
-      { id: 'addr-2', address: 'change-addr' },
+      { id: 'addr-1', address: WALLET.address },
+      { id: 'addr-2', address: CHANGE.address },
     ]);
 
     const onCommit = vi.fn();
@@ -132,28 +140,28 @@ export function registerPopulateMissingTransactionFieldsMainFlowContracts() {
 
     expect(result.updated).toBe(4);
     expect(result.confirmationUpdates).toEqual([
-      { txid: 'tx-sent', oldConfirmations: 0, newConfirmations: 2 },
-      { txid: 'tx-recv-nodetails', oldConfirmations: 0, newConfirmations: 6 },
-      { txid: 'tx-consolidate', oldConfirmations: 0, newConfirmations: 2 },
+      { txid: txSent.getId(), oldConfirmations: 0, newConfirmations: 2 },
+      { txid: txRecvNoDetails.getId(), oldConfirmations: 0, newConfirmations: 6 },
+      { txid: txConsolidate.getId(), oldConfirmations: 0, newConfirmations: 2 },
     ]);
     expect(onCommit).toHaveBeenCalledTimes(2);
     expect(onCommit.mock.calls.map(([commit]) => commit)).toEqual([
       {
         updated: 2,
         confirmationUpdates: [
-          { txid: 'tx-sent', oldConfirmations: 0, newConfirmations: 2 },
-          { txid: 'tx-recv-nodetails', oldConfirmations: 0, newConfirmations: 6 },
+          { txid: txSent.getId(), oldConfirmations: 0, newConfirmations: 2 },
+          { txid: txRecvNoDetails.getId(), oldConfirmations: 0, newConfirmations: 6 },
         ],
       },
       {
         updated: 2,
         confirmationUpdates: [
-          { txid: 'tx-consolidate', oldConfirmations: 0, newConfirmations: 2 },
+          { txid: txConsolidate.getId(), oldConfirmations: 0, newConfirmations: 2 },
         ],
       },
     ]);
     expect(mockClient.getTransaction).toHaveBeenCalledWith(
-      'prev-fee',
+      prevFee.getId(),
       true,
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
@@ -163,7 +171,7 @@ export function registerPopulateMissingTransactionFieldsMainFlowContracts() {
         blockHeight: 999,
         confirmations: 2,
         fee: BigInt(5000),
-        counterpartyAddress: 'external-addr',
+        counterpartyAddress: EXTERNAL.address,
       }),
     });
     expect(getTransactionFieldPatch('t2')).toEqual({
@@ -176,7 +184,7 @@ export function registerPopulateMissingTransactionFieldsMainFlowContracts() {
     expect(getTransactionFieldPatch('t3')).toEqual({
       id: 't3',
       data: expect.objectContaining({
-        counterpartyAddress: 'sender-addr',
+        counterpartyAddress: SENDER.address,
         addressId: 'addr-1',
       }),
     });
@@ -196,9 +204,14 @@ export function registerPopulateMissingTransactionFieldsMainFlowContracts() {
 
   it('stops before fetching a later population chunk when cancellation arrives during the current chunk write', async () => {
     const controller = new AbortController();
-    const transactions = Array.from({ length: 51 }, (_, index) => ({
+    const chainTransactions = Array.from({ length: 51 }, (_, index) => buildTransaction({
+      inputs: [{ txid: '11'.repeat(32), vout: 0 }],
+      outputs: [{ script: WALLET.script, valueSats: BigInt(1_000) }],
+      locktime: index,
+    }));
+    const transactions = chainTransactions.map((tx, index) => ({
       id: `transaction-${index}`,
-      txid: `txid-${index}`,
+      txid: tx.getId(),
       type: 'received',
       amount: BigInt(1000),
       fee: BigInt(0),
@@ -210,11 +223,9 @@ export function registerPopulateMissingTransactionFieldsMainFlowContracts() {
     }));
     const mockClient = {
       getAddressHistory: vi.fn().mockResolvedValue([]),
-      getTransaction: vi.fn().mockResolvedValue({
-        blockheight: 900,
-        vin: [],
-        vout: [],
-      }),
+      getTransaction: serveNodeTransactions(
+        chainTransactions.map((tx): [string, unknown] => [tx.getId(), nodeDetails(tx, { blockheight: 900 })]),
+      ),
     };
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ network: 'mainnet' });
     mockPrismaClient.transaction.findMany.mockResolvedValue(transactions);
@@ -236,6 +247,6 @@ export function registerPopulateMissingTransactionFieldsMainFlowContracts() {
     // Cancellation is checked between database batches, so only the first
     // configured two-row transaction batch commits before the abort is observed.
     expect(getTransactionFieldPatches()).toHaveLength(2);
-    expect(mockClient.getTransaction).not.toHaveBeenCalledWith('txid-50', true);
+    expect(mockClient.getTransaction).not.toHaveBeenCalledWith(chainTransactions[50].getId(), true);
   });
 }

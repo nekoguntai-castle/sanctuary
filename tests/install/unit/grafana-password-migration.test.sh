@@ -97,7 +97,7 @@ test_existing_volume_migration() {
     output="$(run_with_lease "$data" "$cli" "$lease_root" "$token" 2>&1)"
 
     grep -Fqx 'admin:independent-password' "$data/grafana.db"
-    ! grep -Fq 'legacy-encryption-key' "$data/grafana.db"
+    if grep -Fq 'legacy-encryption-key' "$data/grafana.db"; then echo 'FAIL: the migrated grafana.db still holds the legacy encryption key' >&2; return 1; fi
     test -f "$data/.sanctuary-independent-password-v1"
     grep -Fqx 'status=success' "$lease_root/outcomes/outcome-$token"
     grep -Fqx 'control_volume=test-control-volume' "$lease_root/outcomes/outcome-$token"

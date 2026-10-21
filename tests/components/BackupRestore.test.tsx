@@ -9,7 +9,7 @@ import { render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { BrowserRouter } from 'react-router-dom';
-import { beforeEach,describe,expect,it,vi } from 'vitest';
+import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
 
 // Mock admin API
 const mockCreateBackup = vi.fn();
@@ -373,6 +373,10 @@ describe('BackupRestore Component - Advanced Flows', () => {
       encryptionSalt: 'test-salt-abcdef',
     });
     installClipboardMock();
+  });
+
+  afterEach(() => {
+    sessionStorage.clear();
   });
 
   it('copies and reveals encryption keys and downloads key file', async () => {

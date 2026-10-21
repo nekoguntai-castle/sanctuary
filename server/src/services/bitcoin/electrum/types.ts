@@ -118,10 +118,17 @@ export const AddressBalanceSchema = z.object({
 });
 
 /**
+ * Electrum txid: 64 hex characters in any case, normalized to canonical
+ * lowercase. Database txid keys are case-sensitive, so a case variant of an
+ * authenticated txid would otherwise persist as a second transaction or UTXO.
+ */
+export const ElectrumTxidSchema = z.string().regex(/^[0-9a-fA-F]{64}$/, 'expected a 64-character hex txid').toLowerCase();
+
+/**
  * Address history item schema
  */
 export const HistoryItemSchema = z.object({
-  tx_hash: z.string().length(64),
+  tx_hash: ElectrumTxidSchema,
   height: z.number(),
 });
 
@@ -129,7 +136,7 @@ export const HistoryItemSchema = z.object({
  * UTXO item schema
  */
 export const UtxoItemSchema = z.object({
-  tx_hash: z.string().length(64),
+  tx_hash: ElectrumTxidSchema,
   tx_pos: z.number().int().min(0),
   height: z.number(),
   value: z.number().int().min(0), // Satoshis

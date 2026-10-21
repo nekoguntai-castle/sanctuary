@@ -13,6 +13,7 @@ import { populateBlockHeight, populateBlockTime, populateFee, populateCounterpar
 import type { PopulationStats, PendingUpdate } from './types';
 import type { BitcoinNetwork } from '../../networks';
 import type { NodeRequestOptions } from '../../nodeClient';
+import type { RawTransaction } from '../types';
 
 const log = createLogger('BITCOIN:SVC_CONFIRMATIONS');
 const LOG_INTERVAL = 20;
@@ -38,8 +39,8 @@ interface TransactionForUpdate {
 export async function processTransactionUpdates(
   walletId: string,
   transactions: TransactionForUpdate[],
-  txDetailsCache: Map<string, any>,
-  prevTxCache: Map<string, any>,
+  txDetailsCache: Map<string, RawTransaction>,
+  prevTxCache: Map<string, RawTransaction>,
   txHeightFromHistory: Map<string, number>,
   walletAddresses: Array<{ id: string; address: string }>,
   walletAddressLookup: Map<string, string>,
@@ -111,8 +112,8 @@ function logProgress(
 
 async function processSingleTransaction(input: {
   tx: TransactionForUpdate;
-  txDetailsCache: Map<string, any>;
-  prevTxCache: Map<string, any>;
+  txDetailsCache: Map<string, RawTransaction>;
+  prevTxCache: Map<string, RawTransaction>;
   txHeightFromHistory: Map<string, number>;
   walletAddresses: Array<{ id: string; address: string }>;
   walletAddressLookup: Map<string, string>;
@@ -140,7 +141,7 @@ async function processSingleTransaction(input: {
 async function populateTransactionDetails(
   input: {
     tx: TransactionForUpdate;
-    prevTxCache: Map<string, any>;
+    prevTxCache: Map<string, RawTransaction>;
     walletAddresses: Array<{ id: string; address: string }>;
     walletAddressLookup: Map<string, string>;
     walletAddressSet: Set<string>;
@@ -148,20 +149,20 @@ async function populateTransactionDetails(
     stats: PopulationStats;
     options?: NodeRequestOptions;
   },
-  txDetails: any,
+  txDetails: RawTransaction,
   updates: Record<string, unknown>
 ): Promise<void> {
   const { tx, stats } = input;
   populateBlockTime(tx, txDetails, updates, stats);
   await populateBlockTimeFromHeader(tx, updates, input.network, stats, input.options);
 
-  const inputs = txDetails.vin || [];
-  const outputs = txDetails.vout || [];
+  const inputs = txDetails.vin;
+  const outputs = txDetails.vout;
   const isSentTx = tx.type === 'sent' || tx.type === 'send';
   const isConsolidationTx = tx.type === 'consolidation';
   const isReceivedTx = tx.type === 'received' || tx.type === 'receive';
 
-  populateFee(tx, txDetails, inputs, outputs, input.prevTxCache, isSentTx, isConsolidationTx, updates, stats);
+  populateFee(tx, inputs, outputs, input.prevTxCache, isSentTx, isConsolidationTx, updates, stats);
   populateCounterpartyAddress(
     tx, inputs, outputs, input.prevTxCache, input.walletAddressSet,
     isSentTx, isReceivedTx, updates, stats

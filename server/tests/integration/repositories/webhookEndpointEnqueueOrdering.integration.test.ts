@@ -131,6 +131,105 @@ describeWithDatabase('webhook endpoint enqueue ordering', () => {
     });
     await expect(prisma.webhookDelivery.count({ where: { endpointId } })).resolves.toBe(0);
   });
+
+  describe('replaying deliveries after an endpoint change', () => {
+    it('refuses a delivered row whose recorded target predates a repoint', async () => {
+      const { walletId, endpointId } = await createEndpointFixture(prisma);
+      walletIds.push(walletId);
+      endpointIds.push(endpointId);
+      const deliveryId = await createDeliveryFixture(prisma, endpointId, walletId, { status: 'delivered' });
+      await updateWalletWebhook(walletId, endpointId, { url: 'https://new.example/hook' }, 'owner');
+
+      await expect(webhookRepository.markDeliveryPendingForReplay(deliveryId)).resolves.toEqual({
+        count: 0,
+        delivery: null,
+        refusal: 'endpoint_identity_changed',
+      });
+      await expect(readReplayState(prisma, deliveryId)).resolves.toEqual({
+        status: 'delivered',
+        lastError: null,
+      });
+    });
+
+    it('refuses a row retired by a secret rotation at the same URL', async () => {
+      const { walletId, endpointId } = await createEndpointFixture(prisma);
+      walletIds.push(walletId);
+      endpointIds.push(endpointId);
+      const deliveryId = await createDeliveryFixture(prisma, endpointId, walletId, { status: 'failed' });
+      await updateWalletWebhook(walletId, endpointId, { secret: 'rotated-secret-value' }, 'owner');
+
+      await expect(webhookRepository.markDeliveryPendingForReplay(deliveryId)).resolves.toEqual({
+        count: 0,
+        delivery: null,
+        refusal: 'endpoint_identity_changed',
+      });
+      await expect(readReplayState(prisma, deliveryId)).resolves.toEqual({
+        status: 'dead',
+        lastError: webhookRepository.DELIVERY_ENDPOINT_CHANGED_REASON,
+      });
+    });
+
+    it('still resets a same-URL dead row that no endpoint change retired', async () => {
+      const { walletId, endpointId } = await createEndpointFixture(prisma);
+      walletIds.push(walletId);
+      endpointIds.push(endpointId);
+      const deliveryId = await createDeliveryFixture(prisma, endpointId, walletId, {
+        status: 'dead',
+        lastError: 'HTTP 500',
+      });
+
+      const result = await webhookRepository.markDeliveryPendingForReplay(deliveryId);
+
+      expect(result.count).toBe(1);
+      expect(result.refusal).toBeUndefined();
+      await expect(readReplayState(prisma, deliveryId)).resolves.toEqual({
+        status: 'pending',
+        lastError: null,
+      });
+    });
+
+    it('waits for a held repoint and then refuses the retired row', async () => {
+      const { walletId, endpointId } = await createEndpointFixture(prisma);
+      walletIds.push(walletId);
+      endpointIds.push(endpointId);
+      const deliveryId = await createDeliveryFixture(prisma, endpointId, walletId, { status: 'failed' });
+
+      const replayed = await replayBehindHeldEndpoint(prisma, endpointId, deliveryId, async tx => {
+        await tx.webhookEndpoint.update({
+          where: { id: endpointId },
+          data: { url: 'https://new.example/hook' },
+        });
+        await retireOutstandingDeliveries(tx, endpointId);
+      });
+
+      expect(replayed).toEqual({ count: 0, delivery: null, refusal: 'endpoint_identity_changed' });
+      await expect(readReplayState(prisma, deliveryId)).resolves.toEqual({
+        status: 'dead',
+        lastError: webhookRepository.DELIVERY_ENDPOINT_CHANGED_REASON,
+      });
+    });
+
+    it('re-reads the row after a held same-URL secret rotation instead of resetting it', async () => {
+      const { walletId, endpointId } = await createEndpointFixture(prisma);
+      walletIds.push(walletId);
+      endpointIds.push(endpointId);
+      const deliveryId = await createDeliveryFixture(prisma, endpointId, walletId, { status: 'failed' });
+
+      const replayed = await replayBehindHeldEndpoint(prisma, endpointId, deliveryId, async tx => {
+        await tx.webhookEndpoint.update({
+          where: { id: endpointId },
+          data: { secretEncrypted: 'stored-ciphertext-B' },
+        });
+        await retireOutstandingDeliveries(tx, endpointId);
+      });
+
+      expect(replayed).toEqual({ count: 0, delivery: null, refusal: 'endpoint_identity_changed' });
+      await expect(readReplayState(prisma, deliveryId)).resolves.toEqual({
+        status: 'dead',
+        lastError: webhookRepository.DELIVERY_ENDPOINT_CHANGED_REASON,
+      });
+    });
+  });
 });
 
 async function createEndpointFixture(prisma: PrismaClient): Promise<{
@@ -167,6 +266,70 @@ function createInput(endpointId: string, walletId: string) {
     targetUrl: 'https://old.example/hook',
     eventPayload: { eventId: 'event-enqueue-ordering' },
   };
+}
+
+async function createDeliveryFixture(
+  prisma: PrismaClient,
+  endpointId: string,
+  walletId: string,
+  state: { status: string; lastError?: string | null },
+): Promise<string> {
+  const created = await webhookRepository.createDelivery(createInput(endpointId, walletId));
+  if (!created.accepted) throw new Error(`delivery fixture refused: ${created.reason}`);
+  await prisma.webhookDelivery.update({
+    where: { id: created.delivery.id },
+    data: { status: state.status, lastError: state.lastError ?? null },
+  });
+  return created.delivery.id;
+}
+
+function readReplayState(prisma: PrismaClient, deliveryId: string) {
+  return prisma.webhookDelivery.findUniqueOrThrow({
+    where: { id: deliveryId },
+    select: { status: true, lastError: true },
+  });
+}
+
+async function retireOutstandingDeliveries(tx: PrismaClient, endpointId: string): Promise<void> {
+  await tx.webhookDelivery.updateMany({
+    where: { endpointId, status: { in: ['pending', 'failed'] } },
+    data: {
+      status: 'dead',
+      nextAttemptAt: null,
+      attemptLeaseToken: null,
+      attemptLeaseExpiresAt: null,
+      lastError: webhookRepository.DELIVERY_ENDPOINT_CHANGED_REASON,
+    },
+  });
+}
+
+async function replayBehindHeldEndpoint(
+  prisma: PrismaClient,
+  endpointId: string,
+  deliveryId: string,
+  update: (tx: PrismaClient) => Promise<void>,
+) {
+  const heldUpdate = await holdEndpointRow(prisma, endpointId, update);
+  const replay = settle(webhookRepository.markDeliveryPendingForReplay(deliveryId));
+  let waitError: unknown;
+  let releaseError: unknown;
+  try {
+    await waitForEndpointLockWaiter(prisma, heldUpdate.backendPid, 'FOR SHARE');
+  } catch (error) {
+    waitError = error;
+  } finally {
+    try {
+      await heldUpdate.release();
+    } catch (error) {
+      releaseError = error;
+    }
+  }
+
+  const replayed = await replay;
+  if (waitError) throw waitError;
+  if (releaseError) throw releaseError;
+  if ('error' in replayed) throw replayed.error;
+  return replayed.value;
 }
 
 async function holdEndpointRow(
@@ -254,7 +417,11 @@ async function waitForBlockedDeliveryInsert(prisma: PrismaClient, blockerPid: nu
   throw new Error('Timed out waiting for createDelivery upsert to block on the table barrier');
 }
 
-async function waitForEndpointLockWaiter(prisma: PrismaClient, blockerPid: number): Promise<void> {
+async function waitForEndpointLockWaiter(
+  prisma: PrismaClient,
+  blockerPid: number,
+  lockClause = 'FOR NO KEY UPDATE',
+): Promise<void> {
   const deadline = Date.now() + LOCK_OBSERVATION_TIMEOUT_MS;
   while (Date.now() < deadline) {
     const [waiters] = await prisma.$queryRaw<Array<{ count: bigint }>>`
@@ -265,7 +432,7 @@ async function waitForEndpointLockWaiter(prisma: PrismaClient, blockerPid: numbe
         AND wait_event_type = 'Lock'
         AND ${blockerPid} = ANY(pg_blocking_pids(pid))
         AND query ILIKE '%FROM "webhook_endpoints"%'
-        AND query ILIKE '%FOR NO KEY UPDATE%'
+        AND query ILIKE ${`%${lockClause}%`}
     `;
     if (Number(waiters?.count ?? 0) > 0) return;
     await new Promise(resolve => setTimeout(resolve, 10));

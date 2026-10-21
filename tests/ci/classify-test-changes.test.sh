@@ -545,6 +545,26 @@ EOF_DOC
   assert_exact_output "$output_file" "render_changed" "false"
   assert_exact_output "$output_file" "build_changed" "false"
 
+  # Every test-tree input of the critical entries selects the critical lane, so
+  # editing a killing contracts file or shared helper re-proves the gate (D-12.C4).
+  for critical_input in \
+    server/tests/unit/services/bitcoin/psbtValidation/psbtValidation.payjoin.contracts.ts \
+    server/tests/unit/middleware/auth/auth.authenticate.contracts.ts \
+    server/tests/unit/services/bitcoin/transactionServiceBroadcast/transactionServiceBroadcast.errors.contracts.ts \
+    server/tests/unit/api/transactionsSigningIntentBroadcast.retry.test.ts \
+    server/tests/mocks/prisma.ts \
+    server/tests/setup.ts; do
+    base_sha="$head_sha"
+    mkdir -p "$repo_dir/$(dirname "$critical_input")"
+    printf 'export const criticalInput = 1;\n' > "$repo_dir/$critical_input"
+    git -C "$repo_dir" add "$critical_input"
+    git -C "$repo_dir" commit -qm "critical test input $critical_input"
+    head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+    run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+    assert_exact_output "$output_file" "critical_mutation_changed" "true"
+  done
+
   base_sha="$head_sha"
   mkdir -p "$repo_dir/tests/components"
   printf 'export const example = 1;\n' > "$repo_dir/tests/components/example.test.tsx"

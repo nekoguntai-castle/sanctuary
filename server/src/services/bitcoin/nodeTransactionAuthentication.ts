@@ -2,9 +2,12 @@
  * Node Transaction Authentication
  *
  * The node client decodes whatever bytes the server returns and never checks
- * them against the requested txid. Advanced-transaction builders read values,
- * scripts and legacy previous-transaction bytes through these helpers instead,
- * so a server cannot substitute a different transaction: the bytes must hash to
+ * them against the requested txid. Four consumers read node transactions
+ * through these helpers instead: the advanced-transaction builders (RBF, CPFP,
+ * batch), legacy previous-transaction fetching for signing
+ * (transactions/helpers), missing-field population during sync
+ * (sync/confirmations) and signing-intent broadcast reconciliation. A server
+ * therefore cannot substitute a different transaction: the bytes must hash to
  * the requested txid and re-encode canonically, or the lookup fails closed with
  * a RawTransactionEvidenceError.
  *
@@ -15,12 +18,12 @@
  * the weight cap the parser enforces.
  */
 
-import type { NodeClientInterface } from '../nodeClient';
+import type { NodeClientInterface } from './nodeClient';
 import {
   authenticateRawTransactionOutput,
   parseAuthenticatedRawTransaction,
   type AuthenticatedRawTransaction,
-} from '../rawTransactionEvidence';
+} from './rawTransactionEvidence';
 
 type TransactionLookupClient = Pick<NodeClientInterface, 'getTransaction'>;
 

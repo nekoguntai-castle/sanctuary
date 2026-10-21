@@ -56,12 +56,12 @@ relay_uses_env_not_interpolation() {
   block="$(job_block "$1")"
   # No ${{ needs.*.result }} may appear inside a run: block. Interpolations are
   # fine under env:, so look only at lines that are shell body.
-  ! awk '
+  if awk '
     /^      *run: \|/ { in_run = 1; next }
     /^      - name:/  { in_run = 0 }
     in_run && /\$\{\{[^}]*needs\.[^}]*result/ { found = 1 }
     END { exit(found ? 0 : 1) }
-  ' <<<"$block"
+  ' <<<"$block"; then return 1; fi
 }
 
 relay_reports_upstream_result() {
@@ -95,7 +95,7 @@ relay_block_is_bounded_and_lightweight() {
   local block="$1"
   grep -q '^    timeout-minutes: 5$' <<<"$block" || return 1
   [ "$(grep -Ec '^      - ' <<<"$block")" -eq 1 ] || return 1
-  ! grep -Eq '^[[:space:]]+(- )?uses:|actions/checkout|docker |run-with-log|with-runner-lock' <<<"$block"
+  if grep -Eq '^[[:space:]]+(- )?uses:|actions/checkout|docker |run-with-log|with-runner-lock' <<<"$block"; then return 1; fi
 }
 
 relay_is_bounded_and_lightweight() {
@@ -108,11 +108,11 @@ relay_rejects_extra_step() {
   block="$(job_block install-script-test)"
   block="${block/    steps:/    steps:
 $extra_step}"
-  ! relay_block_is_bounded_and_lightweight "$block"
+  if relay_block_is_bounded_and_lightweight "$block"; then return 1; fi
 }
 
 relay_rejects_block() {
-  ! relay_block_is_bounded_and_lightweight "$1"
+  if relay_block_is_bounded_and_lightweight "$1"; then return 1; fi
 }
 
 for job in install-script-test upgrade-extended-test; do

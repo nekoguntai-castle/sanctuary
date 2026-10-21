@@ -320,7 +320,7 @@ test_stop_refuses_unregistered_definition() {
     if RUNNING_SERVICES= EXISTING_SERVICES=$'tor\nmcp' run_start "$case_dir" --stop; then
         return 1
     fi
-    ! grep -q ' compose .* down' "$case_dir/docker.log"
+    if grep -q ' compose .* down' "$case_dir/docker.log"; then return 1; fi
 }
 
 test_detection_ignores_foreign_and_exited_services() {

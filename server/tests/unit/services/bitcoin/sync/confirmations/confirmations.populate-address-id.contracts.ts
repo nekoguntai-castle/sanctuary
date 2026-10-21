@@ -2,22 +2,25 @@ import { expect, it, vi } from 'vitest';
 
 import { mockPrismaClient } from '../../../../../mocks/prisma';
 import { getTransactionFieldPatch, getTransactionFieldPatches, mockGetNodeClient } from './confirmationsTestHarness';
+import {
+  nodeDetails,
+  payingTransaction,
+  serveNodeTransactions,
+  walletOutput,
+} from './confirmationsNodeFixtures';
 import { populateMissingTransactionFields } from '../../../../../../src/services/bitcoin/sync/confirmations';
 
+const WALLET = walletOutput(1);
+const EXTERNAL = walletOutput(3);
+
 export function registerPopulateMissingTransactionFieldsAddressIdContracts() {
-  it('populates addressId for sent transactions from input prevout wallet addresses', async () => {
+  it('does not populate sent addressId from server-supplied prevout fields', async () => {
+    const sent = payingTransaction(EXTERNAL.script, 50_000, '11');
+    const details = nodeDetails(sent);
+    const vin = [{ ...details.vin[0], prevout: { scriptPubKey: { address: WALLET.address, addresses: [WALLET.address] } } }];
     const mockClient = {
       getAddressHistory: vi.fn(async () => []),
-      getTransaction: vi.fn(async () => ({
-        vin: [
-          {
-            prevout: {
-              scriptPubKey: { address: 'wallet-addr', addresses: ['wallet-addr'] },
-            },
-          },
-        ],
-        vout: [{ value: 0.0005, scriptPubKey: { address: 'external-addr', addresses: ['external-addr'] } }],
-      })),
+      getTransaction: serveNodeTransactions([[sent.getId(), { ...details, vin }]]),
     };
 
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ network: 'mainnet' });
@@ -25,7 +28,7 @@ export function registerPopulateMissingTransactionFieldsAddressIdContracts() {
     mockPrismaClient.transaction.findMany.mockResolvedValue([
       {
         id: 't-sent-addressid',
-        txid: 'tx-sent-addressid',
+        txid: sent.getId(),
         type: 'sent',
         amount: BigInt(-50000),
         fee: BigInt(1000),
@@ -37,27 +40,20 @@ export function registerPopulateMissingTransactionFieldsAddressIdContracts() {
       },
     ]);
     mockPrismaClient.address.findMany.mockResolvedValue([
-      { id: 'addr-1', address: 'wallet-addr' },
+      { id: 'addr-1', address: WALLET.address },
     ]);
 
     const result = await populateMissingTransactionFields('wallet-1');
 
-    expect(result.updated).toBe(1);
-    expect(getTransactionFieldPatch('t-sent-addressid')).toEqual({
-      id: 't-sent-addressid',
-      data: expect.objectContaining({
-        addressId: 'addr-1',
-      }),
-    });
+    expect(result.updated).toBe(0);
+    expect(getTransactionFieldPatch('t-sent-addressid')).toBeUndefined();
   });
 
   it('leaves received transaction addressId unset when no output matches wallet addresses', async () => {
+    const received = payingTransaction(EXTERNAL.script, 20_000, '11');
     const mockClient = {
       getAddressHistory: vi.fn(async () => []),
-      getTransaction: vi.fn(async () => ({
-        vin: [],
-        vout: [{ value: 0.0002, scriptPubKey: { address: 'external-addr', addresses: ['external-addr'] } }],
-      })),
+      getTransaction: serveNodeTransactions([[received.getId(), nodeDetails(received)]]),
     };
 
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ network: 'mainnet' });
@@ -65,7 +61,7 @@ export function registerPopulateMissingTransactionFieldsAddressIdContracts() {
     mockPrismaClient.transaction.findMany.mockResolvedValue([
       {
         id: 't-recv-no-match',
-        txid: 'tx-recv-no-match',
+        txid: received.getId(),
         type: 'received',
         amount: BigInt(20000),
         fee: null,
@@ -77,7 +73,7 @@ export function registerPopulateMissingTransactionFieldsAddressIdContracts() {
       },
     ]);
     mockPrismaClient.address.findMany.mockResolvedValue([
-      { id: 'addr-1', address: 'wallet-addr' },
+      { id: 'addr-1', address: WALLET.address },
     ]);
 
     const result = await populateMissingTransactionFields('wallet-1');
@@ -87,12 +83,10 @@ export function registerPopulateMissingTransactionFieldsAddressIdContracts() {
   });
 
   it('does not set received addressId when wallet lookup returns no id', async () => {
+    const received = payingTransaction(WALLET.script, 20_000, '11');
     const mockClient = {
       getAddressHistory: vi.fn(async () => []),
-      getTransaction: vi.fn(async () => ({
-        vin: [],
-        vout: [{ value: 0.0002, scriptPubKey: { address: 'wallet-addr', addresses: ['wallet-addr'] } }],
-      })),
+      getTransaction: serveNodeTransactions([[received.getId(), nodeDetails(received)]]),
     };
 
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ network: 'mainnet' });
@@ -100,7 +94,7 @@ export function registerPopulateMissingTransactionFieldsAddressIdContracts() {
     mockPrismaClient.transaction.findMany.mockResolvedValue([
       {
         id: 't-recv-missing-id',
-        txid: 'tx-recv-missing-id',
+        txid: received.getId(),
         type: 'received',
         amount: BigInt(20000),
         fee: null,
@@ -113,7 +107,7 @@ export function registerPopulateMissingTransactionFieldsAddressIdContracts() {
     ]);
     // Intentionally missing id to exercise the falsy-id branch.
     mockPrismaClient.address.findMany.mockResolvedValue([
-      { id: undefined, address: 'wallet-addr' } as any,
+      { id: undefined, address: WALLET.address } as any,
     ]);
 
     const result = await populateMissingTransactionFields('wallet-1');
@@ -122,41 +116,25 @@ export function registerPopulateMissingTransactionFieldsAddressIdContracts() {
     expect(getTransactionFieldPatches()).toEqual([]);
   });
 
-  it('handles sent addressId fallback branches when vin is missing or lookup id is missing', async () => {
+  it('leaves received addressId unset when the transaction lookup misses or the wallet lookup id is missing', async () => {
+    const missing = payingTransaction(WALLET.script, 30_000, '12');
+    const received = payingTransaction(WALLET.script, 30_000, '13');
     const mockClient = {
       getAddressHistory: vi.fn(async () => []),
-      getTransaction: vi.fn(async (txid: string) => {
-        if (txid === 'tx-sent-no-vin') {
-          return {
-            vout: [{ value: 0.0003, scriptPubKey: { address: 'external-addr', addresses: ['external-addr'] } }],
-          };
-        }
-        return {
-          vin: [
-            {
-              prevout: {
-                scriptPubKey: { addresses: ['external-in'] },
-              },
-            },
-            {
-              prevout: {
-                scriptPubKey: { addresses: ['wallet-addr'] },
-              },
-            },
-          ],
-          vout: [{ value: 0.0003, scriptPubKey: { address: 'external-addr', addresses: ['external-addr'] } }],
-        };
-      }),
+      getTransaction: serveNodeTransactions([
+        [missing.getId(), new Error('transaction not found')],
+        [received.getId(), nodeDetails(received)],
+      ]),
     };
 
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ network: 'mainnet' });
     mockGetNodeClient.mockResolvedValue(mockClient);
     mockPrismaClient.transaction.findMany.mockResolvedValue([
       {
-        id: 't-sent-no-vin',
-        txid: 'tx-sent-no-vin',
-        type: 'sent',
-        amount: BigInt(-30000),
+        id: 't-recv-lookup-miss',
+        txid: missing.getId(),
+        type: 'received',
+        amount: BigInt(30000),
         fee: BigInt(1000),
         blockHeight: 999,
         blockTime: new Date('2024-01-01T00:00:00.000Z'),
@@ -165,10 +143,10 @@ export function registerPopulateMissingTransactionFieldsAddressIdContracts() {
         counterpartyAddress: 'already-set',
       },
       {
-        id: 't-sent-missing-id',
-        txid: 'tx-sent-missing-id',
-        type: 'sent',
-        amount: BigInt(-30000),
+        id: 't-recv-missing-id',
+        txid: received.getId(),
+        type: 'received',
+        amount: BigInt(30000),
         fee: BigInt(1000),
         blockHeight: 999,
         blockTime: new Date('2024-01-01T00:00:00.000Z'),
@@ -179,7 +157,7 @@ export function registerPopulateMissingTransactionFieldsAddressIdContracts() {
     ]);
     // Intentionally missing id to hit falsy lookup branch.
     mockPrismaClient.address.findMany.mockResolvedValue([
-      { id: undefined, address: 'wallet-addr' } as any,
+      { id: undefined, address: WALLET.address } as any,
     ]);
 
     const result = await populateMissingTransactionFields('wallet-1');

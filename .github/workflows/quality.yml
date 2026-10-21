@@ -267,7 +267,7 @@ jobs:
             fi
             sleep $((attempt * 10))
           done
-          redact_file "$install_log" "$DIAGNOSTIC_DIR/npm-deprecation-install.log"
+          redact_file "$install_log" "$DIAGNOSTIC_DIR/npm-deprecation-install.redacted.txt"
           node scripts/ci/check-npm-install-scripts.mjs --verify-installed
           node scripts/ci/check-npm-deprecations.mjs --install-log "$install_log"
           DEPRECATION_SUBJECT
@@ -839,6 +839,7 @@ jobs:
           node tests/ci/classify-hardware-emulator-shadow.test.mjs
           node tests/ci/check-npm-install-scripts.test.mjs
           node --test tests/ci/check-critical-mutation-config.test.mjs
+          node --test tests/ci/check-negated-test-assertions.test.mjs
           node --test tests/ci/wallet-sync-database-readiness.test.mjs
           node --test tests/ci/integration-db-guard.test.mjs
           node --test tests/ci/wallet-sync-replay-cleanup.test.mjs
@@ -1181,6 +1182,11 @@ jobs:
         run: >
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/large-file-classification.log"
           node scripts/quality/check-large-files.mjs
+
+      - name: Check negated shell test assertions
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/negated-test-assertions.log"
+          node scripts/ci/check-negated-test-assertions.mjs
 
       - name: Write large-file classification failure breadcrumb
         if: failure()

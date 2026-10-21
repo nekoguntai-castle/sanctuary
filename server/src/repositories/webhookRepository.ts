@@ -393,6 +393,24 @@ export async function claimDeliveryAttempt(
 export interface MarkDeliveryPendingForReplayResult {
   count: number;
   delivery: WebhookDelivery | null;
+  refusal?: 'endpoint_identity_changed';
+}
+
+interface ReplayStateRow {
+  endpointUrl: string;
+  targetUrl: string;
+  status: string;
+  lastError: string | null;
+}
+
+/**
+ * A delivery records an event for one destination and signing identity. It is
+ * not replayable once an endpoint change retired it, or when it was recorded
+ * for a URL the endpoint no longer points at.
+ */
+function isReplayRefused(row: ReplayStateRow): boolean {
+  if (row.status === 'dead' && row.lastError === DELIVERY_ENDPOINT_CHANGED_REASON) return true;
+  return row.targetUrl !== row.endpointUrl;
 }
 
 /**
@@ -401,11 +419,34 @@ export interface MarkDeliveryPendingForReplayResult {
  * `update`): an unguarded reset can race a worker mid-attempt and clobber
  * the outcome it is about to persist (see `sendWebhookDelivery`'s
  * `delivery_state_conflict` handling for the other half of that race).
+ *
+ * The endpoint row is share-locked first so a replay serialises with
+ * `updateEndpoint`'s repoint/rotation; the replay state is then read in a
+ * separate statement so it reflects any retirement committed while waiting
+ * (a single joined locking read would keep the stale delivery snapshot).
  */
 export async function markDeliveryPendingForReplay(
   deliveryId: string,
 ): Promise<MarkDeliveryPendingForReplayResult> {
   return prisma.$transaction(async (tx) => {
+    const lockedRows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT e."id" FROM "webhook_endpoints" e
+      WHERE e."id" = (SELECT "endpointId" FROM "webhook_deliveries" WHERE "id" = ${deliveryId})
+      FOR SHARE
+    `);
+    if (lockedRows.length === 0) return { count: 0, delivery: null };
+
+    const [replayState] = await tx.$queryRaw<ReplayStateRow[]>(Prisma.sql`
+      SELECT e."url" AS "endpointUrl", d."targetUrl", d."status", d."lastError"
+      FROM "webhook_endpoints" e
+      JOIN "webhook_deliveries" d ON d."endpointId" = e."id"
+      WHERE d."id" = ${deliveryId}
+    `);
+    if (!replayState) return { count: 0, delivery: null };
+    if (isReplayRefused(replayState)) {
+      return { count: 0, delivery: null, refusal: 'endpoint_identity_changed' };
+    }
+
     const now = new Date();
     const result = await tx.webhookDelivery.updateMany({
       where: {

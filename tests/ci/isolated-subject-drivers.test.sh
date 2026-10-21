@@ -35,7 +35,7 @@ SANCTUARY_INSTALL_SUBJECT_MODE=fresh-install PORT_OFFSET=0 JOB_LOG_DIR="$TEST_RO
     show_logs 23 || status=$?
     [[ $status == 23 ]]
     [[ $(grep -c "^bounded$" "$JOB_LOG_DIR/container-logs.log") == 6 ]]
-    ! grep -q unbounded "$JOB_LOG_DIR/container-logs.log"
+    if grep -q unbounded "$JOB_LOG_DIR/container-logs.log"; then exit 1; fi
   ' _ "$REPO_ROOT" || fail 'post-subject diagnostics must be bounded and preserve failure'
 
 SANCTUARY_CI_ORIGINAL_WORKSPACE="$TEST_ROOT" \

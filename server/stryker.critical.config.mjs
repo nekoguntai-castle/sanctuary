@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import {
+  CRITICAL_TEST_FILES,
   resolveShard,
-  shardIncrementalFileName,
   shardReportFileName,
 } from './scripts/mutation/shards.mjs';
 
@@ -60,30 +60,7 @@ function buildCriticalTestCommand() {
   // hung during shutdown for broadcastContracts.test.ts.
   return [
     `${ensureSandboxRuntimeLinks} && npm run test:run -- --pool=threads --no-file-parallelism`,
-    'tests/unit/services/bitcoin/addressDerivation.verified.test.ts',
-    'tests/unit/services/bitcoin/psbt.verified.test.ts',
-    'tests/unit/services/bitcoin/psbtValidation.test.ts',
-    'tests/unit/services/bitcoin/psbtInfo.test.ts',
-    'tests/unit/services/bitcoin/validationEvidenceContracts.test.ts',
-    'tests/unit/services/bitcoin/transactionServiceBroadcast/broadcastContracts.test.ts',
-    'tests/unit/services/bitcoin/blockchain/broadcastPreflight.test.ts',
-    'tests/unit/services/bitcoin/industry/broadcastSafety.test.ts',
-    'tests/unit/services/bitcoin/signingIntent/canonical.test.ts',
-    'tests/unit/services/bitcoin/signingIntent/artifactValidation.test.ts',
-    'tests/unit/services/bitcoin/signingIntent/prevoutValidation.test.ts',
-    'tests/unit/services/bitcoin/signingIntent/service.test.ts',
-    'tests/unit/services/bitcoin/signingIntent/networkBoundary.test.ts',
-    'tests/unit/services/bitcoin/signingIntent/ingressRegistry.test.ts',
-    'tests/unit/services/bitcoin/signingIntent/intentSpend.test.ts',
-    'tests/unit/services/bitcoin/signingIntent/broadcastLifecycle.test.ts',
-    'tests/unit/services/bitcoin/transactionService.broadcast.test.ts',
-    'tests/unit/repositories/transactionSigningIntentRepository.test.ts',
-    'tests/unit/api/transactionsSigningIntentBroadcast.test.ts',
-    'tests/unit/api/transactionsSigningIntentBroadcast.replacement.test.ts',
-    'tests/unit/api/transactionsSigningIntentBroadcast.retry.test.ts',
-    'tests/unit/api/transactions-http-routes.test.ts',
-    'tests/unit/middleware/auth.test.ts',
-    'tests/unit/services/accessControl.test.ts',
+    ...CRITICAL_TEST_FILES,
   ].join(' ');
 }
 
@@ -147,8 +124,10 @@ export default {
     break: 0,
   },
 
-  incremental: true,
-  incrementalFile: shardIncrementalFileName(SHARD.id),
+  // Never reuse incremental results: Stryker's incremental diff only sees the
+  // mutated files and the recorded test entries, so a changed contracts file
+  // or helper would keep stale kills (D-12.C3). Every run executes all mutants.
+  incremental: false,
   // Saturate the 4-vCPU ubuntu-latest runner used by the mutation jobs.
   // The default `cpus/2` was leaving half the runner idle.
   concurrency: 4,

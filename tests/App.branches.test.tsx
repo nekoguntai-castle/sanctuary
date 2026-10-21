@@ -19,6 +19,7 @@ const {
   mockUseWebSocketQueryInvalidation,
   mockReloadCurrentDocument,
   mockUseAppCapabilityStates,
+  mockAddAppNotification,
 } = vi.hoisted(() => ({
   mockUseUser: vi.fn(),
   mockUseNotifications: vi.fn(),
@@ -26,6 +27,8 @@ const {
   mockUseWebSocketQueryInvalidation: vi.fn(),
   mockReloadCurrentDocument: vi.fn(),
   mockUseAppCapabilityStates: vi.fn(),
+  // Stable across renders: the restore hand-off effect depends on addNotification.
+  mockAddAppNotification: vi.fn(),
 }));
 
 vi.mock("../src/hooks/websocket", () => ({
@@ -83,6 +86,7 @@ vi.mock("../src/contexts/AppNotificationContext", () => ({
   AppNotificationProvider: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
   ),
+  useAppNotifications: () => ({ addNotification: mockAddAppNotification }),
 }));
 
 vi.mock("../src/contexts/SidebarContext", () => ({
@@ -259,6 +263,7 @@ vi.mock("../src/components/ChangePasswordModal", () => ({
 describe("App branch coverage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionStorage.clear();
     window.location.hash = "#/";
     mockUseNotifications.mockReturnValue({
       notifications: [{ id: "n1" }],
@@ -333,6 +338,34 @@ describe("App branch coverage", () => {
 
     expect(screen.getByRole("heading", { name: "Email verification" })).toBeInTheDocument();
     expect(screen.queryByText("Dashboard Page")).not.toBeInTheDocument();
+  });
+
+  it("an admin login consumes a stashed restore hand-off", async () => {
+    sessionStorage.setItem(
+      "sanctuary_restore_warnings_handoff",
+      JSON.stringify({ id: "h-1", createdAt: Date.now(), warnings: ["w1", "w2"] }),
+    );
+    mockUseUser.mockReturnValue({
+      isAuthenticated: true,
+      isLoading: false,
+      logout: vi.fn(),
+      user: { id: "admin-1", isAdmin: true, usingDefaultPassword: false, preferences: {} },
+      updatePreferences: vi.fn(),
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText("Dashboard Page")).toBeInTheDocument();
+    expect(mockAddAppNotification).toHaveBeenCalledTimes(2);
+    expect(mockAddAppNotification).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ title: "Restore Warning", severity: "warning" }),
+    );
+    expect(mockAddAppNotification).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ title: "Restore Warning", severity: "warning" }),
+    );
+    expect(sessionStorage.getItem("sanctuary_restore_warnings_handoff")).toBeNull();
   });
 
   it("renders authenticated app with preference fallbacks and theme toggling", async () => {

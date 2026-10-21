@@ -27,4 +27,4 @@ export {
   authenticateNodeTransaction,
   fetchAuthenticatedPrevout,
   fetchAuthenticatedTransaction,
-} from './nodeTransactionAuthentication';
+} from '../nodeTransactionAuthentication';

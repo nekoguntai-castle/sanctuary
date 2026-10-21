@@ -271,7 +271,7 @@ describe('Blockchain Service - Reorg Handling', () => {
         { id: 'addr-1', address: 'bc1qwallet', derivationPath: "m/84'/0'/0'/0/0", index: 0, used: true },
       ];
 
-      const reorgedTxid = 'reorged-tx'.padEnd(64, 'b');
+      const reorgedTxid = 'a5'.repeat(32);
       // UTXO that was marked spent but now appears on blockchain again
       const existingUtxo = {
         id: 'utxo-1',

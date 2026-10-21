@@ -147,7 +147,7 @@ export function registerBlockchainSyncWalletCoreTests(): void {
       mockPrismaClient.address.findMany.mockResolvedValue(addresses);
 
       // New transaction discovered during sync
-      const txHash = 'sync-tx'.padEnd(64, 'a');
+      const txHash = 'a2'.repeat(32);
       mockElectrumClient.getAddressHistoryBatch.mockResolvedValue(new Map([
         [addresses[0].address, [{ tx_hash: txHash, height: 800000 }]],
       ]));

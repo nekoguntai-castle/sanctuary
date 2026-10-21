@@ -178,9 +178,9 @@ export async function populateMissingTransactionFields(
       let pendingUpdates: Awaited<ReturnType<typeof processTransactionUpdates>>['pendingUpdates'];
       let stats: Awaited<ReturnType<typeof processTransactionUpdates>>['stats'];
       try {
-        txDetailsCache = await fetchTransactionDetails(walletId, chunk, client, chunkOptions);
+        txDetailsCache = await fetchTransactionDetails(walletId, chunk, client, castNetwork, chunkOptions);
         prevTxCache = await fetchPreviousTransactions(
-          walletId, chunk, txDetailsCache, client, chunkOptions,
+          walletId, chunk, txDetailsCache, client, castNetwork, chunkOptions,
         );
         ({ pendingUpdates, stats } = await processTransactionUpdates(
           walletId, chunk, txDetailsCache, prevTxCache, txHeightFromHistory,

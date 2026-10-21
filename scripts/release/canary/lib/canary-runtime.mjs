@@ -20,7 +20,10 @@ import { promisify } from 'node:util';
 import fs from 'node:fs';
 import https from 'node:https';
 
+import { CANARY_ATTESTED_SERVICES, COMMIT_PATTERN } from '../../verify-release-candidate-canary.mjs';
+
 const execFileP = promisify(execFile);
+const REVISION_LABEL_FORMAT = '{{index .Config.Labels "org.opencontainers.image.revision"}}';
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export const nowIso = () => new Date().toISOString();
@@ -314,6 +317,44 @@ export function summarizeFleet(wallets) {
 }
 
 /**
+ * Why each attested service's running image is not a build of `commit`: missing,
+ * unlabelled, or labelled with another revision. Pure; exported for tests.
+ */
+export function deployedRevisionProblems(images, commit) {
+  const validCommit = typeof commit === 'string' && COMMIT_PATTERN.test(commit);
+  const problems = [];
+  for (const service of CANARY_ATTESTED_SERVICES) {
+    const image = images.find((candidate) => candidate.service === service);
+    if (!image) {
+      problems.push(`${service}: no running container was attested`);
+    } else if (!image.revision) {
+      problems.push(`${service}: image ${image.imageId} has no org.opencontainers.image.revision label`);
+    } else if (!validCommit || image.revision !== commit) {
+      problems.push(`${service}: image ${image.imageId} was built from ${image.revision}, not CANARY_COMMIT ${commit}`);
+    }
+  }
+  return problems;
+}
+
+/** One problem per service whose image changed, or vanished, between two reads. Pure. */
+export function deployedImageDriftProblems(deployed, attested) {
+  return deployed.flatMap(({ service, imageId }) => {
+    const current = attested.find((candidate) => candidate.service === service);
+    if (!current) return [`${service}: no longer attested at the end of the run`];
+    return current.imageId === imageId ? [] : [`${service}: image changed during the run (${imageId} -> ${current.imageId})`];
+  });
+}
+
+/**
+ * Everything that forbids a receipt at attestation time: the attestation-time
+ * images must be builds of `commit`, and the stack must not have been swapped
+ * since the startup read. Pure; exported for tests.
+ */
+export function attestationProblems(deployed, attested, commit) {
+  return [...deployedRevisionProblems(attested, commit), ...deployedImageDriftProblems(deployed, attested)];
+}
+
+/**
  * Bind the stack-facing helpers to one deployment: an env file to read secrets
  * from and a Compose project name to address containers by.
  *
@@ -357,6 +398,25 @@ export function createCanaryRuntime({ envFile, project }) {
       exitCode: c.State.ExitCode ?? 0,
       memoryLimit: c.HostConfig.Memory ?? 0,
     };
+  }
+
+  // The revision label of the image each attested container is running. The
+  // label is read from the container's image ID, never from a tag, so a rebuilt
+  // but not restarted image cannot vouch for the running container.
+  async function attestDeployedImages() {
+    return Promise.all(CANARY_ATTESTED_SERVICES.map(async (service) => {
+      const c = await inspectContainer(`${project}-${service}-1`);
+      const label = (await docker('image', 'inspect', '--format', REVISION_LABEL_FORMAT, c.imageId)).trim();
+      return {
+        service,
+        containerId: c.containerId,
+        imageId: c.imageId,
+        revision: label === '<no value>' ? '' : label,
+        status: c.status,
+        restartCount: c.restartCount,
+        health: c.health,
+      };
+    }));
   }
 
   // HS256, no jti, access audience -- mirrors the backend's own access token.
@@ -416,7 +476,7 @@ export function createCanaryRuntime({ envFile, project }) {
   }
 
   return {
-    docker, psql, containerIps, inspectContainer,
+    docker, psql, containerIps, inspectContainer, attestDeployedImages,
     mintAccessToken, signDiag, diagnostics, fleetSnapshot,
   };
 }

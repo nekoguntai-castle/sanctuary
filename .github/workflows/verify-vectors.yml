@@ -488,9 +488,9 @@ jobs:
     runs-on: docker-socket
     container:
       image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:00c4092dc9e30c242c4d1acb69f3c223e983932b9595752ac435385a6801a2b0
-    # Above the step bounds (10 + 8) plus setup, so a run that hits a step
+    # Above the step bounds (10 + 15) plus setup, so a run that hits a step
     # bound still writes and uploads its diagnostics.
-    timeout-minutes: 30
+    timeout-minutes: 35
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/verify-vectors-mutation-binding
 
@@ -510,7 +510,7 @@ jobs:
           ${{ github.workspace }}/scripts/ci/setup-server-dependencies.sh
 
       - name: Prove PSBT account-binding invariants by mutation
-        timeout-minutes: 8
+        timeout-minutes: 15
         run: |
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/psbt-account-binding-mutation.log" \
             ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain bash -c '

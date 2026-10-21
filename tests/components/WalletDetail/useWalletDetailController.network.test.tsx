@@ -18,6 +18,7 @@ const controllerState = vi.hoisted(() => ({
   routeId: 'wallet-1' as string | undefined,
   user: { id: 'user-1', isAdmin: false } as { id: string; isAdmin: boolean } | null,
   fetchData: vi.fn(),
+  invalidateWalletLabels: vi.fn(),
   refreshData: vi.fn().mockResolvedValue(true),
   navigate: vi.fn(),
   refreshAfterTransfer: vi.fn().mockResolvedValue({ status: 'committed' }),
@@ -65,6 +66,7 @@ vi.mock('../../../src/hooks/queries/useBitcoin', () => ({
 
 vi.mock('../../../src/hooks/queries/useWalletLabels', () => ({
   useWalletLabels: () => ({ data: [] }),
+  useInvalidateWalletLabels: () => controllerState.invalidateWalletLabels,
 }));
 
 vi.mock('../../../src/hooks/useAIStatus', () => ({
@@ -279,6 +281,7 @@ describe('useWalletDetailController network preference alignment', () => {
     controllerState.routeId = 'wallet-1';
     controllerState.user = { id: 'user-1', isAdmin: false };
     controllerState.fetchData.mockClear();
+    controllerState.invalidateWalletLabels.mockClear();
     controllerState.navigate.mockClear();
     controllerState.refreshAfterTransfer.mockReset().mockResolvedValue({ status: 'committed' });
     controllerState.refreshAfterConfirmedTransfer.mockReset().mockResolvedValue({ status: 'committed' });
@@ -407,10 +410,12 @@ describe('useWalletDetailController network preference alignment', () => {
 
     result.current.handleLabelsChange();
     expect(controllerState.fetchData).not.toHaveBeenCalled();
+    expect(controllerState.invalidateWalletLabels).not.toHaveBeenCalled();
 
     controllerState.routeId = 'wallet-1';
     const current = renderHook(() => useWalletDetailController());
     current.result.current.handleLabelsChange();
+    expect(controllerState.invalidateWalletLabels).toHaveBeenCalledTimes(1);
     expect(controllerState.fetchData).toHaveBeenCalledWith(true);
   });
   describe('cross-network status gating', () => {

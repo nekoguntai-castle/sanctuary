@@ -56,6 +56,7 @@ vi.mock('../../../src/hooks/queries/useBitcoin', () => ({
 
 vi.mock('../../../src/hooks/queries/useWalletLabels', () => ({
   useWalletLabels: () => ({ data: [] }),
+  useInvalidateWalletLabels: () => vi.fn(),
 }));
 
 vi.mock('../../../src/hooks/useAIStatus', () => ({

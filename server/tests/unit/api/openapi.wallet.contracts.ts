@@ -360,6 +360,10 @@ export function registerOpenApiWalletTests() {
       openApiSpec.paths['/wallets/{walletId}/webhooks/{webhookId}/deliveries/{deliveryId}/replay']
         .post.responses[200].content['application/json'].schema,
     ).toEqual({ $ref: '#/components/schemas/WalletWebhookReplayResponse' });
+    expect(
+      openApiSpec.paths['/wallets/{walletId}/webhooks/{webhookId}/deliveries/{deliveryId}/replay']
+        .post.responses[409].content['application/json'].schema,
+    ).toEqual({ $ref: '#/components/schemas/ApiError' });
   });
 
   it('documents wallet sharing routes', () => {

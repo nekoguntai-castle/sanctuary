@@ -19,10 +19,15 @@ import {
   validateCanaryReceipt,
   verifyReleaseCandidateCanary,
 } from '../../scripts/release/verify-release-candidate-canary.mjs';
+// The v3 exports are read off the namespace so that, while one is missing, each
+// case fails for its own reason rather than the whole file failing to link.
+import * as verifier from '../../scripts/release/verify-release-candidate-canary.mjs';
 
 const TAG = 'v0.8.68-rc2';
 const V2_TAG = 'v0.8.69-rc14';
+const V3_TAG = 'v0.8.78-rc1';
 const COMMIT = 'a'.repeat(40);
+const SERVICES = ['backend', 'worker', 'frontend', 'gateway', 'llm-egress-proxy'];
 const NOW = new Date('2026-08-27T12:00:00.000Z');
 const SCRIPT = fileURLToPath(new URL(
   '../../scripts/release/verify-release-candidate-canary.mjs',
@@ -118,6 +123,32 @@ function validV2Receipt(rawEvidence) {
       rawEvidence,
     },
   };
+}
+
+// backend and worker run the same server image, as on a real stack.
+function imageIdOf(service) {
+  return `sha256:${String(Math.max(1, SERVICES.indexOf(service))).repeat(64)}`;
+}
+
+function v3Images(revision = COMMIT) {
+  return SERVICES.map((service) => ({ service, imageId: imageIdOf(service), revision }));
+}
+
+function withImages(receipt, images) {
+  receipt.releaseCandidate.images = images;
+  receipt.releaseCandidate.imageIds = [...new Set(images.map((image) => image.imageId))];
+  return receipt;
+}
+
+function validV3Receipt(rawEvidence) {
+  const receipt = validV2Receipt(rawEvidence);
+  receipt.schemaVersion = verifier.CANARY_RECEIPT_V3_SCHEMA_VERSION;
+  receipt.releaseCandidate.tag = V3_TAG;
+  return withImages(receipt, v3Images());
+}
+
+function validateV3(receipt) {
+  return validateCanaryReceipt(receipt, { tag: V3_TAG, commit: COMMIT, now: NOW });
 }
 
 function validNoCandidateV2Receipt(rawEvidence) {
@@ -454,4 +485,95 @@ test('CLI requires exact arguments and reports acceptance without receipt conten
   assert.notEqual(duplicate.status, 0);
   assert.match(duplicate.stderr, /invalid arguments/);
   assert.doesNotMatch(duplicate.stderr, /release-operator-01/);
+});
+
+function rawEvidenceFixture(files) {
+  const rawEvidencePath = path.join(files.evidence, 'raw.jsonl');
+  const rawEvidence = '{"event":"probe","status":200}\n';
+  writeFileSync(rawEvidencePath, rawEvidence, { mode: 0o600 });
+  return {
+    rawEvidencePath,
+    identity: {
+      sha256: createHash('sha256').update(rawEvidence).digest('hex'),
+      bytes: Buffer.byteLength(rawEvidence),
+    },
+  };
+}
+
+test('accepts a v3 receipt whose images were built from the RC commit', (context) => {
+  const files = fixture();
+  context.after(() => rmSync(files.base, { recursive: true, force: true }));
+  const { rawEvidencePath, identity } = rawEvidenceFixture(files);
+  const receipt = validV3Receipt(identity);
+  writeReceipt(files.receipt, receipt);
+  assert.deepEqual(verifyReleaseCandidateCanary({
+    repo: files.repo, receipt: files.receipt, evidence: rawEvidencePath,
+    tag: V3_TAG, commit: COMMIT, now: NOW,
+  }), receipt);
+});
+
+test('rejects a v3 receipt with any one image revision other than the commit', () => {
+  for (const service of SERVICES) {
+    const receipt = validV3Receipt({ sha256: 'c'.repeat(64), bytes: 1024 });
+    receipt.releaseCandidate.images.find((image) => image.service === service).revision = 'b'.repeat(40);
+    assert.throws(() => validateV3(receipt), /not built from the release candidate commit/, service);
+  }
+});
+
+test('rejects a v2 receipt from v0.8.78 on, in numeric tag order', () => {
+  for (const tag of ['v0.8.78-rc1', 'v0.9.0-rc1', 'v1.0.0-rc1', 'v0.10.0-rc1', 'v0.8.100-rc1']) {
+    const receipt = validV2Receipt({ sha256: 'c'.repeat(64), bytes: 1024 });
+    receipt.releaseCandidate.tag = tag;
+    assert.throws(() => validateCanaryReceipt(receipt, {
+      tag, commit: COMMIT, now: NOW,
+    }), /v0\.8\.78 requires a v3 canary receipt/, tag);
+  }
+});
+
+test('rejects v3 image shape drift', () => {
+  const cases = {
+    'missing service': (receipt) => withImages(receipt, v3Images().slice(1)),
+    'duplicate service': (receipt) => withImages(receipt, v3Images().map((image) => (
+      image.service === 'gateway' ? { ...image, service: 'frontend' } : image
+    ))),
+    'extra image key': (receipt) => withImages(receipt, v3Images().map((image, index) => (
+      index === 2 ? { ...image, tag: 'latest' } : image
+    ))),
+    'non-hex revision': (receipt) => withImages(receipt, v3Images().map((image, index) => (
+      index === 3 ? { ...image, revision: 'g'.repeat(40) } : image
+    ))),
+    'imageIds disagree with images': (receipt) => {
+      receipt.releaseCandidate.imageIds = [...receipt.releaseCandidate.imageIds.slice(1), `sha256:${'e'.repeat(64)}`];
+      return receipt;
+    },
+  };
+  for (const [label, mutate] of Object.entries(cases)) {
+    const receipt = mutate(validV3Receipt({ sha256: 'c'.repeat(64), bytes: 1024 }));
+    assert.throws(() => validateV3(receipt), /release candidate images are invalid/, label);
+  }
+});
+
+test('v2 receipts for v0.8.77 and earlier still verify', () => {
+  for (const tag of ['v0.8.77-rc1', V2_TAG]) {
+    const receipt = validV2Receipt({ sha256: 'c'.repeat(64), bytes: 1024 });
+    receipt.releaseCandidate.tag = tag;
+    assert.deepEqual(validateCanaryReceipt(receipt, { tag, commit: COMMIT, now: NOW }), receipt);
+  }
+});
+
+test('v3 keeps the raw-evidence identity rule', (context) => {
+  const files = fixture();
+  context.after(() => rmSync(files.base, { recursive: true, force: true }));
+  const { rawEvidencePath, identity } = rawEvidenceFixture(files);
+  writeReceipt(files.receipt, validV3Receipt({ ...identity, bytes: identity.bytes + 1 }));
+  assert.throws(() => verifyReleaseCandidateCanary({
+    repo: files.repo, receipt: files.receipt, evidence: rawEvidencePath,
+    tag: V3_TAG, commit: COMMIT, now: NOW,
+  }), /canary raw evidence identity mismatch/);
+});
+
+test('v3 keeps the probe-window rule', () => {
+  const receipt = validV3Receipt({ sha256: 'c'.repeat(64), bytes: 1024 });
+  receipt.canaryWindow.startedAt = '2026-08-27T09:55:00.000Z';
+  assert.throws(() => validateV3(receipt), /shorter than the claimed probe window/);
 });

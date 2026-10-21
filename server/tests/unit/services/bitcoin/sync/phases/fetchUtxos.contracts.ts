@@ -258,7 +258,7 @@ export function registerFetchUtxosPhaseTests(): void {
   });
 
   it('should build UTXO data map with correct keys', async () => {
-    const txid = 'utxo_tx'.padEnd(64, 'a');
+    const txid = 'a1'.repeat(32);
     const vout = 1;
 
     mockElectrumClient.getAddressUTXOsBatch.mockResolvedValue(

@@ -120,6 +120,7 @@ vi.mock('../../../src/hooks/queries/useWalletLabels', () => ({
     ],
     isLoading: false,
   }),
+  useInvalidateWalletLabels: () => vi.fn(),
 }));
 
 vi.mock('../../../src/hooks/websocket', () => ({

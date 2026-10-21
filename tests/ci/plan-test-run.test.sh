@@ -316,6 +316,17 @@ main() {
   assert_eq "middleware -> backend_integration" "true" "$(json_query "$plan" lanes.backend_integration.run)"
   assert_eq "middleware -> critical_mutation (auth.ts)" "true" "$(json_query "$plan" lanes.critical_mutation.run)"
 
+  # ---- Critical contracts file alone runs critical_mutation ----------------
+  base="$head"
+  mkdir -p "$repo/server/tests/unit/middleware/auth"
+  printf 'export const c = 1\n' > "$repo/server/tests/unit/middleware/auth/auth.authenticate.contracts.ts"
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm 'critical contracts change'
+  head="$(git -C "$repo" rev-parse HEAD)"
+
+  plan="$(EVENT_NAME=pull_request run_planner "$repo" "$base" "$head")"
+  assert_eq "auth contracts -> critical_mutation" "true" "$(json_query "$plan" lanes.critical_mutation.run)"
+
   # ---- Browser E2E seeder change runs its real browser consumer ------------
   base="$head"
   mkdir -p "$repo/server/scripts"

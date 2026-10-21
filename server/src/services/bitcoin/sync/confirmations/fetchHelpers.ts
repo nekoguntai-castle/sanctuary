@@ -10,6 +10,9 @@ import { getErrorMessage } from '../../../../utils/errors';
 import { getNodeClient, type NodeRequestOptions } from '../../nodeClient';
 import { walletLog } from '../../../../websocket/notifications';
 import { mapWithConcurrency } from '../../../../utils/async';
+import type { BitcoinNetwork } from '../../networks';
+import type { RawTransaction, TransactionInput } from '../types';
+import { authenticatedPopulationDetails } from './authenticatedDetails';
 
 const log = createLogger('BITCOIN:SVC_CONFIRMATIONS');
 const PREV_TX_BATCH_SIZE = 5;
@@ -83,10 +86,11 @@ export async function fetchTransactionDetails(
   walletId: string,
   transactions: Array<{ txid: string }>,
   client: Awaited<ReturnType<typeof getNodeClient>>,
+  network: BitcoinNetwork,
   options?: NodeRequestOptions,
-): Promise<Map<string, any>> {
+): Promise<Map<string, RawTransaction>> {
   const TX_BATCH_SIZE = 5;
-  const txDetailsCache = new Map<string, any>();
+  const txDetailsCache = new Map<string, RawTransaction>();
   const txids = transactions.map(tx => tx.txid);
 
   walletLog(walletId, 'info', 'POPULATE', `Fetching details for ${txids.length} transactions`);
@@ -109,7 +113,7 @@ export async function fetchTransactionDetails(
           const details = options
             ? await client.getTransaction(txid, true, options)
             : await client.getTransaction(txid, true);
-          return { txid, details };
+          return { txid, details: authenticatedPopulationDetails(txid, details, network) };
         } catch (error) {
           options?.signal?.throwIfAborted();
           log.warn(`Failed to fetch tx ${txid}`, { error: getErrorMessage(error) });
@@ -143,11 +147,12 @@ export async function fetchTransactionDetails(
 export async function fetchPreviousTransactions(
   walletId: string,
   transactions: Array<{ txid: string; type: string; fee: bigint | null; counterpartyAddress: string | null }>,
-  txDetailsCache: Map<string, any>,
+  txDetailsCache: Map<string, RawTransaction>,
   client: Awaited<ReturnType<typeof getNodeClient>>,
+  network: BitcoinNetwork,
   options?: NodeRequestOptions,
-): Promise<Map<string, any>> {
-  const prevTxCache = new Map<string, any>();
+): Promise<Map<string, RawTransaction>> {
+  const prevTxCache = new Map<string, RawTransaction>();
   const requiredPrevTxids = collectRequiredPreviousTxids(transactions, txDetailsCache);
 
   // Batch fetch all required previous transactions
@@ -161,7 +166,7 @@ export async function fetchPreviousTransactions(
     for (let i = 0; i < prevTxidsList.length; i += PREV_TX_BATCH_SIZE) {
       options?.signal?.throwIfAborted();
       const batch = prevTxidsList.slice(i, i + PREV_TX_BATCH_SIZE);
-      const results = await fetchPreviousTransactionBatch(batch, client, options);
+      const results = await fetchPreviousTransactionBatch(batch, client, network, options);
       const counts = storePreviousTransactionResults(results, prevTxCache);
       prevFetched += counts.fetched;
       prevFailed += counts.failed;
@@ -175,7 +180,7 @@ export async function fetchPreviousTransactions(
 
 function collectRequiredPreviousTxids(
   transactions: Array<{ txid: string; type: string; fee: bigint | null; counterpartyAddress: string | null }>,
-  txDetailsCache: Map<string, any>
+  txDetailsCache: Map<string, RawTransaction>
 ): Set<string> {
   const requiredPrevTxids = new Set<string>();
 
@@ -183,19 +188,16 @@ function collectRequiredPreviousTxids(
     const txDetails = txDetailsCache.get(tx.txid);
     if (!txDetails) continue;
 
-    if (needsFeePrevTxs(tx, txDetails) || needsCounterpartyPrevTxs(tx)) {
-      addPrevTxidsFromInputs(requiredPrevTxids, txDetails.vin || []);
+    if (needsFeePrevTxs(tx) || needsCounterpartyPrevTxs(tx)) {
+      addPrevTxidsFromInputs(requiredPrevTxids, txDetails.vin);
     }
   }
 
   return requiredPrevTxids;
 }
 
-function needsFeePrevTxs(
-  tx: { type: string; fee: bigint | null },
-  txDetails: { fee?: number | null }
-): boolean {
-  return tx.fee === null && isSentLikeTx(tx.type) && txDetails.fee == null;
+function needsFeePrevTxs(tx: { type: string; fee: bigint | null }): boolean {
+  return tx.fee === null && isSentLikeTx(tx.type);
 }
 
 function needsCounterpartyPrevTxs(
@@ -212,9 +214,9 @@ function isReceivedLikeTx(type: string): boolean {
   return type === 'received' || type === 'receive';
 }
 
-function addPrevTxidsFromInputs(requiredPrevTxids: Set<string>, inputs: any[]): void {
+function addPrevTxidsFromInputs(requiredPrevTxids: Set<string>, inputs: TransactionInput[]): void {
   for (const input of inputs) {
-    if (!input.coinbase && !input.prevout && input.txid && input.vout != null) {
+    if (!input.coinbase && input.txid && input.vout != null) {
       requiredPrevTxids.add(input.txid);
     }
   }
@@ -223,8 +225,9 @@ function addPrevTxidsFromInputs(requiredPrevTxids: Set<string>, inputs: any[]): 
 async function fetchPreviousTransactionBatch(
   batch: string[],
   client: Awaited<ReturnType<typeof getNodeClient>>,
+  network: BitcoinNetwork,
   options?: NodeRequestOptions,
-): Promise<Array<{ txid: string; details: any | null }>> {
+): Promise<Array<{ txid: string; details: RawTransaction | null }>> {
   return mapWithConcurrency(
     batch,
     async (txid) => {
@@ -232,7 +235,7 @@ async function fetchPreviousTransactionBatch(
         const details = options
           ? await client.getTransaction(txid, true, options)
           : await client.getTransaction(txid, true);
-        return { txid, details };
+        return { txid, details: authenticatedPopulationDetails(txid, details, network) };
       } catch (error) {
         options?.signal?.throwIfAborted();
         log.warn(`Failed to fetch previous tx ${txid}`, { error: getErrorMessage(error) });
@@ -244,8 +247,8 @@ async function fetchPreviousTransactionBatch(
 }
 
 function storePreviousTransactionResults(
-  results: Array<{ txid: string; details: any | null }>,
-  prevTxCache: Map<string, any>
+  results: Array<{ txid: string; details: RawTransaction | null }>,
+  prevTxCache: Map<string, RawTransaction>
 ): { fetched: number; failed: number } {
   let fetched = 0;
   let failed = 0;

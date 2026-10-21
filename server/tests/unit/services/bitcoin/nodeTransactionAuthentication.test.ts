@@ -5,8 +5,8 @@ import {
   authenticateNodeTransaction,
   fetchAuthenticatedPrevout,
   fetchAuthenticatedTransaction,
-} from '../../../../../src/services/bitcoin/advancedTx/nodeTransactionAuthentication';
-import { RawTransactionEvidenceError } from '../../../../../src/services/bitcoin/rawTransactionEvidence';
+} from '../../../../src/services/bitcoin/nodeTransactionAuthentication';
+import { RawTransactionEvidenceError } from '../../../../src/services/bitcoin/rawTransactionEvidence';
 
 function transactionWithOutput(valueSats: bigint): bitcoin.Transaction {
   const transaction = new bitcoin.Transaction();

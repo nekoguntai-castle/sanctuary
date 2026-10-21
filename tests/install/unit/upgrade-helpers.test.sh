@@ -2574,7 +2574,7 @@ test_coordinated_container_removal_refuses_ambiguous_postcondition() (
       *) return 99 ;;
     esac
   }
-  ! remove_coordinated_container exact-container
+  if remove_coordinated_container exact-container; then exit 1; fi
 )
 
 test_created_container_response_loss_preserves_status_after_registration() (
@@ -2597,7 +2597,7 @@ test_created_container_rejects_foreign_success_id() (
   export SANCTUARY_OPERATION_RUN_ID=test-run
   recover_exact_created_container() { printf '%s\n' "$exact_id"; }
   register_owned_resource() { return 0; }
-  ! resolve_registered_created_container helper-name "$foreign_id" 0 >/dev/null
+  if resolve_registered_created_container helper-name "$foreign_id" 0 >/dev/null; then exit 1; fi
 )
 
 test_registered_container_start_preserves_failure_status() (
@@ -2632,7 +2632,7 @@ test_install_container_retirement_refuses_ambiguous_postcondition() (
       *) return 99 ;;
     esac
   }
-  ! retire_install_container exact-container stop
+  if retire_install_container exact-container stop; then exit 1; fi
 )
 
 test_upgrade_harness_exports_operator_runtime_state() {

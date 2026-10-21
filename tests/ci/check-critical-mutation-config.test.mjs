@@ -5,11 +5,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
+import * as checker from '../../scripts/ci/check-critical-mutation-config.mjs';
 import {
   assertShardFilePartition,
   checkCriticalMutationConfig,
 } from '../../scripts/ci/check-critical-mutation-config.mjs';
-import { criticalMutationReporters } from '../../server/stryker.critical.config.mjs';
+import criticalConfig, { criticalMutationReporters } from '../../server/stryker.critical.config.mjs';
 
 function fixtureRoot(baseline) {
   const root = mkdtempSync(join(tmpdir(), 'critical-mutation-config-'));
@@ -92,6 +93,50 @@ test('rejects server critical thresholds outside the score domain', () => {
     () => checkCriticalMutationConfig(root),
     /serverCritical baseline thresholds are missing or invalid/,
   );
+});
+
+test('the critical gate never reuses incremental results', () => {
+  assert.equal(criticalConfig.incremental, false);
+  assert.ok(!('incrementalFile' in criticalConfig));
+});
+
+test('rejects an incremental critical configuration', () => {
+  assert.throws(
+    () => checker.assertNonIncrementalCriticalConfig({ incremental: true }),
+    /must not reuse incremental results/,
+  );
+  assert.throws(
+    () => checker.assertNonIncrementalCriticalConfig({ incremental: false, incrementalFile: 'x' }),
+    /must not reuse incremental results/,
+  );
+});
+
+test('the configuration check runs the incremental and classification checks', () => {
+  const root = fixtureRoot({
+    serverCritical: { rawScoreMin: 80, weightedScoreMin: 85 },
+  });
+
+  assert.throws(
+    () => checkCriticalMutationConfig(root, { incremental: true }, () => []),
+    /must not reuse incremental results/,
+  );
+  assert.throws(
+    () => checkCriticalMutationConfig(root, { incremental: false }, () => ['server/tests/x.ts']),
+    /server\/tests\/x\.ts/,
+  );
+});
+
+test('every test input of the critical entries selects the critical lane', () => {
+  assert.deepEqual(checker.unclassifiedCriticalTestInputs(), []);
+  const inputs = checker.criticalTestInputs();
+  for (const input of [
+    'server/tests/unit/services/bitcoin/psbtValidation/psbtValidation.payjoin.contracts.ts',
+    'server/tests/unit/middleware/auth/auth.authenticate.contracts.ts',
+    // Reached only through the @fixtures/ alias of psbt.verified.test.ts.
+    'server/tests/fixtures/generated-psbt-vectors.ts',
+  ]) {
+    assert.ok(inputs.includes(input), `${input} is a critical test input`);
+  }
 });
 
 function sourceFixture() {

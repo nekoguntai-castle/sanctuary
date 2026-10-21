@@ -15,6 +15,7 @@ import { safeJsonParse } from '../../../utils/safeJson';
 import { useLatestRequest } from '../../../hooks/useLatestRequest';
 import type { FetchToken } from '../../../hooks/requestOwnership';
 import { isRestoreOutcomeUnknown, RESTORE_OUTCOME_UNKNOWN_MESSAGE } from './restoreOutcome';
+import { restoreWarningNotification, stashRestoreWarnings } from './restoreWarningsHandoff';
 
 const log = createLogger('BackupRestore');
 
@@ -234,15 +235,12 @@ ENCRYPTION_SALT=${encryptionKeys.encryptionSalt}
         clearUploadedBackup();
 
         // Show warnings as notifications (e.g., node passwords that couldn't be restored)
+        // and stash them for the next admin login: the restore invalidates every
+        // session, and the forced logout wipes notifications.
         if (result.warnings && result.warnings.length > 0) {
-          result.warnings.forEach((warning) => {
-            addNotification({
-              type: 'warning',
-              scope: 'global',
-              title: 'Restore Warning',
-              message: warning,
-              persistent: true,
-            });
+          const handoff = stashRestoreWarnings(result.warnings);
+          result.warnings.forEach((warning, index) => {
+            addNotification(restoreWarningNotification(handoff, warning, index));
           });
         }
 

@@ -41,6 +41,20 @@ vi.mock('../../../../../src/services/bitcoin/transactions/persistTransaction', (
 import { reconcileSigningIntentBroadcasts } from '../../../../../src/services/bitcoin/signingIntent/broadcastReconciliation';
 import { ElectrumRpcError } from '../../../../../src/services/bitcoin/electrum/types';
 import { BroadcastPreflightError } from '../../../../../src/services/bitcoin/blockchain/broadcastPreflight';
+import { parseAuthenticatedRawTransaction } from '../../../../../src/services/bitcoin/rawTransactionEvidence';
+import { buildTransaction, walletOutput } from '../sync/confirmations/confirmationsNodeFixtures';
+
+const lookupTransaction = (valueSats: bigint) => buildTransaction({
+  inputs: [{ txid: 'd'.repeat(64), vout: 0 }],
+  outputs: [{ script: walletOutput(1).script, valueSats }],
+});
+const LOOKUP_TX = lookupTransaction(BigInt(9_000));
+// Differs from LOOKUP_TX only in one output value: well-formed bytes for a different txid.
+const OTHER_TX = lookupTransaction(BigInt(9_001));
+const TX_HEX = LOOKUP_TX.toHex();
+const TXID = LOOKUP_TX.getId();
+const OTHER_TX_HEX = OTHER_TX.toHex();
+const OTHER_TXID = OTHER_TX.getId();
 
 const unknownOutcome = (cause: unknown) =>
   Object.assign(new Error('Broadcast outcome is unknown: boom'), { cause });
@@ -70,7 +84,7 @@ const snapshot = (replacementTxid?: string) => ({
 });
 const record = (state: 'accepted' | 'unknown' | 'claimed') => ({
   id: 'intent-1', walletId: 'wallet-1', network: 'testnet3', snapshotDigest: 'a'.repeat(64),
-  snapshot: snapshot(), broadcastState: state, broadcastTxid: 'b'.repeat(64),
+  snapshot: snapshot(), broadcastState: state, broadcastTxid: TXID,
   broadcastRawTx: '00', broadcastMetadata: metadata, broadcastLeaseExpiresAt: new Date(0),
   broadcastLastAttemptAt: new Date(0),
 });
@@ -85,7 +99,7 @@ describe('signing intent broadcast reconciliation', () => {
     mocks.stalled.mockResolvedValue(true);
     mocks.accepted.mockResolvedValue(true);
     mocks.complete.mockResolvedValue(true);
-    mocks.broadcast.mockResolvedValue({ txid: 'b'.repeat(64), broadcasted: true });
+    mocks.broadcast.mockResolvedValue({ txid: TXID, broadcasted: true });
     mocks.lookup.mockRejectedValue(new Error('not found'));
     mocks.persist.mockResolvedValue({});
     mocks.defer.mockResolvedValue({ count: 1 });
@@ -95,7 +109,7 @@ describe('signing intent broadcast reconciliation', () => {
     mocks.list.mockResolvedValue([record('accepted')]);
     await expect(reconcileSigningIntentBroadcasts()).resolves.toEqual({ examined: 1, completed: 1 });
     expect(mocks.broadcast).not.toHaveBeenCalled();
-    expect(mocks.persist).toHaveBeenCalledWith('wallet-1', 'b'.repeat(64), '00', metadata);
+    expect(mocks.persist).toHaveBeenCalledWith('wallet-1', TXID, '00', metadata);
   });
 
   it('leases and idempotently rebroadcasts an unknown outcome before persistence', async () => {
@@ -104,12 +118,12 @@ describe('signing intent broadcast reconciliation', () => {
     await expect(reconcileSigningIntentBroadcasts(now))
       .resolves.toEqual({ examined: 1, completed: 1 });
     expect(mocks.claim).toHaveBeenCalledWith(expect.objectContaining({
-      id: 'intent-1', txid: 'b'.repeat(64), leaseToken: expect.any(String), now,
+      id: 'intent-1', txid: TXID, leaseToken: expect.any(String), now,
       leaseExpiresAt: new Date('2030-01-01T00:01:00Z'),
     }));
     expect(mocks.claim).toHaveBeenCalledWith(expect.objectContaining({ allowStalled: false }));
     expect(mocks.broadcast).toHaveBeenCalledWith(expect.objectContaining({
-      rawTx: '00', expectedTxid: 'b'.repeat(64), network: 'testnet3', replacement: false,
+      rawTx: '00', expectedTxid: TXID, network: 'testnet3', replacement: false,
       allowDefiniteRejection: false,
     }));
     expect(mocks.accepted).toHaveBeenCalled();
@@ -117,7 +131,7 @@ describe('signing intent broadcast reconciliation', () => {
 
   it('settles an unknown outcome from node lookup without another submission', async () => {
     mocks.list.mockResolvedValue([record('unknown')]);
-    mocks.lookup.mockResolvedValue({ txid: 'b'.repeat(64) });
+    mocks.lookup.mockResolvedValue({ txid: TXID, hex: TX_HEX });
     await expect(reconcileSigningIntentBroadcasts()).resolves.toEqual({ examined: 1, completed: 1 });
     expect(mocks.broadcast).not.toHaveBeenCalled();
     expect(mocks.accepted).toHaveBeenCalled();
@@ -155,7 +169,7 @@ describe('signing intent broadcast reconciliation', () => {
     mocks.persist.mockRejectedValueOnce(new Error('Record to update not found.'));
     mocks.defer.mockRejectedValueOnce(deferError);
     mocks.listStalled.mockResolvedValue([{ ...record('unknown'), id: 'intent-3' }]);
-    mocks.lookup.mockResolvedValue({ txid: 'b'.repeat(64) });
+    mocks.lookup.mockResolvedValue({ txid: TXID, hex: TX_HEX });
     await expect(reconcileSigningIntentBroadcasts()).resolves.toEqual({ examined: 2, completed: 1 });
     expect(mocks.log.warn).toHaveBeenCalledWith(
       'Could not defer failed signing intent reconciliation',
@@ -232,7 +246,7 @@ describe('signing intent broadcast reconciliation', () => {
 
   it('stops when accepted-state CAS loses the lease after lookup or rebroadcast', async () => {
     mocks.list.mockResolvedValue([record('unknown')]);
-    mocks.lookup.mockResolvedValueOnce({ txid: 'b'.repeat(64) });
+    mocks.lookup.mockResolvedValueOnce({ txid: TXID, hex: TX_HEX });
     mocks.accepted.mockResolvedValueOnce(false);
     await expect(reconcileSigningIntentBroadcasts()).resolves.toEqual({ examined: 1, completed: 0 });
     expect(mocks.persist).not.toHaveBeenCalled();
@@ -296,14 +310,14 @@ describe('signing intent broadcast reconciliation', () => {
       const now = new Date('2030-01-01T00:00:00Z');
       mocks.list.mockResolvedValue([]);
       mocks.listStalled.mockResolvedValue([stalledRecord]);
-      mocks.lookup.mockResolvedValue({ txid: 'b'.repeat(64) });
+      mocks.lookup.mockResolvedValue({ txid: TXID, hex: TX_HEX });
       await expect(reconcileSigningIntentBroadcasts(now, 5)).resolves.toEqual({ examined: 0, completed: 0 });
       expect(mocks.listStalled).toHaveBeenCalledWith(now, 5);
       expect(mocks.claimLookup).toHaveBeenCalledWith('intent-1', now);
-      expect(mocks.lookup).toHaveBeenCalledWith('b'.repeat(64), 'testnet3');
-      expect(mocks.stalledAccepted).toHaveBeenCalledWith('intent-1', 'b'.repeat(64), now);
-      expect(mocks.persist).toHaveBeenCalledWith('wallet-1', 'b'.repeat(64), '00', metadata);
-      expect(mocks.complete).toHaveBeenCalledWith('intent-1', 'b'.repeat(64));
+      expect(mocks.lookup).toHaveBeenCalledWith(TXID, 'testnet3');
+      expect(mocks.stalledAccepted).toHaveBeenCalledWith('intent-1', TXID, now);
+      expect(mocks.persist).toHaveBeenCalledWith('wallet-1', TXID, '00', metadata);
+      expect(mocks.complete).toHaveBeenCalledWith('intent-1', TXID);
       expect(mocks.broadcast).not.toHaveBeenCalled();
       expect(mocks.claim).not.toHaveBeenCalled();
     });
@@ -329,7 +343,7 @@ describe('signing intent broadcast reconciliation', () => {
     it('leaves the intent to a concurrent user claim when the stalled to accepted transition is lost', async () => {
       mocks.list.mockResolvedValue([]);
       mocks.listStalled.mockResolvedValue([stalledRecord]);
-      mocks.lookup.mockResolvedValue({ txid: 'b'.repeat(64) });
+      mocks.lookup.mockResolvedValue({ txid: TXID, hex: TX_HEX });
       mocks.stalledAccepted.mockResolvedValue(false);
       await reconcileSigningIntentBroadcasts();
       expect(mocks.persist).not.toHaveBeenCalled();
@@ -348,10 +362,43 @@ describe('signing intent broadcast reconciliation', () => {
       mocks.list.mockResolvedValue([]);
       mocks.listStalled.mockResolvedValue([stalledRecord, { ...stalledRecord, id: 'intent-2' }]);
       mocks.claimLookup.mockRejectedValueOnce(new Error('db down')).mockResolvedValue(true);
-      mocks.lookup.mockResolvedValue({ txid: 'b'.repeat(64) });
+      mocks.lookup.mockResolvedValue({ txid: TXID, hex: TX_HEX });
       await expect(reconcileSigningIntentBroadcasts()).resolves.toEqual({ examined: 0, completed: 0 });
       expect(mocks.stalledAccepted).toHaveBeenCalledTimes(1);
-      expect(mocks.stalledAccepted).toHaveBeenCalledWith('intent-2', 'b'.repeat(64), expect.any(Date));
+      expect(mocks.stalledAccepted).toHaveBeenCalledWith('intent-2', TXID, expect.any(Date));
+    });
+  });
+
+  describe('node lookup authentication', () => {
+    const stalledRecord = { ...record('unknown'), broadcastState: 'stalled' };
+
+    it('re-broadcasts an uncertain intent instead of accepting bytes for a different txid', async () => {
+      expect(parseAuthenticatedRawTransaction({ expectedTxid: OTHER_TXID, rawHex: OTHER_TX_HEX }).txid).toBe(OTHER_TXID);
+      mocks.list.mockResolvedValue([record('unknown')]);
+      mocks.lookup.mockResolvedValue({ txid: OTHER_TXID, hex: OTHER_TX_HEX });
+      await expect(reconcileSigningIntentBroadcasts()).resolves.toEqual({ examined: 1, completed: 1 });
+      expect(mocks.broadcast).toHaveBeenCalledWith(expect.objectContaining({ expectedTxid: TXID }));
+      expect(mocks.accepted).toHaveBeenCalledTimes(1);
+      expect(mocks.accepted.mock.invocationCallOrder[0]).toBeGreaterThan(mocks.broadcast.mock.invocationCallOrder[0]);
+    });
+
+    it('leaves a stalled intent stalled when the lookup returns bytes for a different txid', async () => {
+      mocks.list.mockResolvedValue([]);
+      mocks.listStalled.mockResolvedValue([stalledRecord]);
+      mocks.lookup.mockResolvedValue({ txid: OTHER_TXID, hex: OTHER_TX_HEX });
+      await reconcileSigningIntentBroadcasts();
+      expect(mocks.stalledAccepted).not.toHaveBeenCalled();
+      expect(mocks.persist).not.toHaveBeenCalled();
+    });
+
+    it('treats a lookup without transaction bytes as a miss on both paths', async () => {
+      mocks.list.mockResolvedValue([record('unknown')]);
+      mocks.listStalled.mockResolvedValue([{ ...stalledRecord, id: 'intent-2' }]);
+      mocks.lookup.mockResolvedValue({ txid: TXID });
+      await expect(reconcileSigningIntentBroadcasts()).resolves.toEqual({ examined: 1, completed: 1 });
+      expect(mocks.broadcast).toHaveBeenCalledTimes(1);
+      expect(mocks.accepted.mock.invocationCallOrder[0]).toBeGreaterThan(mocks.broadcast.mock.invocationCallOrder[0]);
+      expect(mocks.stalledAccepted).not.toHaveBeenCalled();
     });
   });
 });

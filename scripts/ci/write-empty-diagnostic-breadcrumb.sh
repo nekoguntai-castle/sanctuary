@@ -49,6 +49,13 @@ if [ -z "$TITLE" ]; then
   fail 'title is empty'
 fi
 
+# Print the wrapped_exit recorded in a run-with-log.sh sidecar, or nothing when
+# the field is missing or unreadable.
+read_wrapped_exit() {
+  sed -n 's/^[[:space:]]*"wrapped_exit"[[:space:]]*:[[:space:]]*\(-\{0,1\}[0-9][0-9]*\).*/\1/p' "$1" 2>/dev/null |
+    head -n 1
+}
+
 has_failed_sidecar() {
   local status_path
   local wrapped_exit
@@ -58,10 +65,7 @@ has_failed_sidecar() {
   fi
 
   while IFS= read -r -d '' status_path; do
-    wrapped_exit="$(
-      sed -n 's/^[[:space:]]*"wrapped_exit"[[:space:]]*:[[:space:]]*\(-\{0,1\}[0-9][0-9]*\).*/\1/p' "$status_path" 2>/dev/null |
-        head -n 1
-    )"
+    wrapped_exit="$(read_wrapped_exit "$status_path")"
     if [ -n "$wrapped_exit" ] && [ "$wrapped_exit" -ne 0 ]; then
       return 0
     fi
@@ -87,10 +91,7 @@ count_succeeded_sidecars() {
   fi
 
   while IFS= read -r -d '' status_path; do
-    wrapped_exit="$(
-      sed -n 's/^[[:space:]]*"wrapped_exit"[[:space:]]*:[[:space:]]*\(-\{0,1\}[0-9][0-9]*\).*/\1/p' "$status_path" 2>/dev/null |
-        head -n 1
-    )"
+    wrapped_exit="$(read_wrapped_exit "$status_path")"
     if [ -n "$wrapped_exit" ] && [ "$wrapped_exit" -eq 0 ]; then
       count=$((count + 1))
     fi
@@ -99,10 +100,38 @@ count_succeeded_sidecars() {
   echo "$count"
 }
 
+# run-with-log.sh writes a sidecar when the wrapped command exits or is
+# signalled, so a *.log with no sidecar, or with one whose wrapped_exit cannot be
+# read, is a step that was hard-killed while running (its timeout-minutes, the
+# job deadline or a runner loss). A sibling <stem>.status is the completion
+# record that run-parallel-suites.sh (in this directory) writes for <stem>.log
+# instead of a sidecar, so such a log counts as finished.
+list_incomplete_logs() {
+  local log_path
+
+  if [ ! -d "$DIAGNOSTIC_DIR" ]; then
+    return 0
+  fi
+
+  while IFS= read -r -d '' log_path; do
+    if [ -e "${log_path%.log}.status" ]; then
+      continue
+    fi
+    if [ -f "$log_path.status.json" ] && [ -n "$(read_wrapped_exit "$log_path.status.json")" ]; then
+      continue
+    fi
+    printf '%s\n' "${log_path#"$DIAGNOSTIC_DIR"/}"
+  done < <(find "$DIAGNOSTIC_DIR" -type f -name '*.log' -print0 2>/dev/null | sort -z)
+}
+
 if has_failed_sidecar; then
   echo "write-empty-diagnostic-breadcrumb: failed diagnostic sidecar already exists; breadcrumb not needed"
   exit 0
 fi
+
+# Captured before anything is written to $DIAGNOSTIC_DIR: the breadcrumb's own
+# log has no sidecar while it is being written and must never list itself.
+INCOMPLETE_LOGS="$(list_incomplete_logs)"
 
 mkdir -p "$DIAGNOSTIC_DIR"
 
@@ -114,7 +143,24 @@ ENDED_AT="$STARTED_AT"
 
 SUCCEEDED_SIDECARS="$(count_succeeded_sidecars)"
 
-if [ "$SUCCEEDED_SIDECARS" -gt 0 ]; then
+if [ -n "$INCOMPLETE_LOGS" ]; then
+  INCOMPLETE_LIST="${INCOMPLETE_LOGS//$'\n'/, }"
+  cat >"$LOG_PATH" <<LOG
+Diagnostic breadcrumb: $TITLE failed without a failed run-with-log.sh sidecar.
+Diagnostic directory: $DIAGNOSTIC_DIR
+
+$TITLE failed with step log(s) that never finished: $INCOMPLETE_LIST.
+run-with-log.sh writes a sidecar when a wrapped command exits or is
+signalled, so a missing or unreadable one means the step was hard-killed while
+running, most often at its step timeout-minutes or the job deadline. Treat it
+as an interrupted step whose verification did not complete, not as a
+post-verification infrastructure fault. Compare the step's elapsed time with
+its timeout-minutes before any retrigger.
+
+Inspect the Forgejo task output and the runner/DIND state for the missing
+failure context.
+LOG
+elif [ "$SUCCEEDED_SIDECARS" -gt 0 ]; then
   cat >"$LOG_PATH" <<LOG
 Diagnostic breadcrumb: $TITLE failed without a failed run-with-log.sh sidecar.
 Diagnostic directory: $DIAGNOSTIC_DIR

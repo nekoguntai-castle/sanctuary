@@ -16,6 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Missing-field population (fee, consolidation amount, counterparty, addressId) and signing-intent reconciliation lookups read only transaction bytes authenticated against the requested txid, so a malicious Electrum server can no longer forge stored fees, amounts, balances or counterparties; unauthenticated verbose `fee`/`prevout` fields are ignored.
+- Electrum history and UTXO txids are normalized to lowercase hex, so a case-variant txid can no longer duplicate an authenticated transaction or UTXO and inflate the balance.
+- Accepting an AI-suggested label refreshes the wallet's label list, so the new label appears in later label edits and filters immediately (it previously stayed missing, and accepting the same suggestion again failed with "already exists", until a reload).
+- Every warning from an admin restore is shown (they previously collapsed into the last one) and survives the forced sign-in the restore causes: they are handed to the next admin session for 24 hours.
+- Webhook delivery replay refuses a delivery retired by an endpoint repoint or signing-secret rotation, or recorded for a different URL than the endpoint's current one (409, `details.reason: endpoint_identity_changed`); replay takes a share lock on the endpoint and re-reads the delivery after the lock, so a replay racing a repoint or rotation is refused or retired. The 409 is documented in OpenAPI.
+- Assistant and MCP date ranges accept a full leap year: a 29 February inside the requested range no longer counts against the day cap.
+- CI: the verify-vectors PSBT account-binding mutation proof has a 15-minute step and 35-minute job bound (contended runs were killed at 8:00 in the last profile); the CI failure breadcrumb names a step log that never finished as an interrupted step instead of a post-verification infrastructure fault; the critical mutation gate runs non-incrementally so a weakened killing test is re-proved, and every test-tree input of its named entries selects the critical lane; negative assertions in shell test suites now fail their test, with a guard against new non-final `! cmd` statements.
+- Release: from v0.8.78 the release-candidate canary refuses a stack whose images are not labelled with `CANARY_COMMIT` or that changed mid-run, and writes a v3 receipt with per-service image revisions that the verifier requires for tags >= v0.8.78 (v0.8.77 and older receipts still verify). Rebuild the local stack from the RC checkout before running the canary.
 - Advanced transactions (RBF check and create, CPFP, advanced batch legacy inputs) now refuse any Electrum transaction whose bytes do not hash to the requested txid, so a malicious server can no longer redirect an RBF replacement's recipient or skew its fee figures.
 - Creating a send or batch from a legacy (P2PKH) wallet no longer fails with a 500: the previous-transaction bytes used for `nonWitnessUtxo` are fetched as authenticated raw hex.
 - Decoded Electrum transactions now report `scriptPubKey.hex` and `hash` as hex (they were comma-separated decimal bytes under bitcoinjs-lib 7), so `GET /api/v1/bitcoin/transaction/:txid` returns usable script and hash fields.
@@ -38,6 +46,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `/price/history` rejects unsupported currencies before contacting CoinGecko (no circuit-breaker trips), and `/price/historical` fetches one price map per UTC day (single-flight, cached by date), returning 400 for a currency absent from that map, an invalid date or a date before 2013-04-28.
 - The worker's `/ready` no longer reports not-ready for a moment during each no-op recurring-schedule reconcile.
 - CI: a PR touching only a repo file that a Vitest suite reads (nginx/compose templates, proof configs, `verify-vectors.yml`, `.nvmrc`, verifier modules) now selects that suite's lane, and a drift guard keeps the list complete.
+
+
+### Known limitations
+
+- A deployment that synced against a hostile or intercepted Electrum server returning non-lowercase txids may hold duplicate `transactions`/`utxos`/`transaction_inputs`/`transaction_outputs` rows whose `txid` is not lowercase. They are never matched or retired again, so they keep the balance inflated. Every legitimate source produces lowercase txids, so any such row is suspect; detect them read-only with `SELECT 'transactions' AS t, count(*) FROM transactions WHERE txid <> lower(txid) UNION ALL SELECT 'utxos', count(*) FROM utxos WHERE txid <> lower(txid);`. A phantom UTXO cannot move funds: its outpoint parses to the real one, so a spend fails at the node as a duplicate or already-spent input.
+- Missing-field values (fee, consolidation amount, counterparty, addressId) that a hostile server forged before this fix are fill-once and are not corrected automatically, and cannot be detected without re-fetching authenticated bytes.
 
 ## [0.8.77] - 2026-10-12
 

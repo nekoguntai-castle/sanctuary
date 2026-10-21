@@ -13,6 +13,14 @@ import {
   uniqueStrings,
 } from '../../../src/assistant/tools/utils';
 
+function expectRangeAccepted(start: string, end: string): void {
+  expect(() => enforceDateRange(new Date(start), new Date(end))).not.toThrow();
+}
+
+function expectRangeRejected(start: string, end: string): void {
+  expect(() => enforceDateRange(new Date(start), new Date(end))).toThrow('Date range exceeds 365 days');
+}
+
 describe('assistant read-tool utilities', () => {
   it('parses row limits within tool and global budgets', () => {
     expect(parseToolLimit(undefined, { maxRows: 10 }, 7)).toBe(7);
@@ -40,6 +48,39 @@ describe('assistant read-tool utilities', () => {
     });
     expect(dateRangeWhere(undefined, '2026-04-26T00:00:00.000Z')).toEqual({
       lte: new Date('2026-04-26T00:00:00.000Z'),
+    });
+  });
+
+  describe('date-range cap and leap days', () => {
+    it('runs with the default 365-day cap', () => {
+      expect(config.mcp.maxDateRangeDays).toBe(365);
+    });
+
+    it('accepts a full leap year, including through dateRangeWhere', () => {
+      for (const year of ['2024', '2028', '2000']) {
+        const start = `${year}-01-01T00:00:00.000Z`;
+        const end = `${year}-12-31T23:59:59.999Z`;
+        expectRangeAccepted(start, end);
+        expect(dateRangeWhere(start, end)).toStrictEqual({ gte: new Date(start), lte: new Date(end) });
+      }
+    });
+
+    it('does not count a 29 February inside the range against the cap', () => {
+      expectRangeAccepted('2027-03-01T00:00:00.000Z', '2028-02-29T23:59:59.999Z');
+      expectRangeAccepted('2023-02-28T00:00:00.000Z', '2024-02-29T00:00:00.000Z');
+      expectRangeAccepted('2024-02-29T12:00:00.000Z', '2025-03-01T11:59:59.999Z');
+      expectRangeAccepted('0048-01-01T00:00:00.000Z', '0048-12-31T23:59:59.999Z');
+    });
+
+    it('still rejects ranges longer than the cap plus the leap days they contain', () => {
+      expectRangeAccepted('2025-01-01T00:00:00.000Z', '2025-12-31T23:59:59.999Z');
+      expectRangeRejected('2025-03-01T00:00:00.000Z', '2026-03-01T23:59:59.999Z');
+      expectRangeAccepted('1900-01-01T00:00:00.000Z', '1900-12-31T23:59:59.999Z');
+      expectRangeRejected('1900-01-01T00:00:00.000Z', '1901-01-01T23:59:59.999Z');
+      expectRangeRejected('2024-01-01T00:00:00.000Z', '2025-01-01T00:00:00.001Z');
+      expectRangeRejected('2024-03-01T00:00:00.000Z', '2025-03-01T23:59:59.999Z');
+      expectRangeRejected('2023-02-28T00:00:00.000Z', '2024-02-28T23:59:59.999Z');
+      expectRangeRejected('2004-01-01T00:00:00.000Z', '2024-01-01T00:00:00.000Z');
     });
   });
 

@@ -135,7 +135,7 @@ for rubric in OK BLOCK; do
   verdict=$(derive_verdict_from_body "$variant")
   if [ "$rubric" = OK ]; then
     [ "$verdict" = PROCEED ]
-    ! verdict_blocks_commit "$verdict"
+    if verdict_blocks_commit "$verdict"; then printf '%s\n' 'OK rubric blocked the commit' >&2; exit 1; fi
   else
     [ "$verdict" = STOP ]
     verdict_blocks_commit "$verdict"

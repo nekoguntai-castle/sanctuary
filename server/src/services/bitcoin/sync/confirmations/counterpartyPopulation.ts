@@ -10,22 +10,12 @@ interface CounterpartyTransaction {
   txid: string;
 }
 
-interface ScriptAddressSource {
-  address?: string;
-  addresses?: string[];
-}
-
-const getScriptAddress = (source: ScriptAddressSource | undefined): string | undefined => {
-  return source?.address || source?.addresses?.[0];
-};
-
 const getInputCounterpartyAddress = (
   input: TransactionInput,
   prevTxCache: Map<string, RawTransaction>
 ): string | undefined => {
-  const directAddress = getScriptAddress(input.prevout?.scriptPubKey);
-  if (directAddress || !input.txid || input.vout == null) {
-    return directAddress;
+  if (!input.txid || input.vout == null) {
+    return undefined;
   }
 
   const prevOutput = prevTxCache.get(input.txid)?.vout?.[input.vout];

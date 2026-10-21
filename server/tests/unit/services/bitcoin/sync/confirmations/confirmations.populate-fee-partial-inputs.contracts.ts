@@ -1,14 +1,23 @@
 import { expect, it, vi } from 'vitest';
+import type * as bitcoin from 'bitcoinjs-lib';
 
 import { mockPrismaClient } from '../../../../../mocks/prisma';
 import { getTransactionFieldPatch, mockGetNodeClient } from './confirmationsTestHarness';
+import {
+  buildTransaction,
+  nodeDetails,
+  serveNodeTransactions,
+  walletOutput,
+} from './confirmationsNodeFixtures';
 import { populateMissingTransactionFields } from '../../../../../../src/services/bitcoin/sync/confirmations';
 
-const walletOut = (value: number) => ({ value, scriptPubKey: { address: 'wallet-addr', addresses: ['wallet-addr'] } });
+const WALLET = walletOutput(1);
 
-const incompleteTx = (id: string, type: string, amount: bigint) => ({
+const walletOut = (valueSats: number) => ({ script: WALLET.script, valueSats: BigInt(valueSats) });
+
+const incompleteTx = (id: string, tx: bitcoin.Transaction, type: string, amount: bigint) => ({
   id,
-  txid: id,
+  txid: tx.getId(),
   type,
   amount,
   fee: null,
@@ -21,50 +30,35 @@ const incompleteTx = (id: string, type: string, amount: bigint) => ({
 
 export function registerPopulateMissingTransactionFieldsFeePartialInputsContracts() {
   it('leaves fee and consolidation amount unset when a parent output is unresolved', async () => {
+    // Inputs without a txid or vout cannot be expressed in real bytes; populators.defensive.test.ts covers them.
+    const parentOk = buildTransaction({ inputs: [{ txid: '11'.repeat(32), vout: 0 }], outputs: [walletOut(100_000_000)] });
+    const parentSmall = buildTransaction({ inputs: [{ txid: '12'.repeat(32), vout: 0 }], outputs: [walletOut(10_000)] });
+    const parentMissing = buildTransaction({ inputs: [{ txid: '13'.repeat(32), vout: 0 }], outputs: [walletOut(10_000)] });
+    const spending = (second: bitcoin.Transaction, locktime: number) => buildTransaction({
+      inputs: [{ txid: parentOk.getId(), vout: 0 }, { txid: second.getId(), vout: 0 }],
+      outputs: [walletOut(99_990_000)],
+      locktime,
+    });
+    const sentPartial = spending(parentMissing, 1);
+    const consolidationPartial = spending(parentMissing, 2);
+    const sentComplete = spending(parentSmall, 3);
     const mockClient = {
       getAddressHistory: vi.fn(async () => []),
-      getTransaction: vi.fn(async (txid: string) => {
-        const txMap: Record<string, unknown> = {
-          'sent-partial': {
-            vin: [{ txid: 'parent-ok', vout: 0 }, { txid: 'parent-missing', vout: 0 }],
-            vout: [walletOut(0.9999)],
-          },
-          'consolidation-partial': {
-            vin: [{ txid: 'parent-ok', vout: 0 }, { txid: 'parent-missing', vout: 0 }],
-            vout: [walletOut(0.9999)],
-          },
-          'sent-no-vout': {
-            vin: [{ txid: 'parent-ok' }],
-            vout: [walletOut(0.5)],
-          },
-          'sent-no-txid': {
-            vin: [{ vout: 0 }],
-            vout: [walletOut(0.5)],
-          },
-          'sent-complete': {
-            vin: [{ txid: 'parent-ok', vout: 0 }, { txid: 'parent-small', vout: 0 }],
-            vout: [walletOut(0.9999)],
-          },
-          'parent-ok': { vout: [walletOut(1.0)] },
-          'parent-small': { vout: [walletOut(0.0001)] },
-        };
-        if (txid === 'parent-missing') {
-          throw new Error('parent unavailable');
-        }
-        return (txMap[txid] as unknown) ?? null;
-      }),
+      getTransaction: serveNodeTransactions([
+        ...[sentPartial, consolidationPartial, sentComplete, parentOk, parentSmall]
+          .map((tx): [string, unknown] => [tx.getId(), nodeDetails(tx)]),
+        [parentMissing.getId(), new Error('parent unavailable')],
+      ]),
     };
 
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ network: 'mainnet' });
     mockGetNodeClient.mockResolvedValue(mockClient);
     mockPrismaClient.transaction.findMany.mockResolvedValue([
-      incompleteTx('sent-partial', 'sent', BigInt(-1000)),
-      incompleteTx('consolidation-partial', 'consolidation', BigInt(0)),
-      incompleteTx('sent-no-vout', 'sent', BigInt(-1000)),
-      incompleteTx('sent-no-txid', 'sent', BigInt(-1000)),
-      incompleteTx('sent-complete', 'sent', BigInt(-1000)),
+      incompleteTx('sent-partial', sentPartial, 'sent', BigInt(-1000)),
+      incompleteTx('consolidation-partial', consolidationPartial, 'consolidation', BigInt(0)),
+      incompleteTx('sent-complete', sentComplete, 'sent', BigInt(-1000)),
     ]);
-    mockPrismaClient.address.findMany.mockResolvedValue([{ id: 'addr-1', address: 'wallet-addr' }]);
+    mockPrismaClient.address.findMany.mockResolvedValue([{ id: 'addr-1', address: WALLET.address }]);
 
     await populateMissingTransactionFields('wallet-1');
 
@@ -72,8 +66,6 @@ export function registerPopulateMissingTransactionFieldsFeePartialInputsContract
     expect(getTransactionFieldPatch('sent-partial')?.data.fee).toBeUndefined();
     expect(getTransactionFieldPatch('consolidation-partial')?.data.fee).toBeUndefined();
     expect(getTransactionFieldPatch('consolidation-partial')?.data.amount).toBeUndefined();
-    expect(getTransactionFieldPatch('sent-no-vout')?.data.fee).toBeUndefined();
-    expect(getTransactionFieldPatch('sent-no-txid')?.data.fee).toBeUndefined();
     expect(getTransactionFieldPatch('sent-complete')?.data.fee).toBe(BigInt(20000));
   });
 }

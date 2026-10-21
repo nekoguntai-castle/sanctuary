@@ -216,6 +216,37 @@ describe("transaction label mutation concurrency", () => {
     expect(result.current.labelMutationError).toBeNull();
   });
 
+  it("notifies onLabelsChange once the AI-created label exists even when the editor closed mid-request", async () => {
+    // The label exists on the server once createLabel resolves, whether or not
+    // this editor still owns the request; the wallet-labels cache owner relies on
+    // the notification to refresh its list.
+    const tx = makeTx({ id: "tx-ai-closed", txid: "txid-ai-closed" });
+    const created = {
+      id: "lbl-ai-closed",
+      walletId: "wallet-1",
+      name: "Closed mid-request",
+      color: "#6366f1",
+    } as Label;
+    const create = createDeferred<Label>();
+    vi.mocked(labelsApi.createLabel).mockReturnValueOnce(create.promise);
+
+    const { result, onLabelsChange } = await renderResolvedPanel(tx);
+    act(() => result.current.handleEditLabels(tx));
+    let createPromise!: Promise<void>;
+    act(() => {
+      createPromise = result.current.handleAISuggestion(created.name);
+    });
+    act(() => result.current.handleCancelEdit());
+
+    await act(async () => {
+      create.resolve(created);
+      await createPromise;
+    });
+
+    expect(onLabelsChange).toHaveBeenCalledTimes(1);
+    expect(result.current.availableLabels).toEqual([]);
+  });
+
   it("keeps a current save failure visible while an overlapping AI create succeeds", async () => {
     const tx = makeTx({ id: "tx-overlap-error", txid: "txid-overlap-error" });
     const created = {

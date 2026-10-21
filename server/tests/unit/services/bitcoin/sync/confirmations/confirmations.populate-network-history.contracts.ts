@@ -6,6 +6,12 @@ import {
   mockGetBlockTimestamp,
   mockGetNodeClient,
 } from './confirmationsTestHarness';
+import {
+  buildTransaction,
+  nodeDetails,
+  serveNodeTransactions,
+  walletOutput,
+} from './confirmationsNodeFixtures';
 import { populateMissingTransactionFields } from '../../../../../../src/services/bitcoin/sync/confirmations';
 
 export function registerPopulateMissingTransactionFieldsNetworkHistoryContracts() {
@@ -17,14 +23,17 @@ export function registerPopulateMissingTransactionFieldsNetworkHistoryContracts(
   // contracts. The blockTime-derivation branches this case exists to cover are
   // unchanged and are exercised here against a valid network.
   it('covers blockTime derivation branches when wallet has no addresses', async () => {
+    const needsTimestamp = buildTransaction({
+      inputs: [{ txid: '11'.repeat(32), vout: 0 }],
+      outputs: [{ script: walletOutput(1).script, valueSats: BigInt(1_000) }],
+    });
     const mockClient = {
       getAddressHistory: vi.fn(async () => [{ tx_hash: 'tx-no-height', height: 0 }]),
-      getTransaction: vi.fn(async (txid: string) => {
-        if (txid === 'tx-no-height') {
-          return {};
-        }
-        return { vin: [], vout: undefined };
-      }),
+      // `{}` carries no bytes, so it is rejected and the row keeps no height.
+      getTransaction: serveNodeTransactions([
+        ['tx-no-height', {}],
+        [needsTimestamp.getId(), nodeDetails(needsTimestamp)],
+      ]),
     };
 
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ network: 'mainnet' });
@@ -44,7 +53,7 @@ export function registerPopulateMissingTransactionFieldsNetworkHistoryContracts(
       },
       {
         id: 't-needs-timestamp',
-        txid: 'tx-needs-timestamp',
+        txid: needsTimestamp.getId(),
         type: 'received',
         amount: BigInt(1000),
         fee: null,

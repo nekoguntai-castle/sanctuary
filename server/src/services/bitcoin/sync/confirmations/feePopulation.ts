@@ -23,20 +23,6 @@ const isValidFeeSats = (feeSats: number): boolean => {
   return feeSats > 0 && feeSats < 100000000;
 };
 
-const electrumFeeSats = (tx: FeeTransaction, txDetails: RawTransaction): number | null => {
-  if (txDetails.fee == null || txDetails.fee <= 0) {
-    return null;
-  }
-
-  const feeSats = Math.round(txDetails.fee * 100000000);
-  if (isValidFeeSats(feeSats)) {
-    return feeSats;
-  }
-
-  log.warn(`Invalid fee from Electrum for tx ${tx.txid}: ${txDetails.fee} BTC`);
-  return null;
-};
-
 const sumOutputSats = (outputs: TransactionOutput[]): number => {
   return outputs.reduce((sum, output) => {
     if (output.value != null) {
@@ -52,10 +38,6 @@ const getInputValueSats = (
   input: TransactionInput,
   prevTxCache: Map<string, RawTransaction>
 ): number | null => {
-  if (input.prevout && input.prevout.value != null) {
-    return Math.round(input.prevout.value * 100000000);
-  }
-
   if (!input.txid || input.vout == null) {
     return null;
   }
@@ -109,16 +91,6 @@ const calculatedFeeSats = (
   return isValidFeeSats(fee) ? fee : null;
 };
 
-const resolveFeeSats = (
-  tx: FeeTransaction,
-  txDetails: RawTransaction,
-  inputs: TransactionInput[],
-  outputs: TransactionOutput[],
-  prevTxCache: Map<string, RawTransaction>
-): number | null => {
-  return electrumFeeSats(tx, txDetails) ?? calculatedFeeSats(tx.txid, inputs, outputs, prevTxCache);
-};
-
 const applyFeeUpdate = (
   tx: FeeTransaction,
   feeSats: number,
@@ -134,11 +106,11 @@ const applyFeeUpdate = (
 };
 
 /**
- * Populate fee from transaction details or input/output calculation.
+ * Populate fee from the authenticated inputs and outputs: the sum of the
+ * authenticated parent outputs spent, minus the outputs.
  */
 export function populateFee(
   tx: FeeTransaction,
-  txDetails: RawTransaction,
   inputs: TransactionInput[],
   outputs: TransactionOutput[],
   prevTxCache: Map<string, RawTransaction>,
@@ -150,7 +122,7 @@ export function populateFee(
   if (!shouldPopulateFee(tx, isSentTx, isConsolidationTx)) return;
 
   try {
-    const feeSats = resolveFeeSats(tx, txDetails, inputs, outputs, prevTxCache);
+    const feeSats = calculatedFeeSats(tx.txid, inputs, outputs, prevTxCache);
     if (feeSats !== null) {
       applyFeeUpdate(tx, feeSats, isConsolidationTx, updates, stats);
     }

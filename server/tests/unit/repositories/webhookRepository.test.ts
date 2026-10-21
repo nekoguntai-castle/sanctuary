@@ -46,6 +46,9 @@ import { webhookRepository } from '../../../src/repositories/webhookRepository';
 describe('webhookRepository', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // clearAllMocks keeps queued Once values; replay cases queue $queryRaw rows
+    // that must not leak into the endpoint-update cases below.
+    mockTx.$queryRaw.mockReset();
   });
 
   it('lists and finds webhook endpoints with scoped queries', async () => {
@@ -394,6 +397,7 @@ describe('webhookRepository', () => {
   });
 
   it('resets replay state only for a row with no live lease', async () => {
+    queueReplayRows({ status: 'delivered' });
     mockTx.webhookDelivery.updateMany.mockResolvedValueOnce({ count: 1 });
     mockTx.webhookDelivery.findUniqueOrThrow.mockResolvedValueOnce(makeDelivery({ status: 'pending' }));
 
@@ -426,6 +430,7 @@ describe('webhookRepository', () => {
   });
 
   it('leaves a leased delivery untouched when replay races an in-flight attempt', async () => {
+    queueReplayRows({ status: 'failed' });
     mockTx.webhookDelivery.updateMany.mockResolvedValueOnce({ count: 0 });
 
     const result = await webhookRepository.markDeliveryPendingForReplay('delivery-1');
@@ -451,6 +456,7 @@ describe('webhookRepository', () => {
     expect(claimed).not.toBeNull();
 
     // A replay resets the row (lease already expired from the caller's point of view).
+    queueReplayRows({ status: 'pending' });
     mockTx.webhookDelivery.updateMany.mockResolvedValueOnce({ count: 1 });
     mockTx.webhookDelivery.findUniqueOrThrow.mockResolvedValueOnce(
       makeDelivery({ attemptCount: 0, attemptLeaseToken: null }),
@@ -472,6 +478,82 @@ describe('webhookRepository', () => {
       requestBodyHash: 'a'.repeat(64),
     })).resolves.toBeNull();
     expect(mockTx.webhookEndpoint.update).not.toHaveBeenCalled();
+  });
+
+  it('refuses a delivery whose recorded target differs from the endpoint URL', async () => {
+    mockTx.$queryRaw.mockResolvedValueOnce([{ id: 'endpoint-1' }]);
+    mockTx.$queryRaw.mockResolvedValueOnce([{
+      endpointUrl: 'https://new.example/hook',
+      targetUrl: 'https://example.com/hook',
+      status: 'delivered',
+      lastError: null,
+    }]);
+
+    const result = await webhookRepository.markDeliveryPendingForReplay('delivery-1');
+
+    expect(result).toEqual({ count: 0, delivery: null, refusal: 'endpoint_identity_changed' });
+    expect(mockTx.webhookDelivery.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('refuses a delivery retired by an endpoint change', async () => {
+    queueReplayRows({
+      status: 'dead',
+      lastError: webhookRepository.DELIVERY_ENDPOINT_CHANGED_REASON,
+    });
+
+    const result = await webhookRepository.markDeliveryPendingForReplay('delivery-1');
+
+    expect(result).toEqual({ count: 0, delivery: null, refusal: 'endpoint_identity_changed' });
+    expect(mockTx.webhookDelivery.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('returns not found when the delivery row is gone', async () => {
+    mockTx.$queryRaw.mockResolvedValueOnce([]);
+
+    const noLockRow = await webhookRepository.markDeliveryPendingForReplay('delivery-1');
+
+    expect(noLockRow).toEqual({ count: 0, delivery: null });
+    expect(mockTx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(mockTx.webhookDelivery.updateMany).not.toHaveBeenCalled();
+
+    mockTx.$queryRaw.mockResolvedValueOnce([{ id: 'endpoint-1' }]);
+    mockTx.$queryRaw.mockResolvedValueOnce([]);
+
+    const noDataRow = await webhookRepository.markDeliveryPendingForReplay('delivery-1');
+
+    expect(noDataRow).toEqual({ count: 0, delivery: null });
+    expect(mockTx.webhookDelivery.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('still replays a same-URL dead delivery that was not retired by an endpoint change', async () => {
+    queueReplayRows({ status: 'dead', lastError: 'HTTP 500' });
+    mockTx.webhookDelivery.updateMany.mockResolvedValueOnce({ count: 1 });
+    mockTx.webhookDelivery.findUniqueOrThrow.mockResolvedValueOnce(makeDelivery({ status: 'pending' }));
+
+    const result = await webhookRepository.markDeliveryPendingForReplay('delivery-1');
+
+    expect(result).toEqual({ count: 1, delivery: makeDelivery({ status: 'pending' }) });
+    expect(mockTx.webhookDelivery.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 'delivery-1' }),
+      data: expect.objectContaining({ status: 'pending', lastError: null }),
+    }));
+  });
+
+  it('share-locks the endpoint row before a fresh unlocked read of the replay state', async () => {
+    queueReplayRows({ status: 'delivered' });
+    mockTx.webhookDelivery.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    await webhookRepository.markDeliveryPendingForReplay('delivery-1');
+
+    expect(mockTx.$queryRaw).toHaveBeenCalledTimes(2);
+    const lockQuery = mockTx.$queryRaw.mock.calls[0][0] as { text: string; values: unknown[] };
+    expect(lockQuery.text).toContain('FROM "webhook_endpoints"');
+    expect(lockQuery.text).toContain('FOR SHARE');
+    expect(lockQuery.text).not.toContain('FOR UPDATE');
+    expect(lockQuery.values).toEqual(['delivery-1']);
+    const dataQuery = mockTx.$queryRaw.mock.calls[1][0] as { text: string; values: unknown[] };
+    expect(dataQuery.text).not.toMatch(/\bFOR\s+(UPDATE|SHARE|NO KEY UPDATE|KEY SHARE)\b/);
+    expect(dataQuery.values).toEqual(['delivery-1']);
   });
 
   it('lists only due unleased or expired-lease deliveries in stable batches', async () => {
@@ -754,6 +836,16 @@ function makeEndpoint(overrides: Record<string, unknown> = {}) {
     updatedAt: new Date('2026-05-22T00:00:00.000Z'),
     ...overrides,
   };
+}
+
+function queueReplayRows(row: { status: string; lastError?: string | null }) {
+  mockTx.$queryRaw.mockResolvedValueOnce([{ id: 'endpoint-1' }]);
+  mockTx.$queryRaw.mockResolvedValueOnce([{
+    endpointUrl: 'https://example.com/hook',
+    targetUrl: 'https://example.com/hook',
+    lastError: null,
+    ...row,
+  }]);
 }
 
 function makeDelivery(overrides: Record<string, unknown> = {}) {

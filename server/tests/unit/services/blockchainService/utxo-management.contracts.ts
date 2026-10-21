@@ -183,7 +183,7 @@ describe('Blockchain Service - UTXO Management', () => {
       ];
 
       // UTXO with old confirmation count
-      const confirmedTxid = 'confirmed-tx'.padEnd(64, 'a');
+      const confirmedTxid = 'a4'.repeat(32);
       const existingUtxo = {
         id: 'utxo-1',
         txid: confirmedTxid,

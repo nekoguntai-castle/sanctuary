@@ -1,7 +1,9 @@
 #!/usr/bin/env node
-// Release-candidate canary driver (sanctuary.release-candidate-canary.v2).
+// Release-candidate canary driver (sanctuary.release-candidate-canary.v3).
 //
 // Runs on the deployment host, against the exact RC tag already deployed there.
+// Refuses to run unless every attested image carries CANARY_COMMIT as its
+// revision label, and refuses to write a receipt if the stack changed mid-run.
 // Reads runtime secrets from the runtime env file at run time only and never
 // writes them anywhere. Emits a private JSONL evidence sidecar plus a redacted
 // receipt under CANARY_OUT_DIR, which must sit outside every checkout --
@@ -12,10 +14,13 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { CANARY_RECEIPT_V3_SCHEMA_VERSION } from '../verify-release-candidate-canary.mjs';
 import {
   CANARY_ADMIN_SQL,
   FAMILIES,
+  attestationProblems,
   createCanaryRuntime,
+  deployedRevisionProblems,
   discoverWorkerBase,
   fleetReadiness,
   latencySummary,
@@ -63,10 +68,21 @@ const {
   psql,
   containerIps,
   inspectContainer,
+  attestDeployedImages,
   mintAccessToken,
   diagnostics,
   fleetSnapshot,
 } = createCanaryRuntime({ envFile: ENV_FILE, project: PROJECT });
+
+// Refuse a stack that was not built from the RC commit before anything is
+// seeded, armed or sampled; the same images are re-read at attestation.
+const deployed = await attestDeployedImages();
+const revisionProblems = deployedRevisionProblems(deployed, COMMIT);
+if (revisionProblems.length > 0) {
+  console.error(`canary refused: the running stack was not built from CANARY_COMMIT: ${revisionProblems.join('; ')}`);
+  process.exit(2);
+}
+record({ type: 'deployed_revision', images: deployed.map(({ service, imageId, revision }) => ({ service, imageId, revision })) });
 
 // Wallet ids never reach the receipt or the evidence sidecar; they are replaced
 // by a stable positional pseudonym assigned from the initial fleet snapshot.
@@ -347,7 +363,14 @@ for (const [, events] of byWallet) {
 }
 if (!noCandidateWork && candidateBatch === null) { record({ type: 'warning', message: 'candidate events seen but no usable first batch' }); }
 
-const hostImages = await Promise.all(['backend', 'worker', 'frontend', 'gateway', 'llm-egress-proxy'].map(async (service) => { const c = await inspectContainer(`${PROJECT}-${service}-1`); return { service, containerId: c.containerId, imageId: c.imageId, status: c.status, restartCount: c.restartCount, health: c.health }; }));
+const hostImages = await attestDeployedImages();
+const attestationRefusals = attestationProblems(deployed, hostImages, COMMIT);
+if (attestationRefusals.length > 0) {
+  record({ type: 'refusal', reason: 'deployed images changed or were not built from CANARY_COMMIT', problems: attestationRefusals });
+  await new Promise((resolve) => evidenceStream.end(resolve));
+  console.error(`canary refused: no receipt for a stack that is not the attested RC build: ${attestationRefusals.join('; ')}`);
+  process.exit(2);
+}
 const host = { at: nowIso(), type: 'host_runtime_attestation', releaseCandidate: { tag: TAG, commit: COMMIT }, images: hostImages, kernelPeak: { source: 'cgroup-v2-memory.peak', containerId: lastRuntime.worker.containerId, imageId: lastRuntime.worker.imageId, memoryPeakBytes: peakBytes, memoryLimitBytes: lastRuntime.worker.memoryLimitBytes } };
 record(host);
 fs.writeFileSync(path.join(OUT_DIR, 'host.json'), JSON.stringify(host) + '\n', { mode: 0o600 });
@@ -366,8 +389,13 @@ await new Promise((resolve) => evidenceStream.end(resolve));
 const evidenceBytes = fs.readFileSync(EVIDENCE);
 
 const receipt = {
-  schemaVersion: 'sanctuary.release-candidate-canary.v2',
-  releaseCandidate: { tag: TAG, commit: COMMIT, imageIds: [...new Set(hostImages.map((i) => i.imageId))] },
+  schemaVersion: CANARY_RECEIPT_V3_SCHEMA_VERSION,
+  releaseCandidate: {
+    tag: TAG,
+    commit: COMMIT,
+    imageIds: [...new Set(hostImages.map((i) => i.imageId))],
+    images: hostImages.map(({ service, imageId, revision }) => ({ service, imageId, revision })),
+  },
   canaryWindow: { startedAt, completedAt },
   fleet: {
     total: finalFleet.summary.total,

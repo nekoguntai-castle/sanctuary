@@ -208,6 +208,19 @@ is_critical_mutation_file() {
     server/src/services/bitcoin/addressDerivation.ts|server/src/services/bitcoin/addressDerivation/*|server/src/services/bitcoin/psbtValidation.ts|server/src/services/bitcoin/psbtInfo.ts|server/src/services/bitcoin/validationEvidenceContracts.ts|server/src/services/bitcoin/signingIntent/*|server/src/services/bitcoin/transactions/broadcastContracts.ts|server/src/services/bitcoin/transactions/broadcasting.ts|server/src/services/bitcoin/blockchain/broadcastPreflight.ts|server/src/services/bitcoin/blockchain/networkOperations.ts|server/src/repositories/transactionSigningIntentRepository.ts|server/src/api/transactions/broadcasting.ts|server/src/api/transactions/drafting.ts|server/src/api/drafts.ts|server/src/middleware/auth.ts|server/src/services/accessControl.ts|server/tests/unit/services/bitcoin/signingIntent/*|server/tests/unit/services/bitcoin/addressDerivation.verified.test.ts|server/tests/unit/services/bitcoin/psbt.verified.test.ts|server/tests/unit/services/bitcoin/psbtValidation.test.ts|server/tests/unit/services/bitcoin/psbtInfo.test.ts|server/tests/unit/services/bitcoin/validationEvidenceContracts.test.ts|server/tests/unit/services/bitcoin/transactionServiceBroadcast/broadcastContracts.test.ts|server/tests/unit/services/bitcoin/blockchain/broadcastPreflight.test.ts|server/tests/unit/services/bitcoin/industry/broadcastSafety.test.ts|server/tests/unit/api/transactions-http-routes.test.ts|server/tests/unit/api/transactionsHttpRoutes/transactionsHttpRoutes.broadcast.contracts.ts|server/tests/unit/api/transactionsHttpRoutes/transactionsHttpRoutes.rawBroadcast.contracts.ts|server/tests/unit/middleware/auth.test.ts|server/tests/unit/services/accessControl.test.ts|server/stryker.critical.config.mjs|server/scripts/mutation/*|.github/mutation-baseline.json)
       return 0
       ;;
+    # Every test-tree input the named critical entries (CRITICAL_TEST_FILES)
+    # load: contracts files, harnesses, shared fixtures/helpers/mocks, the
+    # Vitest setup and config. Kept complete by
+    # scripts/ci/check-critical-mutation-config.mjs (D-12.C4). The default
+    # Vitest runner can also kill critical mutants from other server tests;
+    # a change to one of those is re-proved by the scheduled full scan, not on
+    # the PR that makes it.
+    server/tests/unit/services/bitcoin/psbtValidation/*|server/tests/unit/middleware/auth/*|server/tests/unit/api/transactionsHttpRoutes/*|server/tests/unit/services/bitcoin/transactionServiceBroadcast/*|server/tests/unit/api/transactionsSigningIntentBroadcast*.test.ts|server/tests/unit/services/bitcoin/transactionService.broadcast.test.ts|server/tests/unit/repositories/transactionSigningIntentRepository.test.ts|server/tests/unit/services/accessControl.resource-access.contracts.ts)
+      return 0
+      ;;
+    server/tests/fixtures/bip174-test-vectors.ts|server/tests/fixtures/bitcoin.ts|server/tests/fixtures/generated-psbt-vectors.ts|server/tests/fixtures/generated-signed-psbt-vectors.ts|server/tests/fixtures/verified-address-vectors.ts|server/tests/helpers/testUtils.ts|server/tests/helpers/validatedBroadcastArtifact.ts|server/tests/mocks/prisma.ts|server/tests/setup.ts|server/vitest.config.ts)
+      return 0
+      ;;
   esac
   return 1
 }

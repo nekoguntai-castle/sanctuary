@@ -4,7 +4,7 @@ import { useAppNotifications } from '../../contexts/AppNotificationContext';
 import { useActiveNetwork } from '../../contexts/ActiveNetworkContext';
 import { useUser } from '../../contexts/UserContext';
 import { useBitcoinStatus } from '../../hooks/queries/useBitcoin';
-import { useWalletLabels } from '../../hooks/queries/useWalletLabels';
+import { useInvalidateWalletLabels, useWalletLabels } from '../../hooks/queries/useWalletLabels';
 import { useWalletSyncLifecycleClock } from '../../hooks/useWalletSyncLifecycleClock';
 import { useAIStatus } from '../../hooks/useAIStatus';
 import { useErrorHandler } from '../../hooks/useErrorHandler';
@@ -219,6 +219,7 @@ export const useWalletDetailController = () => {
   });
 
   const { data: walletLabels = [] } = useWalletLabels(id);
+  const invalidateWalletLabels = useInvalidateWalletLabels();
 
   const {
     editingAddressId,
@@ -313,6 +314,9 @@ export const useWalletDetailController = () => {
 
   const handleLabelsChange = () => {
     if (id) {
+      // A label created outside the label-mutation hooks (AI suggestions) must
+      // reach every wallet-labels observer, or editors keep offering a stale list.
+      invalidateWalletLabels();
       fetchData(true);
     }
   };

@@ -1,6 +1,7 @@
 import { describe } from 'vitest';
 
 import { registerPopulateMissingTransactionFieldsAddressIdContracts } from './confirmations/confirmations.populate-address-id.contracts';
+import { registerPopulateMissingTransactionFieldsAuthenticationContracts } from './confirmations/confirmations.populate-authentication.contracts';
 import { registerPopulateMissingTransactionFieldsCoreContracts } from './confirmations/confirmations.populate-core.contracts';
 import { registerPopulateMissingTransactionFieldsCounterpartyFallbacksContracts } from './confirmations/confirmations.populate-counterparty-fallbacks.contracts';
 import { registerPopulateMissingTransactionFieldsErrorHandlingContracts } from './confirmations/confirmations.populate-error-handling.contracts';
@@ -32,5 +33,6 @@ describe('confirmations service', () => {
     registerPopulateMissingTransactionFieldsFeePartialInputsContracts();
     registerPopulateMissingTransactionFieldsNetworkHistoryContracts();
     registerPopulateMissingTransactionFieldsCounterpartyFallbacksContracts();
+    registerPopulateMissingTransactionFieldsAuthenticationContracts();
   });
 });

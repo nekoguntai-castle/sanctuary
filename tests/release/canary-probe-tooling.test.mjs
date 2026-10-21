@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -21,6 +21,7 @@ import {
 // The worker-probe helpers are read off the namespace so that, while one is
 // missing, its own test fails rather than the whole file failing to link.
 import * as runtime from '../../scripts/release/canary/lib/canary-runtime.mjs';
+import * as verifier from '../../scripts/release/verify-release-candidate-canary.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CANARY_DIR = path.resolve(HERE, '../../scripts/release/canary');
@@ -456,4 +457,137 @@ test('evaluateSelftestWindow needs 40 active diagnostics samples and applies the
   assert.match(validator, /summary\.failures !== 0/);
   assert.match(validator, /summary\.p99Ms > 250/);
   assert.match(validator, /summary\.maxMs > 1000/);
+});
+
+// The attested services, written out rather than read from
+// CANARY_ATTESTED_SERVICES so a constant that drops one cannot pass with it.
+const SERVICES = ['backend', 'worker', 'frontend', 'gateway', 'llm-egress-proxy'];
+const CANARY_COMMIT = 'c'.repeat(40);
+
+function imageIdOf(service) {
+  return `sha256:${String(SERVICES.indexOf(service) + 1).repeat(64)}`;
+}
+
+function revisionOf(service) {
+  return String(SERVICES.indexOf(service) + 1).repeat(40);
+}
+
+function deployedImages(revision = CANARY_COMMIT) {
+  return SERVICES.map((service) => ({ service, imageId: imageIdOf(service), revision }));
+}
+
+function namesOnly(problems, service) {
+  return problems.length === 1 && problems[0].includes(service);
+}
+
+test('deployedRevisionProblems accepts only images built from CANARY_COMMIT', () => {
+  assert.deepEqual(runtime.deployedRevisionProblems(deployedImages(), CANARY_COMMIT), []);
+  for (const service of SERVICES) {
+    const images = deployedImages().map((image) => (
+      image.service === service ? { ...image, revision: 'd'.repeat(40) } : image
+    ));
+    assert.ok(namesOnly(runtime.deployedRevisionProblems(images, CANARY_COMMIT), service), `revision mismatch on ${service}`);
+    const missing = deployedImages().filter((image) => image.service !== service);
+    assert.ok(namesOnly(runtime.deployedRevisionProblems(missing, CANARY_COMMIT), service), `missing ${service}`);
+    const unlabelled = deployedImages().map((image) => (
+      image.service === service ? { ...image, revision: '' } : image
+    ));
+    assert.ok(namesOnly(runtime.deployedRevisionProblems(unlabelled, CANARY_COMMIT), service), `unlabelled ${service}`);
+  }
+  const short = runtime.deployedRevisionProblems(deployedImages('c'.repeat(7)), 'c'.repeat(7));
+  for (const service of SERVICES) {
+    assert.ok(short.some((problem) => problem.includes(service)), `short commit names ${service}`);
+  }
+});
+
+test('deployedImageDriftProblems and attestationProblems catch a stack swapped mid-run', () => {
+  assert.deepEqual(runtime.deployedImageDriftProblems(deployedImages(), deployedImages()), []);
+  const swapped = deployedImages().map((image) => (
+    image.service === 'gateway' ? { ...image, imageId: `sha256:${'e'.repeat(64)}` } : image
+  ));
+  assert.ok(namesOnly(runtime.deployedImageDriftProblems(deployedImages(), swapped), 'gateway'));
+  const gone = deployedImages().filter((image) => image.service !== 'worker');
+  assert.ok(namesOnly(runtime.deployedImageDriftProblems(deployedImages(), gone), 'worker'));
+
+  const driftOnly = runtime.attestationProblems(deployedImages(), swapped, CANARY_COMMIT);
+  assert.ok(driftOnly.length > 0 && driftOnly.some((problem) => problem.includes('gateway')));
+  const revisionOnly = runtime.attestationProblems(deployedImages(), deployedImages('d'.repeat(40)), CANARY_COMMIT);
+  assert.ok(revisionOnly.length > 0);
+});
+
+// A stand-in docker CLI: `inspect p-<service>-1` reports a distinct image id per
+// service, and `image inspect` prints that image's own revision label (any
+// other image argument gets a foreign commit).
+function fakeDockerScript() {
+  const inspectArms = SERVICES.map((service) => (
+    `  p-${service}-1) printf '%s\\n' '[{"Id":"container-${service}","Image":"${imageIdOf(service)}","State":{"Status":"running"},"RestartCount":0,"HostConfig":{}}]' ;;`
+  ));
+  const labelArms = SERVICES.map((service) => `    ${imageIdOf(service)}) printf '%s\\n' '${revisionOf(service)}' ;;`);
+  return [
+    '#!/bin/sh',
+    'if [ "$1" = image ] && [ "$2" = inspect ]; then',
+    '  case "$5" in',
+    ...labelArms,
+    `    *) printf '%s\\n' '${'f'.repeat(40)}' ;;`,
+    '  esac',
+    '  exit 0',
+    'fi',
+    '[ "$1" = inspect ] || exit 64',
+    'case "$2" in',
+    ...inspectArms,
+    '  *) exit 1 ;;',
+    'esac',
+    '',
+  ].join('\n');
+}
+
+test('attestDeployedImages reads the revision label of each running container image', async (context) => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'canary-docker-'));
+  writeFileSync(path.join(dir, 'docker'), fakeDockerScript());
+  chmodSync(path.join(dir, 'docker'), 0o755);
+  const envFile = path.join(dir, 'runtime-env');
+  writeFileSync(envFile, 'JWT_SECRET=x\nWORKER_DIAGNOSTICS_SECRET=y\n');
+  const originalPath = process.env.PATH;
+  process.env.PATH = `${dir}${path.delimiter}${originalPath}`;
+  context.after(() => { process.env.PATH = originalPath; });
+
+  const canary = runtime.createCanaryRuntime({ envFile, project: 'p' });
+  const images = await canary.attestDeployedImages();
+  assert.deepEqual(
+    images.map(({ service, imageId, revision }) => [service, imageId, revision]),
+    ['backend', 'worker', 'frontend', 'gateway', 'llm-egress-proxy']
+      .map((service) => [service, imageIdOf(service), revisionOf(service)]),
+  );
+});
+
+test('the probe refuses a foreign build before seeding and never receipts a swapped stack', () => {
+  const probe = readFileSync(PROBE, 'utf8');
+  const check = probe.indexOf('deployedRevisionProblems(');
+  const gate = probe.indexOf('attestationProblems(');
+  assert.ok(check > 0, 'the probe checks the deployed revisions at startup');
+  assert.ok(gate > 0, 'the probe gates attestation on attestationProblems');
+  const seed = probe.search(/canary-fleet\.mjs['"]\)\s*,\s*['"]seed['"]/);
+  const armed = probe.search(/type:\s*'armed'/);
+  const containerIpsAnchor = probe.indexOf('containerIps(`${PROJECT}-backend-1`)');
+  const receiptWrite = probe.indexOf("path.join(OUT_DIR, 'receipt.json')");
+  assert.ok(seed > 0 && armed > 0 && containerIpsAnchor > 0 && receiptWrite > 0);
+  assert.ok(check < seed && check < armed, 'the revision check runs before seeding and arming');
+
+  const startupExit = probe.indexOf('process.exit(2)', check);
+  assert.ok(check > 0 && startupExit > check && startupExit < containerIpsAnchor, 'a foreign build exits before backend discovery');
+  const attestations = [...probe.matchAll(/attestDeployedImages\(\)/g)].map((match) => match.index);
+  assert.ok(attestations.some((index) => index > armed && index < receiptWrite), 'the images are re-read at attestation');
+  assert.ok(gate > armed && gate < receiptWrite, 'the attestation gate runs before the receipt is written');
+  const gateExit = probe.indexOf('process.exit(2)', gate);
+  assert.ok(gate > 0 && gateExit > gate && gateExit < receiptWrite, 'a failed attestation exits before the receipt');
+  assert.match(probe, /attestationProblems\(\s*deployed\s*,\s*hostImages\s*,\s*COMMIT\s*\)/);
+  assert.doesNotMatch(probe, /deployedImageDriftProblems\(/);
+
+  assert.match(probe, /schemaVersion:\s*CANARY_RECEIPT_V3_SCHEMA_VERSION/);
+  assert.ok(!probe.includes("'sanctuary.release-candidate-canary.v2'"), 'the probe writes no v2 receipt');
+  assert.match(probe, /images:\s*hostImages\.map\(/, 'the receipt images come from the attestation-time read');
+});
+
+test('CANARY_ATTESTED_SERVICES is exactly the five attested services', () => {
+  assert.deepEqual(verifier.CANARY_ATTESTED_SERVICES, ['backend', 'worker', 'frontend', 'gateway', 'llm-egress-proxy']);
 });

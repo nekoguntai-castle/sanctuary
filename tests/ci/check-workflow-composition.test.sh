@@ -1981,8 +1981,9 @@ assert_named_job_contains_in_order "$VV" \
 assert_named_job_step_contains "$VV" \
   "verify-vectors-mutation-binding" \
   "Prove PSBT account-binding invariants by mutation" \
-  "PSBT account-binding mutation proof keeps its bound" \
-  "timeout-minutes: 8"
+  "PSBT account-binding mutation proof has a contention-safe timeout" \
+  "timeout-minutes: 15"
+assert_named_job_contains "$VV" "verify-vectors-mutation-binding" "binding mutation job outlasts its install and proof bounds" "timeout-minutes: 35"
 assert_named_job_contains_in_order "$VV" \
   "verify-vectors-mutation-fee" \
   "verify-vectors-mutation-fee runs the fee and receive-evidence proofs and uploads their reports" \
@@ -2505,21 +2506,10 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "Upload critical mutation shard diagnostics" \
   "ci-diagnostics-critical-mutation-shard-"
 
-# A shard's Stryker incremental file carries results for every file it held
-# when it was written, and Stryker reports them even after a re-partition moves
-# those files to another shard; the merge then rejects the colliding reports
-# (PR #1377, run 20223). The shard layout hash is therefore part of the
-# restore prefix, so a new layout never restores another layout's cache.
-assert_named_job_step_contains_in_order "$TEST_WORKFLOW" \
-  "full-critical-mutation-shards" \
-  "Restore Stryker incremental cache (shard \${{ matrix.shard }})" \
-  "critical mutation incremental cache never crosses shard layouts" \
-  "key: stryker-critical-shard-\${{ matrix.shard }}-layout-\${{ hashFiles('server/scripts/mutation/shards.mjs') }}-" \
-  "restore-keys: |" \
-  "stryker-critical-shard-\${{ matrix.shard }}-layout-\${{ hashFiles('server/scripts/mutation/shards.mjs') }}-"
-assert_occurrence_count "$TEST_WORKFLOW" \
-  "critical mutation incremental cache has no layout-blind restore prefix" \
-  "stryker-critical-shard-\${{ matrix.shard }}-" 2
+# The critical gate is non-incremental (D-12.C3); PR #1377's layout-prefix
+# problem no longer applies.
+assert_not_contains "$TEST_WORKFLOW" "critical mutation shards never restore an incremental cache" "server/.stryker-cache"
+assert_not_contains "$TEST_WORKFLOW" "critical mutation shards have no incremental cache restore step" "Restore Stryker incremental cache"
 
 # The critical mutation merge and gate run inside Full Test Summary, which
 # needs the shards directly; a failed or missing shard fails the gate.
@@ -4074,7 +4064,7 @@ assert_contains_in_order "$QUALITY_WORKFLOW" \
   'scripts/ci/run-in-isolated-workspace.sh npm-deprecations' \
   'source scripts/ci/redactor.sh' \
   "npm ci --strict-allow-scripts --ignore-scripts --audit=false --fund=false" \
-  'redact_file "$install_log" "$DIAGNOSTIC_DIR/npm-deprecation-install.log"' \
+  'redact_file "$install_log" "$DIAGNOSTIC_DIR/npm-deprecation-install.redacted.txt"' \
   "node scripts/ci/check-npm-install-scripts.mjs --verify-installed" \
   "node scripts/ci/check-npm-deprecations.mjs" \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/npm-audit.log"' \

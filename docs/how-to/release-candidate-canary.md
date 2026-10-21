@@ -147,7 +147,12 @@ re-derives every descriptor from its test-vector seed.
 
 ## Exercise the exact candidate
 
-1. Confirm the deployed tag and full commit SHA match the accepted RC.
+1. Rebuild the stack from a clean checkout of the RC commit before running the
+   canary. The probe enforces the match: before seeding or arming it reads the
+   `org.opencontainers.image.revision` label of each running backend, worker,
+   frontend, gateway and llm-egress-proxy image and refuses (exit 2) unless every
+   one equals `CANARY_COMMIT`. At attestation it reads them again and writes no
+   receipt if a revision differs or an image changed during the run.
 2. On the release host's stack, seeded with the [canary fleet](#canary-fleet)
    (at least 12 wallets), record the redacted fleet total before the exercise.
 3. Run one complete all-wallet sync and one repeat sync of a previously stale
@@ -172,20 +177,37 @@ re-derives every descriptor from its test-vector seed.
 
 ## Receipt and raw-evidence format
 
-Version 0.8.69 requires `sanctuary.release-candidate-canary.v2`. All keys are
+Version 0.8.78 and later (compared in numeric version order, so v0.9.0 and
+v1.0.0 are included) require `sanctuary.release-candidate-canary.v3`. It is v2
+plus `releaseCandidate.images`: exactly one `{ service, imageId, revision }`
+entry for each of backend, worker, frontend, gateway and llm-egress-proxy, read
+from the running containers at attestation. Every `revision` must equal the
+expected `--commit`, and `imageIds` must be the set of the entries' image IDs.
+Versions 0.8.69 to 0.8.77 require at least v2, and older releases also accept
+v1, so the published receipts of those releases keep verifying. All keys are
 required and no additional keys are allowed. The bounded receipt contains only
 redacted summaries; write timestamped probe, cgroup, Docker, lifecycle, and UI
 events to the private JSONL sidecar and bind its exact bytes into `rawEvidence`.
-The validator retains v1 compatibility for older releases, but a v1 receipt
-cannot authorize v0.8.69.
 
 ```json
 {
-  "schemaVersion": "sanctuary.release-candidate-canary.v2",
+  "schemaVersion": "sanctuary.release-candidate-canary.v3",
   "releaseCandidate": {
-    "tag": "v0.8.69-rc1",
+    "tag": "v0.8.78-rc1",
     "commit": "0123456789abcdef0123456789abcdef01234567",
-    "imageIds": ["sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"]
+    "imageIds": [
+      "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    ],
+    "images": [
+      { "service": "backend", "imageId": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "revision": "0123456789abcdef0123456789abcdef01234567" },
+      { "service": "worker", "imageId": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "revision": "0123456789abcdef0123456789abcdef01234567" },
+      { "service": "frontend", "imageId": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "revision": "0123456789abcdef0123456789abcdef01234567" },
+      { "service": "gateway", "imageId": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "revision": "0123456789abcdef0123456789abcdef01234567" },
+      { "service": "llm-egress-proxy", "imageId": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "revision": "0123456789abcdef0123456789abcdef01234567" }
+    ]
   },
   "canaryWindow": {
     "startedAt": "2026-08-27T09:00:00.000Z",
@@ -276,7 +298,7 @@ cannot authorize v0.8.69.
 set are mandatory. Fleet outcome counts must equal `fleet.total`.
 `actionRequiredWithExplicitReason` must exactly equal the action-required
 outcome count; free-form reasons remain only in the private evidence.
-For v2 receipts, `preflightObserved` comes from the live
+For v2 and v3 receipts, `preflightObserved` comes from the live
 `sync_phase_progress` event. The candidate total is the actual positive total
 reported by that fleet, capped by the runtime progress contract at 1,000,000;
 the first bounded batch starts at 1 and cannot exceed 25 or that total.

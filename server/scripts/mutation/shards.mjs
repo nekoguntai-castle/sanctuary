@@ -62,6 +62,39 @@ const ALL_MUTATE = [
   '!src/**/*.d.ts',
 ];
 
+/**
+ * The critical test entries, relative to server/. The command-runner fallback
+ * of stryker.critical.config.mjs runs exactly these, and
+ * scripts/ci/check-critical-mutation-config.mjs walks their test-tree imports
+ * so every file they load selects the critical lane.
+ */
+export const CRITICAL_TEST_FILES = [
+  'tests/unit/services/bitcoin/addressDerivation.verified.test.ts',
+  'tests/unit/services/bitcoin/psbt.verified.test.ts',
+  'tests/unit/services/bitcoin/psbtValidation.test.ts',
+  'tests/unit/services/bitcoin/psbtInfo.test.ts',
+  'tests/unit/services/bitcoin/validationEvidenceContracts.test.ts',
+  'tests/unit/services/bitcoin/transactionServiceBroadcast/broadcastContracts.test.ts',
+  'tests/unit/services/bitcoin/blockchain/broadcastPreflight.test.ts',
+  'tests/unit/services/bitcoin/industry/broadcastSafety.test.ts',
+  'tests/unit/services/bitcoin/signingIntent/canonical.test.ts',
+  'tests/unit/services/bitcoin/signingIntent/artifactValidation.test.ts',
+  'tests/unit/services/bitcoin/signingIntent/prevoutValidation.test.ts',
+  'tests/unit/services/bitcoin/signingIntent/service.test.ts',
+  'tests/unit/services/bitcoin/signingIntent/networkBoundary.test.ts',
+  'tests/unit/services/bitcoin/signingIntent/ingressRegistry.test.ts',
+  'tests/unit/services/bitcoin/signingIntent/intentSpend.test.ts',
+  'tests/unit/services/bitcoin/signingIntent/broadcastLifecycle.test.ts',
+  'tests/unit/services/bitcoin/transactionService.broadcast.test.ts',
+  'tests/unit/repositories/transactionSigningIntentRepository.test.ts',
+  'tests/unit/api/transactionsSigningIntentBroadcast.test.ts',
+  'tests/unit/api/transactionsSigningIntentBroadcast.replacement.test.ts',
+  'tests/unit/api/transactionsSigningIntentBroadcast.retry.test.ts',
+  'tests/unit/api/transactions-http-routes.test.ts',
+  'tests/unit/middleware/auth.test.ts',
+  'tests/unit/services/accessControl.test.ts',
+];
+
 export const SHARD_IDS = Object.keys(SHARDS).map(Number);
 
 export function resolveShard(shardEnv) {
@@ -83,11 +116,4 @@ export function shardReportFileName(shardId) {
     return 'reports/mutation/critical-mutation-report.json';
   }
   return `reports/mutation/critical-mutation-report.shard-${shardId}.json`;
-}
-
-export function shardIncrementalFileName(shardId) {
-  if (shardId === 'all') {
-    return '.stryker-cache/critical-incremental.json';
-  }
-  return `.stryker-cache/critical-incremental.shard-${shardId}.json`;
 }

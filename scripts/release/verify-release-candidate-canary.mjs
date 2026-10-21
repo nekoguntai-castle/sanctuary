@@ -15,6 +15,10 @@ import { fileURLToPath } from 'node:url';
 
 export const CANARY_RECEIPT_SCHEMA_VERSION = 'sanctuary.release-candidate-canary.v1';
 export const CANARY_RECEIPT_V2_SCHEMA_VERSION = 'sanctuary.release-candidate-canary.v2';
+// v3 binds the receipt to the revision label of every image the probe attested.
+export const CANARY_RECEIPT_V3_SCHEMA_VERSION = 'sanctuary.release-candidate-canary.v3';
+// The services whose running images the probe attests (canary-probe.mjs).
+export const CANARY_ATTESTED_SERVICES = ['backend', 'worker', 'frontend', 'gateway', 'llm-egress-proxy'];
 export const CANARY_RECEIPT_MAX_BYTES = 64 * 1024;
 
 const METRIC_FAMILIES = [
@@ -30,11 +34,22 @@ const METRIC_FAMILIES = [
 // this standalone Node release tool to load TypeScript sources.
 const SYNC_PROGRESS_MAX_COUNT = 1_000_000;
 const RC_TAG_PATTERN = /^v\d+\.\d+\.\d+-rc[1-9]\d*$/;
-const COMMIT_PATTERN = /^[a-f0-9]{40}$/;
+export const COMMIT_PATTERN = /^[a-f0-9]{40}$/;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 const IMAGE_ID_PATTERN = /^sha256:[a-f0-9]{64}$/;
 const OPERATOR_PATTERN = /^[a-z0-9][a-z0-9._-]{2,63}$/;
 const ISO_INSTANT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const IMAGE_ENTRY_KEYS = ['service', 'imageId', 'revision'];
+// Each later schema keeps every rule of the earlier ones.
+const SCHEMA_GENERATIONS = new Map([
+  [CANARY_RECEIPT_SCHEMA_VERSION, 1],
+  [CANARY_RECEIPT_V2_SCHEMA_VERSION, 2],
+  [CANARY_RECEIPT_V3_SCHEMA_VERSION, 3],
+]);
+
+function schemaGeneration(schemaVersion) {
+  return SCHEMA_GENERATIONS.get(schemaVersion) ?? 0;
+}
 
 function exactKeys(value, required, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -69,12 +84,14 @@ function parseInstant(value, label) {
 }
 
 function validateIdentity(receipt, expected) {
-  if (![CANARY_RECEIPT_SCHEMA_VERSION, CANARY_RECEIPT_V2_SCHEMA_VERSION]
-    .includes(receipt.schemaVersion)) {
+  const generation = schemaGeneration(receipt.schemaVersion);
+  if (generation === 0) {
     throw new Error('unsupported canary receipt schema version');
   }
-  if (receipt.schemaVersion === CANARY_RECEIPT_SCHEMA_VERSION
-    && requiresV2Receipt(receipt.releaseCandidate.tag)) {
+  if (generation < 3 && tagAtLeast(receipt.releaseCandidate.tag, [0, 8, 78])) {
+    throw new Error('v0.8.78 requires a v3 canary receipt');
+  }
+  if (generation < 2 && tagAtLeast(receipt.releaseCandidate.tag, [0, 8, 69])) {
     throw new Error('v0.8.69 requires a v2 canary receipt');
   }
   if (!RC_TAG_PATTERN.test(receipt.releaseCandidate.tag)) {
@@ -90,17 +107,20 @@ function validateIdentity(receipt, expected) {
     || receipt.releaseCandidate.commit !== expected.commit) {
     throw new Error('canary receipt is for a different release candidate');
   }
+  if (generation >= 3
+    && receipt.releaseCandidate.images.some((image) => image.revision !== expected.commit)) {
+    throw new Error('canary receipt images were not built from the release candidate commit');
+  }
 }
 
-function requiresV2Receipt(tag) {
+// Numeric tuple order: the first differing component decides, so v0.9.0,
+// v0.10.0, v0.8.100 and v1.0.0 are all at least v0.8.78. Never a string compare.
+function tagAtLeast(tag, baseline) {
   const match = /^v(\d+)\.(\d+)\.(\d+)-rc/.exec(tag);
   if (!match) return false;
   const version = match.slice(1).map(Number);
-  const baseline = [0, 8, 69];
-  return version.some((part, index) => (
-    part > baseline[index]
-    && version.slice(0, index).every((prior, priorIndex) => prior === baseline[priorIndex])
-  )) || version.every((part, index) => part === baseline[index]);
+  const differing = version.findIndex((part, index) => part !== baseline[index]);
+  return differing === -1 || version[differing] > baseline[differing];
 }
 
 function validateProbeWindows(evidence) {
@@ -158,7 +178,7 @@ function validateWindow(receipt, now) {
   if (startedAt > completedAt) throw new Error('canary completed before it started');
   if (completedAt > signedAt) throw new Error('canary was signed before it completed');
   if (signedAt > nowMs) throw new Error('canary receipt timestamp is in the future');
-  if (receipt.schemaVersion === CANARY_RECEIPT_V2_SCHEMA_VERSION
+  if (schemaGeneration(receipt.schemaVersion) >= 2
     && completedAt - startedAt < receipt.remoteEvidence.probeWindowMs) {
     throw new Error('canary window is shorter than the claimed probe window');
   }
@@ -287,9 +307,33 @@ function validateSignoff(signoff) {
   }
 }
 
-function validateReleaseCandidateShape(releaseCandidate, v2) {
+function isAttestedImage(image) {
+  return Boolean(image) && typeof image === 'object' && !Array.isArray(image)
+    && Object.keys(image).length === IMAGE_ENTRY_KEYS.length
+    && IMAGE_ENTRY_KEYS.every((key) => Object.hasOwn(image, key))
+    && CANARY_ATTESTED_SERVICES.includes(image.service)
+    && IMAGE_ID_PATTERN.test(image.imageId)
+    && COMMIT_PATTERN.test(image.revision);
+}
+
+// Exactly one entry per attested service, and imageIds is the set of their ids.
+function validateReleaseCandidateImages({ images, imageIds }) {
+  if (!Array.isArray(images)
+    || images.length !== CANARY_ATTESTED_SERVICES.length
+    || !images.every(isAttestedImage)
+    || new Set(images.map((image) => image.service)).size !== images.length) {
+    throw new Error('release candidate images are invalid');
+  }
+  const attestedIds = new Set(images.map((image) => image.imageId));
+  if (imageIds.length !== attestedIds.size || imageIds.some((id) => !attestedIds.has(id))) {
+    throw new Error('release candidate images are invalid');
+  }
+}
+
+function validateReleaseCandidateShape(releaseCandidate, generation) {
+  const v2 = generation >= 2;
   exactKeys(releaseCandidate, [
-    'tag', 'commit', ...(v2 ? ['imageIds'] : []),
+    'tag', 'commit', ...(v2 ? ['imageIds'] : []), ...(generation >= 3 ? ['images'] : []),
   ], 'release candidate identity');
   if (v2 && (!Array.isArray(releaseCandidate.imageIds)
     || releaseCandidate.imageIds.length === 0
@@ -297,6 +341,7 @@ function validateReleaseCandidateShape(releaseCandidate, v2) {
     || new Set(releaseCandidate.imageIds).size !== releaseCandidate.imageIds.length)) {
     throw new Error('release candidate image IDs are invalid');
   }
+  if (generation >= 3) validateReleaseCandidateImages(releaseCandidate);
 }
 
 function validateRemoteEvidenceShape(remoteEvidence) {
@@ -324,13 +369,14 @@ function validateRemoteEvidenceShape(remoteEvidence) {
 }
 
 function validateShape(receipt) {
-  const v2 = receipt.schemaVersion === CANARY_RECEIPT_V2_SCHEMA_VERSION;
+  const generation = schemaGeneration(receipt.schemaVersion);
+  const v2 = generation >= 2;
   exactKeys(receipt, [
     'schemaVersion', 'releaseCandidate', 'canaryWindow', 'fleet',
     'progressEvidence', 'diagnosticsEvidence', 'metricEvidence',
     'boundedErrorEvidence', 'signoff', ...(v2 ? ['remoteEvidence'] : []),
   ], 'canary receipt');
-  validateReleaseCandidateShape(receipt.releaseCandidate, v2);
+  validateReleaseCandidateShape(receipt.releaseCandidate, generation);
   exactKeys(receipt.canaryWindow, ['startedAt', 'completedAt'], 'canary window');
   exactKeys(receipt.fleet, [
     'total', 'outcomes', 'actionRequiredWithExplicitReason', 'previouslyStaleRepeat',
@@ -369,7 +415,7 @@ function validateShape(receipt) {
 }
 
 export function validateCanaryReceipt(receipt, options) {
-  const v2 = receipt.schemaVersion === CANARY_RECEIPT_V2_SCHEMA_VERSION;
+  const v2 = schemaGeneration(receipt.schemaVersion) >= 2;
   validateShape(receipt);
   validateIdentity(receipt, options);
   validateFleet(receipt.fleet);
@@ -479,7 +525,7 @@ export function verifyReleaseCandidateCanary(options) {
     commit: options.commit,
     now: options.now ?? new Date(),
   });
-  if (validated.schemaVersion === CANARY_RECEIPT_V2_SCHEMA_VERSION) {
+  if (schemaGeneration(validated.schemaVersion) >= 2) {
     let identity;
     try {
       identity = hashExternalEvidence(options.repo, options.evidence);

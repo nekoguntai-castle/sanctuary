@@ -640,7 +640,7 @@ test_success_uses_daemon_control_volume() {
     done
     grep -Fq -- '--label io.sanctuary.resource-class=compose_container' "$TEST_ROOT/docker.log"
     grep -Fq -- '--label io.sanctuary.lifecycle=obsolete' "$TEST_ROOT/docker.log"
-    ! grep -Fq -- 'io.sanctuary.resource-class=collector_process' "$TEST_ROOT/docker.log"
+    if grep -Fq -- 'io.sanctuary.resource-class=collector_process' "$TEST_ROOT/docker.log"; then echo 'FAIL: test_success_uses_daemon_control_volume: docker.log contains io.sanctuary.resource-class=collector_process' >&2; return 1; fi
     test "$(find "$TEST_ROOT/ownership/registrations/compose_volume" -name '*.json' | wc -l)" -eq 2
     for registration in "$TEST_ROOT/ownership/registrations/compose_volume"/*.json; do
         jq -e '.resourceClass == "compose_volume"
@@ -661,8 +661,8 @@ test_success_uses_daemon_control_volume() {
     remove_line="$(grep -nF "container rm $MIGRATION_RUNTIME_ID" "$TEST_ROOT/docker.log" | tail -1 | cut -d: -f1)"
     absent_line="$(grep -nF "container inspect $MIGRATION_RUNTIME_ID" "$TEST_ROOT/docker.log" | tail -1 | cut -d: -f1)"
     [ "$remove_line" -lt "$absent_line" ]
-    ! grep -Fq '/proc/' "$TEST_ROOT/docker.log"
-    ! grep -Fq "$PROJECT_ROOT/scripts/ops/migrate-grafana-password.sh" "$TEST_ROOT/docker.log"
+    if grep -Fq '/proc/' "$TEST_ROOT/docker.log"; then echo 'FAIL: test_success_uses_daemon_control_volume: docker.log contains /proc/' >&2; return 1; fi
+    if grep -Fq "$PROJECT_ROOT/scripts/ops/migrate-grafana-password.sh" "$TEST_ROOT/docker.log"; then echo 'FAIL: test_success_uses_daemon_control_volume: docker.log contains $PROJECT_ROOT/scripts/ops/migrate-grafana-password.sh' >&2; return 1; fi
     test ! -f "$TEST_ROOT/migration.state"
     test -z "$(find "$TEST_ROOT/control" -type f -print -quit)"
 }
@@ -673,7 +673,7 @@ test_control_helpers_use_detached_start_wait_and_logs() {
     grep -Eq '^container start [0-9a-f]{64}$' "$TEST_ROOT/docker.log"
     grep -Eq '^wait [0-9a-f]{64}$' "$TEST_ROOT/docker.log"
     grep -Eq '^logs [0-9a-f]{64}$' "$TEST_ROOT/docker.log"
-    ! grep -Eq '^container start -a helper-' "$TEST_ROOT/docker.log"
+    if grep -Eq '^container start -a helper-' "$TEST_ROOT/docker.log"; then echo 'FAIL: test_control_helpers_use_detached_start_wait_and_logs: docker.log contains ^container start -a helper-' >&2; return 1; fi
 
     local start_line wait_line logs_line remove_line
     start_line="$(grep -nEm1 '^container start [0-9a-f]{64}$' "$TEST_ROOT/docker.log" | cut -d: -f1)"
@@ -731,8 +731,8 @@ test_control_helper_absence_query_ambiguity_fails_without_evidence() {
     [ "$status" -ne 0 ]
     grep -Eq '^container rm [0-9a-f]{64}$' "$TEST_ROOT/docker.log"
     grep -Eq '^container ls -a --no-trunc --filter id=[0-9a-f]{64}' "$TEST_ROOT/docker.log"
-    ! grep -Fq 'registered-transient resource_class=compose_container' <<< "$output"
-    ! grep -Fq 'stop grafana' "$TEST_ROOT/docker.log"
+    if grep -Fq 'registered-transient resource_class=compose_container' <<< "$output"; then echo 'FAIL: test_control_helper_absence_query_ambiguity_fails_without_evidence: output contains registered-transient resource_class=compose_container' >&2; return 1; fi
+    if grep -Fq 'stop grafana' "$TEST_ROOT/docker.log"; then echo 'FAIL: test_control_helper_absence_query_ambiguity_fails_without_evidence: docker.log contains stop grafana' >&2; return 1; fi
 }
 
 test_migration_absence_query_ambiguity_fails_without_evidence() {
@@ -742,7 +742,7 @@ test_migration_absence_query_ambiguity_fails_without_evidence() {
     [ "$status" -ne 0 ]
     grep -Fq "container rm $MIGRATION_RUNTIME_ID" "$TEST_ROOT/docker.log"
     grep -Fq "container ls -a --no-trunc --filter id=$MIGRATION_RUNTIME_ID" "$TEST_ROOT/docker.log"
-    ! grep -Fq "immutable_id=$MIGRATION_RUNTIME_ID postcondition=absent" <<< "$output"
+    if grep -Fq "immutable_id=$MIGRATION_RUNTIME_ID postcondition=absent" <<< "$output"; then echo 'FAIL: test_migration_absence_query_ambiguity_fails_without_evidence: output contains immutable_id=$MIGRATION_RUNTIME_ID postcondition=absent' >&2; return 1; fi
 }
 
 test_precondition_refusals_happen_before_migration() {
@@ -753,7 +753,7 @@ test_precondition_refusals_happen_before_migration() {
             echo "$mode unexpectedly allowed migration" >&2
             exit 1
         fi
-        ! grep -Fq 'sanctuary.grafana.role=password-migration' "$TEST_ROOT/docker.log"
+        if grep -Fq 'sanctuary.grafana.role=password-migration' "$TEST_ROOT/docker.log"; then echo 'FAIL: test_precondition_refusals_happen_before_migration: docker.log contains sanctuary.grafana.role=password-migration' >&2; return 1; fi
     done
 }
 
@@ -815,7 +815,7 @@ test_owner_cleanup_is_bounded() {
     track_owner "$owner_pid" "$TEST_ROOT/helper-release" "$TEST_ROOT/wedged-owner.out" 1
     cleanup_active_owner || owner_status=$?
     [ "$owner_status" -ne 0 ]
-    ! kill -0 "$owner_pid" 2>/dev/null
+    if kill -0 "$owner_pid" 2>/dev/null; then echo 'FAIL: test_owner_cleanup_is_bounded: the bounded cleanup left the wedged owner alive' >&2; return 1; fi
     [ $((SECONDS - started_at)) -le 3 ]
 }
 
@@ -832,7 +832,7 @@ test_fresh_data_volume_is_created_with_compose_identity() {
     grep -Fq -- '--label io.sanctuary.cleanup-policy=preserve_ambiguous' "$TEST_ROOT/docker.log"
     grep -Fq -- "--label com.docker.compose.project=$TEST_PROJECT" "$TEST_ROOT/docker.log"
     grep -Fq -- '--label com.docker.compose.volume=grafana_data' "$TEST_ROOT/docker.log"
-    ! grep -Eq '^volume rm ' "$TEST_ROOT/docker.log"
+    if grep -Eq '^volume rm ' "$TEST_ROOT/docker.log"; then echo 'FAIL: test_fresh_data_volume_is_created_with_compose_identity: docker.log contains ^volume rm ' >&2; return 1; fi
 }
 
 test_volume_create_response_loss_recovers_without_deleting_data() {
@@ -841,7 +841,7 @@ test_volume_create_response_loss_recovers_without_deleting_data() {
     output="$(run_helper volume-create-response-lost 2>&1 >/dev/null)"
     grep -Fq 'Recovered Grafana grafana_data volume after a lost create response.' <<< "$output"
     grep -Fq 'volume create ' "$TEST_ROOT/docker.log"
-    ! grep -Eq '^volume rm ' "$TEST_ROOT/docker.log"
+    if grep -Eq '^volume rm ' "$TEST_ROOT/docker.log"; then echo 'FAIL: test_volume_create_response_loss_recovers_without_deleting_data: docker.log contains ^volume rm ' >&2; return 1; fi
     grep -Fq 'stop grafana' "$TEST_ROOT/docker.log"
 }
 
@@ -872,8 +872,8 @@ test_foreign_malformed_and_unstable_volumes_fail_closed() {
             echo "$mode refused without reporting the volume labels" >&2
             return 1
         }
-        ! grep -Fq 'stop grafana' "$TEST_ROOT/docker.log"
-        ! grep -Eq '^volume rm ' "$TEST_ROOT/docker.log"
+        if grep -Fq 'stop grafana' "$TEST_ROOT/docker.log"; then echo 'FAIL: test_foreign_malformed_and_unstable_volumes_fail_closed: docker.log contains stop grafana' >&2; return 1; fi
+        if grep -Eq '^volume rm ' "$TEST_ROOT/docker.log"; then echo 'FAIL: test_foreign_malformed_and_unstable_volumes_fail_closed: docker.log contains ^volume rm ' >&2; return 1; fi
     done
 }
 
@@ -928,9 +928,9 @@ test_manifest_bound_legacy_volumes_are_used_without_claim_or_create() {
     run_helper legacy-volume >/dev/null
     grep -Fq 'verify-legacy-compose-volume grafana_data' "$TEST_ROOT/session.log"
     grep -Fq 'verify-legacy-compose-volume grafana_quiescence' "$TEST_ROOT/session.log"
-    ! grep -Eq '^volume create ' "$TEST_ROOT/docker.log"
-    ! find "$TEST_ROOT/ownership/registrations/compose_volume" -name '*.json' \
-        -print -quit 2>/dev/null | grep -q .
+    if grep -Eq '^volume create ' "$TEST_ROOT/docker.log"; then echo 'FAIL: test_manifest_bound_legacy_volumes_are_used_without_claim_or_create: docker.log contains ^volume create ' >&2; return 1; fi
+    if find "$TEST_ROOT/ownership/registrations/compose_volume" -name '*.json' \
+        -print -quit 2>/dev/null | grep -q .; then echo 'FAIL: test_manifest_bound_legacy_volumes_are_used_without_claim_or_create: a compose_volume ownership registration was written' >&2; return 1; fi
     grep -Fq 'stop grafana' "$TEST_ROOT/docker.log"
     grep -Fq 'sanctuary.grafana.role=password-migration' "$TEST_ROOT/docker.log"
 }
@@ -941,9 +941,9 @@ test_legacy_volume_classifier_errors_refuse_before_mutation() {
         echo 'legacy classifier failure unexpectedly allowed migration' >&2
         return 1
     fi
-    ! grep -Eq '^volume create ' "$TEST_ROOT/docker.log"
-    ! grep -Fq 'stop grafana' "$TEST_ROOT/docker.log"
-    ! grep -Fq 'sanctuary.grafana.role=password-migration' "$TEST_ROOT/docker.log"
+    if grep -Eq '^volume create ' "$TEST_ROOT/docker.log"; then echo 'FAIL: test_legacy_volume_classifier_errors_refuse_before_mutation: docker.log contains ^volume create ' >&2; return 1; fi
+    if grep -Fq 'stop grafana' "$TEST_ROOT/docker.log"; then echo 'FAIL: test_legacy_volume_classifier_errors_refuse_before_mutation: docker.log contains stop grafana' >&2; return 1; fi
+    if grep -Fq 'sanctuary.grafana.role=password-migration' "$TEST_ROOT/docker.log"; then echo 'FAIL: test_legacy_volume_classifier_errors_refuse_before_mutation: docker.log contains sanctuary.grafana.role=password-migration' >&2; return 1; fi
 }
 
 test_legacy_volume_drift_is_refused_before_start() {
@@ -954,7 +954,7 @@ test_legacy_volume_drift_is_refused_before_start() {
             echo "$mode unexpectedly allowed migration" >&2
             return 1
         fi
-        ! grep -Eq '^container start b{64}$' "$TEST_ROOT/docker.log"
+        if grep -Eq '^container start b{64}$' "$TEST_ROOT/docker.log"; then echo 'FAIL: test_legacy_volume_drift_is_refused_before_start: docker.log contains ^container start b{64}$' >&2; return 1; fi
     done
 }
 
@@ -966,7 +966,7 @@ test_legacy_control_volume_drift_is_refused_before_helper_start() {
             echo "$mode unexpectedly allowed a control helper" >&2
             return 1
         fi
-        ! grep -Eq '^container start a' "$TEST_ROOT/docker.log"
+        if grep -Eq '^container start a' "$TEST_ROOT/docker.log"; then echo 'FAIL: test_legacy_control_volume_drift_is_refused_before_helper_start: docker.log contains ^container start a' >&2; return 1; fi
         [ ! -s "$TEST_ROOT/events.log" ]
     done
 }
@@ -985,7 +985,7 @@ SCRIPT
         echo "unavailable flock unexpectedly allowed migration" >&2
         exit 1
     fi
-    ! grep -Fq 'stop grafana' "$TEST_ROOT/docker.log"
+    if grep -Fq 'stop grafana' "$TEST_ROOT/docker.log"; then echo 'FAIL: test_flock_refusal_precedes_docker_mutation: docker.log contains stop grafana' >&2; return 1; fi
 }
 
 test_control_helper_failure_precedes_grafana_stop() {
@@ -999,8 +999,8 @@ test_control_helper_failure_precedes_grafana_stop() {
     grep -Eq '^logs [0-9a-f]{64}$' "$TEST_ROOT/docker.log"
     grep -Eq '^container rm [0-9a-f]{64}$' "$TEST_ROOT/docker.log"
     test -z "$(find "$TEST_ROOT" -maxdepth 1 -name 'helper.state.*' -type f -print -quit)"
-    ! grep -Fq 'stop grafana' "$TEST_ROOT/docker.log"
-    ! grep -Fq 'sanctuary.grafana.role=password-migration' "$TEST_ROOT/docker.log"
+    if grep -Fq 'stop grafana' "$TEST_ROOT/docker.log"; then echo 'FAIL: test_control_helper_failure_precedes_grafana_stop: docker.log contains stop grafana' >&2; return 1; fi
+    if grep -Fq 'sanctuary.grafana.role=password-migration' "$TEST_ROOT/docker.log"; then echo 'FAIL: test_control_helper_failure_precedes_grafana_stop: docker.log contains sanctuary.grafana.role=password-migration' >&2; return 1; fi
 }
 
 test_control_helper_transport_failures_fail_closed() {
@@ -1011,8 +1011,8 @@ test_control_helper_transport_failures_fail_closed() {
             echo "$mode unexpectedly allowed migration" >&2
             return 1
         fi
-        ! grep -Fq 'stop grafana' "$TEST_ROOT/docker.log"
-        ! grep -Fq 'sanctuary.grafana.role=password-migration' "$TEST_ROOT/docker.log"
+        if grep -Fq 'stop grafana' "$TEST_ROOT/docker.log"; then echo 'FAIL: test_control_helper_transport_failures_fail_closed: docker.log contains stop grafana' >&2; return 1; fi
+        if grep -Fq 'sanctuary.grafana.role=password-migration' "$TEST_ROOT/docker.log"; then echo 'FAIL: test_control_helper_transport_failures_fail_closed: docker.log contains sanctuary.grafana.role=password-migration' >&2; return 1; fi
     done
 }
 
@@ -1040,8 +1040,8 @@ test_control_helper_terminal_state_failures_stay_closed() {
             *"Grafana control helper terminal state is inconsistent"*) ;;
             *) echo "$mode produced an unexpected refusal: $output" >&2; return 1 ;;
         esac
-        ! grep -Eq '^container rm [0-9a-f]{64}$' "$TEST_ROOT/docker.log"
-        ! grep -Fq 'stop grafana' "$TEST_ROOT/docker.log"
+        if grep -Eq '^container rm [0-9a-f]{64}$' "$TEST_ROOT/docker.log"; then echo 'FAIL: test_control_helper_terminal_state_failures_stay_closed: docker.log contains ^container rm [0-9a-f]{64}$' >&2; return 1; fi
+        if grep -Fq 'stop grafana' "$TEST_ROOT/docker.log"; then echo 'FAIL: test_control_helper_terminal_state_failures_stay_closed: docker.log contains stop grafana' >&2; return 1; fi
     done
 }
 
@@ -1148,20 +1148,20 @@ test_remote_daemon_never_receives_client_checkout_path() {
         echo "daemon-side container creation received the client checkout path" >&2
         exit 1
     fi
-    ! grep -F 'container create' "$TEST_ROOT/docker.log" | grep -Eq 'type=bind|scripts/ops'
+    if grep -F 'container create' "$TEST_ROOT/docker.log" | grep -Eq 'type=bind|scripts/ops'; then echo 'FAIL: test_remote_daemon_never_receives_client_checkout_path: a helper container create carries a bind mount or scripts/ops' >&2; return 1; fi
 }
 
 test_online_and_preloaded_offline_helpers_never_pull() {
     reset_case
     run_helper success >/dev/null
     grep -Fq 'image inspect' "$TEST_ROOT/docker.log"
-    ! grep -Eq '^pull ' "$TEST_ROOT/docker.log"
+    if grep -Eq '^pull ' "$TEST_ROOT/docker.log"; then echo 'FAIL: test_online_and_preloaded_offline_helpers_never_pull: docker.log contains ^pull ' >&2; return 1; fi
 
     reset_case
     SANCTUARY_INSTALL_MODE=offline run_helper success >/dev/null
     grep -Fq 'image inspect' "$TEST_ROOT/docker.log"
     grep -Fq -- '--pull never' "$TEST_ROOT/docker.log"
-    ! grep -Eq '^pull ' "$TEST_ROOT/docker.log"
+    if grep -Eq '^pull ' "$TEST_ROOT/docker.log"; then echo 'FAIL: test_online_and_preloaded_offline_helpers_never_pull: offline docker.log contains ^pull ' >&2; return 1; fi
 }
 
 test_client_disconnect_requires_scoped_terminal_outcome() {
@@ -1172,11 +1172,14 @@ test_client_disconnect_requires_scoped_terminal_outcome() {
     fi
     IFS='|' read -r state _exit token container generation < "$TEST_ROOT/migration.state"
     test "$state" = running
+    # The client-disconnect run above legitimately stopped Grafana; clear its
+    # docker.log so the check below sees only this success attempt.
+    : > "$TEST_ROOT/docker.log"
     if run_helper success >/dev/null 2>&1; then
         echo "running daemon sentinel unexpectedly reconciled" >&2
         exit 1
     fi
-    ! grep -Fq 'stop grafana' "$TEST_ROOT/docker.log"
+    if grep -Fq 'stop grafana' "$TEST_ROOT/docker.log"; then echo 'FAIL: test_client_disconnect_requires_scoped_terminal_outcome: docker.log contains stop grafana' >&2; return 1; fi
 
     cat > "$TEST_ROOT/control/outcomes/outcome-$token" <<EOF
 version=1
@@ -1291,7 +1294,7 @@ test_start_failure_running_and_exited_states_keep_existing_rules() {
         echo "running start-failure sentinel unexpectedly reconciled" >&2
         return 1
     fi
-    ! find "$TEST_ROOT/control/abandonments" -type f -print -quit | grep -q .
+    if find "$TEST_ROOT/control/abandonments" -type f -print -quit | grep -q .; then echo 'FAIL: test_start_failure_running_and_exited_states_keep_existing_rules: an abandonment record was written' >&2; return 1; fi
 
     reset_case
     if run_helper start-failure-exited >/dev/null 2>&1; then

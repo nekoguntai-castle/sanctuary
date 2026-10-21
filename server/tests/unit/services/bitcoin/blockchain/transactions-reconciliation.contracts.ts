@@ -182,7 +182,7 @@ export function registerBlockchainTransactionsReconciliationTests(): void {
         { id: 'addr-1', address: ourAddress, derivationPath: "m/84'/1'/0'/0/0", walletId },
       ]);
 
-      const txHash = 'recv'.padEnd(64, 'c');
+      const txHash = 'a3'.repeat(32);
 
       mockElectrumClient.getAddressHistoryBatch.mockResolvedValue(
         new Map([[ourAddress, [{ tx_hash: txHash, height: 800000 }]]])

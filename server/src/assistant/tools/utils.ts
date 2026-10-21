@@ -23,6 +23,33 @@ export function parseDateInput(value: string | undefined): Date | undefined {
   return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function isLeapYear(year: number): boolean {
+  return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+}
+
+/** Counts the 29 Februaries whose UTC day intersects [start, end]. */
+function leapDaysWithin(start: Date, end: Date): number {
+  let count = 0;
+  for (let year = start.getUTCFullYear(); year <= end.getUTCFullYear(); year++) {
+    if (!isLeapYear(year)) {
+      continue;
+    }
+    // setUTCFullYear, unlike Date.UTC, does not map years 0-99 to 1900-1999.
+    const leapDay = new Date(0);
+    leapDay.setUTCFullYear(year, 1, 29);
+    if (leapDay.getTime() <= end.getTime() && leapDay.getTime() + DAY_MS > start.getTime()) {
+      count++;
+    }
+  }
+  return count;
+}
+
+/**
+ * The cap counts days excluding 29 February, so a cap of 365 accepts any whole
+ * calendar year while still rejecting a 366-day range with no leap day.
+ */
 export function enforceDateRange(startDate?: Date, endDate?: Date): void {
   if (!startDate || !endDate) {
     return;
@@ -30,9 +57,18 @@ export function enforceDateRange(startDate?: Date, endDate?: Date): void {
   if (endDate.getTime() < startDate.getTime()) {
     throw new AssistantToolError(400, 'Date range end must be on or after start');
   }
-  const maxMs = config.mcp.maxDateRangeDays * 24 * 60 * 60 * 1000;
-  if (endDate.getTime() - startDate.getTime() > maxMs) {
-    throw new AssistantToolError(400, `Date range exceeds ${config.mcp.maxDateRangeDays} days`);
+  const maxDays = config.mcp.maxDateRangeDays;
+  const span = endDate.getTime() - startDate.getTime();
+  if (span <= maxDays * DAY_MS) {
+    return;
+  }
+  const exceeded = `Date range exceeds ${maxDays} days`;
+  // Fast reject before the leap-day loop: bounds it to the years one cap can span.
+  if (span > (maxDays + Math.floor(maxDays / 365) + 1) * DAY_MS) {
+    throw new AssistantToolError(400, exceeded);
+  }
+  if (span > (maxDays + leapDaysWithin(startDate, endDate)) * DAY_MS) {
+    throw new AssistantToolError(400, exceeded);
   }
 }
 

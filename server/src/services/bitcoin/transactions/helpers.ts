@@ -9,7 +9,7 @@
 
 import { getNodeClient } from '../nodeClient';
 // Direct import, not ../advancedTx or ../advancedTx/shared: either would close a runtime import cycle.
-import { fetchAuthenticatedTransaction } from '../advancedTx/nodeTransactionAuthentication';
+import { fetchAuthenticatedTransaction } from '../nodeTransactionAuthentication';
 import type { BitcoinNetwork } from '../networks';
 import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 export { isUniqueConstraintError } from '../../../utils/errors';

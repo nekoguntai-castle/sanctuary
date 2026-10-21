@@ -11,6 +11,7 @@ import {
   getTransactionDetails,
   isNodeAnsweredBroadcastFailure,
 } from '../blockchain';
+import { authenticateNodeTransaction } from '../nodeTransactionAuthentication';
 import { isBitcoinNetwork } from '../networks';
 import { persistTransaction } from '../transactions/persistTransaction';
 import {
@@ -97,7 +98,7 @@ const reconcileUncertain = async (record: {
   if (claim.status !== 'claimed') return claim.status === 'complete';
   try {
     try {
-      await getTransactionDetails(record.broadcastTxid, record.network);
+      authenticateNodeTransaction(record.broadcastTxid, await getTransactionDetails(record.broadcastTxid, record.network));
       const accepted = await transactionSigningIntentRepository.markBroadcastAccepted(
         record.id,
         leaseToken,
@@ -149,7 +150,7 @@ const lookupStalledIntent = async (record: {
   if (!isBitcoinNetwork(record.network) || !record.broadcastTxid) return false;
   if (!await transactionSigningIntentRepository.claimStalledBroadcastLookup(record.id, now)) return false;
   try {
-    await getTransactionDetails(record.broadcastTxid, record.network);
+    authenticateNodeTransaction(record.broadcastTxid, await getTransactionDetails(record.broadcastTxid, record.network));
   } catch (lookupError) {
     log.debug('Stalled transaction lookup missed; leaving the intent stalled', {
       intentId: record.id,

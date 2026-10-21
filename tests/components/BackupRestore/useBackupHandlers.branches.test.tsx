@@ -72,6 +72,7 @@ describe('useBackupHandlers branch coverage', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    sessionStorage.clear();
   });
 
   it('covers no-encryption-keys and dismiss-without-persist branches', () => {

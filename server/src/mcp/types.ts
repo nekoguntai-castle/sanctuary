@@ -136,24 +136,6 @@ export function parseOffset(value: string | null | undefined): number {
   return parsed;
 }
 
-export function parseDateInput(value: string | undefined): Date | undefined {
-  if (!value) {
-    return undefined;
-  }
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? undefined : date;
-}
-
-export function enforceDateRange(startDate?: Date, endDate?: Date): void {
-  if (!startDate || !endDate) {
-    return;
-  }
-  const maxMs = config.mcp.maxDateRangeDays * 24 * 60 * 60 * 1000;
-  if (endDate.getTime() - startDate.getTime() > maxMs) {
-    throw new McpHttpError(400, `Date range exceeds ${config.mcp.maxDateRangeDays} days`);
-  }
-}
-
 export function parseSats(value: string | number | bigint | undefined): bigint | undefined {
   if (value === undefined || value === null) {
     return undefined;

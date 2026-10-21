@@ -1,3 +1,4 @@
+import { useRestoreWarningsHandoff } from '../../components/BackupRestore/hooks/useRestoreWarningsHandoff';
 import { ChangePasswordModal } from '../../components/ChangePasswordModal';
 import { Layout } from '../../components/Layout';
 import { NotificationContainer } from '../../components/NotificationToast';
@@ -10,6 +11,8 @@ interface AuthenticatedAppShellProps {
 }
 
 export function AuthenticatedAppShell({ controller }: AuthenticatedAppShellProps) {
+  useRestoreWarningsHandoff();
+
   return (
     <>
       <AnimatedBackgroundLayer preferences={controller.preferences} />
