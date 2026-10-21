@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="${SANCTUARY_PROJECT_DIR:-$(dirname "$SCRIPT_DIR")}"
 # shellcheck source=scripts/ownership/deployment-lifecycle.sh
 . "$SCRIPT_DIR/ownership/deployment-lifecycle.sh"
-deployment_assert_lock
+RECONCILE_PROJECT="$(deployment_locked_project)"
 
 GREEN="${GREEN:-\\033[0;32m}"
 YELLOW="${YELLOW:-\\033[1;33m}"
@@ -21,26 +21,17 @@ if [ -z "${POSTGRES_PASSWORD:-}" ]; then
     exit 1
 fi
 
-get_compose_project_name() {
-    if [ -n "${COMPOSE_PROJECT_NAME:-}" ]; then
-        echo "$COMPOSE_PROJECT_NAME"
-    else
-        basename "$PROJECT_DIR"
-    fi
-}
-
 find_existing_postgres_container() {
-    local project_name container_id
-    project_name="$(get_compose_project_name)"
+    local container_id
 
     container_id=$(docker ps -q \
-        --filter "label=com.docker.compose.project=${project_name}" \
+        --filter "label=com.docker.compose.project=${RECONCILE_PROJECT}" \
         --filter "label=com.docker.compose.service=postgres" \
         | head -n 1)
 
     if [ -z "$container_id" ]; then
         container_id=$(docker ps -aq \
-            --filter "label=com.docker.compose.project=${project_name}" \
+            --filter "label=com.docker.compose.project=${RECONCILE_PROJECT}" \
             --filter "label=com.docker.compose.service=postgres" \
             | head -n 1)
     fi
@@ -180,10 +171,14 @@ reconcile_postgres_password_with_running_database() {
     local container_id
 
     container_id="$(find_existing_postgres_container)"
-    [ -n "$container_id" ] || return 0
+    if [ -z "$container_id" ]; then
+        echo "Error: no PostgreSQL container found for Compose project '$RECONCILE_PROJECT'; refusing to mark the password reconciled." >&2
+        return 1
+    fi
 
     if ! is_container_running "$container_id"; then
-        return 0
+        echo "Error: PostgreSQL container $container_id for Compose project '$RECONCILE_PROJECT' is not running; refusing to mark the password reconciled." >&2
+        return 1
     fi
 
     if ! wait_for_postgres_ready "$container_id"; then

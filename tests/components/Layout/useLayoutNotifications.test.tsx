@@ -27,7 +27,7 @@ vi.mock('../../../src/utils/logger', () => ({
   }),
 }));
 
-const user = { isAdmin: false };
+const user = { id: 'user-1', isAdmin: false };
 
 const createActions = () => ({
   addNotification: vi.fn(() => 'notification-id'),

@@ -51,6 +51,7 @@ import {
 } from "./authPolicy";
 import {
   createRetryBudget,
+  isRetryableStatus,
   NO_RETRY,
   resolveRetryOptions,
   sleepWithJitter,
@@ -69,9 +70,6 @@ const DEFAULT_BACKOFF_MULTIPLIER = 2;
 // Default request timeout (30 seconds for API calls, 120 seconds for file transfers)
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const FILE_TRANSFER_TIMEOUT_MS = 120_000;
-
-// Retryable HTTP status codes (server errors)
-const RETRYABLE_STATUS_CODES = [408, 429, 500, 502, 503, 504];
 
 /**
  * What a response validator has to offer. Structural on purpose — a zod schema
@@ -155,7 +153,7 @@ const isRetryableError = (error: unknown, status?: number): boolean => {
   if (status === 0) return true;
 
   // Server errors are retryable
-  if (status && RETRYABLE_STATUS_CODES.includes(status)) return true;
+  if (status && isRetryableStatus(status)) return true;
 
   // TypeError usually indicates network failure
   if (error instanceof TypeError) return true;

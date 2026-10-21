@@ -157,6 +157,7 @@ function assertLocks(store, project = projectForSession(store)) {
   if (token !== projectToken) throw new Error('deployment and project lock tokens differ');
   assertProjectMutationLock(required('SANCTUARY_RUNTIME_DIR'), project, token, operationRunId);
   assertDeploymentLock(store.lockPath, token, operationRunId);
+  return project;
 }
 
 function output(fields) { process.stdout.write(`${fields.join('\t')}\n`); }
@@ -332,8 +333,8 @@ function lockOnly() {
 
 function assertLock() {
   const { store } = state();
-  assertLocks(store);
-  output(['locked']);
+  const project = assertLocks(store);
+  output(['locked', project]);
 }
 
 function guardLegacyCleanup(project) {

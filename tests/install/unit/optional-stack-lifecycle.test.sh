@@ -103,6 +103,14 @@ esac
 
 if [ "${1:-}" = "ps" ]; then
     if [[ "$*" == *"com.docker.compose.service=postgres"* ]]; then
+        if [ -n "${FAKE_POSTGRES_PROJECT:-}" ]; then
+            if [[ "$*" == *"com.docker.compose.project=$FAKE_POSTGRES_PROJECT "* ]]; then
+                printf '%s\n' fake-postgres
+            elif [ -n "${FAKE_DECOY_PROJECT:-}" ] && [[ "$*" == *"com.docker.compose.project=$FAKE_DECOY_PROJECT "* ]]; then
+                printf '%s\n' decoy-postgres
+            fi
+            exit 0
+        fi
         printf '%s\n' fake-postgres
         exit 0
     fi
@@ -120,6 +128,7 @@ if [ "${1:-}" = "ps" ]; then
 fi
 
 if [ "${1:-}" = "inspect" ] && [[ "$*" == *"State.Running"* ]]; then
+    if [ "${FAKE_POSTGRES_RUNNING:-true}" = false ]; then printf '%s\n' false; exit 0; fi
     printf '%s\n' true
     exit 0
 fi
@@ -158,11 +167,23 @@ EOF
     chmod +x "$bin_dir/docker"
 }
 
+# START_PROJECT runs start.sh as that deployment the way the operator does:
+# SANCTUARY_PROJECT set, COMPOSE_PROJECT_NAME unset. Without it, start.sh runs
+# under COMPOSE_PROJECT_NAME (START_COMPOSE_PROJECT_NAME, default sanctuary).
 run_start() {
     local case_dir="$1"
     local output_file="$case_dir/start.out"
     local status
+    local -a project_env
     shift
+    if [ -n "${START_PROJECT:-}" ]; then
+        project_env=(-u COMPOSE_PROJECT_NAME
+            REQUIRE_DEPLOYMENT_LOCK="$case_dir/runtime/ownership/deployments/deploy-$START_PROJECT/mutation-lock"
+            SANCTUARY_PROJECT="$START_PROJECT")
+    else
+        project_env=(REQUIRE_DEPLOYMENT_LOCK="$case_dir/runtime/ownership/deployments/deploy-sanctuary/mutation-lock"
+            COMPOSE_PROJECT_NAME="${START_COMPOSE_PROJECT_NAME:-sanctuary}")
+    fi
     mkdir -p "$case_dir/ssl" "$case_dir/runtime"
     chmod 700 "$case_dir/runtime"
     : > "$case_dir/ssl/fullchain.pem"
@@ -172,11 +193,11 @@ run_start() {
     make_fake_docker "$case_dir/bin"
     if env -u ENABLE_MONITORING -u ENABLE_TOR -u ENABLE_MCP \
         -u POSTGRES_USER -u POSTGRES_DB \
+        "${project_env[@]}" \
         FAKE_DOCKER_LOG="$case_dir/docker.log" \
         FAKE_POSTGRES_STATE="$case_dir/postgres.state" \
-        REQUIRE_DEPLOYMENT_LOCK="$case_dir/runtime/ownership/deployments/deploy-sanctuary/mutation-lock" \
         FAKE_DOCKER_FAILURE_STAGE="${FAKE_DOCKER_FAILURE_STAGE:-}" \
-        COMPOSE_PROJECT_NAME="${START_COMPOSE_PROJECT_NAME:-sanctuary}" \
+        FAKE_POSTGRES_RUNNING="${FAKE_POSTGRES_RUNNING:-true}" \
         SANCTUARY_RUNTIME_DIR="$case_dir/runtime" \
         SANCTUARY_ENV_FILE="$case_dir/sanctuary.env" \
         SANCTUARY_SSL_DIR="$case_dir/ssl" \
@@ -189,6 +210,40 @@ run_start() {
         cat "$output_file" >&2
         return "$status"
     fi
+}
+
+test_reconcile_targets_deployment_project_not_checkout_name() {
+    local case_dir="$TEST_TMP_DIR/target-project"
+    mkdir -p "$case_dir"
+    write_runtime_env "$case_dir/sanctuary.env" no no no
+    START_PROJECT=staging-lane FAKE_POSTGRES_PROJECT=staging-lane run_start "$case_dir" || return 1
+    grep -Fq 'ps -q --filter label=com.docker.compose.project=staging-lane --filter label=com.docker.compose.service=postgres' "$case_dir/docker.log" || { cat "$case_dir/docker.log" >&2; return 1; }
+    grep -Fq 'exec -e PGPASSWORD=test-postgres-password fake-postgres psql -w -h postgres' "$case_dir/docker.log" || return 1
+    grep -Fq 'ALTER USER "sanctuary"' "$case_dir/docker.log" || return 1
+    if grep -Fq "com.docker.compose.project=$(basename "$PROJECT_ROOT") --filter" "$case_dir/docker.log"; then return 1; fi
+}
+
+test_reconcile_refuses_other_projects_postgres() {
+    local case_dir="$TEST_TMP_DIR/decoy-project"
+    mkdir -p "$case_dir"
+    write_runtime_env "$case_dir/sanctuary.env" no no no
+    if START_PROJECT=staging-lane FAKE_POSTGRES_PROJECT=absent-project FAKE_DECOY_PROJECT="$(basename "$PROJECT_ROOT")" \
+        run_start "$case_dir" 2>/dev/null; then echo 'exit 0' >&2; return 1; fi
+    grep -Fq "no PostgreSQL container found for Compose project 'staging-lane'" "$case_dir/start.out" || { cat "$case_dir/start.out" >&2; return 1; }
+    if grep -Fq decoy-postgres "$case_dir/docker.log"; then echo decoy >&2; return 1; fi
+    if grep -E 'up -d --no-build' "$case_dir/docker.log" | grep -vq ' postgres$'; then return 1; fi
+    [ -f "$case_dir/runtime/ownership/deployments/deploy-staging-lane/pending-revision.json" ] || return 1
+}
+
+test_detection_reads_sanctuary_project_without_compose_project_name() {
+    local case_dir="$TEST_TMP_DIR/detect-project"
+    mkdir -p "$case_dir"
+    write_runtime_env "$case_dir/sanctuary.env" no no no
+    START_PROJECT=staging-lane EXPECTED_PROJECT=staging-lane RUNNING_SERVICES=grafana run_start "$case_dir" --logs || return 1
+    grep -Fq 'ps -a --filter label=com.docker.compose.project=staging-lane --format' "$case_dir/docker.log" || { cat "$case_dir/docker.log" >&2; return 1; }
+    grep -Fq 'docker/compose/monitoring.yml' "$case_dir/docker.log" || { cat "$case_dir/docker.log" >&2; return 1; }
+    if grep -Fq 'com.docker.compose.project=sanctuary --format' "$case_dir/docker.log"; then return 1; fi
+    grep -E 'compose -p staging-lane .* logs -f$' "$case_dir/docker.log" >/dev/null || { cat "$case_dir/docker.log" >&2; return 1; }
 }
 
 test_interrupted_deployment_resumes_exact_pending_stage() {
@@ -471,6 +526,30 @@ test_stopped_mcp_does_not_enable_profile() {
     done
 }
 
+test_resumed_reconcile_reensures_postgres_first() {
+    local case_dir="$TEST_TMP_DIR/resume-reensure" up_line ps_line
+    mkdir -p "$case_dir"
+    write_runtime_env "$case_dir/sanctuary.env" no no no
+    if FAKE_DOCKER_FAILURE_STAGE=postgres_started run_start "$case_dir" >/dev/null 2>&1; then
+        return 1
+    fi
+    run_start "$case_dir" || return 1
+    up_line="$(grep -nF 'up -d postgres' "$case_dir/docker.log" | head -n 1 | cut -d: -f1)"
+    ps_line="$(grep -nF 'ps -q --filter label=com.docker.compose.project=sanctuary --filter label=com.docker.compose.service=postgres' "$case_dir/docker.log" | head -n 1 | cut -d: -f1)"
+    [ -n "$up_line" ] && [ -n "$ps_line" ] && [ "$up_line" -lt "$ps_line" ] || { echo "up=$up_line ps=$ps_line" >&2; return 1; }
+}
+
+test_reconcile_refuses_stopped_postgres() {
+    local case_dir="$TEST_TMP_DIR/stopped-postgres"
+    mkdir -p "$case_dir"
+    write_runtime_env "$case_dir/sanctuary.env" no no no
+    if FAKE_POSTGRES_RUNNING=false run_start "$case_dir" >/dev/null 2>&1; then return 1; fi
+    grep -Fq 'is not running; refusing to mark the password reconciled' "$case_dir/start.out" || { cat "$case_dir/start.out" >&2; return 1; }
+    if grep -Fq 'ALTER USER' "$case_dir/docker.log"; then return 1; fi
+    if grep -E 'up -d --no-build' "$case_dir/docker.log" | grep -vq ' postgres$'; then return 1; fi
+    [ -f "$case_dir/runtime/ownership/deployments/deploy-sanctuary/pending-revision.json" ] || { ls -R "$case_dir/runtime/ownership/deployments" >&2; return 1; }
+}
+
 run_test "setup preserves existing optional preferences" test_setup_preserves_existing_optional_preferences
 run_test "setup explicitly enables MCP" test_setup_explicit_mcp_enable_wins
 run_test "stop uses the registered immutable definition" test_stop_uses_registered_definition
@@ -485,6 +564,11 @@ run_test "ENABLE_MCP=no starts and rebuilds the core stack" test_mcp_no_default_
 run_test "ENABLE_MCP=yes adds only the MCP profile" test_mcp_yes_adds_only_mcp_profile
 run_test "stopped MCP does not alter default start or rebuild" test_stopped_mcp_does_not_enable_profile
 run_test "interrupted deployment stages resume the exact pending revision" test_interrupted_deployment_resumes_exact_pending_stage
+run_test "reconcile targets the deployment project" test_reconcile_targets_deployment_project_not_checkout_name
+run_test "reconcile refuses another project's postgres" test_reconcile_refuses_other_projects_postgres
+run_test "detection reads SANCTUARY_PROJECT" test_detection_reads_sanctuary_project_without_compose_project_name
+run_test "resumed reconcile re-ensures postgres first" test_resumed_reconcile_reensures_postgres_first
+run_test "reconcile refuses stopped postgres" test_reconcile_refuses_stopped_postgres
 
 printf '\n%s tests, %s failures\n' "$TESTS_RUN" "$TESTS_FAILED"
 [ "$TESTS_FAILED" -eq 0 ]

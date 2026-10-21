@@ -407,17 +407,9 @@ generate_password() {
     return 1
 }
 
-get_compose_project_name() {
-    if [ -n "${COMPOSE_PROJECT_NAME:-}" ]; then
-        echo "$COMPOSE_PROJECT_NAME"
-    else
-        basename "$PROJECT_DIR"
-    fi
-}
-
 find_existing_postgres_container() {
     local project_name container_id
-    project_name="$(get_compose_project_name)"
+    project_name="$(deployment_locked_project)" || return 1
 
     container_id=$(docker ps -q \
         --filter "label=com.docker.compose.project=${project_name}" \
@@ -546,7 +538,7 @@ sync_postgres_password_to_runtime_env() {
 reconcile_postgres_password_with_running_database() {
     local container_id
 
-    container_id="$(find_existing_postgres_container)"
+    container_id="$(find_existing_postgres_container)" || { echo "Error: could not resolve the deployment's Compose project for PostgreSQL reconciliation." >&2; return 1; }
     [ -n "$container_id" ] || return 0
 
     if ! is_container_running "$container_id"; then
@@ -1185,6 +1177,14 @@ run_grafana_credential_migration() {
     fi
 }
 
+start_postgres_service() {
+    if [ "$OPT_OFFLINE" = true ]; then
+        docker compose "${COMPOSE_FILE_ARGS[@]}" up $(compose_up_no_build_args) postgres
+    else
+        docker compose "${COMPOSE_FILE_ARGS[@]}" up $(compose_up_after_build_args) postgres
+    fi
+}
+
 start_services() {
     echo "Starting Sanctuary..."
     if [ "$OPT_OFFLINE" = true ]; then
@@ -1232,14 +1232,11 @@ start_services() {
     if deployment_stage_before postgres_started; then
         deployment_verify_legacy_preconditions
         run_grafana_credential_migration
-        if [ "$OPT_OFFLINE" = true ]; then
-            docker compose "${COMPOSE_FILE_ARGS[@]}" up $(compose_up_no_build_args) postgres
-        else
-            docker compose "${COMPOSE_FILE_ARGS[@]}" up $(compose_up_after_build_args) postgres
-        fi
+        start_postgres_service
         deployment_transition postgres_started
     fi
     if deployment_stage_before password_reconciled; then
+        start_postgres_service
         SANCTUARY_PROJECT_DIR="$PROJECT_DIR" bash "$PROJECT_DIR/scripts/reconcile-postgres-password.sh"
         deployment_transition password_reconciled
     fi

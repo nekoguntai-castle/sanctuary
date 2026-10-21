@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as adminApi from '../../../src/api/admin';
 import { useLayoutChromeState } from '../../../src/components/Layout/useLayoutChromeState';
+import { useAppShortcuts } from '../../../src/hooks/useAppShortcuts';
 
 vi.mock('../../../src/hooks/useAppShortcuts', () => ({ useAppShortcuts: vi.fn() }));
 vi.mock('../../../src/api/admin', () => ({ checkVersion: vi.fn() }));
@@ -87,4 +88,15 @@ describe('useLayoutChromeState modal handoff', () => {
     trigger.remove();
   });
 
+  it('keeps shortcut bindings stable across a same-id user re-render', () => {
+    const { rerender } = renderHook(
+      ({ user }) => useLayoutChromeState({ capabilities: {}, user }),
+      { initialProps: { user: { id: 'user' } } },
+    );
+    rerender({ user: { id: 'user' } });
+
+    const calls = vi.mocked(useAppShortcuts).mock.calls;
+    expect(calls.length).toBeGreaterThanOrEqual(2);
+    expect(calls[calls.length - 1][0]).toBe(calls[calls.length - 2][0]);
+  });
 });

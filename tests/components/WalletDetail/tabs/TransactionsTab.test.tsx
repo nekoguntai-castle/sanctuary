@@ -323,4 +323,127 @@ describe('TransactionsTab', () => {
 
     expect(screen.getByText('Showing 1 of 2 loaded transactions; more are not loaded')).toBeInTheDocument();
   });
+
+  describe('manual filters over loaded pages only', () => {
+    const PARTIAL_TEXT =
+      'Partial result: 1 of the 2 loaded transactions match these filters. Older transactions are not included, ' +
+      'and the totals below count only these matches. Load more to extend.';
+    const EMPTY_MESSAGE = 'No matches in the 2 loaded transactions. Load more to search older transactions.';
+
+    it('marks manual filters as partial while older pages are unloaded', () => {
+      render(<TransactionsTab {...baseProps} hasActiveFilters={true} />);
+
+      expect(screen.getByTestId('manual-filter-partial-notice')).toHaveTextContent(PARTIAL_TEXT);
+    });
+
+    it('counts only the rows the list renders, not RBF-replaced ones', () => {
+      render(
+        <TransactionsTab
+          {...baseProps}
+          hasActiveFilters={true}
+          filteredTransactions={[
+            ...baseProps.filteredTransactions,
+            { id: 'tx-3', txid: 'ghi', walletId: 'wallet-1', amount: 10, timestamp: Date.now(), type: 'receive', rbfStatus: 'replaced' },
+          ] as any}
+        />
+      );
+
+      expect(screen.getByTestId('manual-filter-partial-notice')).toHaveTextContent(PARTIAL_TEXT);
+    });
+
+    it('counts only displayable loaded rows, not RBF-replaced ones', () => {
+      render(
+        <TransactionsTab
+          {...baseProps}
+          hasActiveFilters={true}
+          transactions={[
+            ...baseProps.transactions,
+            { id: 'tx-3', txid: 'ghi', walletId: 'wallet-1', amount: 10, timestamp: Date.now(), type: 'receive', rbfStatus: 'replaced' },
+          ] as any}
+        />
+      );
+
+      expect(screen.getByTestId('manual-filter-partial-notice')).toHaveTextContent(PARTIAL_TEXT);
+      expect(mockRefs.txListProps.emptyMessage).toBe(EMPTY_MESSAGE);
+    });
+
+    it('shows no partial notice once the known total is loaded, even when the last page was full', () => {
+      render(
+        <TransactionsTab
+          {...baseProps}
+          hasActiveFilters={true}
+          transactionStats={{ ...baseProps.transactionStats, totalCount: 2 } as any}
+        />
+      );
+
+      expect(screen.queryByTestId('manual-filter-partial-notice')).not.toBeInTheDocument();
+      expect(mockRefs.txListProps.emptyMessage).toBeUndefined();
+    });
+
+    it('stays partial while the known total exceeds the loaded rows', () => {
+      render(
+        <TransactionsTab
+          {...baseProps}
+          hasActiveFilters={true}
+          transactionStats={{ ...baseProps.transactionStats, totalCount: 3 } as any}
+        />
+      );
+
+      expect(screen.getByTestId('manual-filter-partial-notice')).toHaveTextContent(PARTIAL_TEXT);
+    });
+
+    it('passes a load-more empty message while a filtered result is partial', () => {
+      const { unmount } = render(<TransactionsTab {...baseProps} hasActiveFilters={true} />);
+      expect(mockRefs.txListProps.emptyMessage).toBe(EMPTY_MESSAGE);
+      unmount();
+
+      render(
+        <TransactionsTab
+          {...baseProps}
+          aiEnabled={true}
+          aiQueryFilter={{ type: 'transactions', aggregation: null }}
+          hasActiveFilters={false}
+        />
+      );
+      expect(mockRefs.txListProps.emptyMessage).toBe(EMPTY_MESSAGE);
+    });
+
+    it('shows no manual partial notice once every page is loaded', () => {
+      render(<TransactionsTab {...baseProps} hasActiveFilters={true} hasMoreTx={false} />);
+
+      expect(screen.queryByTestId('manual-filter-partial-notice')).not.toBeInTheDocument();
+      expect(mockRefs.txListProps.emptyMessage).toBeUndefined();
+    });
+
+    it('defers to the AI summary when both AI and manual filters are active', () => {
+      render(
+        <TransactionsTab
+          {...baseProps}
+          aiEnabled={true}
+          aiQueryFilter={{ type: 'transactions', aggregation: null }}
+          hasActiveFilters={true}
+        />
+      );
+
+      expect(screen.queryByTestId('manual-filter-partial-notice')).not.toBeInTheDocument();
+      expect(screen.getByText('Showing 1 of 2 loaded transactions; more are not loaded')).toBeInTheDocument();
+      expect(mockRefs.txListProps.emptyMessage).toBe(EMPTY_MESSAGE);
+    });
+
+    it('leaves the unfiltered list unchanged', () => {
+      render(<TransactionsTab {...baseProps} />);
+
+      expect(screen.queryByTestId('manual-filter-partial-notice')).not.toBeInTheDocument();
+      expect(mockRefs.txListProps.emptyMessage).toBeUndefined();
+    });
+
+    it('does not claim a partial result before any page has loaded', () => {
+      render(
+        <TransactionsTab {...baseProps} transactions={[]} filteredTransactions={[]} hasActiveFilters={true} />
+      );
+
+      expect(screen.queryByTestId('manual-filter-partial-notice')).not.toBeInTheDocument();
+      expect(mockRefs.txListProps.emptyMessage).toBeUndefined();
+    });
+  });
 });

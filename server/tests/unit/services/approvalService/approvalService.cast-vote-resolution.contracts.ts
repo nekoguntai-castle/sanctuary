@@ -68,6 +68,7 @@ export function registerCastVoteResolutionContracts() {
     );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
+    mockWalletSharingRepo.findEffectiveApproverIds.mockResolvedValue([otherUserId]);
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v1', decision: 'approve' });
     mockPolicyRepo.findApprovalRequestsByDraftId.mockResolvedValue([
       { ...requestWith1Approval, status: 'approved' },
@@ -161,6 +162,7 @@ export function registerCastVoteResolutionContracts() {
     mockPolicyRepo.createVote.mockResolvedValue(vote);
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
     mockPolicyRepo.findApprovalRequestsByDraftId.mockResolvedValue([persisted]);
+    mockWalletSharingRepo.findEffectiveApproverIds.mockResolvedValue([otherUserId]);
 
     const result = await approvalService.castVote(requestId, otherUserId, decision);
 
@@ -219,6 +221,7 @@ export function registerCastVoteResolutionContracts() {
       mockPolicyRepo.createVote.mockResolvedValue(vote);
       mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
       mockPolicyRepo.resolveApprovalRequestIfPending.mockResolvedValue(null);
+      mockWalletSharingRepo.findEffectiveApproverIds.mockResolvedValue([otherUserId]);
 
       const result = await approvalService.castVote(requestId, otherUserId, decision);
 

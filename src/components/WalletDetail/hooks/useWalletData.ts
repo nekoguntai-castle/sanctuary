@@ -457,21 +457,24 @@ export function useWalletData({
   const drainFetchRef = useRef(fetchData);
   drainFetchRef.current = fetchData;
   const userId = user?.id;
+  const isAdmin = !!user?.isAdmin;
 
   useEffect(() => {
     if (!id || !userId) return;
     return subscribeWalletRenameDrain(routeKey, () => { void drainFetchRef.current(true); });
   }, [id, routeKey, userId]);
 
+  // Keyed on the user id and admin flag, not the `user` object: preference
+  // writes give `user` a new identity and must not reload the open wallet.
   useEffect(() => {
     void fetchData();
-  }, [id, user]);
+  }, [id, userId, isAdmin]);
 
   // Refetch wallet data when window becomes visible (handles missed WS events)
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && id && user) {
-        void fetchData(true);
+      if (document.visibilityState === 'visible' && id && userId) {
+        void drainFetchRef.current(true);
       }
     };
 
@@ -479,7 +482,7 @@ export function useWalletData({
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [id, user]);
+  }, [id, userId]);
 
   return {
     // Core

@@ -356,4 +356,17 @@ describe('useDeviceData branch coverage', () => {
       err: refreshError,
     });
   });
+
+  it('keeps an in-progress label edit when only preferences change', async () => {
+    const { result, rerender } = renderHook(() => useDeviceData('dev-1'));
+    await waitFor(() => expect(result.current.editLabel).toBe('Device One'));
+    act(() => result.current.setEditLabel('Typed label'));
+
+    useUserMock.mockReturnValue({ user: { id: 'u1', isAdmin: true, preferences: { darkMode: false } } });
+    rerender();
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+
+    expect(devicesApi.getDevice).toHaveBeenCalledTimes(1);
+    expect(result.current.editLabel).toBe('Typed label');
+  });
 });

@@ -7,15 +7,18 @@
  * - Failed API call returns unavailable status
  * - Shared observable cache behavior
  * - Cache invalidation via invalidateIntelligenceStatus()
+ * - Terminal client errors (feature gate 403) stop polling
+ * - Transient failures back off exponentially up to a one-minute cap
  */
 
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   invalidateIntelligenceStatus,
   useIntelligenceStatus,
 } from '../../src/hooks/useIntelligenceStatus';
 import * as intelligenceApi from '../../src/api/intelligence';
+import { ApiError } from '../../src/api/client';
 
 vi.mock('../../src/api/intelligence', () => ({
   getIntelligenceStatus: vi.fn(),
@@ -89,7 +92,7 @@ describe('useIntelligenceStatus', () => {
       expect(intelligenceApi.getIntelligenceStatus).toHaveBeenCalledTimes(2);
       expect(result.current).toEqual({ available: false, loading: false });
 
-      await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
       expect(intelligenceApi.getIntelligenceStatus).toHaveBeenCalledTimes(3);
       expect(result.current).toEqual({ available: true, loading: false, endpointType: 'remote' });
     } finally {
@@ -265,5 +268,171 @@ describe('useIntelligenceStatus', () => {
     expect(second.current.available).toBe(true);
     expect(second.current.loading).toBe(false);
     expect(second.current.endpointType).toBe('host');
+  });
+
+  describe('failure handling', () => {
+    const statusMock = () => vi.mocked(intelligenceApi.getIntelligenceStatus);
+    const calls = () => statusMock().mock.calls.length;
+    const flush = async () => { await act(async () => { await Promise.resolve(); }); };
+    const advance = async (ms: number) => {
+      await act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+    };
+    const nextTimer = async () => {
+      await act(async () => { await vi.advanceTimersToNextTimerAsync(); });
+    };
+    const featureGateError = (status = 403) => new ApiError('Features not available', status, {
+      error: 'Features not available',
+      disabledFeatures: ['aiAssistant', 'treasuryIntelligence'],
+    });
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it.each([401, 403, 404])('treats a feature-gate %i as terminal and stops polling', async (status) => {
+      statusMock().mockRejectedValue(featureGateError(status));
+
+      const { result } = renderHook(() => useIntelligenceStatus());
+      await flush();
+      await advance(120_000);
+
+      expect(intelligenceApi.getIntelligenceStatus).toHaveBeenCalledTimes(1);
+      expect(result.current).toEqual({ available: false, loading: false });
+    });
+
+    it('backs off transient failures exponentially up to a one-minute cap', async () => {
+      statusMock().mockRejectedValue(new Error('outage'));
+
+      renderHook(() => useIntelligenceStatus());
+      await flush();
+      expect(calls()).toBe(1);
+
+      const steps: Array<[number, number]> = [
+        [1_000, 2],
+        [1_999, 2],
+        [1, 3],
+        [4_000, 4],
+        [8_000, 5],
+        [16_000, 6],
+        [32_000, 7],
+        [60_000, 8],
+        [60_000, 9],
+      ];
+      for (const [ms, expected] of steps) {
+        await advance(ms);
+        expect(calls(), `after +${ms} ms`).toBe(expected);
+      }
+    });
+
+    it('rechecks a terminal status after invalidation', async () => {
+      statusMock().mockRejectedValue(featureGateError());
+
+      const { result } = renderHook(() => useIntelligenceStatus());
+      await flush();
+
+      statusMock().mockResolvedValue({ available: true, ollamaConfigured: true });
+      act(() => invalidateIntelligenceStatus());
+      await flush();
+
+      expect(intelligenceApi.getIntelligenceStatus).toHaveBeenCalledTimes(2);
+      expect(result.current.available).toBe(true);
+    });
+
+    it('rechecks a terminal status when a new session subscribes after every consumer unmounted', async () => {
+      statusMock().mockRejectedValue(featureGateError());
+
+      const first = renderHook(() => useIntelligenceStatus());
+      await flush();
+      act(() => first.unmount());
+
+      renderHook(() => useIntelligenceStatus());
+      await flush();
+
+      expect(intelligenceApi.getIntelligenceStatus).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not refetch a terminal status for an additional consumer', async () => {
+      statusMock().mockRejectedValue(featureGateError());
+
+      renderHook(() => useIntelligenceStatus());
+      await flush();
+
+      const second = renderHook(() => useIntelligenceStatus());
+      await flush();
+
+      expect(intelligenceApi.getIntelligenceStatus).toHaveBeenCalledTimes(1);
+      expect(second.result.current).toEqual({ available: false, loading: false });
+    });
+
+    it.each([0, 408, 429, 503])('treats a status %i ApiError as transient', async (status) => {
+      statusMock()
+        .mockRejectedValueOnce(new ApiError('transient', status))
+        .mockResolvedValueOnce({ available: true, ollamaConfigured: true });
+
+      const { result } = renderHook(() => useIntelligenceStatus());
+      await flush();
+      expect(calls()).toBe(1);
+
+      await advance(1_000);
+      expect(calls()).toBe(2);
+      expect(result.current).toEqual({ available: true, loading: false });
+    });
+
+    it('backs off consecutive transient ApiErrors', async () => {
+      statusMock()
+        .mockRejectedValueOnce(new ApiError('rate limited', 429))
+        .mockRejectedValueOnce(new ApiError('unavailable', 503))
+        .mockResolvedValueOnce({ available: true, ollamaConfigured: true });
+
+      const { result } = renderHook(() => useIntelligenceStatus());
+      await flush();
+
+      await advance(1_000);
+      expect(calls()).toBe(2);
+      await advance(2_000);
+      expect(calls()).toBe(3);
+      expect(result.current).toEqual({ available: true, loading: false });
+    });
+
+    it('restarts the backoff at one second after an invalidation', async () => {
+      statusMock().mockRejectedValue(new Error('outage'));
+
+      renderHook(() => useIntelligenceStatus());
+      await flush();
+      await nextTimer();
+      await nextTimer();
+
+      act(() => invalidateIntelligenceStatus());
+      await flush();
+      const before = calls();
+
+      await advance(999);
+      expect(calls()).toBe(before);
+      await advance(1);
+      expect(calls()).toBe(before + 1);
+    });
+
+    it('restarts the backoff when the last consumer leaves', async () => {
+      statusMock().mockRejectedValue(new Error('outage'));
+
+      const first = renderHook(() => useIntelligenceStatus());
+      await flush();
+      await nextTimer();
+      await nextTimer();
+      act(() => first.unmount());
+
+      renderHook(() => useIntelligenceStatus());
+      await flush();
+      const before = calls();
+
+      await advance(999);
+      expect(calls()).toBe(before);
+      await advance(1);
+      expect(calls()).toBe(before + 1);
+    });
   });
 });

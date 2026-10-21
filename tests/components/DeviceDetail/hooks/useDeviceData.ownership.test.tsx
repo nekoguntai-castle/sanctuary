@@ -777,28 +777,28 @@ describe('useDeviceData route ownership', () => {
       expect(devicesApi.getDevice).toHaveBeenCalledTimes(2);
     });
 
-    it('clears a load error when a same-route refetch for a new user object succeeds', async () => {
+    it('clears a load error when a same-route refetch for a new user id succeeds', async () => {
       vi.mocked(devicesApi.getDevice)
         .mockRejectedValueOnce(new ApiError('Server exploded', 500))
         .mockResolvedValue(device('A'));
       const { result, rerender } = await settle();
       expect(result.current.loadError).toBe('Server exploded');
 
-      context.user = { id: 'user-1', isAdmin: false };
+      context.user = { id: 'user-2', isAdmin: false };
       rerender({ id: 'A' });
 
       await waitFor(() => expect(result.current.device?.id).toBe('A'));
       expect(result.current.loadError).toBeNull();
     });
 
-    it('clears a load error when a same-route refetch resolves not found', async () => {
+    it('clears a load error when a same-route refetch for a new user id resolves not found', async () => {
       vi.mocked(devicesApi.getDevice)
         .mockRejectedValueOnce(new ApiError('Server exploded', 500))
         .mockResolvedValue(null as unknown as Device);
       const { result, rerender } = await settle();
       expect(result.current.loadError).toBe('Server exploded');
 
-      context.user = { id: 'user-1', isAdmin: false };
+      context.user = { id: 'user-2', isAdmin: false };
       rerender({ id: 'A' });
 
       await waitFor(() => expect(devicesApi.getDevice).toHaveBeenCalledTimes(2));

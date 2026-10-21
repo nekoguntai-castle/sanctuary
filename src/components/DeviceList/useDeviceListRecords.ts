@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Device, HardwareDeviceModel, User } from '../../types';
+import { useLatestRequest } from '../../hooks/useLatestRequest';
 import { useLoadingState } from '../../hooks/useLoadingState';
 import { getDevices, updateDevice, deleteDevice, getDeviceModels } from '../../api/devices';
 import { deviceKeys } from '../../hooks/queries/deviceKeys';
@@ -19,21 +20,32 @@ export function useDeviceListRecords(user: User | null) {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const { loading, error, execute: runLoad } = useLoadingState({ initialLoading: true });
+  // Every load begins a request and every local mutation invalidates it, so a
+  // load that started earlier cannot overwrite a newer load's result or a
+  // just-applied delete/save.
+  const latestLoad = useLatestRequest();
+  const userId = user?.id ?? null;
 
-  const loadDevices = useCallback(() => runLoad(async () => {
-    const [deviceData, models] = await Promise.all([
-      getDevices(),
-      getDeviceModels()
-    ]);
-    setDevices(deviceData);
-    setDeviceModels(models);
-  }), [runLoad]);
+  const loadDevices = useCallback(() => {
+    const token = latestLoad.begin();
+    return runLoad(async () => {
+      const [deviceData, models] = await Promise.all([
+        getDevices(),
+        getDeviceModels()
+      ]);
+      if (!latestLoad.isCurrent(token)) return;
+      setDevices(deviceData);
+      setDeviceModels(models);
+    });
+  }, [latestLoad, runLoad]);
 
+  // Keyed on the user id: preference writes give `user` a new identity and
+  // must not reload (and blank) the list.
   useEffect(() => {
-    if (!user) return;
+    if (!userId) return;
 
     void loadDevices();
-  }, [user, loadDevices]);
+  }, [userId, loadDevices]);
 
   const editState = useMemo<DeviceGroupedEditState>(() => ({
     editingId,
@@ -68,6 +80,7 @@ export function useDeviceListRecords(user: User | null) {
       try {
         const updateData = buildDeviceUpdate(device, editValue, editType);
         const updatedDevice = await updateDevice(device.id, updateData);
+        latestLoad.invalidate();
         refreshEntityCaches(deviceKeys, device.id);
         setDevices(prev => prev.map(d => d.id === device.id ? { ...d, ...updatedDevice, label: editValue } : d));
         setEditingId(null);
@@ -79,6 +92,7 @@ export function useDeviceListRecords(user: User | null) {
       try {
         setDeleteError(null);
         await deleteDevice(device.id);
+        latestLoad.invalidate();
         evictEntityCache(deviceKeys, device.id);
         setDevices(prev => prev.filter(d => d.id !== device.id));
         setDeleteConfirmId(null);

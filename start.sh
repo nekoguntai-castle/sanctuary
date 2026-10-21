@@ -358,7 +358,7 @@ configure_compose_files() {
 
 detect_enabled_stacks() {
     local include_stopped="${1:-no}"
-    local project_name="${COMPOSE_PROJECT_NAME:-sanctuary}"
+    local project_name="$SANCTUARY_PROJECT"
     local service
     local -a docker_ps_args=(ps)
 
@@ -409,6 +409,13 @@ ensure_grafana_migration_image() {
     docker compose "${COMPOSE_FILE_ARGS[@]}" build grafana-password-migration
 }
 
+# Idempotent: re-running it leaves an already-running postgres untouched.
+start_postgres_service() {
+    local profiles="$1"
+    local postgres_up_flags="$2"
+    docker compose "${COMPOSE_FILE_ARGS[@]}" $profiles up $postgres_up_flags postgres
+}
+
 start_compose_stack() {
     local profiles="$1"
     local up_flags="$2"
@@ -440,10 +447,11 @@ start_compose_stack() {
             bash "$SCRIPT_DIR/scripts/ops/run-grafana-password-migration.sh" \
                 "$SCRIPT_DIR" "${COMPOSE_FILE_ARGS[@]}"
         fi
-        docker compose "${COMPOSE_FILE_ARGS[@]}" $profiles up $postgres_up_flags postgres
+        start_postgres_service "$profiles" "$postgres_up_flags"
         deployment_transition postgres_started
     fi
     if deployment_stage_before password_reconciled; then
+        start_postgres_service "$profiles" "$postgres_up_flags"
         SANCTUARY_PROJECT_DIR="$SCRIPT_DIR" bash "$SCRIPT_DIR/scripts/reconcile-postgres-password.sh"
         deployment_transition password_reconciled
     fi
@@ -505,7 +513,7 @@ case "${1:-}" in
     --logs)
         detect_enabled_stacks yes
         configure_enabled_stacks
-        docker compose "${COMPOSE_FILE_ARGS[@]}" $MCP_PROFILE logs -f
+        docker compose -p "$SANCTUARY_PROJECT" "${COMPOSE_FILE_ARGS[@]}" $MCP_PROFILE logs -f
         ;;
     --with-ai)
         echo "Starting Sanctuary..."

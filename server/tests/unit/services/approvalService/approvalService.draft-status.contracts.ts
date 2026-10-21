@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
 
-import { mockVoteRequestReads, draftId, makePendingRequest, mockDraftRepo, mockLog, mockNotify, mockPolicyRepo, otherUserId, requestId, walletId } from './approvalServiceTestHarness';
+import { mockVoteRequestReads, draftId, makePendingRequest, mockDraftRepo, mockLog, mockNotify, mockPolicyRepo, mockWalletSharingRepo, otherUserId, requestId, walletId } from './approvalServiceTestHarness';
 import { approvalService } from '../../../../src/services/vaultPolicy/approvalService';
 
 export function registerUpdateDraftApprovalFromRequestsContracts() {
@@ -68,6 +68,7 @@ export function registerUpdateDraftApprovalFromRequestsContracts() {
       .mockResolvedValueOnce({ userId: 'creator', walletId })  // self-approval check
       .mockResolvedValueOnce({ userId: 'creator', walletId }); // notification fetch
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v1', decision: 'approve' });
+    mockWalletSharingRepo.findEffectiveApproverIds.mockResolvedValue([otherUserId]);
     mockPolicyRepo.findApprovalRequestsByDraftId.mockResolvedValue([
       { status: 'approved' },
     ]);
@@ -94,6 +95,7 @@ export function registerUpdateDraftApprovalFromRequestsContracts() {
       .mockResolvedValueOnce({ userId: 'creator', walletId })  // self-approval check
       .mockResolvedValueOnce(null); // draft not found for notification
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v1', decision: 'approve' });
+    mockWalletSharingRepo.findEffectiveApproverIds.mockResolvedValue([otherUserId]);
     mockPolicyRepo.findApprovalRequestsByDraftId.mockResolvedValue([
       { status: 'approved' },
     ]);
@@ -145,6 +147,7 @@ export function registerUpdateDraftApprovalFromRequestsContracts() {
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v1', decision: 'approve' });
+    mockWalletSharingRepo.findEffectiveApproverIds.mockResolvedValue([otherUserId]);
     // One approved, one still pending → draft stays pending
     mockPolicyRepo.findApprovalRequestsByDraftId.mockResolvedValue([
       { status: 'approved' },
@@ -176,6 +179,7 @@ export function registerUpdateDraftApprovalFromRequestsContracts() {
       .mockResolvedValueOnce({ userId: 'creator', walletId })
       .mockResolvedValueOnce({ userId: 'creator', walletId });
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v1', decision: 'approve' });
+    mockWalletSharingRepo.findEffectiveApproverIds.mockResolvedValue([otherUserId]);
     mockPolicyRepo.findApprovalRequestsByDraftId.mockResolvedValue([
       { status: 'approved' },
     ]);

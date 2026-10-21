@@ -165,6 +165,12 @@ fi
 unset SANCTUARY_DEPLOYMENT_LOCK_TOKEN DEPLOYMENT_LOCK_OWNERSHIP SANCTUARY_PENDING_DIGEST
 export SANCTUARY_OPERATION_RUN_ID=run-prepared-resume
 deployment_begin no no no
+[ "$(deployment_locked_project)" = lifecycle-test ]
+[ "$(env -u SANCTUARY_PROJECT -u COMPOSE_PROJECT_NAME bash -c '. "$1"; deployment_locked_project' _ "$ROOT_DIR/scripts/ownership/deployment-lifecycle.sh")" = lifecycle-test ]
+(
+  unset SANCTUARY_DEPLOYMENT_LOCK_TOKEN
+  if deployment_locked_project >/dev/null 2>&1; then echo 'locked project resolved without the lock' >&2; exit 1; fi
+)
 [ "$SANCTUARY_DEPLOYMENT_STATE" = pending ]
 [ "$SANCTUARY_DEPLOYMENT_GENERATION" = 1 ]
 [ "$SANCTUARY_DEPLOYMENT_STAGE" = prepared ]

@@ -213,16 +213,21 @@ function deviceFixtures(shared: boolean) {
 
 // A saved preference refreshes the device records and remounts the header.
 // Wait for that existing lifecycle before opening another transient control.
+// A preference write changes only the user's preferences, not their identity,
+// so the device list must neither refetch nor return to its loading state.
 async function changeDevicePreference(page: Page, control: Locator) {
-  let saved = false;
+  let deviceListReads = 0;
+  const countDeviceListReads = (request: { method: () => string; url: () => string }) => {
+    if (request.method() === 'GET' && new URL(request.url()).pathname.endsWith('/devices')) deviceListReads += 1;
+  };
+  page.on('request', countDeviceListReads);
   const save = page.waitForResponse(response => response.request().method() === 'PATCH'
-    && response.url().endsWith('/auth/me/preferences')).then(() => { saved = true; });
-  const refresh = page.waitForResponse(response => saved && response.request().method() === 'GET'
-    && new URL(response.url()).pathname.endsWith('/devices'));
+    && response.url().endsWith('/auth/me/preferences'));
   await control.click();
   await save;
-  await refresh;
   await expect(page.getByText('Loading devices...', { exact: true })).toHaveCount(0);
+  page.off('request', countDeviceListReads);
+  expect(deviceListReads).toBe(0);
 }
 
 async function expectDeviceToolbarFits(page: Page) {

@@ -1,5 +1,6 @@
 import { describe } from 'vitest';
 
+import { registerAnyNEligibilityContracts } from './approvalService/approvalService.any-n-eligibility.contracts';
 import { registerCastVoteEventContracts } from './approvalService/approvalService.cast-vote-events.contracts';
 import { registerCastVoteGuardContracts } from './approvalService/approvalService.cast-vote-guards.contracts';
 import { registerCastVoteResolutionContracts } from './approvalService/approvalService.cast-vote-resolution.contracts';
@@ -52,6 +53,10 @@ describe('ApprovalService', () => {
 
   describe('quorum membership (specific & all)', () => {
     registerQuorumMembershipContracts();
+  });
+
+  describe('quorum membership (any_n)', () => {
+    registerAnyNEligibilityContracts();
   });
 
   describe('resolved drafts stay resolved', () => {

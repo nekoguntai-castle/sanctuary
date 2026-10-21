@@ -102,20 +102,21 @@ export function useLayoutChromeState({
     setShowKeyboardShortcutsModal(false);
   }, []);
 
+  const isSignedIn = !!user;
   const shortcutBindings = useMemo(
     () => [
       {
         id: 'console.open' as const,
-        enabled: !!user && !!capabilities.console,
+        enabled: isSignedIn && !!capabilities.console,
         handler: openConsole,
       },
       {
         id: 'shortcuts.open' as const,
-        enabled: !!user,
+        enabled: isSignedIn,
         handler: toggleKeyboardShortcuts,
       },
     ],
-    [capabilities.console, openConsole, toggleKeyboardShortcuts, user],
+    [capabilities.console, isSignedIn, openConsole, toggleKeyboardShortcuts],
   );
 
   useAppShortcuts(shortcutBindings);

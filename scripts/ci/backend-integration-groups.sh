@@ -32,6 +32,7 @@ list_group_specs() {
       printf '%s\n' \
         tests/integration/flows/admin.integration.test.ts \
         tests/integration/flows/adminSettingsConcurrency.integration.test.ts \
+        tests/integration/flows/approvalAnyNEligibility.integration.test.ts \
         tests/integration/flows/approvalExpirySweep.integration.test.ts \
         tests/integration/flows/authIntentConcurrency.integration.test.ts \
         tests/integration/flows/emailVerification.integration.test.ts \

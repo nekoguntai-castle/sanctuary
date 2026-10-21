@@ -130,6 +130,26 @@ describe('TransactionList presentation contract', () => {
     expect(screen.queryByText('No transactions found.')).not.toBeInTheDocument();
   });
 
+  // A filter applied to the loaded pages only must not claim the wallet has no
+  // matches at all; the caller supplies a message that says what was searched.
+  it("renders a supplied empty message instead of 'No transactions found.'", () => {
+    renderList([], {
+      emptyMessage: 'No matches in the 50 loaded transactions. Load more to search older transactions.',
+    });
+
+    expect(screen.getByTestId('transactions-empty-state')).toHaveTextContent(
+      'No matches in the 50 loaded transactions. Load more to search older transactions.'
+    );
+    expect(screen.queryByText('No transactions found.')).not.toBeInTheDocument();
+  });
+
+  it("keeps 'Transactions unavailable.' ahead of a supplied empty message", () => {
+    renderList([], { unavailable: true, emptyMessage: 'No matches in the 50 loaded transactions.' });
+
+    expect(screen.getByTestId('transactions-empty-state')).toHaveTextContent('Transactions unavailable.');
+    expect(screen.queryByText('No matches in the 50 loaded transactions.')).not.toBeInTheDocument();
+  });
+
   it('still renders the statistics grid when the list is empty', () => {
     renderList([]);
 

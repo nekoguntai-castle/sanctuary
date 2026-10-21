@@ -3,6 +3,17 @@ const DEFAULT_MAX_RETRIES = 3;
 // Mutations stay at-most-once because the server may already have committed.
 const TRANSPORT_RETRY_METHODS = new Set(["GET", "HEAD"]);
 
+// HTTP statuses a retry can plausibly fix: request timeout, rate limiting and
+// transient server/gateway failures.
+const RETRYABLE_STATUS_CODES: ReadonlySet<number> = new Set([
+  408, 429, 500, 502, 503, 504,
+]);
+
+/** True when a response with this HTTP status is worth retrying. */
+export function isRetryableStatus(status: number): boolean {
+  return RETRYABLE_STATUS_CODES.has(status);
+}
+
 /** Safe-read transport retry configuration. */
 export interface RetryOptions {
   maxRetries?: number;

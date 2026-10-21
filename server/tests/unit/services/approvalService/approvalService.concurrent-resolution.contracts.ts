@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 
-import { mockVoteRequestReads, makePendingRequest, mockDraftRepo, mockPolicyRepo, otherUserId, requestId, walletId } from './approvalServiceTestHarness';
+import { mockVoteRequestReads, makePendingRequest, mockDraftRepo, mockPolicyRepo, mockWalletSharingRepo, otherUserId, requestId, walletId } from './approvalServiceTestHarness';
 import { approvalService } from '../../../../src/services/vaultPolicy/approvalService';
 
 /**
@@ -33,6 +33,7 @@ export function registerConcurrentResolutionContracts() {
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v-approve', decision: 'approve' });
+    mockWalletSharingRepo.findEffectiveApproverIds.mockResolvedValue([otherUserId]);
 
     // Meanwhile another resolver already settled the row as rejected, so the
     // conditional update matches nothing.

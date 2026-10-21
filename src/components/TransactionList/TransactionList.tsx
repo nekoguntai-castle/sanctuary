@@ -43,6 +43,12 @@ interface TransactionListProps {
    */
   unavailable?: boolean;
   /**
+   * Empty-state text to show instead of "No transactions found." — for a
+   * filtered list that covers only the loaded pages, where no match does not
+   * mean none exist. "Transactions unavailable." still takes priority.
+   */
+  emptyMessage?: string;
+  /**
    * `'comfortable'` (default) is the wallet-detail presentation: the seven-tile
    * statistics grid, and an empty state that reserves 300px so the viewport
    * doesn't collapse.
@@ -75,6 +81,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   transactionStats,
   density = 'comfortable',
   unavailable = false,
+  emptyMessage,
 }) => {
   const { format } = usePriceFreeFormatter();
   const { enabled: aiEnabled } = useAIStatus();
@@ -260,7 +267,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
             }`}
           >
             <p className="text-sanctuary-400 dark:text-sanctuary-500" data-testid="transactions-empty-state">
-              {unavailable ? 'Transactions unavailable.' : 'No transactions found.'}
+              {unavailable ? 'Transactions unavailable.' : (emptyMessage ?? 'No transactions found.')}
             </p>
           </div>
         ) : (

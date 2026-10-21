@@ -39,10 +39,10 @@ export interface GroupDisplay {
 
 function createOwnershipKey(
   id: string | undefined,
-  userId: string | undefined,
+  userId: string | null,
   network: string,
 ): string {
-  return JSON.stringify([id ?? null, userId ?? null, network]);
+  return JSON.stringify([id ?? null, userId, network]);
 }
 
 function toWalletInfos(device: Device, network: string): WalletInfo[] {
@@ -60,7 +60,8 @@ export function useDeviceData(id: string | undefined) {
   const { user } = useUser();
   const { selectedNetwork } = useActiveNetwork();
   const currentUserIsAdmin = user ? user.isAdmin : false;
-  const ownershipKey = createOwnershipKey(id, user?.id, selectedNetwork);
+  const userId = user?.id ?? null;
+  const ownershipKey = createOwnershipKey(id, userId, selectedNetwork);
   const ownershipRef = useRef<ReturnType<typeof createRequestOwnership> | null>(null);
   if (!ownershipRef.current) ownershipRef.current = createRequestOwnership(ownershipKey);
   const ownership = ownershipRef.current;
@@ -130,8 +131,10 @@ export function useDeviceData(id: string | undefined) {
     ownership.invalidate();
   }, [ownership]);
 
+  // Gated on the user id, not the `user` object: a preference write must not
+  // refetch the device or overwrite an in-progress label edit.
   useEffect(() => {
-    if (!id || !user) return;
+    if (!id || !userId) return;
     const controller = new AbortController();
     const request = ownership.beginFetch(ownershipKey);
     const ownsRequest = () => ownership.isFetchOwner(request);
@@ -186,7 +189,7 @@ export function useDeviceData(id: string | undefined) {
 
     void fetchData();
     return () => controller.abort();
-  }, [id, ownership, ownershipKey, reloadCount, selectedNetwork, user]);
+  }, [id, ownership, ownershipKey, reloadCount, selectedNetwork, userId]);
 
   const retryLoad = useCallback(() => {
     if (!ownsCurrentRoute()) return;

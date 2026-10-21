@@ -13,6 +13,7 @@ import { createLogger } from '../../utils/logger';
 const log = createLogger('Layout');
 
 interface LayoutNotificationUser {
+  id: string;
   isAdmin?: boolean;
 }
 
@@ -132,14 +133,19 @@ export function useLayoutNotifications({
   selectedNetwork: TabNetwork;
   notificationActions: NotificationActions;
 }) {
+  // Keyed on stable primitives: preference writes give `user` a new identity
+  // and must not re-sync drafts or restart the connection poll.
+  const userId = user?.id ?? null;
+  const isAdmin = !!user?.isAdmin;
+
   useEffect(() => {
-    if (!user || wallets.length === 0) return;
+    if (!userId || wallets.length === 0) return;
 
     void syncDraftNotifications(wallets, notificationActions);
-  }, [user, wallets, notificationActions]);
+  }, [userId, wallets, notificationActions]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!userId) return;
 
     let active = true;
     let requestGeneration = 0;
@@ -147,7 +153,7 @@ export function useLayoutNotifications({
     const runConnectionCheck = () => {
       const generation = ++requestGeneration;
       void checkBitcoinConnection(
-        !!user.isAdmin,
+        isAdmin,
         selectedNetwork,
         notificationActions,
         () => active && generation === requestGeneration,
@@ -161,5 +167,5 @@ export function useLayoutNotifications({
       active = false;
       clearInterval(interval);
     };
-  }, [user, selectedNetwork, notificationActions]);
+  }, [userId, isAdmin, selectedNetwork, notificationActions]);
 }

@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import type { Transaction } from '../../../../types';
 import type { NaturalQueryResult } from '../../../../api/ai';
 import { usePriceFreeFormatter } from '../../../../contexts/CurrencyContext';
+import { FILTER_SUMMARY_PANEL_CLASS } from './filterSummaryPanel';
 
 interface AiFilterSummaryProps {
   aiQueryFilter: NaturalQueryResult | null;
@@ -30,7 +31,7 @@ export const AiFilterSummary: React.FC<AiFilterSummaryProps> = ({
   const countSuffix = hasMoreTx ? 'loaded transactions; more are not loaded' : 'transactions';
 
   return (
-    <div className="mb-4 p-3 bg-primary-50 dark:bg-sanctuary-800 border border-primary-200 dark:border-sanctuary-600 rounded-lg">
+    <div className={FILTER_SUMMARY_PANEL_CLASS}>
       <div className="flex items-center justify-between">
         <div className="flex-1">
           <span className="text-sm font-medium text-sanctuary-900 dark:text-sanctuary-100">

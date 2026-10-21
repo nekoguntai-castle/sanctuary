@@ -10,12 +10,18 @@ vi.mock('../../../../src/models/prisma', () => ({
 
 import bip32 from '../../../../src/services/bitcoin/bip32';
 import {
+  convertToStandardXpub,
+  convertXpubToFormat,
+} from '../../../../src/services/bitcoin/addressDerivation/xpubConversion';
+import { getNetwork } from '../../../../src/services/bitcoin/addressDerivation/utils';
+import {
   createTransactionSpendPolicyResolver,
   resolveTransactionSpendPolicy,
   transactionChangeScriptTemplate,
 } from '../../../../src/services/bitcoin/transactions/feePolicy';
 import type { WalletSigningInfo } from '../../../../src/services/bitcoin/transactions/types';
 import { testMultisigKeys } from './psbtBuilderTestFixtures';
+import { VERIFIED_SINGLESIG_VECTORS } from '../../../fixtures/verified-address-vectors';
 
 const network = bitcoin.networks.testnet;
 const hardened = (index: number): number => index + 0x80000000;
@@ -25,6 +31,10 @@ function accountXpub(): string {
   for (const index of [hardened(49), hardened(1), hardened(0)]) node = node.derive(index);
   return node.neutered().toBase58();
 }
+
+const SLIP132_NESTED = VERIFIED_SINGLESIG_VECTORS.filter(
+  v => v.scriptType === 'nested_segwit' && /^[yu]pub/.test(v.xpub),
+);
 
 function signingInfo(overrides: Partial<WalletSigningInfo> = {}): WalletSigningInfo {
   return {
@@ -62,6 +72,44 @@ describe('transaction fee spend-policy resolution', () => {
 
     expect(() => resolveTransactionSpendPolicy(info, 'm/0/7', network))
       .toThrow(/address path does not match signer account/i);
+  });
+
+  it('selects every SLIP-132 nested SegWit vector', () => {
+    expect(SLIP132_NESTED).toHaveLength(60);
+  });
+
+  it.each(SLIP132_NESTED)('derives nested SegWit evidence from SLIP-132 signer xpub $caseId', (v) => {
+    const vectorNetwork = getNetwork(v.network);
+    const info = signingInfo({
+      scriptType: WalletScriptType.NESTED_SEGWIT,
+      accountXpub: v.xpub,
+      accountPath: v.path,
+    });
+    const path = `${v.path}/${v.branch}/${v.index}`;
+    const evidence = resolveTransactionSpendPolicy(info, path, vectorNetwork);
+
+    expect(evidence.spendPolicy.type).toBe('p2sh-p2wpkh');
+    expect(Buffer.from(bitcoin.payments.p2sh({ redeem: { output: evidence.redeemScript! } }).output!).toString('hex'))
+      .toBe(v.expectedScriptPubKey);
+    expect(evidence).toEqual(resolveTransactionSpendPolicy(
+      { ...info, accountXpub: convertToStandardXpub(v.xpub) },
+      path,
+      vectorNetwork,
+    ));
+  });
+
+  it('keeps the network check for a SLIP-132 nested SegWit xpub on the wrong network', () => {
+    const mainnetVector = SLIP132_NESTED.find(
+      v => v.caseId === 'ss:single-sig-nested-segwit-bip49-v1:mainnet:a0:b0:i0',
+    )!;
+    const info = signingInfo({
+      scriptType: WalletScriptType.NESTED_SEGWIT,
+      accountXpub: mainnetVector.xpub,
+      accountPath: "m/49'/1'/0'",
+    });
+
+    expect(() => resolveTransactionSpendPolicy(info, "m/49'/1'/0'/0/0", bitcoin.networks.testnet))
+      .toThrow('Invalid network version');
   });
 
   it('fails closed when nested SegWit has no account xpub', () => {
@@ -103,6 +151,19 @@ describe('transaction fee spend-policy resolution', () => {
       expect(evidence.redeemScript).toBeUndefined();
     }
     expect(transactionChangeScriptTemplate(info)).toHaveLength(changeLength);
+  });
+
+  it.each(['Vpub', 'Upub'] as const)('multisig %s signer keys produce the same witness evidence as tpub keys', (format) => {
+    const multisigScriptType = format === 'Vpub' ? 'wsh-sortedmulti' : 'sh-wsh-sortedmulti';
+    const path = "m/48'/1'/0'/2'/0/3";
+    const evidenceFor = (multisigKeys: typeof testMultisigKeys) => resolveTransactionSpendPolicy(
+      signingInfo({ isMultisig: true, multisigKeys, multisigQuorum: 2, multisigScriptType }),
+      path,
+      network,
+    );
+    const slip132Keys = testMultisigKeys.map(key => ({ ...key, xpub: convertXpubToFormat(key.xpub, format) }));
+
+    expect(evidenceFor(slip132Keys)).toEqual(evidenceFor(testMultisigKeys));
   });
 
   it('rejects incomplete and unsupported multisig policies', () => {

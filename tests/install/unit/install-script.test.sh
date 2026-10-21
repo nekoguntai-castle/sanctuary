@@ -1617,6 +1617,28 @@ test_setup_script_does_not_rebuild_during_compose_up_after_build() {
         "post-build compose up should not trigger another image build"
 }
 
+test_setup_postgres_lookup_uses_locked_project() {
+    local fn_src bin_dir log result
+    bin_dir="$TEST_TMP_DIR/lookup-bin"
+    log="$TEST_TMP_DIR/lookup-docker.log"
+    mkdir -p "$bin_dir"
+    : > "$log"
+    cat > "$bin_dir/docker" <<EOF2
+#!/bin/bash
+printf '%s\n' "\$*" >> "$log"
+case "\$*" in *com.docker.compose.project=sanctuary\ *) echo decoy-postgres ;; esac
+EOF2
+    chmod +x "$bin_dir/docker"
+    fn_src="$(extract_shell_function find_existing_postgres_container "$PROJECT_ROOT/scripts/setup.sh")"
+    result="$(PATH="$bin_dir:$PATH" bash -c '
+        deployment_locked_project() { printf "%s\n" staging-lane; }
+        eval "$1"
+        find_existing_postgres_container' _ "$fn_src")"
+    if [ -n "$result" ]; then echo "lookup returned $result" >&2; cat "$log" >&2; return 1; fi
+    grep -Fq 'com.docker.compose.project=staging-lane' "$log" || { cat "$log" >&2; return 1; }
+    if grep -Fq 'project=sanctuary' "$log"; then cat "$log" >&2; return 1; fi
+}
+
 test_setup_script_retries_corrupt_buildkit_cache_with_fake_docker() {
     local fixture_dir="$TEST_TMP_DIR/buildkit-recovery"
     local fakebin="$fixture_dir/bin"
@@ -1721,6 +1743,22 @@ if [ "$1" = "pull" ]; then
 fi
 
 if [ "$1" = "ps" ]; then
+    if [[ "$*" == *"com.docker.compose.service=postgres"* ]] && grep -q '^compose up:.* postgres$' "$log_file"; then
+        echo fake-postgres
+    fi
+    exit 0
+fi
+
+if [ "$1" = "inspect" ] && [ "${4:-}" = fake-postgres ]; then
+    case "$3" in
+        *State.Running*) echo true ;;
+        *State.Health*) echo healthy ;;
+    esac
+    exit 0
+fi
+
+if [ "$1" = "exec" ] && [[ "$*" == *fake-postgres* ]]; then
+    [[ "$*" != *"SELECT 1"* ]] || echo 1
     exit 0
 fi
 
@@ -2970,6 +3008,7 @@ main() {
     run_test "start script checks POSTGRES_PASSWORD" test_start_script_checks_postgres_password
     run_test "start script exports secrets" test_start_script_exports_secrets
     run_test "start script reconciles Postgres password" test_start_script_reconciles_postgres_password
+    run_test "setup postgres lookup uses locked project" test_setup_postgres_lookup_uses_locked_project
     run_test "start script routed probe uses nginx internal ports" test_start_script_routed_probe_uses_nginx_internal_ports
     run_test "start script sources .env file" test_start_script_sources_env_file
     run_test "start script has .env.local fallback" test_start_script_has_env_local_fallback

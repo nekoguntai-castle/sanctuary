@@ -5,11 +5,14 @@
  * query filtering, aggregation results, and load-more pagination.
  */
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { TransactionList } from '../../TransactionList';
+import { excludeReplacedTransactions } from '../../TransactionList/displayedTransactions';
 import { useWalletLabels } from '../../../hooks/queries/useWalletLabels';
 import { AiFilterSummary } from './TransactionsTab/AiFilterSummary';
 import { LoadMoreTransactions } from './TransactionsTab/LoadMoreTransactions';
+import { ManualFilterPartialNotice } from './TransactionsTab/ManualFilterPartialNotice';
+import { isFilterResultPartial, partialFilterEmptyMessage } from './TransactionsTab/filterScope';
 import { TransactionsFilterSection } from './TransactionsTab/TransactionsFilterSection';
 import { TransactionsTabHeader } from './TransactionsTab/TransactionsTabHeader';
 import { getTransactionStatsForList } from './TransactionsTab/transactionStats';
@@ -48,6 +51,21 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
 }) => {
   const { data: walletLabels = [] } = useWalletLabels(walletId);
   const transactionsCount = transactions.length;
+  // TransactionList drops RBF-replaced rows before rendering rows and tiles, so
+  // the partial-result counts do too.
+  const displayedLoadedCount = useMemo(() => excludeReplacedTransactions(transactions).length, [transactions]);
+  const displayedFilteredCount = useMemo(
+    () => excludeReplacedTransactions(filteredTransactions).length,
+    [filteredTransactions]
+  );
+  // Filters run over the loaded pages only; say so while older pages are unloaded.
+  const partial = isFilterResultPartial({
+    hasMoreTx,
+    loadedCount: displayedLoadedCount,
+    totalCount: transactionStats?.totalCount,
+    hasActiveFilters,
+    aiQueryFilter,
+  });
 
   return (
     <Card padding="lg" className="animate-fade-in">
@@ -79,6 +97,9 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
         hasMoreTx={hasMoreTx}
         onAiQueryChange={onAiQueryChange}
       />
+      {partial && !aiQueryFilter && (
+        <ManualFilterPartialNotice filteredCount={displayedFilteredCount} loadedCount={displayedLoadedCount} />
+      )}
 
       <TransactionList
         transactions={filteredTransactions}
@@ -93,6 +114,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
         deepConfirmationThreshold={deepConfirmationThreshold}
         walletBalance={walletBalance}
         transactionStats={getTransactionStatsForList(transactionStats, aiQueryFilter, hasActiveFilters)}
+        emptyMessage={partial ? partialFilterEmptyMessage(displayedLoadedCount) : undefined}
       />
       <LoadMoreTransactions
         hasMoreTx={hasMoreTx}

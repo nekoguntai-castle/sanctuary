@@ -46,6 +46,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `/price/history` rejects unsupported currencies before contacting CoinGecko (no circuit-breaker trips), and `/price/historical` fetches one price map per UTC day (single-flight, cached by date), returning 400 for a currency absent from that map, an invalid date or a date before 2013-04-28.
 - The worker's `/ready` no longer reports not-ready for a moment during each no-op recurring-schedule reconcile.
 - CI: a PR touching only a repo file that a Vitest suite reads (nginx/compose templates, proof configs, `verify-vectors.yml`, `.nvmrc`, verifier modules) now selects that suite's lane, and a drift guard keeps the list complete.
+- Nested SegWit single-sig wallets whose signer key is stored as a SLIP-132 `ypub`/`upub` can estimate fees and send again (send, batch, RBF, CPFP): fee-policy key derivation converts the key to standard xpub/tpub first. A key for the wrong network is still rejected.
+- `any_n` vault-policy approvals count only approve votes from users who are still effective approvers when the request resolves; an approver removed, downgraded, or overridden by a direct viewer grant after voting no longer satisfies quorum. The required count is not lowered by removals.
+- Treasury Intelligence no longer polls its status once per second when the feature is disabled: a client error other than 408/429 stops polling for the session, and transient failures back off up to 60 s.
+- Wallet transaction filters say when they cover only the loaded transactions: a partial-result notice and a "No matches in the N loaded transactions" empty state appear while older pages are not loaded.
+- Changing a display preference (theme, sliders, sort) no longer reloads the device list, open wallet, drafts or node status, and a reload overlapping a device delete or rename can no longer undo it.
+- Postgres password reconciliation (`start.sh`, `scripts/setup.sh`) targets the deployment's own Compose project, taken from the held deployment lock, instead of the checkout directory name, so a non-default `SANCTUARY_PROJECT` no longer silently skips the repair or changes another deployment's database password. A resumed deployment brings postgres back up before reconciling, and a missing or stopped postgres now fails the stage instead of marking it done. `start.sh --logs` and optional-stack detection use `SANCTUARY_PROJECT`.
+- CI: the install smoke check that `backup-volume-init` can safely run again restarts it detached and waits for a fresh finish, instead of an attached re-run that could hang until its 60 s timeout on rootless Podman; on failure it prints the container state and logs.
 
 
 ### Known limitations

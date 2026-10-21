@@ -7,6 +7,7 @@ import {
 } from '@sanctuary/shared/constants/walletPolicy';
 import bip32 from '../bip32';
 import { buildMultisigWitnessScript } from '../psbtBuilder';
+import { convertToStandardXpub } from '../addressDerivation/xpubConversion';
 import { addressRepository } from '../../../repositories';
 import type { SpendEvidence } from '../utxoSelection';
 import type { WalletSigningInfo } from './types';
@@ -27,7 +28,7 @@ const deriveSingleSigPubkey = (
 ): Uint8Array => {
   if (!signingInfo.accountXpub) throw new Error('Cannot estimate transaction fee: account xpub is missing');
   if (!signingInfo.accountPath) throw new Error('Cannot estimate transaction fee: signer account origin is missing');
-  let node = bip32.fromBase58(signingInfo.accountXpub, network);
+  let node = bip32.fromBase58(convertToStandardXpub(signingInfo.accountXpub), network);
   for (const index of childIndexes(derivationPath, signingInfo.accountPath)) node = node.derive(index);
   /* v8 ignore next -- BIP32 nodes from a validated xpub always expose a compressed public key */
   if (!node.publicKey) throw new Error('Cannot estimate transaction fee: input public key derivation failed');

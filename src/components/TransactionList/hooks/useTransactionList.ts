@@ -6,6 +6,7 @@ import { isConsolidation } from '../../../utils/transaction';
 import type { TransactionStats } from '../../../api/transactions';
 import { useTransactionTabs } from './useTransactionTabs';
 import { normalizeTxid } from './selectionResolution';
+import { excludeReplacedTransactions } from '../displayedTransactions';
 
 const log = createLogger('TransactionList');
 
@@ -73,10 +74,7 @@ export function useTransactionList({
     };
   }, [network]);
 
-  // Filter out replaced transactions (rbfStatus === 'replaced')
-  const filteredTransactions = useMemo(() => {
-    return transactions.filter(tx => tx.rbfStatus !== 'replaced');
-  }, [transactions]);
+  const filteredTransactions = useMemo(() => excludeReplacedTransactions(transactions), [transactions]);
 
   // Virtuoso ref for scroll control
   const virtuosoRef = useRef<any>(null);

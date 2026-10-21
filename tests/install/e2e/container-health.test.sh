@@ -458,14 +458,17 @@ test_backup_volume_init_idempotent() {
     fi
 
     # Re-run the same container: the repair must be safe on every start.
-    if ! timeout 60 docker start -a "$container" >/dev/null 2>&1; then
-        log_error "backup-volume-init failed when re-run"
+    # Detached start + wait: an attached start races Podman's next-exit wait.
+    local code status=0
+    code="$(rerun_exited_oneshot_container "$container" 60)" || status=$?
+    if [ "$status" -ne 0 ]; then
+        log_error "backup-volume-init re-run did not complete (helper status $status)"
         docker logs --tail 50 "$container" 2>&1 || true
         return 1
     fi
-    exit_code=$(docker inspect -f '{{.State.ExitCode}}' "$container" 2>/dev/null || echo "unknown")
-    if [ "$exit_code" != "0" ]; then
-        log_error "backup-volume-init re-run exited with code: $exit_code"
+    if [ "$code" != "0" ]; then
+        log_error "backup-volume-init re-run exited with code $code"
+        docker logs --tail 50 "$container" 2>&1 || true
         return 1
     fi
     log_success "backup-volume-init is idempotent"

@@ -71,6 +71,18 @@ deployment_assert_lock() {
   node "$DEPLOYMENT_SESSION_SCRIPT" assert-lock >/dev/null
 }
 
+deployment_locked_project() {
+  local result state project
+  deployment_lifecycle_initialize
+  result="$(node "$DEPLOYMENT_SESSION_SCRIPT" assert-lock)" || return 1
+  IFS=$'\t' read -r state project <<< "$result"
+  if [ "$state" != locked ] || [ -z "$project" ]; then
+    echo "deployment lock does not name a Compose project" >&2
+    return 1
+  fi
+  printf '%s\n' "$project"
+}
+
 deployment_use_active() {
   local result args_file lock_ownership_result
   deployment_lifecycle_initialize

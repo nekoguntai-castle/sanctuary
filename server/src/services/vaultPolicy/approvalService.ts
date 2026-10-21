@@ -576,6 +576,32 @@ async function checkAllQuorumMet(
 }
 
 /**
+ * 'any_n' quorum is met only by approve votes from currently eligible
+ * approvers (the same live set 'all' uses). The threshold is the request's
+ * creation-time `requiredApprovals` snapshot, never clamped to the eligible
+ * set's size: a removal must not quietly weaken a 2-of-N policy. Fails closed
+ * on a missing draft or a non-positive/non-integer snapshot.
+ */
+async function checkAnyNQuorumMet(
+  request: ApprovalRequest,
+  approveVotes: ApprovalVote[],
+  draft: ApprovalDraft
+): Promise<boolean> {
+  if (!draft || !isPositiveInteger(request.requiredApprovals)) {
+    return false;
+  }
+  if (approveVotes.length < request.requiredApprovals) {
+    return false;
+  }
+
+  const eligibleIds = new Set(
+    await getEligibleApproverIds(draft.walletId, draft.userId, request.allowSelfApproval)
+  );
+  const eligibleApproveVotes = approveVotes.filter(v => eligibleIds.has(v.userId));
+  return eligibleApproveVotes.length >= request.requiredApprovals;
+}
+
+/**
  * 'specific' quorum is met only by approve votes from users currently on the
  * policy's specificApprovers list — a vote from anyone else (cast before the
  * castVote-time eligibility check existed, or before a policy edit dropped
@@ -665,7 +691,9 @@ async function checkAndResolveRequest(
 
   switch (request.quorumType) {
     case 'any_n':
-      quorumMet = approveVotes.length >= request.requiredApprovals;
+      // Like checkAllQuorumMet, re-derive eligibility from live membership: an
+      // approve vote from a user who has since lost approver access must not count.
+      quorumMet = await checkAnyNQuorumMet(request, approveVotes, draft);
       break;
     case 'all':
       // "all" quorum resolves against live wallet membership, not the count

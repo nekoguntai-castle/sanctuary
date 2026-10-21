@@ -251,9 +251,37 @@ ENV
     [[ -z "$(ls -A "$fixture" | grep -E '\.(tmp|bak)\.' || true)" ]] || fail 'temp/backup file left after failed copy'
     [[ -z "$(ls -A "$fixture" | grep -E '\.bak\.' || true)" ]] || fail 'backup left behind'
 )
+resume_reensure_contract() (
+    local offline="$1" fixture log
+    fixture="$(mktemp -d "$ROOT/.tmp/setup-resume.XXXXXX")"
+    log="$fixture/calls.log"
+    mkdir -p "$fixture/scripts"
+    printf '#!/bin/sh\necho reconcile >> "%s"\n' "$log" > "$fixture/scripts/reconcile-postgres-password.sh"
+    PROJECT_DIR="$fixture" OPT_OFFLINE="$offline" OPT_UPGRADE=true
+    COMPOSE_FILE_ARGS=(-p retained-project)
+    stage=postgres_started
+    export_runtime_environment() { :; }
+    deployment_stage_before() { case "$stage:$1" in postgres_started:password_reconciled|postgres_started:stack_started|password_reconciled:stack_started) return 0 ;; *) return 1 ;; esac; }
+    deployment_transition() { stage="$1"; }
+    start_compose_services() { :; }
+    docker() {
+        if [[ "$*" == 'compose up --help' ]]; then echo --pull; return 0; fi
+        echo "docker $*" >> "$log"
+    }
+    eval "$(extract compose_up_after_build_args)"
+    eval "$(extract compose_up_no_build_args)"
+    eval "$(extract start_postgres_service)"
+    eval "$(extract start_services)"
+    start_services >/dev/null 2>&1 || fail 'resumed start_services failed'
+    local up_line rec_line
+    up_line="$(grep -n ' up .* postgres$' "$log" | head -n 1 | cut -d: -f1)"
+    rec_line="$(grep -nx reconcile "$log" | head -n 1 | cut -d: -f1)"
+    [[ -n "$up_line" && -n "$rec_line" && "$up_line" -lt "$rec_line" ]] || fail "resume did not re-ensure postgres before reconcile: $(cat "$log")"
+    if [[ "$offline" == true ]]; then grep -q 'up -d --no-build --pull never postgres' "$log" || fail 'offline re-ensure lost --pull never'; fi
+)
 mkdir -p "$ROOT/.tmp"
 failures=0
-for contract in 'mode_contract false offline online ""' 'mode_contract false online online ""' 'mode_contract true online offline v0.8.74-rc2' 'mode_contract true offline offline v0.8.74-rc2' 'startup_contract true 42' 'startup_contract false 42' 'startup_contract true 0' 'startup_contract true 42 true' 'startup_contract false 42 true' 'health_contract true' 'health_contract false' 'health_contract missing' 'health_contract unhealthy' 'health_contract alternating' 'backup_reminder_contract' 'secret_fallback_contract' 'secret_hard_fail_contract' 'secret_openssl_contract' 'env_file_preservation_contract'; do
+for contract in 'mode_contract false offline online ""' 'mode_contract false online online ""' 'mode_contract true online offline v0.8.74-rc2' 'mode_contract true offline offline v0.8.74-rc2' 'startup_contract true 42' 'startup_contract false 42' 'startup_contract true 0' 'startup_contract true 42 true' 'startup_contract false 42 true' 'health_contract true' 'health_contract false' 'health_contract missing' 'health_contract unhealthy' 'health_contract alternating' 'backup_reminder_contract' 'secret_fallback_contract' 'secret_hard_fail_contract' 'secret_openssl_contract' 'env_file_preservation_contract' 'resume_reensure_contract false' 'resume_reensure_contract true'; do
     if ( eval "$contract" ); then echo "PASS: $contract"; else failures=$((failures + 1)); fi
 done
 [[ "$failures" == 0 ]]

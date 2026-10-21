@@ -1,7 +1,7 @@
 import { faker } from '@faker-js/faker';
 import { expect, it } from 'vitest';
 
-import { mockVoteRequestReads, draftId, makePendingRequest, mockDraftRepo, mockLog, mockPolicyRepo, otherUserId, requestId, walletId } from './approvalServiceTestHarness';
+import { mockVoteRequestReads, draftId, makePendingRequest, mockDraftRepo, mockLog, mockPolicyRepo, mockWalletSharingRepo, otherUserId, requestId, walletId } from './approvalServiceTestHarness';
 import { approvalService } from '../../../../src/services/vaultPolicy/approvalService';
 
 export function registerCastVoteGuardContracts() {
@@ -89,10 +89,12 @@ export function registerCastVoteGuardContracts() {
     mockPolicyRepo.findApprovalRequestsByDraftId.mockResolvedValue([
       { ...selfApprovalRequest, status: 'approved', votes: [{ decision: 'approve' }] },
     ]);
+    mockWalletSharingRepo.findEffectiveApproverIds.mockResolvedValue([creatorId]);
 
     const { vote } = await approvalService.castVote(requestId, creatorId, 'approve');
 
     expect(vote.decision).toBe('approve');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved');
   });
 
   it('records approve vote (happy path, quorum not yet met)', async () => {

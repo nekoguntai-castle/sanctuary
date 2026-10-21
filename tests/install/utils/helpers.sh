@@ -607,6 +607,49 @@ start_registered_install_container() {
     fi
 }
 
+# Report a failed one-shot re-run on stderr and return its step code (2-7).
+# Args: STEP CONTAINER BEFORE OBSERVED WAIT_CODE.
+report_oneshot_rerun_failure() {
+    log_error "one-shot re-run of $2 failed at step $1: before=$3 last=$4 wait_code=$5" >&2
+    return "$1"
+}
+
+# Re-run an exited one-shot container detached, wait for it, and prove a fresh
+# run happened (a new FinishedAt) before printing its exit code on stdout. An
+# attached start races Podman's next-exit wait when the run takes milliseconds,
+# so this uses the detached start, wait, inspect pattern of
+# scripts/ops/grafana-quiescence-records.sh. Usage: CONTAINER [BUDGET_SECONDS].
+rerun_exited_oneshot_container() {
+    local c="$1" budget="${2:-60}"
+    local attempts="${SANCTUARY_ONESHOT_SETTLE_ATTEMPTS:-20}"
+    local before="" wait_code="" observed="" status finished exit_code i
+
+    before="$(timeout "$budget" docker inspect -f '{{.State.FinishedAt}}' "$c")" \
+        || { report_oneshot_rerun_failure 2 "$c" "$before" "$observed" "$wait_code"; return; }
+    timeout "$budget" docker start "$c" >/dev/null \
+        || { report_oneshot_rerun_failure 3 "$c" "$before" "$observed" "$wait_code"; return; }
+    wait_code="$(timeout "$budget" docker wait "$c")" \
+        || { report_oneshot_rerun_failure 4 "$c" "$before" "$observed" "$wait_code"; return; }
+    [[ "$wait_code" =~ ^[0-9]+$ ]] \
+        || { report_oneshot_rerun_failure 5 "$c" "$before" "$observed" "$wait_code"; return; }
+
+    # Podman can report the previous run's state for a moment after wait returns.
+    for ((i = 0; i < attempts; i++)); do
+        observed="$(docker inspect -f '{{.State.Status}}|{{.State.FinishedAt}}|{{.State.ExitCode}}' "$c" 2>/dev/null || true)"
+        IFS='|' read -r status finished exit_code <<< "$observed"
+        if [ "$status" = exited ] && [ -n "$finished" ] && [ "$finished" != "$before" ]; then
+            if [ "$exit_code" != "$wait_code" ]; then
+                report_oneshot_rerun_failure 7 "$c" "$before" "$observed" "$wait_code"
+                return
+            fi
+            printf '%s\n' "$exit_code"
+            return 0
+        fi
+        sleep 0.5
+    done
+    report_oneshot_rerun_failure 6 "$c" "$before" "$observed" "$wait_code"
+}
+
 # Resolve a daemon-visible path for the monitoring configs, or echo the input
 # unchanged when no translation is available.
 #
