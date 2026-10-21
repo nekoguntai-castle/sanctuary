@@ -120,6 +120,10 @@ export function b64url(buf) { return Buffer.from(buf).toString('base64url'); }
 
 export const FAMILIES = ['abort_grace_exhausted', 'budget_expiry', 'candidates', 'cleanup', 'fallback', 'lock_loss', 'terminal'];
 
+// Hoisted out of parseMetrics: an inline regex literal in its for-of header made lizard's JS
+// reader lose the function's end and charge every later function's branches to it.
+const FALLBACK_TOTAL_RE = /^(?:sanctuary_)?wallet_sync_fallback_total(?:\{[^}]*\})? (\d+(?:\.\d+)?)/gm;
+
 /**
  * Scrape the wallet-sync counter families out of a Prometheus exposition body.
  *
@@ -132,7 +136,7 @@ export function parseMetrics(text) {
   for (const f of FAMILIES) if (new RegExp(`^# TYPE (?:sanctuary_)?wallet_sync_${f}_total `, 'm').test(text)) families.add(f);
   const activeStageAge = /^# TYPE (?:sanctuary_)?wallet_sync_active_stage_oldest_seconds /m.test(text);
   let fallback = 0;
-  for (const m of text.matchAll(/^(?:sanctuary_)?wallet_sync_fallback_total(?:\{[^}]*\})? (\d+(?:\.\d+)?)/gm)) fallback += Number(m[1]);
+  for (const m of text.matchAll(FALLBACK_TOTAL_RE)) fallback += Number(m[1]);
   return { families, activeStageAge, fallback };
 }
 
@@ -170,7 +174,125 @@ export function shouldSeedFleet(total, env) {
   return total < CANARY_MIN_FLEET && env.CANARY_SEED_FLEET !== '0';
 }
 
-export const FLEET_SQL = `select id, network, "lastSyncStatus", "syncInProgress", "syncRetryCount", "syncActionRequiredAt" is not null,
+/**
+ * The worker's health endpoints. The receipt's live/ready/metricsPrometheus
+ * samples, counter families and fallback delta come from here, not the backend:
+ * wallet_sync_fallback_total is incremented only in the worker
+ * (server/src/worker/walletSyncAttemptTelemetry.ts), so a backend scrape always
+ * reported a zero fallback delta. Served by server/src/worker/healthServer.ts.
+ */
+export function workerProbeUrls(workerBase) {
+  return { live: `${workerBase}/live`, ready: `${workerBase}/ready`, metricsPrometheus: `${workerBase}/metrics/prometheus` };
+}
+
+/**
+ * The first worker IP whose /live answers 200, as a base URL, or null when none
+ * does. Iterates every network the container is attached to, like backend
+ * discovery, instead of trusting whichever address `docker inspect` lists first.
+ */
+export async function discoverWorkerBase(ips, fetcher = timedFetch) {
+  for (const ip of ips) {
+    const base = `http://${ip}:3002`;
+    if ((await fetcher(workerProbeUrls(base).live, {}, 1500)).ok) return base;
+  }
+  return null;
+}
+
+/** A timed request result without its body, as the evidence records it. */
+export function stripTiming(r) {
+  return { ok: r.ok, status: r.status, latencyMs: Math.round(r.latencyMs * 1000) / 1000, ...(r.error ? { error: r.error } : {}) };
+}
+
+/** Failures, p99 and max over `{ok, latencyMs}` entries, computed as the receipt reports them. */
+export function latencySummary(entries) {
+  const lat = entries.map((e) => e.latencyMs).sort((a, b) => a - b);
+  const p99 = lat.length ? lat[Math.min(lat.length - 1, Math.ceil(lat.length * 0.99) - 1)] : 0;
+  return { samples: entries.length, failures: entries.filter((e) => !e.ok).length, p99Ms: Math.ceil(p99), maxMs: Math.ceil(lat[lat.length - 1] ?? 0) };
+}
+
+// Selftest sampling mode (CANARY_SELFTEST_SAMPLES). The gates mirror
+// validateEndpointSummary in scripts/release/verify-release-candidate-canary.mjs.
+export const SELFTEST_GATES = { failures: 0, p99Ms: 250, maxMs: 1000 };
+export const SELFTEST_MAX_SAMPLES = 900;
+export const SELFTEST_WINDOW_LIMIT_MS = 900_000;
+export const SELFTEST_MIN_ACTIVE_DIAG_SAMPLES = 40;
+// The probe polls diagnostics this often while a sync is active (canary-probe.mjs diagLoop).
+export const SELFTEST_DIAG_INTERVAL_MS = 250;
+export const WORKER_ENDPOINTS = ['live', 'ready', 'metricsPrometheus'];
+
+function positiveIntegerEnv(env, key, fallback) {
+  const raw = env[key];
+  if (raw === undefined || raw === '') return { value: fallback };
+  const value = Number(raw);
+  return Number.isSafeInteger(value) && value > 0 ? { value } : { error: `${key} must be a positive integer, got ${JSON.stringify(raw)}` };
+}
+
+/**
+ * Read the sampling-mode knobs. Without CANARY_SELFTEST_SAMPLES the selftest
+ * takes its single pre-flight sample. The sample count is capped; the window
+ * may run past it (to see enough sync activity) only up to SELFTEST_WINDOW_LIMIT_MS.
+ */
+export function parseSelftestSampling(env) {
+  if (env.CANARY_SELFTEST_SAMPLES === undefined || env.CANARY_SELFTEST_SAMPLES === '') return { enabled: false };
+  const samples = positiveIntegerEnv(env, 'CANARY_SELFTEST_SAMPLES');
+  const interval = positiveIntegerEnv(env, 'CANARY_SELFTEST_INTERVAL_MS', 1000);
+  if (samples.error || interval.error) return { error: samples.error ?? interval.error };
+  return { enabled: true, samples: Math.min(samples.value, SELFTEST_MAX_SAMPLES), intervalMs: interval.value };
+}
+
+/** A diagnostics sample taken while at least one wallet sync was executing. `activeTotal` is a string. */
+export function isActiveDiagSample(d) {
+  return d?.status === 'observed' && Number(d.activeTotal) > 0;
+}
+
+function endpointGate(entries) {
+  const summary = latencySummary(entries);
+  const missed = [];
+  if (summary.samples === 0) missed.push('samples');
+  if (summary.failures > SELFTEST_GATES.failures) missed.push('failures');
+  if (summary.p99Ms > SELFTEST_GATES.p99Ms) missed.push('p99');
+  if (summary.maxMs > SELFTEST_GATES.maxMs) missed.push('max');
+  return { ...summary, missed, pass: missed.length === 0 };
+}
+
+/** Why a sampling window cannot be judged, or null when it can. */
+function selftestInvalidReason(activeSamples, endpointSampleCount, requestedSamples) {
+  if (endpointSampleCount < requestedSamples) {
+    return `only ${endpointSampleCount} of ${requestedSamples} requested endpoint samples before the window ended`;
+  }
+  if (activeSamples < SELFTEST_MIN_ACTIVE_DIAG_SAMPLES) {
+    return `only ${activeSamples} of ${SELFTEST_MIN_ACTIVE_DIAG_SAMPLES} active diagnostics samples before the window ended`;
+  }
+  return null;
+}
+
+/**
+ * Judge a sampling window. It is valid only when it took every requested
+ * endpoint sample (a window the deadline cut short is not the window asked
+ * for) and saw at least SELFTEST_MIN_ACTIVE_DIAG_SAMPLES active diagnostics
+ * samples (an idle window says nothing about latency under sync load); each
+ * worker endpoint must then meet the receipt gates. Pure; exported for tests.
+ */
+export function evaluateSelftestWindow({ endpointSamples, diagSamples, elapsedMs, requestedSamples }) {
+  const activeSamples = diagSamples.filter(isActiveDiagSample).length;
+  const invalidReason = selftestInvalidReason(activeSamples, endpointSamples.length, requestedSamples);
+  const valid = invalidReason === null;
+  const gates = Object.fromEntries(WORKER_ENDPOINTS.map((key) => [key, endpointGate(endpointSamples.map((s) => s[key]))]));
+  return {
+    valid,
+    invalidReason,
+    pass: valid && WORKER_ENDPOINTS.every((key) => gates[key].pass),
+    elapsedMs,
+    requestedSamples,
+    endpointSampleCount: endpointSamples.length,
+    activeSamples,
+    diagSamples: diagSamples.length,
+    minActiveSamples: SELFTEST_MIN_ACTIVE_DIAG_SAMPLES,
+    gates,
+  };
+}
+
+export const FLEET_SQL =`select id, network, "lastSyncStatus", "syncInProgress", "syncRetryCount", "syncActionRequiredAt" is not null,
   "requestedIncrementalSyncGeneration" > "processedIncrementalSyncGeneration" or "requestedFullResyncGeneration" > "processedFullResyncGeneration",
   "incrementalSyncLeaseToken" is not null, coalesce(to_char("lastSyncedAt", 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), ''), "lastSyncFailureClass"
   from wallets where network = 'mainnet' order by "createdAt", id`;

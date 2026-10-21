@@ -18,6 +18,9 @@ import {
   shouldSeedFleet,
   summarizeFleet,
 } from '../../scripts/release/canary/lib/canary-runtime.mjs';
+// The worker-probe helpers are read off the namespace so that, while one is
+// missing, its own test fails rather than the whole file failing to link.
+import * as runtime from '../../scripts/release/canary/lib/canary-runtime.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CANARY_DIR = path.resolve(HERE, '../../scripts/release/canary');
@@ -309,4 +312,148 @@ test('parseJsonOr falls back instead of throwing', () => {
 
 test('readCgroup returns null when neither cgroup layout exists', () => {
   assert.equal(readCgroup('0000000000000000000000000000000000000000000000000000000000000000', 'memory.peak'), null);
+});
+
+// The receipt's live/ready/metricsPrometheus samples, its counter families and
+// its fallback delta must come from the worker: wallet_sync_fallback_total is
+// incremented only there (server/src/worker/walletSyncAttemptTelemetry.ts), so
+// a backend scrape always reports a zero delta and the gate it feeds is blind.
+test('workerProbeUrls names the three worker health endpoints', () => {
+  assert.equal(typeof runtime.workerProbeUrls, 'function', 'lib/canary-runtime.mjs must export workerProbeUrls');
+  assert.deepEqual(runtime.workerProbeUrls('http://worker:3002'), {
+    live: 'http://worker:3002/live',
+    ready: 'http://worker:3002/ready',
+    metricsPrometheus: 'http://worker:3002/metrics/prometheus',
+  });
+});
+
+function functionBody(source, name) {
+  const start = source.indexOf(`function ${name}(`);
+  assert.ok(start >= 0, `function ${name} not found`);
+  const next = source.indexOf('\nasync function ', start + 1);
+  const nextSync = source.indexOf('\nfunction ', start + 1);
+  const ends = [next, nextSync].filter((i) => i > 0);
+  return source.slice(start, ends.length ? Math.min(...ends) : undefined);
+}
+
+test('the probe and selftest scrape the worker, not the backend', () => {
+  for (const tool of [PROBE, SELFTEST]) {
+    const source = readFileSync(tool, 'utf8');
+    const name = path.basename(tool);
+    assert.doesNotMatch(source, /\$\{backendBase\}\/metrics/, `${name} scrapes backend /metrics`);
+    assert.doesNotMatch(source, /\$\{backendBase\}\/api\/v1\/health\/ready/, `${name} samples backend /ready`);
+    assert.match(source, /workerProbeUrls\(/, `${name} must use workerProbeUrls`);
+  }
+  const sampleOnce = functionBody(readFileSync(PROBE, 'utf8'), 'sampleOnce');
+  assert.match(sampleOnce, /workerProbeUrls\(workerBase\)/, 'sampleOnce must sample the worker endpoints');
+  assert.doesNotMatch(sampleOnce, /backendBase/, 'sampleOnce must not sample the backend');
+});
+
+test('the probe and selftest pick the first worker IP that answers /live', async () => {
+  assert.equal(typeof runtime.discoverWorkerBase, 'function', 'lib/canary-runtime.mjs must export discoverWorkerBase');
+  const asked = [];
+  const fetcher = async (url) => { asked.push(url); return { ok: url.startsWith('http://b:') }; };
+  assert.equal(await runtime.discoverWorkerBase(['a', 'b', 'c'], fetcher), 'http://b:3002');
+  assert.deepEqual(asked, ['http://a:3002/live', 'http://b:3002/live']);
+  assert.equal(await runtime.discoverWorkerBase(['a', 'c'], fetcher), null);
+  assert.equal(await runtime.discoverWorkerBase([], fetcher), null);
+
+  for (const tool of [PROBE, SELFTEST]) {
+    const source = readFileSync(tool, 'utf8');
+    const name = path.basename(tool);
+    assert.match(source, /discoverWorkerBase\(await containerIps\(`\$\{PROJECT\}-worker-1`\)\)/, `${name} must iterate every worker IP`);
+    assert.doesNotMatch(source, /\[workerIp\]|:3002/, `${name} hard-codes a single worker base`);
+    assert.match(source, /if \(!backendBase \|\| !workerBase\) \{[^}]*process\.exit\(2\)/, `${name} must exit 2 when no worker answers /live`);
+  }
+  const probe = readFileSync(PROBE, 'utf8');
+  const armed = probe.search(/type:\s*'armed'/);
+  assert.ok(probe.indexOf('discoverWorkerBase(') < armed, 'worker /live is checked before arming');
+  assert.ok(probe.indexOf('if (!backendBase || !workerBase)') < armed, 'an unreachable worker fails before arming');
+});
+
+test('the selftest reports all three worker endpoints and bounds its sampling mode', () => {
+  assert.equal(typeof runtime.parseSelftestSampling, 'function', 'lib/canary-runtime.mjs must export parseSelftestSampling');
+  assert.equal(runtime.SELFTEST_WINDOW_LIMIT_MS, 900_000);
+  assert.equal(runtime.SELFTEST_DIAG_INTERVAL_MS, 250, 'diagnostics are polled at the probe active-phase cadence');
+  assert.ok(Number.isSafeInteger(runtime.SELFTEST_MAX_SAMPLES) && runtime.SELFTEST_MAX_SAMPLES > 0);
+  assert.deepEqual(runtime.parseSelftestSampling({}), { enabled: false });
+  assert.deepEqual(runtime.parseSelftestSampling({ CANARY_SELFTEST_SAMPLES: '300' }), { enabled: true, samples: 300, intervalMs: 1000 });
+  assert.equal(runtime.parseSelftestSampling({ CANARY_SELFTEST_SAMPLES: '99999999' }).samples, runtime.SELFTEST_MAX_SAMPLES);
+  assert.equal(runtime.parseSelftestSampling({ CANARY_SELFTEST_SAMPLES: '5', CANARY_SELFTEST_INTERVAL_MS: '500' }).intervalMs, 500);
+  for (const bad of [{ CANARY_SELFTEST_SAMPLES: '0' }, { CANARY_SELFTEST_SAMPLES: 'x' }, { CANARY_SELFTEST_SAMPLES: '-3' },
+    { CANARY_SELFTEST_SAMPLES: '5', CANARY_SELFTEST_INTERVAL_MS: '0' }]) {
+    assert.match(runtime.parseSelftestSampling(bad).error, /CANARY_SELFTEST_/, `${JSON.stringify(bad)} must be refused`);
+  }
+
+  const source = readFileSync(SELFTEST, 'utf8');
+  assert.match(source, /parseSelftestSampling\(process\.env\)/, 'the selftest reads the CANARY_SELFTEST_SAMPLES knob');
+  for (const key of ['live', 'ready', 'metricsPrometheus']) {
+    assert.match(source, new RegExp(`${key}: stripTiming\\(`), `the selftest reports status and latency for ${key}`);
+  }
+  assert.match(source, /SELFTEST_WINDOW_LIMIT_MS/, 'the sampling window has a fixed deadline');
+  assert.match(source, /pause\(t, SELFTEST_DIAG_INTERVAL_MS, /, 'diagnostics are polled at 250 ms');
+  // Knob-less exit contract unchanged: the window evaluation (and its non-zero
+  // exits) is reached only past the guard that ends a knob-less run with exit 0.
+  const guard = source.indexOf('if (!sampling.enabled) {');
+  assert.ok(guard > 0, 'a knob-less run must end after reporting');
+  assert.match(source.slice(guard, source.indexOf('}', guard)), /console\.log\(JSON\.stringify\(report[^]*process\.exit\(0\);\s*$/, 'a knob-less run exits 0');
+  assert.equal(source.split('evaluateSelftestWindow(').length, 2, 'evaluateSelftestWindow is called exactly once');
+  assert.equal(source.split('runSamplingWindow(').length, 3, 'runSamplingWindow is defined once and called once');
+  assert.ok(source.indexOf('await runSamplingWindow(') > guard, 'the sampling window runs only when the knob is set');
+  assert.ok(source.indexOf('function runSamplingWindow(') > guard, 'the window helpers follow the knob-less exit');
+  assert.doesNotMatch(source.slice(0, guard), /process\.exit\((?!2\))/, 'before the guard the selftest exits only 2');
+});
+
+function endpointSample(latencyMs = 10, ok = true) {
+  const e = { ok, latencyMs };
+  return { live: e, ready: e, metricsPrometheus: e };
+}
+
+function windowOf({ active, endpoints = Array.from({ length: 300 }, () => endpointSample()), elapsedMs = 900_000, requestedSamples = endpoints.length }) {
+  const diagSamples = [
+    ...Array.from({ length: active }, () => ({ status: 'observed', activeTotal: '2' })),
+    ...Array.from({ length: 100 }, () => ({ status: 'observed', activeTotal: '0' })),
+    { status: 'unavailable', http: 0 },
+  ];
+  return runtime.evaluateSelftestWindow({ endpointSamples: endpoints, diagSamples, elapsedMs, requestedSamples });
+}
+
+test('evaluateSelftestWindow needs 40 active diagnostics samples and applies the receipt gates', () => {
+  assert.equal(typeof runtime.evaluateSelftestWindow, 'function', 'lib/canary-runtime.mjs must export evaluateSelftestWindow');
+  const short = windowOf({ active: 39 });
+  assert.equal(short.valid, false);
+  assert.equal(short.activeSamples, 39, "activeTotal '0' and unavailable samples are not active");
+  const enough = windowOf({ active: 40 });
+  assert.equal(enough.valid, true);
+  assert.equal(enough.pass, true);
+  for (const key of ['live', 'ready', 'metricsPrometheus']) assert.equal(enough.gates[key].pass, true);
+
+  const failing = windowOf({ active: 40, endpoints: [...Array.from({ length: 299 }, () => endpointSample()), endpointSample(10, false)] });
+  assert.deepEqual(failing.gates.ready.missed, ['failures']);
+  assert.equal(failing.pass, false);
+  const slow = windowOf({ active: 40, endpoints: [...Array.from({ length: 290 }, () => endpointSample()), ...Array.from({ length: 10 }, () => endpointSample(300))] });
+  assert.deepEqual(slow.gates.live.missed, ['p99']);
+  const spike = windowOf({ active: 40, endpoints: [...Array.from({ length: 299 }, () => endpointSample()), endpointSample(1001)] });
+  assert.deepEqual(spike.gates.metricsPrometheus.missed, ['max']);
+  assert.equal(windowOf({ active: 40, endpoints: [] }).gates.live.pass, false, 'an empty window passes no gate');
+
+  assert.equal(enough.invalidReason, null);
+  // A window the 900 s deadline cut short of the requested sample count is invalid,
+  // however many active diagnostics samples it saw (900 at 2000 ms -> ~450).
+  const cutShort = windowOf({ active: 60, requestedSamples: 900, endpoints: Array.from({ length: 450 }, () => endpointSample()) });
+  assert.equal(cutShort.valid, false);
+  assert.equal(cutShort.pass, false);
+  assert.equal(cutShort.endpointSampleCount, 450);
+  assert.equal(cutShort.requestedSamples, 900);
+  assert.match(cutShort.invalidReason, /450 of 900 requested endpoint samples/);
+  assert.match(windowOf({ active: 39 }).invalidReason, /39 of 40 active diagnostics samples/);
+  const full = windowOf({ active: 40, requestedSamples: 300 });
+  assert.equal(full.valid, true, 'a window that took every requested sample is unaffected');
+  assert.equal(full.pass, true);
+
+  // The gates are the receipt validator's, not a looser local copy.
+  const validator = readFileSync(path.resolve(HERE, '../../scripts/release/verify-release-candidate-canary.mjs'), 'utf8');
+  assert.match(validator, /summary\.failures !== 0/);
+  assert.match(validator, /summary\.p99Ms > 250/);
+  assert.match(validator, /summary\.maxMs > 1000/);
 });

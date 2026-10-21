@@ -27,7 +27,7 @@ not in CI:
 
 | Tool | Mutates? | Use |
 | --- | --- | --- |
-| `canary-selftest.mjs` | no | Pre-flight. Prints one JSON object covering container discovery, admin token minting, worker diagnostics, the metrics scrape, fleet truth, the UI and cgroup readability. Run it before opening a canary window. |
+| `canary-selftest.mjs` | no | Pre-flight. Prints one JSON object covering container discovery, admin token minting, worker diagnostics, status and latency of the worker's `/live`, `/ready` and `/metrics/prometheus`, the worker metrics scrape, fleet truth, the UI and cgroup readability. Run it before opening a canary window. `CANARY_SELFTEST_SAMPLES` adds a bounded sampling mode (see below). |
 | `canary-probe.mjs` | yes | The canary itself. Drives the exercise below and writes `evidence.jsonl` plus the receipt into `CANARY_OUT_DIR`. |
 | `canary-debug.mjs` | yes | Diagnosis only. POSTs a real sync for the least-recently-synced mainnet wallet and prints the raw responses. Never run it inside a canary window. |
 
@@ -42,6 +42,55 @@ CANARY_COMMIT=<40-hex> \
 CANARY_OUT_DIR="$HOME/release-receipts/v0.8.71-rc7" \
   node scripts/release/canary/canary-probe.mjs
 ```
+
+### Worker endpoints and the selftest sampling mode
+
+The probe samples the **worker**, not the backend: the receipt's `live`,
+`ready` and `metricsPrometheus` endpoint summaries come from the worker's
+`/live`, `/ready` and `/metrics/prometheus`, and so do the counter families,
+the active-stage age and the fallback delta (`wallet_sync_fallback_total` is
+counted only in the worker). Before arming, the probe tries every worker
+container IP and uses the first whose `/live` answers 200; it exits 2 if none
+does. The selftest discovers the worker the same way.
+
+Run without knobs, the selftest takes one idle sample and reports status and
+latency for the three worker endpoints without gating them. It exits 2 only
+when the backend or every worker IP fails `/live`, and 0 otherwise.
+
+To check the receipt's latency gates before a canary, run the bounded,
+read-only sampling mode **during a scheduled sync**. It starts no sync itself.
+
+```bash
+CANARY_SELFTEST_SAMPLES=300 node scripts/release/canary/canary-selftest.mjs
+```
+
+| Knob | Default | Meaning |
+| --- | --- | --- |
+| `CANARY_SELFTEST_SAMPLES` | unset (single sample) | Endpoint samples to take; capped at 900. A window that the 900 s deadline ends before it takes them all is invalid (exit 3). |
+| `CANARY_SELFTEST_INTERVAL_MS` | `1000` | Pause between endpoint samples. |
+
+While it samples, the selftest polls worker diagnostics every 250 ms, as the
+probe does during a sync. A window counts only if at least **40 diagnostics
+samples** saw an active sync (`activeTotal > 0`). The window runs past the
+requested sample count until it sees 40, for at most **900 s**. The result is
+in the `sampling` key of the JSON output and is judged against the receipt
+gates for each worker endpoint: 0 failures, p99 at most 250 ms and max at most
+1000 ms.
+
+| Exit | Meaning |
+| --- | --- |
+| 0 | Valid window; every endpoint met every gate. |
+| 1 | Valid window; an endpoint missed a gate (see `sampling.gates.<endpoint>.missed`). |
+| 2 | Bad knob value, or the backend or every worker IP failed `/live`. |
+| 3 | Invalid window: fewer than the requested endpoint samples, or fewer than 40 active diagnostics samples, within 900 s (see `sampling.invalidReason`). |
+
+If `sampling.invalidReason` reports fewer endpoint samples than requested,
+the samples and interval do not fit in 900 s: lower `CANARY_SELFTEST_SAMPLES`
+or `CANARY_SELFTEST_INTERVAL_MS` before you re-run. Re-run an invalid window
+once during a sync. If the second window is also
+invalid, stop and escalate; do not count it. Do not loosen the gates to make a
+window pass. The local result is a lower bound: the real RC canary is the
+binding check.
 
 ### Wait out the activation gate before starting
 

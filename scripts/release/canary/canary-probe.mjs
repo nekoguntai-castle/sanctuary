@@ -16,15 +16,19 @@ import {
   CANARY_ADMIN_SQL,
   FAMILIES,
   createCanaryRuntime,
+  discoverWorkerBase,
   fleetReadiness,
+  latencySummary,
   nowIso,
   parseJsonOr,
   parseMetrics,
   readCgroup,
   shouldSeedFleet,
   sleep,
+  stripTiming,
   timedFetch,
   timedHttpsInsecure,
+  workerProbeUrls,
 } from './lib/canary-runtime.mjs';
 
 const TAG = process.env.CANARY_TAG;
@@ -84,9 +88,10 @@ for (const ip of backendIps) {
   const r = await timedFetch(`http://${ip}:3001/api/v1/health/live`, {}, 1500);
   if (r.ok) { backendBase = `http://${ip}:3001`; break; }
 }
-const [workerIp] = await containerIps(`${PROJECT}-worker-1`);
-const workerBase = `http://${workerIp}:3002`;
-if (!backendBase || !workerIp) { console.error('backend or worker unreachable'); process.exit(2); }
+// The endpoint samples, counter families and fallback delta all come from the
+// worker, so its /live must answer before anything is armed.
+const workerBase = await discoverWorkerBase(await containerIps(`${PROJECT}-worker-1`));
+if (!backendBase || !workerBase) { console.error('backend or worker unreachable'); process.exit(2); }
 // A short fleet is seeded before the canary admin is chosen, so the seeded wallets'
 // owner (the demo login) can become that admin. Nothing here is evidence: it runs before arming,
 // and its output goes to stderr so stdout keeps only the probe's own report.
@@ -122,10 +127,11 @@ let lastProgressAt = Date.now();
 const walletLogSeen = new Map(); // walletId -> Set(log ids)
 
 async function sampleOnce() {
+  const urls = workerProbeUrls(workerBase);
   const [live, ready, metrics, ui] = await Promise.all([
-    timedFetch(`${backendBase}/api/v1/health/live`, {}, 1000),
-    timedFetch(`${backendBase}/api/v1/health/ready`, {}, 1000),
-    timedFetch(`${backendBase}/metrics`, {}, 1000),
+    timedFetch(urls.live, {}, 1000),
+    timedFetch(urls.ready, {}, 1000),
+    timedFetch(urls.metricsPrometheus, {}, 1000),
     timedHttpsInsecure(UI_URL, 1000),
   ]);
   if (metrics.ok) {
@@ -135,8 +141,7 @@ async function sampleOnce() {
     if (state.metrics.fallbackStart === null) state.metrics.fallbackStart = parsed.fallback;
     state.metrics.fallbackEnd = parsed.fallback;
   }
-  const strip = (r) => ({ ok: r.ok, status: r.status, latencyMs: Math.round(r.latencyMs * 1000) / 1000, ...(r.error ? { error: r.error } : {}) });
-  const sample = { type: 'sample', phase, endpoints: { live: strip(live), ready: strip(ready), metricsPrometheus: strip(metrics), ui: strip(ui) } };
+  const sample = { type: 'sample', phase, endpoints: { live: stripTiming(live), ready: stripTiming(ready), metricsPrometheus: stripTiming(metrics), ui: stripTiming(ui) } };
   state.samples.push({ at: Date.now(), phase, endpoints: sample.endpoints });
   record(sample);
 }
@@ -309,9 +314,8 @@ const completedAt = nowIso();
 function summarizeEndpoint(key) {
   const all = state.samples.map((s) => s.endpoints[key]);
   const post = state.samples.filter((s) => s.at >= Date.parse(repeatTerminalAt)).map((s) => s.endpoints[key]);
-  const lat = all.map((e) => e.latencyMs).sort((a, b) => a - b);
-  const p99 = lat.length ? lat[Math.min(lat.length - 1, Math.ceil(lat.length * 0.99) - 1)] : 0;
-  return { samples: all.length, postTerminalSamples: post.length, failures: all.filter((e) => !e.ok).length, p99Ms: Math.ceil(p99), maxMs: Math.ceil(lat[lat.length - 1] ?? 0) };
+  const { samples, failures, p99Ms, maxMs } = latencySummary(all);
+  return { samples, postTerminalSamples: post.length, failures, p99Ms, maxMs };
 }
 const uiSummary = summarizeEndpoint('ui');
 const peakBytes = Math.max(...state.runtime.map((r) => r.worker.memoryPeakBytes), 0);

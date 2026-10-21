@@ -1330,6 +1330,12 @@ sampling knob; existing receipts still validate.
   sampling windows on the local stack were invalid (0 active diagnostics samples: the stale-wallet scheduler is retired
   there, so syncs start only from Electrum notifications or an explicit trigger), and one worker `/ready` sample failed
   while idle. The finding stays open; re-measurement needs sync activity on the local stack.
+- **F2 released by user decision D-6 (2026-10-21): ship F2 without a live window.** The first real RC canary is the binding
+  check (D-10.19's live-window rule waived for this delivery). The adversarial review of the F2 diff found no defect in it;
+  its one in-scope note (a sampling window cut short by the 900 s deadline counted as valid) is fixed, red-first, in
+  the F2 PR. Two pre-existing canary weaknesses are P3 backlog (`rc-canary--metrics-evidence-type-lines-only`,
+  `rc-canary--fallback-delta-misses-worker-recreate`). Phase G's readiness fix shipped in #1409 (merge bbec4153), so the
+  worker `/ready` gate no longer flaps.
 - **Phase G — added during implementation (new P2 `worker-ready--reconcile-flips-not-ready`).** The `/ready` failure
   traced to `RecurringScheduleCoordinator.reconcileConditionalState` (`server/src/worker/recurringSchedules.ts:350-377`)
   publishing `reconciliationHealthy: false` before its Redis round-trips on every 60 s no-op reconcile, so worker `/ready`
