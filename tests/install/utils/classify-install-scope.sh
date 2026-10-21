@@ -480,7 +480,7 @@ while IFS= read -r file; do
   case "$file" in
     *.md|*.mdx)
       ;;
-    scripts/ci/*|scripts/ownership/*|tests/install/*|.github/workflows/*|.github/actions/*|*/Dockerfile|Dockerfile|docker-compose*.yml|docker/compose/*|start.sh|install.sh|scripts/setup.sh|scripts/reconcile-postgres-password.sh|uninstall.sh|scripts/secrets/*|scripts/lib/*|scripts/create-upgrade-backup.sh)
+    scripts/ci/*|scripts/ownership/*|tests/install/*|.github/workflows/*|.github/actions/*|*/Dockerfile|Dockerfile|docker-compose*.yml|docker/compose/*|start.sh|install.sh|scripts/setup.sh|scripts/reconcile-postgres-password.sh|uninstall.sh|scripts/secrets/*|scripts/lib/*|scripts/create-upgrade-backup.sh|server/scripts/migrate.sh)
       release_surface_touched=true
       ;;
   esac
@@ -563,12 +563,12 @@ while IFS= read -r file; do
       add_scope auth-flow
       reason="Auth flow test changed"
       ;;
-    server/prisma/*)
+    server/prisma/*|server/scripts/migrate.sh)
       enable_unit
       enable_fresh_install
       enable_upgrade_baseline
       add_scope upgrade-baseline
-      reason="Prisma migration scope changed"
+      reason="Migration entrypoint or Prisma migration scope changed"
       ;;
     tests/install/e2e/upgrade-install.test.sh|tests/install/e2e/upgrade-*.test.sh|tests/install/utils/upgrade-*|tests/install/fixtures/upgrade/*)
       enable_unit
@@ -576,7 +576,7 @@ while IFS= read -r file; do
       add_scope upgrade
       reason="Upgrade harness or fixture scope changed"
       ;;
-    tests/install/utils/helpers.sh)
+    tests/install/utils/helpers.sh|tests/install/utils/assertion-tracking.sh)
       enable_unit
       enable_standard_stack
       enable_install_script

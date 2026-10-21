@@ -14,6 +14,7 @@ import { downloadText, downloadBlob } from '../../../utils/download';
 import { safeJsonParse } from '../../../utils/safeJson';
 import { useLatestRequest } from '../../../hooks/useLatestRequest';
 import type { FetchToken } from '../../../hooks/requestOwnership';
+import { isRestoreOutcomeUnknown, RESTORE_OUTCOME_UNKNOWN_MESSAGE } from './restoreOutcome';
 
 const log = createLogger('BackupRestore');
 
@@ -155,10 +156,14 @@ ENCRYPTION_SALT=${encryptionKeys.encryptionSalt}
     }
   };
 
-  const resetUploadState = () => {
+  const clearUploadedBackup = () => {
     setUploadedBackup(null);
     setUploadedFileName(null);
     setValidationResult(null);
+  };
+
+  const resetUploadState = () => {
+    clearUploadedBackup();
     setRestoreError(null);
     setRestoreSuccess(false);
     setIsValidating(false);
@@ -226,9 +231,7 @@ ENCRYPTION_SALT=${encryptionKeys.encryptionSalt}
 
       if (result.success) {
         setRestoreSuccess(true);
-        setUploadedBackup(null);
-        setUploadedFileName(null);
-        setValidationResult(null);
+        clearUploadedBackup();
 
         // Show warnings as notifications (e.g., node passwords that couldn't be restored)
         if (result.warnings && result.warnings.length > 0) {
@@ -254,6 +257,12 @@ ENCRYPTION_SALT=${encryptionKeys.encryptionSalt}
       }
     } catch (error) {
       log.error('Restore failed', { error });
+      if (isRestoreOutcomeUnknown(error)) {
+        // The server may still be restoring: drop the upload so the Restore button cannot re-run it.
+        clearUploadedBackup();
+        setRestoreError(RESTORE_OUTCOME_UNKNOWN_MESSAGE);
+        return;
+      }
       setRestoreError(error instanceof Error ? error.message : 'Restore failed');
     } finally {
       setIsRestoring(false);

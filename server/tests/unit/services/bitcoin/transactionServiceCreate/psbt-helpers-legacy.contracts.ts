@@ -19,7 +19,7 @@ import {
 } from "../../../../../src/services/bitcoin/transactionService";
 import * as asyncUtils from "../../../../../src/utils/async";
 import * as nodeClient from "../../../../../src/services/bitcoin/nodeClient";
-import { singleSigSigningWallet } from "./transactionServiceCreateTestHarness";
+import { LEGACY_PREVIOUS_TXID, singleSigSigningWallet } from "./transactionServiceCreateTestHarness";
 import { parseAddressDerivationPath } from "@sanctuary/shared/utils/bitcoin";
 import {
   changeAddressRow,
@@ -40,12 +40,6 @@ export function registerTransactionServicePsbtHelpersLegacyTests(): void {
         inputRows: sampleUtxos.map((utxo, index) => inputAddressRow(walletId, index, { address: utxo.address })),
         unusedRows: [changeAddressRow(walletId)],
       });
-      const previous = new bitcoin.Transaction();
-      previous.addInput(Buffer.alloc(32), 0xffffffff);
-      previous.addOutput(Buffer.from("76a914" + "a".repeat(40) + "88ac", 'hex'), 200_000n);
-      vi.mocked(nodeClient.getNodeClient).mockResolvedValueOnce({
-        getTransaction: vi.fn().mockResolvedValue(previous.toHex()),
-      } as any);
     });
 
     it("should handle dust amount correctly", async () => {
@@ -339,6 +333,8 @@ export function registerTransactionServicePsbtHelpersLegacyTests(): void {
       mockPrismaClient.uTXO.findMany.mockResolvedValue([
         {
           ...sampleUtxos[2],
+          // Spends the transaction the node mock serves: legacy bytes are authenticated by txid
+          txid: LEGACY_PREVIOUS_TXID,
           walletId,
           // Legacy P2PKH scriptPubKey format
           scriptPubKey: "76a914" + "a".repeat(40) + "88ac",
@@ -365,7 +361,7 @@ export function registerTransactionServicePsbtHelpersLegacyTests(): void {
       const amount = 50000;
       const feeRate = 10;
 
-      // The nodeClient mock already returns raw hex for getTransaction
+      // The nodeClient mock serves the decoded previous transaction for getTransaction
       const result = await createTransaction(
         walletId,
         recipient,
@@ -400,7 +396,7 @@ export function registerTransactionServicePsbtHelpersLegacyTests(): void {
         await expect(
           createTransaction(walletId, recipient, amount, feeRate),
         ).rejects.toThrow(
-          `Failed to fetch raw transaction for ${sampleUtxos[2].txid}`,
+          `Failed to fetch raw transaction for ${LEGACY_PREVIOUS_TXID}`,
         );
       } finally {
         mapWithConcurrencySpy.mockRestore();

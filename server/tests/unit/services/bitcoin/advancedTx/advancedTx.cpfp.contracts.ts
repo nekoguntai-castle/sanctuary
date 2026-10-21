@@ -70,8 +70,6 @@ export function registerCpfpContracts() {
   });
 
   describe('CPFP Transaction Creation', () => {
-    // Use valid hex txid (not 'p' which is invalid hex)
-    const parentTxid = 'c'.repeat(64);
     const parentVout = 0;
     const walletId = 'test-wallet-id';
     const recipientAddress = testnetAddresses.nativeSegwit[0];
@@ -96,6 +94,8 @@ export function registerCpfpContracts() {
         },
       };
     };
+    // The parent must be served under its real txid: lookups are authenticated by txid.
+    const parentTxid = cpfpChain().parent.txid;
 
     beforeEach(() => {
       // Mock parent UTXO
@@ -106,7 +106,9 @@ export function registerCpfpContracts() {
         walletId,
         spent: false,
       });
-      mockElectrumClient.getTransaction.mockResolvedValue(cpfpChain().parent);
+      const chain = cpfpChain();
+      mockElectrumClient.getTransaction.mockImplementation(async (txid: string) =>
+        [chain.parent, chain.funding].find(transaction => transaction.txid === txid));
     });
 
     it('returns the child input and output so callers can persist a draft', async () => {

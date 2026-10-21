@@ -61,6 +61,45 @@ export function rawTransactionWithOutput(
   };
 }
 
+/** A one-output funding transaction; distinct `salt` values give same-script fundings distinct txids. */
+export function fundingTransaction(
+  scriptPubKeyHex: string,
+  valueSats = 100_000,
+  salt = 0,
+): bitcoin.Transaction {
+  const transaction = new bitcoin.Transaction();
+  transaction.version = 2;
+  transaction.addInput(Buffer.alloc(32, salt), 0xffffffff);
+  transaction.addOutput(Buffer.from(scriptPubKeyHex, 'hex'), BigInt(valueSats));
+  return transaction;
+}
+
+/** The decoded `{ txid, hex, vin, vout }` shape a node client returns for a transaction. */
+export function nodeTransactionResponse(transaction: bitcoin.Transaction) {
+  return {
+    txid: transaction.getId(),
+    hex: transaction.toHex(),
+    vin: [],
+    vout: transaction.outs.map((output, n) => ({
+      value: Number(output.value) / 100_000_000,
+      n,
+      scriptPubKey: { hex: Buffer.from(output.script).toString('hex') },
+    })),
+  };
+}
+
+/** Serves each transaction under its own txid, as a real node would; any other lookup throws. */
+export function serveNodeTransactions(...transactions: bitcoin.Transaction[]): void {
+  const responses = new Map(transactions.map(transaction => [
+    transaction.getId(), nodeTransactionResponse(transaction),
+  ]));
+  mockElectrumClient.getTransaction.mockImplementation(async (txid: string) => {
+    const response = responses.get(txid);
+    if (!response) throw new Error(`Unexpected transaction lookup: ${txid}`);
+    return response;
+  });
+}
+
 export function immutableSignerLink(overrides: Record<string, unknown> = {}) {
   return {
     signerBindingVersion: 1,

@@ -21,6 +21,17 @@ const { mockParseDescriptor, mockBindPsbtAccount, mockNotifyNewTransactions, moc
 
 export { mockParseDescriptor, mockBindPsbtAccount, mockNotifyNewTransactions, mockEmitTransactionSent, mockEmitTransactionReceived };
 
+/**
+ * The previous transaction the node mock serves (one 200,000-sat P2PKH output to
+ * `76a914aa…88ac`); legacy UTXOs must spend its real txid, since the bytes are
+ * authenticated by txid.
+ */
+const legacyPreviousTransaction = vi.hoisted(() => ({
+  txid: 'fa19c1915a1d94f7425d9dd90fe279370df12fa260570d2ade8819d9a335ac09',
+  hex: '01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff00ffffffff01400d0300000000001976a914aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa88ac00000000',
+}));
+export const LEGACY_PREVIOUS_TXID = legacyPreviousTransaction.txid;
+
 const TEST_ACCOUNT_XPUB =
   'tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M';
 
@@ -110,10 +121,10 @@ vi.mock('../../../../../src/models/prisma', () => ({
   withTransaction: (fn: (tx: any) => Promise<any>) => mockPrismaClient.$transaction(fn),
 }));
 
-// Mock the nodeClient - getTransaction returns raw hex string when verbose=false
+// Mock the nodeClient - getTransaction returns the decoded { txid, hex } shape, as the real client does
 vi.mock('../../../../../src/services/bitcoin/nodeClient', () => ({
   getNodeClient: vi.fn().mockResolvedValue({
-    getTransaction: vi.fn().mockResolvedValue('0100000001c997a5e56e104102fa209c6a852dd90660a20b2d9c352423edce25857fcd3704000000004847304402204e45e16932b8af514961a1d3a1a25fdf3f4f7732e9d624c6c61548ab5fb8cd410220181522ec8eca07de4860a4acdd12909d831cc56cbbac4622082221a8768d1d0901ffffffff0100000000000000000000000000'),
+    getTransaction: vi.fn().mockResolvedValue({ ...legacyPreviousTransaction, vin: [], vout: [] }),
     broadcastTransaction: vi.fn().mockResolvedValue('mock-txid'),
     getBlockHeight: vi.fn().mockResolvedValue(800000),
   }),

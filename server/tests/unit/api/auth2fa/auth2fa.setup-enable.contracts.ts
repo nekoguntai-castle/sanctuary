@@ -52,8 +52,17 @@ export function registerTwoFactorSetupContracts() {
       .send({});
 
     expect(response.status).toBe(200);
-    expect(response.body.secret).toBe('mock-secret');
+    // The manual-entry code is the base32 secret; only the ciphertext is stored.
+    expect(response.body.secret).toBe('JBSWY3DPEHPK3PXP');
     expect(response.body.qrCodeDataUrl).toBeDefined();
+    expect(mockPrismaClient.user.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ twoFactorSecret: 'iv:tag:ct' }),
+    }));
+
+    const { auditService } = await import('../../../../src/services/auditService');
+    const auditOptions = vi.mocked(auditService.logFromRequest).mock.calls.map((call) => call[3]);
+    expect(auditOptions).toContainEqual({ details: { userId: 'test-user-id' } });
+    expect(JSON.stringify(auditOptions)).not.toContain('JBSWY3DPEHPK3PXP');
   });
 
   it('should handle errors gracefully', async () => {

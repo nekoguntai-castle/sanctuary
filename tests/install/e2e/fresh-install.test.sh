@@ -140,10 +140,7 @@ run_test() {
     log_info "Running test: $test_name"
     echo "-------------------------------------------"
 
-    set +e
-    $test_func
-    local exit_code=$?
-    set -e
+    install_test_run_function "$test_func"; local exit_code="$INSTALL_TEST_LAST_STATUS"
 
     if [ $exit_code -eq 0 ]; then
         log_success "PASSED: $test_name"

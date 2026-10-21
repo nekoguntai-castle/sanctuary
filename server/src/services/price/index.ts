@@ -12,6 +12,7 @@
 import { ProviderRegistry } from "../../providers";
 import { createLogger } from "../../utils/logger";
 import { getErrorMessage } from "../../utils/errors";
+import { singleFlight } from "../../utils/async";
 import { priceCache, CacheTTL } from "../cache";
 import {
   createPriceProviderRegistry,
@@ -190,31 +191,9 @@ class PriceService {
     }
 
     // Concurrent reads of one currency share a single provider fan-out
-    return this.singleFlight(this.aggregatedPriceRequests, cacheKey, () =>
+    return singleFlight(this.aggregatedPriceRequests, cacheKey, () =>
       this.fetchAggregatedPrice(currency, cacheKey),
     );
-  }
-
-  /**
-   * Share one in-flight promise per key; the entry is removed when it settles.
-   */
-  private async singleFlight<T>(
-    pending: Map<string, Promise<T>>,
-    key: string,
-    fn: () => Promise<T>,
-  ): Promise<T> {
-    const existing = pending.get(key);
-    if (existing) return existing;
-
-    const request = fn();
-    pending.set(key, request);
-
-    try {
-      return await request;
-    } finally {
-      // A reload may have cleared the map and a newer request taken the key.
-      if (pending.get(key) === request) pending.delete(key);
-    }
   }
 
   /**
@@ -334,7 +313,7 @@ class PriceService {
     const cached = await priceCache.get<PriceData>(cacheKey);
     if (cached) return cached;
 
-    return this.singleFlight(this.providerPriceRequests, cacheKey, () =>
+    return singleFlight(this.providerPriceRequests, cacheKey, () =>
       this.fetchPriceFromProvider(
         normalizedProviderName,
         normalizedCurrency,
@@ -483,7 +462,7 @@ class PriceService {
       throw new HistoricalPriceUnavailableError(dayLabel);
     }
 
-    return this.singleFlight(this.historicalPriceRequests, cacheKey, () =>
+    return singleFlight(this.historicalPriceRequests, cacheKey, () =>
       this.fetchHistoricalPriceMap(day, cacheKey),
     );
   }
@@ -549,7 +528,7 @@ class PriceService {
         return cached.prices;
       }
 
-      return await this.singleFlight(this.priceHistoryRequests, cacheKey, () =>
+      return await singleFlight(this.priceHistoryRequests, cacheKey, () =>
         this.fetchPriceHistory(code, days, cacheKey),
       );
     } catch (error) {
@@ -731,7 +710,8 @@ class PriceService {
   }
 
   /**
-   * Health check - test connectivity to providers
+   * Health check - provider connectivity from the registry's TTL health cache.
+   * Backs the public /price/health route, so it must not probe providers per call.
    */
   async healthCheck(): Promise<{
     healthy: boolean;
@@ -739,7 +719,7 @@ class PriceService {
   }> {
     await this.ensureInitialized();
 
-    const health = await this.registry.getHealth();
+    const health = await this.registry.getCachedHealth();
     const results: Record<string, boolean> = {};
 
     for (const status of health.providers) {

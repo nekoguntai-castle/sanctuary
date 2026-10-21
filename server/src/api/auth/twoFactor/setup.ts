@@ -37,17 +37,20 @@ export function createSetupRouter(): Router {
     }
 
     // Generate secret and QR code
-    const { secret, qrCodeDataUrl } = await twoFactorService.generateSecret(user.username);
+    const { manualEntrySecret, encryptedSecret, qrCodeDataUrl } =
+      await twoFactorService.generateSecret(user.username);
 
-    // Store secret temporarily (not enabled yet)
-    await userRepository.update(user.id, { twoFactorSecret: secret });
+    // Store only the encrypted secret, temporarily (not enabled yet)
+    await userRepository.update(user.id, { twoFactorSecret: encryptedSecret });
 
     // Audit 2FA setup started
     await auditService.logFromRequest(req, AuditAction.TWO_FACTOR_SETUP, AuditCategory.AUTH, {
       details: { userId: user.id },
     });
 
-    res.json({ secret, qrCodeDataUrl });
+    // The base32 secret is returned only to the user starting their own setup,
+    // for manual entry into an authenticator app; it is never logged.
+    res.json({ secret: manualEntrySecret, qrCodeDataUrl });
   }));
 
   /**

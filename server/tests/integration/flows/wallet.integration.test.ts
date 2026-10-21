@@ -22,6 +22,7 @@ import { registerWalletAccessStatsImportTests } from './wallet/access-stats-impo
 import { registerWalletCoreCrudTests } from './wallet/core-crud.contracts';
 import { registerWalletDevicesSharingTests } from './wallet/devices-sharing.contracts';
 import { registerWalletGroupsTelegramTests } from './wallet/groups-telegram.contracts';
+import { registerWalletSharedDeviceSignerTests } from './wallet/shared-device-signers.contracts';
 import { setWalletIntegrationContext } from './wallet/walletIntegrationTestHarness';
 
 // These fixtures exercise downstream wallet behavior with a synthetic enabled signer.
@@ -71,4 +72,5 @@ describeWithDb('Wallet Lifecycle Integration', () => {
   registerWalletDevicesSharingTests();
   registerWalletAccessStatsImportTests();
   registerWalletGroupsTelegramTests();
+  registerWalletSharedDeviceSignerTests();
 });

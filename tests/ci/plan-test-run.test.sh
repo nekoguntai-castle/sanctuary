@@ -329,6 +329,17 @@ main() {
   assert_eq "browser seeder -> browser_smoke" "true" "$(json_query "$plan" lanes.browser_smoke.run)"
   assert_eq "browser seeder does not select render" "false" "$(json_query "$plan" lanes.render_regression.run)"
 
+  # ---- Shared e2e helper imported by the render harness selects render -----
+  base="$head"
+  mkdir -p "$repo/tests/e2e"
+  printf 'export const helpers = true\n' > "$repo/tests/e2e/helpers.ts"
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm 'shared e2e helper change'
+  head="$(git -C "$repo" rev-parse HEAD)"
+
+  plan="$(EVENT_NAME=pull_request run_planner "$repo" "$base" "$head")"
+  assert_eq "render harness helper -> render_regression" "true" "$(json_query "$plan" lanes.render_regression.run)"
+
   # ---- test.yml change forces full scan ------------------------------------
   # Only test.yml defines the lanes this plan drives, so only test.yml triggers
   # a full scan. Any other workflow must not (see the install-test.yml case below).

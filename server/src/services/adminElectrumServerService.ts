@@ -202,6 +202,16 @@ export async function testSavedElectrumServer(
     network: toNetworkType(server.network),
   });
 
+  // A saved proxy that cannot be used says nothing about the server itself;
+  // recording it unhealthy would demote a Tor-only server for a config fault.
+  if (result.failureKind === "proxy_configuration") {
+    return {
+      success: false,
+      message: result.message,
+      error: result.message,
+    };
+  }
+
   await nodeConfigRepository.electrumServer.updateHealth(id, {
     isHealthy: result.success,
     lastHealthCheck: new Date(),

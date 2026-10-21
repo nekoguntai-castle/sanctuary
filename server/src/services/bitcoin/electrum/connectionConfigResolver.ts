@@ -197,3 +197,18 @@ export async function resolveElectrumConnectionConfig(
     ? dbConnectionConfig(nodeConfig, network)
     : envConnectionConfig();
 }
+
+/**
+ * The SOCKS proxy saved in the default Electrum node config, projected exactly
+ * as the runtime singletons and pool see it. Connection tests use it so a
+ * Tor-only server is dialled the same way it will be at runtime.
+ *
+ * Rejects with ProxyConfigurationError when the stored password cannot be
+ * decrypted; callers must fail closed rather than dial directly.
+ */
+export async function resolveConfiguredElectrumProxy(): Promise<ProxyConfig | undefined> {
+  const nodeConfig = await nodeConfigRepository.findDefault();
+  return nodeConfig?.type === "electrum"
+    ? proxyConfigFromNodeConfig(nodeConfig)
+    : undefined;
+}

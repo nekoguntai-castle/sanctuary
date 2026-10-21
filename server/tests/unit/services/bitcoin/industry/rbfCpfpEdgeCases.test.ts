@@ -22,14 +22,15 @@ vi.mock('../../../../../src/utils/logger', () => ({
 import * as bitcoin from 'bitcoinjs-lib';
 import {
   advancedSignableWallet,
+  fundingTransaction,
   registerAdvancedTxTestSetup,
+  serveNodeTransactions,
 } from '../advancedTx/advancedTxTestHarness';
 import { calculateCPFPFee } from '../../../../../src/services/bitcoin/advancedTx/cpfp';
 import { RBF_SEQUENCE, MIN_RBF_FEE_BUMP } from '../../../../../src/services/bitcoin/advancedTx/shared';
 import { createRBFTransaction } from '../../../../../src/services/bitcoin/advancedTx';
 import * as transactionWeight from '../../../../../src/services/bitcoin/transactionWeight';
 import { mockPrismaClient } from '../../../../mocks/prisma';
-import { mockElectrumClient } from '../../../../mocks/electrum';
 import { testnetAddresses } from '../../../../fixtures/bitcoin';
 
 describe('RBF & CPFP Industry Edge Cases', () => {
@@ -75,22 +76,20 @@ describe('RBF & CPFP Industry Edge Cases', () => {
       // fails to exceed the original fee, even when the requested feeRate
       // clears the "must be higher than current rate" gate.
       const walletId = 'rbf-rule3-wallet';
-      const originalTxid = 'f'.repeat(64);
       const spendAddress = testnetAddresses.nativeSegwit[0];
       const changeAddress = testnetAddresses.nativeSegwit[1];
       const spendScriptHex = Buffer.from(
         bitcoin.address.toOutputScript(spendAddress, bitcoin.networks.testnet),
       ).toString('hex');
-      const inputHash = Buffer.from('28'.repeat(32), 'hex');
-      const inputTxid = Buffer.from(inputHash).reverse().toString('hex');
+      // Real prevout and original: the node lookups are authenticated by txid.
+      const funding = fundingTransaction(spendScriptHex);
 
       const tx = new bitcoin.Transaction();
       tx.version = 2;
-      tx.addInput(inputHash, 0, RBF_SEQUENCE);
+      tx.addInput(funding.getHash(), 0, RBF_SEQUENCE);
       tx.addOutput(bitcoin.address.toOutputScript(spendAddress, bitcoin.networks.testnet), BigInt(40_000));
       // totalInput (100_000) - 40_000 - 54_950 = oldFee 5_050
       tx.addOutput(bitcoin.address.toOutputScript(changeAddress, bitcoin.networks.testnet), BigInt(54_950));
-      const txHex = tx.toHex();
 
       mockPrismaClient.wallet.findUnique.mockResolvedValueOnce(advancedSignableWallet(walletId));
       mockPrismaClient.address.findMany
@@ -100,32 +99,14 @@ describe('RBF & CPFP Industry Edge Cases', () => {
         ])
         .mockResolvedValueOnce([{ address: changeAddress, branch: 1 }]);
 
-      mockElectrumClient.getTransaction.mockImplementation(async (txid: string) => {
-        if (txid === originalTxid) {
-          return { txid: originalTxid, confirmations: 0, hex: txHex, vin: [], vout: [] } as any;
-        }
-        if (txid === inputTxid) {
-          return {
-            txid: inputTxid,
-            confirmations: 1,
-            hex: txHex,
-            vin: [],
-            vout: [{
-              value: 100_000 / 100_000_000,
-              n: 0,
-              scriptPubKey: { hex: spendScriptHex, address: spendAddress },
-            }],
-          } as any;
-        }
-        return { txid, confirmations: 0, hex: txHex, vin: [], vout: [] } as any;
-      });
+      serveNodeTransactions(tx, funding);
 
       // Pin the realistically re-estimated fee to 5_000 sats: exactly 50 sats
       // below oldFee (5_050), so feeDelta is exactly -50, deterministically.
       const feeForRateSpy = vi.spyOn(transactionWeight, 'feeForRate').mockReturnValue(5_000);
       try {
         await expect(
-          createRBFTransaction(originalTxid, 55, walletId, 'testnet3'),
+          createRBFTransaction(tx.getId(), 55, walletId, 'testnet3'),
         ).rejects.toThrow('New fee must exceed the original fee by at least');
       } finally {
         feeForRateSpy.mockRestore();

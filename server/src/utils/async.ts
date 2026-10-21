@@ -46,6 +46,31 @@ export async function mapWithConcurrency<T, R>(
 }
 
 /**
+ * Share one in-flight promise per key; the entry is removed when it settles.
+ *
+ * Concurrent callers with the same key receive the same result and cause one
+ * call to `fn`. The entry is only removed if it is still the current one, so a
+ * caller that cleared the map (and a newer request that took the key) is safe.
+ */
+export async function singleFlight<T>(
+  pending: Map<string, Promise<T>>,
+  key: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const existing = pending.get(key);
+  if (existing) return existing;
+
+  const request = fn();
+  pending.set(key, request);
+
+  try {
+    return await request;
+  } finally {
+    if (pending.get(key) === request) pending.delete(key);
+  }
+}
+
+/**
  * Batch process items with a limit on concurrent batches
  * Useful when you want to process items in chunks but also limit
  * how many chunks run at once.

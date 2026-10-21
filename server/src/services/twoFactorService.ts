@@ -23,11 +23,14 @@ const TOTP_GUARDRAILS = createGuardrails({ MIN_SECRET_BYTES: LEGACY_TOTP_SECRET_
 const BackupCodesSchema = z.array(z.object({ hash: z.string(), used: z.boolean() }));
 
 /**
- * Generate a new TOTP secret and QR code for 2FA setup
- * Returns the encrypted secret for secure database storage
+ * Generate a new TOTP secret and QR code for 2FA setup.
+ * `manualEntrySecret` is the base32 secret encoded in the QR's otpauth URI, for
+ * users who type it into their authenticator app; `encryptedSecret` is the
+ * ciphertext for database storage. The plaintext must never be stored or logged.
  */
 export async function generateSecret(username: string): Promise<{
-  secret: string;
+  manualEntrySecret: string;
+  encryptedSecret: string;
   qrCodeDataUrl: string;
 }> {
   const plaintextSecret = otpGenerateSecret();
@@ -38,10 +41,11 @@ export async function generateSecret(username: string): Promise<{
   });
   const qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl);
 
-  // Encrypt the secret before returning for storage
-  const encryptedSecret = encrypt(plaintextSecret);
-
-  return { secret: encryptedSecret, qrCodeDataUrl };
+  return {
+    manualEntrySecret: plaintextSecret,
+    encryptedSecret: encrypt(plaintextSecret),
+    qrCodeDataUrl,
+  };
 }
 
 export interface TotpStepVerification {

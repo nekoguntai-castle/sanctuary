@@ -443,6 +443,27 @@ main() {
   assert_scope "$output_file" "true" "true" "true" "false" "false" "false" "false" "false" "false" "false"
   assert_upgrade_selection "$output_file" "" ""
 
+  # The migration entrypoint (server/Dockerfile CMD, compose `migrate` service)
+  # runs on every install and upgrade, so it carries the Prisma migration scope.
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "server/scripts/migrate.sh" "#!/bin/sh" "migration entrypoint"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_scope "$output_file" "true" "true" "true" "false" "false" "false" "false" "false" "false" "false"
+  assert_upgrade_selection "$output_file" "" ""
+
+  # The assertion-tracking runner is sourced by helpers.sh and the install
+  # suites, so it routes exactly like the shared helpers.
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "tests/install/utils/assertion-tracking.sh" "# tracking" "assertion tracking runner"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_scope "$output_file" "true" "true" "true" "true" "true" "true" "false" "false" "false" "true"
+  case ",$(sed -n 's/^scope=//p' "$output_file")," in
+    *,install-helpers,*) ;;
+    *) fail "expected install-helpers in scope for tests/install/utils/assertion-tracking.sh" ;;
+  esac
+
   base_sha="$head_sha"
   commit_file "$repo_dir" "tests/install/e2e/upgrade-install.test.sh" "echo upgrade" "upgrade harness"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
@@ -743,7 +764,8 @@ main() {
     "docker/compose/tor.yml" \
     "docker/compose/future-overlay.yml" \
     "start.sh" \
-    "install.sh"; do
+    "install.sh" \
+    "server/scripts/migrate.sh"; do
     base_sha="$head_sha"
     commit_file "$repo_dir" "$release_surface_path" "# release surface fixture" "release surface: $release_surface_path"
     head_sha="$(git -C "$repo_dir" rev-parse HEAD)"

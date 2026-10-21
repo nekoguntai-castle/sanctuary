@@ -16,6 +16,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Advanced transactions (RBF check and create, CPFP, advanced batch legacy inputs) now refuse any Electrum transaction whose bytes do not hash to the requested txid, so a malicious server can no longer redirect an RBF replacement's recipient or skew its fee figures.
+- Creating a send or batch from a legacy (P2PKH) wallet no longer fails with a 500: the previous-transaction bytes used for `nonWitnessUtxo` are fetched as authenticated raw hex.
+- Decoded Electrum transactions now report `scriptPubKey.hex` and `hash` as hex (they were comma-separated decimal bytes under bitcoinjs-lib 7), so `GET /api/v1/bitcoin/transaction/:txid` returns usable script and hash fields.
+- Two-factor setup now shows the base32 secret for manual entry into an authenticator app instead of the encrypted value; only the ciphertext is stored.
+- The public `/price/health` endpoint answers from a 30-second provider health cache with single-flight, time-bounded refresh instead of probing every price provider on each request.
+- Admin restore waits 150 s, longer than the server's 120 s budget. A timeout or dropped connection shows a "server may still be restoring" message and removes the Restore button until a fresh upload, so a committing restore is never reported as failed or re-run.
+- Electrum connection tests (saved server, add-server, Node Config test, `/node/test`) dial through the saved Tor SOCKS proxy. An unusable saved proxy fails the test closed instead of dialling directly and does not mark a saved server unhealthy.
+- Create Wallet and add-signer accept signers shared with you directly or through a group; they previously failed with "Device not found" although the signer appeared in your device list.
+- Install test suites fail when any assertion fails, not only the final statement.
+- CI: changes to `server/scripts/migrate.sh` run the install-test and release-candidate lanes; changes to the install assertion-tracking runner run the install lanes like the shared helpers; changes to the shared e2e helpers the render harness imports run Full Render E2E; changes to the quality gate scripts, the backup scripts and the server pre-commit hook run their own regression suites.
 - Draft creation now refuses (400 `metadata_mismatch`) a draft whose recipient, amount, fee, totals, selected UTXOs or RBF flag disagree with its signing intent, so the stored review fields and UTXO locks describe the transaction actually signed. Broadcast also checks an intent-bound draft's own fields even when the request supplies the canonical values.
 - Scheduled backups no longer fail with EACCES on new or existing installs: a one-shot `backup-volume-init` service repairs `backup_data` ownership for the worker on every start, the backend mounts the volume read-only so the support package reports real backups, and the job fails fast with an actionable message when the directory is not writable.
 - A payjoin endpoint is bound to the BIP21 recipient it came with and dropped when that recipient is removed or replaced, or the send type changes, so the signed original is never sent to another recipient's payjoin server. Round-two review totals show the sender's real net spend, and the flow preview shows the proposal's outputs (including Taproot).

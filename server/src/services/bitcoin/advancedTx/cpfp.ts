@@ -15,7 +15,7 @@ import { getNodeClient } from '../nodeClient';
 import type { BitcoinNetwork } from '../networks';
 import { normalizeLegacyBitcoinNetwork } from '../networks';
 import { draftLockRepository, utxoRepository, walletRepository } from '../../../repositories';
-import { getDustThreshold } from './shared';
+import { getDustThreshold, fetchAuthenticatedPrevout, fetchAuthenticatedTransaction } from './shared';
 import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
 import { bindPsbtAccount } from '../psbtAccountBinding';
 import {
@@ -104,8 +104,9 @@ export async function createCPFPTransaction(
   const dustThreshold = await getDustThreshold();
 
   // Get parent transaction
-  const parentTx = await client.getTransaction(parentTxid);
-  const parentVsize = bitcoin.Transaction.fromHex(parentTx.hex).virtualSize();
+  // Outputs and values are txid-authenticated; vsize also counts witness bytes, which the txid does not commit to.
+  const parentTx = await fetchAuthenticatedTransaction(client, parentTxid);
+  const parentVsize = parentTx.transaction.virtualSize();
 
   // Get the UTXO from parent transaction. When the caller omits an explicit
   // vout, resolve it to the wallet's largest spendable, unspent, unlocked,
@@ -162,13 +163,13 @@ export async function createCPFPTransaction(
 
   // Calculate parent fee rate
   let parentInputValue = 0;
-  const tx = bitcoin.Transaction.fromHex(parentTx.hex);
+  const tx = parentTx.transaction;
 
   for (const input of tx.ins) {
     const inputTxid = Buffer.from(input.hash).reverse().toString('hex');
-    const inputTx = await client.getTransaction(inputTxid);
-    const prevOut = inputTx.vout[input.index];
-    parentInputValue += Math.round(prevOut.value * 100000000);
+    // Authenticated by txid so a forged prevout cannot skew the parent fee.
+    const prevOut = await fetchAuthenticatedPrevout(client, inputTxid, input.index);
+    parentInputValue += prevOut.valueSats;
   }
 
   const parentOutputValue = tx.outs.reduce((sum, out) => sum + Number(out.value), 0);
@@ -223,7 +224,7 @@ export async function createCPFPTransaction(
     sequence: 0xffffffff,
     isLegacy,
     rawTxCache: isLegacy
-      ? new Map([[parentTxid, Buffer.from(parentTx.hex, 'hex')]])
+      ? new Map([[parentTxid, Buffer.from(parentTx.canonicalHex, 'hex')]])
       : new Map(),
     addressPathMap,
     signingInfo,

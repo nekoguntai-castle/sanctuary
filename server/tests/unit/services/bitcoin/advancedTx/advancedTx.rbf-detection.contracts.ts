@@ -5,12 +5,23 @@ import { mockPrismaClient } from '../../../../mocks/prisma';
 
 import { mockElectrumClient, createMockTransaction } from '../../../../mocks/electrum';
 import { testnetAddresses, sampleTransactions } from '../../../../fixtures/bitcoin';
-import './advancedTxTestHarness';
+import { fundingTransaction, serveNodeTransactions } from './advancedTxTestHarness';
 import { getNodeClient } from '../../../../../src/services/bitcoin/nodeClient';
 import {
   canReplaceTransaction,
   isRBFSignaled,
 } from '../../../../../src/services/bitcoin/advancedTx';
+
+/** An RBF-signalling original that spends a real funding transaction, served under both real txids. */
+function serveReplaceableOriginal(payTo: string): string {
+  const funding = fundingTransaction('0014' + 'a'.repeat(40));
+  const original = new bitcoin.Transaction();
+  original.version = 2;
+  original.addInput(funding.getHash(), 0, 0xfffffffd);
+  original.addOutput(bitcoin.address.toOutputScript(payTo, bitcoin.networks.testnet), 50_000n);
+  serveNodeTransactions(original, funding);
+  return original.getId();
+}
 
 export function registerRbfDetectionContracts() {
   describe('RBF Detection', () => {
@@ -35,23 +46,10 @@ export function registerRbfDetectionContracts() {
       const txid = 'a'.repeat(64);
 
       it('should return replaceable for unconfirmed RBF transaction', async () => {
-        // Mock unconfirmed transaction with RBF
-        const mockTx = createMockTransaction({
-          txid,
-          confirmations: 0,
-          inputs: [{ txid: 'b'.repeat(64), vout: 0, value: 0.001, address: testnetAddresses.nativeSegwit[0] }],
-          outputs: [{ value: 0.0005, address: testnetAddresses.nativeSegwit[1] }],
-        });
+        // Unconfirmed RBF original and its prevout, both authentic for their txids
+        const originalTxid = serveReplaceableOriginal(testnetAddresses.nativeSegwit[1]);
 
-        // Use the valid RBF transaction from fixtures
-        mockTx.hex = sampleTransactions.rbfEnabled;
-
-        mockElectrumClient.getTransaction.mockResolvedValueOnce(mockTx);
-        mockElectrumClient.getTransaction.mockResolvedValueOnce({
-          vout: [{ value: 0.001, scriptPubKey: { hex: '0014' + 'a'.repeat(40) } }],
-        });
-
-        const result = await canReplaceTransaction(txid, 'testnet4');
+        const result = await canReplaceTransaction(originalTxid, 'testnet4');
 
         expect(getNodeClient).toHaveBeenCalledWith('testnet4');
         expect(result.replaceable).toBe(true);
@@ -116,13 +114,11 @@ export function registerRbfDetectionContracts() {
       });
 
       it('should stay replaceable when history only lists the original as mempool (height 0)', async () => {
-        mockPrismaClient.transaction.findUnique.mockResolvedValue({ txid, confirmations: 0, blockHeight: null });
-        mockElectrumClient.getTransaction
-          .mockResolvedValueOnce(electrumShapedTx([payeeAddress]))
-          .mockResolvedValueOnce({ vout: [{ value: 0.001, scriptPubKey: { hex: '0014' + 'a'.repeat(40) } }] });
-        mockElectrumClient.getAddressHistory.mockResolvedValue([{ tx_hash: txid, height: 0 }]);
+        const originalTxid = serveReplaceableOriginal(payeeAddress);
+        mockPrismaClient.transaction.findUnique.mockResolvedValue({ txid: originalTxid, confirmations: 0, blockHeight: null });
+        mockElectrumClient.getAddressHistory.mockResolvedValue([{ tx_hash: originalTxid, height: 0 }]);
 
-        const result = await canReplaceTransaction(txid, 'testnet4', 'wallet-1');
+        const result = await canReplaceTransaction(originalTxid, 'testnet4', 'wallet-1');
 
         expect(result.replaceable).toBe(true);
       });

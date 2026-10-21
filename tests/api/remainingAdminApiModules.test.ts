@@ -57,13 +57,18 @@ describe("Remaining Admin API Modules", () => {
       expect(mockPost).toHaveBeenCalledWith("/admin/backup", {
         includeSettings: true,
       });
-      expect(mockPost).toHaveBeenCalledWith("/admin/backup/validate", {
-        backup: { meta: {} },
-      });
-      expect(mockPost).toHaveBeenCalledWith("/admin/restore", {
-        backup: { meta: {} },
-        confirmationCode: "CONFIRM_RESTORE",
-      });
+      expect(mockPost).toHaveBeenCalledWith(
+        "/admin/backup/validate",
+        { backup: { meta: {} } },
+        { timeoutMs: adminBackupApi.ADMIN_RESTORE_TIMEOUT_MS },
+      );
+      expect(mockPost).toHaveBeenCalledWith(
+        "/admin/restore",
+        { backup: { meta: {} }, confirmationCode: "CONFIRM_RESTORE" },
+        { timeoutMs: adminBackupApi.ADMIN_RESTORE_TIMEOUT_MS },
+      );
+      // The server answers a timed-out restore with 408 at 120 s; the client must outlast it.
+      expect(adminBackupApi.ADMIN_RESTORE_TIMEOUT_MS).toBeGreaterThan(120_000);
       expect(mockGet).toHaveBeenCalledWith("/admin/audit-logs", {
         userId: "u1",
         username: "alice",

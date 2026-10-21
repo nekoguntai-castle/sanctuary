@@ -105,21 +105,26 @@ function sharedThroughGroupWhere(userId: string): Prisma.DeviceWhereInput {
   return { groupId: { not: null }, group: { members: { some: { userId } } } };
 }
 
+/** Devices the user owns, has been shared directly, or reaches through a group. */
+function accessibleDeviceWhere(userId: string): Prisma.DeviceWhereInput {
+  return {
+    OR: [
+      { userId },
+      { users: { some: { userId } } },
+      // walletImport reuse access is granted through the group role, so
+      // resolution must see group-shared devices too.
+      sharedThroughGroupWhere(userId),
+    ],
+  };
+}
+
 /** Find all accessible devices with canonical model identity for safety checks. */
 export async function findByUserIdWithModel(
   userId: string,
   client: PrismaTxClient = prisma,
 ) {
   return client.device.findMany({
-    where: {
-      OR: [
-        { userId },
-        { users: { some: { userId } } },
-        // walletImport reuse access is granted through the group role, so
-        // resolution must see group-shared devices too.
-        sharedThroughGroupWhere(userId),
-      ],
-    },
+    where: accessibleDeviceWhere(userId),
     include: { model: true },
     orderBy: { createdAt: 'desc' },
   });
@@ -772,14 +777,13 @@ export async function findByUserIdWithAccounts(userId: string) {
 }
 
 /**
- * Find devices by IDs belonging to a user with accounts included
+ * Find devices by IDs accessible to a user (owned, shared directly, or shared
+ * through a group) with accounts included. Matches the GET /devices listing so
+ * any signer the user can see can be bound in wallet creation and add-signer.
  */
 export async function findByIdsAndUserWithAccounts(ids: string[], userId: string) {
   return prisma.device.findMany({
-    where: {
-      id: { in: ids },
-      userId,
-    },
+    where: { id: { in: ids }, ...accessibleDeviceWhere(userId) },
     include: { accounts: true, model: true },
   });
 }

@@ -389,4 +389,22 @@ describe('adminElectrumServerService', () => {
       healthCheckFails: 4,
     }));
   });
+
+  it('does not record a saved server unhealthy for a proxy-configuration fault', async () => {
+    const { testSavedElectrumServer } = await loadService();
+    mocks.findById.mockResolvedValueOnce(buildServer({ id: 'srv-3', healthCheckFails: 1 }));
+    mocks.testNodeConfig.mockResolvedValueOnce({
+      success: false,
+      message: 'Proxy configuration error: re-enter it in Node Config',
+      failureKind: 'proxy_configuration',
+    });
+
+    await expect(testSavedElectrumServer('srv-3')).resolves.toEqual({
+      success: false,
+      message: 'Proxy configuration error: re-enter it in Node Config',
+      error: 'Proxy configuration error: re-enter it in Node Config',
+    });
+    expect(mocks.updateHealth).not.toHaveBeenCalled();
+    expect(mocks.reloadElectrumServers).not.toHaveBeenCalled();
+  });
 });

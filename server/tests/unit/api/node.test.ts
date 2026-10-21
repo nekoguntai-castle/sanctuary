@@ -60,6 +60,12 @@ vi.mock('tls', () => ({
   }),
 }));
 
+// No saved proxy: the route keeps its raw-socket probe and never touches Prisma.
+vi.mock('../../../src/services/bitcoin/nodeClient', () => ({
+  resolveConfiguredElectrumProxy: vi.fn().mockResolvedValue(undefined),
+  testNodeConfig: vi.fn(),
+}));
+
 // Mock logger
 vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
@@ -598,7 +604,9 @@ describe('Node API Routes', () => {
       });
 
       it('should resolve with timeout message when connection never responds', async () => {
-        vi.useFakeTimers();
+        // Fake only the probe timers: waitForCall polls with setImmediate while the
+        // route awaits the proxy lookup before opening the socket.
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
         try {
           const responsePromise = startAuthedRequest(app, {
             host: 'electrum.example.com',

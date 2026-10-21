@@ -9,6 +9,10 @@
 # Usage: source ./utils/helpers.sh
 # ============================================
 
+# Assertion helpers below record failures for run_test (install_test_run_function).
+# shellcheck source=tests/install/utils/assertion-tracking.sh
+source "$(dirname "${BASH_SOURCE[0]}")/assertion-tracking.sh"
+
 # Colors for output
 export RED='\033[0;31m'
 export GREEN='\033[0;32m'
@@ -1281,6 +1285,7 @@ assert_equals() {
         log_error "ASSERTION FAILED: $message"
         log_error "  Expected: '$expected'"
         log_error "  Actual:   '$actual'"
+        install_test_record_assertion_failure
         return 1
     fi
 }
@@ -1293,6 +1298,7 @@ assert_not_empty() {
         return 0
     else
         log_error "ASSERTION FAILED: $message"
+        install_test_record_assertion_failure
         return 1
     fi
 }
@@ -1306,6 +1312,7 @@ assert_file_exists() {
     else
         log_error "ASSERTION FAILED: $message"
         log_error "  File not found: $file"
+        install_test_record_assertion_failure
         return 1
     fi
 }
@@ -1319,6 +1326,7 @@ assert_directory_exists() {
     else
         log_error "ASSERTION FAILED: $message"
         log_error "  Directory not found: $dir"
+        install_test_record_assertion_failure
         return 1
     fi
 }
@@ -1336,6 +1344,7 @@ assert_http_status() {
         log_error "ASSERTION FAILED: $message"
         log_error "  Expected status: $expected_status"
         log_error "  Actual status:   $actual_status"
+        install_test_record_assertion_failure
         return 1
     fi
 }
@@ -1352,6 +1361,7 @@ assert_container_healthy() {
         log_error "ASSERTION FAILED: $message"
         log_error "  Container: $container_name"
         log_error "  Health status: $health"
+        install_test_record_assertion_failure
         return 1
     fi
 }
@@ -1368,6 +1378,7 @@ assert_container_running() {
         log_error "ASSERTION FAILED: $message"
         log_error "  Container: $container_name"
         log_error "  Status: $status"
+        install_test_record_assertion_failure
         return 1
     fi
 }
@@ -1388,6 +1399,7 @@ assert_json_contains() {
         log_error "  Key: $key"
         log_error "  Expected: $expected_value"
         log_error "  Actual: $actual_value"
+        install_test_record_assertion_failure
         return 1
     fi
 }

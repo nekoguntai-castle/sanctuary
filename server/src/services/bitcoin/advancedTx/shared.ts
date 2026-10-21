@@ -23,3 +23,8 @@ export const CPFP_MIN_FEE_RATE = 1;
 
 // Re-export from canonical location
 export { getDustThreshold } from '../estimation';
+export {
+  authenticateNodeTransaction,
+  fetchAuthenticatedPrevout,
+  fetchAuthenticatedTransaction,
+} from './nodeTransactionAuthentication';

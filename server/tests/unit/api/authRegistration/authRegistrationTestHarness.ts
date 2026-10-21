@@ -208,7 +208,11 @@ vi.mock('../../../../src/utils/password', async (importOriginal) => {
 
 // Mock twoFactorService for route tests
 vi.mock('../../../../src/services/twoFactorService', () => ({
-  generateSecret: vi.fn().mockResolvedValue({ secret: 'mock-secret', qrCodeDataUrl: 'data:image/png;base64,...' }),
+  generateSecret: vi.fn().mockResolvedValue({
+    manualEntrySecret: 'JBSWY3DPEHPK3PXP',
+    encryptedSecret: 'iv:tag:ct',
+    qrCodeDataUrl: 'data:image/png;base64,...',
+  }),
   verifyToken: vi.fn().mockReturnValue(true),
   generateBackupCodes: vi.fn().mockReturnValue(['code1', 'code2', 'code3', 'code4', 'code5', 'code6', 'code7', 'code8']),
   hashBackupCodes: vi.fn().mockResolvedValue('[{"hash":"hash1"},{"hash":"hash2"}]'),

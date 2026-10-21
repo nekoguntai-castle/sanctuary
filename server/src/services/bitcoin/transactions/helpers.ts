@@ -8,6 +8,8 @@
  */
 
 import { getNodeClient } from '../nodeClient';
+// Direct import, not ../advancedTx or ../advancedTx/shared: either would close a runtime import cycle.
+import { fetchAuthenticatedTransaction } from '../advancedTx/nodeTransactionAuthentication';
 import type { BitcoinNetwork } from '../networks';
 import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 export { isUniqueConstraintError } from '../../../utils/errors';
@@ -21,11 +23,11 @@ export function isLegacyScriptType(scriptType: string | null): boolean {
 }
 
 /**
- * Fetch raw transaction hex for nonWitnessUtxo (required for legacy inputs)
+ * Fetch raw transaction hex for nonWitnessUtxo (required for legacy inputs).
+ * The node client returns a decoded transaction object; its bytes are
+ * authenticated against the requested txid before the hex is returned.
  */
 export async function getRawTransactionHex(txid: string, network: BitcoinNetwork): Promise<string> {
   const client = await getNodeClient(network);
-  // getTransaction with verbose=false returns raw hex
-  const rawHex = await client.getTransaction(txid, false);
-  return rawHex;
+  return (await fetchAuthenticatedTransaction(client, txid)).canonicalHex;
 }

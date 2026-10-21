@@ -914,7 +914,7 @@ for helper in $installer_helper_scripts; do
   fi
 done
 for helper in scripts/reconcile-postgres-password.sh scripts/create-upgrade-backup.sh uninstall.sh \
-  scripts/secrets/migrate-runtime-secrets.sh scripts/lib/is-main-module.mjs; do
+  scripts/secrets/migrate-runtime-secrets.sh scripts/lib/is-main-module.mjs server/scripts/migrate.sh; do
   if path_matches_filter "$helper" "$rc_pr_paths"; then
     PASS=$((PASS + 1))
     echo "PASS: release-candidate pull_request paths cover $helper"

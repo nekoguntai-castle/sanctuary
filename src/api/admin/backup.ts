@@ -37,6 +37,14 @@ export async function getEncryptionKeys(password: string): Promise<EncryptionKey
 // ========================================
 
 /**
+ * Client timeout for backup validation and restore.
+ *
+ * The server budgets 120 s for these routes and answers 408 when it runs out;
+ * the client waits longer so it receives that answer instead of racing it.
+ */
+export const ADMIN_RESTORE_TIMEOUT_MS = 150_000;
+
+/**
  * Create and download a database backup (admin only)
  *
  * This returns a Blob for file download.
@@ -60,7 +68,11 @@ export async function createBackupJson(options?: BackupOptions): Promise<Sanctua
  * Validate a backup file before restore (admin only)
  */
 export async function validateBackup(backup: SanctuaryBackup): Promise<ValidationResult> {
-  return apiClient.post<ValidationResult>('/admin/backup/validate', { backup });
+  return apiClient.post<ValidationResult>(
+    '/admin/backup/validate',
+    { backup },
+    { timeoutMs: ADMIN_RESTORE_TIMEOUT_MS }
+  );
 }
 
 /**
@@ -69,10 +81,11 @@ export async function validateBackup(backup: SanctuaryBackup): Promise<Validatio
  * WARNING: This will DELETE ALL existing data!
  */
 export async function restoreBackup(backup: SanctuaryBackup): Promise<RestoreResult> {
-  return apiClient.post<RestoreResult>('/admin/restore', {
-    backup,
-    confirmationCode: 'CONFIRM_RESTORE',
-  });
+  return apiClient.post<RestoreResult>(
+    '/admin/restore',
+    { backup, confirmationCode: 'CONFIRM_RESTORE' },
+    { timeoutMs: ADMIN_RESTORE_TIMEOUT_MS }
+  );
 }
 
 // ========================================

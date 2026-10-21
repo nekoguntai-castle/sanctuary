@@ -107,6 +107,16 @@ is_ci_classifier_file() {
     scripts/ci/*|tests/ci/*|server/tests/integration/*|scripts/ownership/*|tests/ownership/*|config/resource-ownership-contract.json|config/operator-recovery-contract.json|config/operator-recovery-incident.json|config/resource-lifecycle-callsites.json|config/application-lifecycle-authorities.json|docs/adr/0005-resource-ownership-and-cleanup-receipts.md|docs/reference/resource-ownership-cleanup.md|config/ci-toolchain-lock.json|config/hardware-emulator-source-inventory.json|.github/actions/setup-node-toolchain/action.yml|.github/workflows/test.yml|.github/workflows/install-test.yml|.github/workflows/quality.yml|.github/workflows/verify-vectors.yml)
       return 0
       ;;
+    # Exact gate, backup and pre-commit scripts whose fail-closed regression
+    # suites run only in ci-classifier-tests (D-11.18); not a scripts/quality*
+    # or scripts/ops/* glob. The lockfile-peer allowlist is optional and
+    # untracked: creating it must run its suite.
+    scripts/quality.sh|scripts/quality/jscpd-only.sh|scripts/quality/lizard-only.sh|scripts/quality/check-lockfile-peer-resolution.sh|scripts/quality/lockfile-peer-resolution-allowlist.txt)
+      return 0
+      ;;
+    scripts/ops/sanctuary-backup.sh|scripts/ops/install-sanctuary-backup.sh|server/.husky/pre-commit)
+      return 0
+      ;;
     package.json|scripts/bump-version.sh|scripts/release/*|tests/release/*|CLAUDE.md|.claude/commands/release.md|.claude/commands/pre-release.md|.github/CONTRIBUTING.md|docs/reference/release-distribution.md|docs/reference/release-gates.md|docs/reference/changelog.md|docs/how-to/release-candidate-canary.md)
       return 0
       ;;

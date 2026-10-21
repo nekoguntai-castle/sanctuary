@@ -8,6 +8,7 @@
  */
 
 import { createLogger } from '../utils/logger';
+import { singleFlight } from '../utils/async';
 import type {
   IProvider,
   IProviderLifecycle,
@@ -57,6 +58,8 @@ export interface RegistryOptions {
 export class ProviderRegistry<T extends IProvider> implements IProviderRegistry<T> {
   private providers = new Map<string, T>();
   private healthCache = new Map<string, { healthy: boolean; timestamp: number }>();
+  /** One in-flight health probe per provider name, shared by concurrent callers */
+  private healthInFlight = new Map<string, Promise<boolean>>();
   private healthCheckInterval: NodeJS.Timeout | null = null;
   private readonly log;
   private readonly options: Required<RegistryOptions>;
@@ -159,6 +162,7 @@ export class ProviderRegistry<T extends IProvider> implements IProviderRegistry<
 
     this.providers.delete(name);
     this.healthCache.delete(name);
+    this.healthInFlight.delete(name);
     this.log.info('Provider unregistered', { name });
   }
 
@@ -335,12 +339,20 @@ export class ProviderRegistry<T extends IProvider> implements IProviderRegistry<
       this.healthCache.set(provider.name, { healthy, timestamp: Date.now() });
     }
 
-    return {
-      totalProviders: providers.length,
-      healthyProviders: statuses.filter((s) => s.healthy).length,
-      unhealthyProviders: statuses.filter((s) => !s.healthy).length,
-      providers: statuses,
-    };
+    return summarizeHealth(statuses);
+  }
+
+  /**
+   * Get health status of all providers from the TTL health cache.
+   *
+   * Stale or missing entries are refreshed through the single-flight probe, so
+   * any number of callers cause at most one provider call per cache TTL.
+   */
+  async getCachedHealth(): Promise<RegistryHealthSummary> {
+    const statuses = await Promise.all(
+      this.getAll().map((provider) => this.getCachedProviderStatus(provider))
+    );
+    return summarizeHealth(statuses);
   }
 
   /**
@@ -371,11 +383,38 @@ export class ProviderRegistry<T extends IProvider> implements IProviderRegistry<
   // ===========================================================================
 
   /**
-   * Check health of a single provider
+   * Resolve one provider's status through the health cache
    */
-  private async checkProviderHealth(provider: T): Promise<boolean> {
+  private async getCachedProviderStatus(provider: T): Promise<ProviderHealthStatus> {
+    const healthy = await this.isProviderHealthy(provider);
+    const cached = this.healthCache.get(provider.name);
+    return {
+      name: provider.name,
+      healthy,
+      lastCheck: new Date(cached?.timestamp ?? Date.now()),
+    };
+  }
+
+  /**
+   * Check health of a single provider, sharing an in-flight probe with concurrent callers
+   */
+  private checkProviderHealth(provider: T): Promise<boolean> {
+    return singleFlight(this.healthInFlight, provider.name, () => this.probeProviderHealth(provider));
+  }
+
+  /**
+   * Probe a single provider and record the result in the health cache.
+   * The probe is bounded so a hung provider cannot pin the shared in-flight
+   * entry (and every caller waiting on it) indefinitely.
+   */
+  private async probeProviderHealth(provider: T): Promise<boolean> {
     try {
-      const healthy = await provider.healthCheck();
+      const healthy = await this.invokeWithTimeout(
+        provider,
+        (p) => p.healthCheck(),
+        this.options.defaultTimeoutMs
+      );
+      if (!this.isCurrentProvider(provider)) return healthy;
 
       // Check if status changed
       const cached = this.healthCache.get(provider.name);
@@ -393,7 +432,9 @@ export class ProviderRegistry<T extends IProvider> implements IProviderRegistry<
         provider: provider.name,
         error: (err as Error).message,
       });
-      this.healthCache.set(provider.name, { healthy: false, timestamp: Date.now() });
+      if (this.isCurrentProvider(provider)) {
+        this.healthCache.set(provider.name, { healthy: false, timestamp: Date.now() });
+      }
       return false;
     }
   }
@@ -424,6 +465,14 @@ export class ProviderRegistry<T extends IProvider> implements IProviderRegistry<
   }
 
   /**
+   * A probe that settles after its provider was unregistered (or replaced under
+   * the same name) must not write the cache entry the current provider owns.
+   */
+  private isCurrentProvider(provider: T): boolean {
+    return this.providers.get(provider.name) === provider;
+  }
+
+  /**
    * Invoke with timeout
    */
   private async invokeWithTimeout<R>(
@@ -447,6 +496,19 @@ export class ProviderRegistry<T extends IProvider> implements IProviderRegistry<
         });
     });
   }
+}
+
+/**
+ * Build a registry health summary from per-provider statuses
+ */
+function summarizeHealth(statuses: ProviderHealthStatus[]): RegistryHealthSummary {
+  const healthyProviders = statuses.filter((s) => s.healthy).length;
+  return {
+    totalProviders: statuses.length,
+    healthyProviders,
+    unhealthyProviders: statuses.length - healthyProviders,
+    providers: statuses,
+  };
 }
 
 /**

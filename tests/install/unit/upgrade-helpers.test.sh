@@ -47,6 +47,7 @@ assert_equals() {
   echo -e "${RED}ASSERTION FAILED:${NC} $message"
   echo "  Expected: $expected"
   echo "  Actual:   $actual"
+  install_test_record_assertion_failure
   return 1
 }
 
@@ -62,6 +63,7 @@ assert_contains() {
   echo -e "${RED}ASSERTION FAILED:${NC} $message"
   echo "  Missing: $needle"
   echo "  Output: $haystack"
+  install_test_record_assertion_failure
   return 1
 }
 
@@ -77,6 +79,7 @@ assert_not_contains() {
   echo -e "${RED}ASSERTION FAILED:${NC} $message"
   echo "  Unexpected: $needle"
   echo "  Output: $haystack"
+  install_test_record_assertion_failure
   return 1
 }
 
@@ -192,10 +195,7 @@ run_test() {
   echo -n "  Running: $test_name... "
 
   setup
-  set +e
-  "$test_func"
-  local exit_code=$?
-  set -e
+  install_test_run_function "$test_func"; local exit_code="$INSTALL_TEST_LAST_STATUS"
   teardown
 
   if [ "$exit_code" -eq 0 ]; then

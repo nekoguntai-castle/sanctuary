@@ -14,7 +14,7 @@ import { normalizeLegacyBitcoinNetwork } from "../networks";
 import { utxoRepository, walletRepository, systemSettingRepository } from "../../../repositories";
 import { DEFAULT_CONFIRMATION_THRESHOLD } from "../../../constants";
 import { SystemSettingSchemas } from "../../../utils/safeJson";
-import { RBF_SEQUENCE, getDustThreshold } from "./shared";
+import { RBF_SEQUENCE, getDustThreshold, fetchAuthenticatedTransaction } from "./shared";
 import { WalletScriptType } from "@sanctuary/shared/constants/walletIdentity";
 import type { PsbtSigningContext } from "@sanctuary/shared/schemas/psbtSigningContext";
 import { bindPsbtAccount } from "../psbtAccountBinding";
@@ -189,8 +189,8 @@ export async function createBatchTransaction(
   if (isLegacy) {
     const client = await getNodeClient(network);
     const rows = await Promise.all(selectedUtxos.map(async utxo => {
-      const transaction = await client.getTransaction(utxo.txid);
-      return [utxo.txid, Buffer.from(transaction.hex, "hex")] as const;
+      const { canonicalHex } = await fetchAuthenticatedTransaction(client, utxo.txid);
+      return [utxo.txid, Buffer.from(canonicalHex, "hex")] as const;
     }));
     for (const [txid, transaction] of rows) rawTransactions.set(txid, transaction);
   }

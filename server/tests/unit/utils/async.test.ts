@@ -12,6 +12,7 @@ import {
   withTimeout,
   withRetry,
   sleep,
+  singleFlight,
 } from '../../../src/utils/async';
 
 describe('Async Utilities', () => {
@@ -135,6 +136,45 @@ describe('Async Utilities', () => {
       await promise;
 
       expect(maxConcurrency).toBe(2);
+    });
+  });
+
+  describe('singleFlight', () => {
+    it('shares one call between concurrent callers and clears the key when it settles', async () => {
+      const pending = new Map<string, Promise<number>>();
+      const fn = vi.fn().mockResolvedValue(7);
+
+      const results = await Promise.all([
+        singleFlight(pending, 'k', fn),
+        singleFlight(pending, 'k', fn),
+      ]);
+
+      expect(results).toEqual([7, 7]);
+      expect(fn).toHaveBeenCalledTimes(1);
+      expect(pending.has('k')).toBe(false);
+    });
+
+    it('clears the key when the call rejects', async () => {
+      const pending = new Map<string, Promise<number>>();
+
+      await expect(singleFlight(pending, 'k', () => Promise.reject(new Error('boom')))).rejects.toThrow('boom');
+      expect(pending.has('k')).toBe(false);
+    });
+
+    it('leaves a newer request that took the key in place', async () => {
+      const pending = new Map<string, Promise<number>>();
+      let finishFirst!: (value: number) => void;
+      const first = singleFlight(pending, 'k', () => new Promise<number>((resolve) => {
+        finishFirst = resolve;
+      }));
+      pending.clear();
+      const newer = new Promise<number>(() => undefined);
+      pending.set('k', newer);
+
+      finishFirst(1);
+      await first;
+
+      expect(pending.get('k')).toBe(newer);
     });
   });
 

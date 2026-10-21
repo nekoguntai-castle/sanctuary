@@ -17,7 +17,7 @@ import { InvalidInputError } from '../../../errors/ApiError';
 import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
 import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import { getErrorMessage } from '../../../utils/errors';
-import { log, RBF_SEQUENCE, MIN_RBF_FEE_BUMP, getDustThreshold } from './shared';
+import { log, RBF_SEQUENCE, MIN_RBF_FEE_BUMP, getDustThreshold, authenticateNodeTransaction, fetchAuthenticatedPrevout, fetchAuthenticatedTransaction } from './shared';
 import {
   addInputsWithBip32,
   fetchAddressDerivationPaths,
@@ -113,16 +113,16 @@ export async function canReplaceTransaction(
     }
 
     // Calculate current fee rate
-    const tx = bitcoin.Transaction.fromHex(txHex);
+    const tx = authenticateNodeTransaction(txid, txDetails).transaction;
     const vsize = tx.virtualSize();
 
     // Get input values to calculate fee
     let inputValue = 0;
     for (const input of tx.ins) {
       const inputTxid = Buffer.from(input.hash).reverse().toString('hex');
-      const inputTx = await client.getTransaction(inputTxid);
-      const prevOut = inputTx.vout[input.index];
-      inputValue += Math.round(prevOut.value * 100000000);
+      // Authenticated by txid so a forged prevout cannot set the fee rate.
+      const prevOut = await fetchAuthenticatedPrevout(client, inputTxid, input.index);
+      inputValue += prevOut.valueSats;
     }
 
     let outputValue = 0;
@@ -201,8 +201,8 @@ export async function createRBFTransaction(
   }
 
   // Get original transaction
-  const txDetails = await client.getTransaction(originalTxid);
-  const tx = bitcoin.Transaction.fromHex(txDetails.hex);
+  // Re-fetched and authenticated by txid: the outputs below are copied into the replacement.
+  const tx = (await fetchAuthenticatedTransaction(client, originalTxid)).transaction;
   const networkObj = getNetwork(network);
 
   // Create new PSBT with same inputs and outputs
@@ -316,13 +316,12 @@ async function collectRbfInputs(
 
   for (const input of tx.ins) {
     const inputTxid = Buffer.from(input.hash).reverse().toString('hex');
-    const inputTx = await client.getTransaction(inputTxid);
+    const prevOut = await fetchAuthenticatedPrevout(client, inputTxid, input.index);
     if (requiresRawTransaction) {
-      rawTxCache.set(inputTxid, Buffer.from(inputTx.hex, 'hex'));
+      rawTxCache.set(inputTxid, Buffer.from(prevOut.canonicalHex, 'hex'));
     }
-    const prevOut = inputTx.vout[input.index];
-    const value = Math.round(prevOut.value * 100000000);
-    const scriptPubKey = prevOut.scriptPubKey.hex;
+    const value = prevOut.valueSats;
+    const scriptPubKey = prevOut.scriptPubKeyHex;
     const address = decodeInputAddress(scriptPubKey, networkObj, inputTxid, input.index);
 
     inputs.push({ txid: inputTxid, vout: input.index, value });

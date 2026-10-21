@@ -2,6 +2,8 @@ import { act,renderHook } from '@testing-library/react';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
 import { useBackupHandlers } from '../../../src/components/BackupRestore/hooks/useBackupHandlers';
 import * as adminApi from '../../../src/api/admin';
+import { ApiError } from '../../../src/api/client';
+import { RESTORE_OUTCOME_UNKNOWN_MESSAGE } from '../../../src/components/BackupRestore/hooks/restoreOutcome';
 
 const notificationSpies = vi.hoisted(() => ({
   addNotification: vi.fn(),
@@ -191,6 +193,32 @@ describe('useBackupHandlers branch coverage', () => {
       await result.current.handleRestore();
     });
     expect(result.current.restoreError).toBe('Restore failed');
+  });
+
+  it.each([
+    ['client timeout or dropped connection', new ApiError('signal timed out', 0)],
+    ['server request timeout', new ApiError('Request timeout', 408)],
+  ])('reports an unknown outcome and drops the backup on a %s', async (_label, error) => {
+    const { result } = renderHook(() => useBackupHandlers(encryptionKeys));
+
+    await act(async () => {
+      await result.current.handleFileUpload({
+        target: { files: [makeFile(validBackupJson)] },
+      } as unknown as React.ChangeEvent<HTMLInputElement>);
+    });
+    expect(result.current.uploadedBackup).not.toBeNull();
+
+    vi.mocked(adminApi.restoreBackup).mockRejectedValueOnce(error);
+    act(() => result.current.setConfirmText('RESTORE'));
+    await act(async () => {
+      await result.current.handleRestore();
+    });
+
+    expect(result.current.restoreError).toBe(RESTORE_OUTCOME_UNKNOWN_MESSAGE);
+    expect(result.current.uploadedBackup).toBeNull();
+    expect(result.current.uploadedFileName).toBeNull();
+    expect(result.current.validationResult).toBeNull();
+    expect(result.current.isRestoring).toBe(false);
   });
 
   it('covers restore success branches with and without warnings', async () => {

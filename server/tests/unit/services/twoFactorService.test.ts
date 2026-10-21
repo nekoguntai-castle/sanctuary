@@ -27,13 +27,14 @@ const LEGACY_SECRET_GUARDRAILS = createGuardrails({ MIN_SECRET_BYTES: 10 });
 
 describe('Two-Factor Authentication Service', () => {
   describe('Secret Generation', () => {
-    it('should generate a secret and QR code', async () => {
+    it('should generate a manual-entry secret, an encrypted secret and a QR code', async () => {
       const username = 'testuser';
       const result = await generateSecret(username);
 
-      expect(result.secret).toBeDefined();
-      expect(typeof result.secret).toBe('string');
-      expect(result.secret.length).toBeGreaterThan(0);
+      expect(result.manualEntrySecret).toBeDefined();
+      expect(typeof result.manualEntrySecret).toBe('string');
+      expect(result.manualEntrySecret.length).toBeGreaterThan(0);
+      expect(result.encryptedSecret.length).toBeGreaterThan(0);
 
       expect(result.qrCodeDataUrl).toBeDefined();
       expect(result.qrCodeDataUrl.startsWith('data:image/png;base64,')).toBe(true);
@@ -44,14 +45,15 @@ describe('Two-Factor Authentication Service', () => {
       const result1 = await generateSecret(username);
       const result2 = await generateSecret(username);
 
-      expect(result1.secret).not.toBe(result2.secret);
+      expect(result1.manualEntrySecret).not.toBe(result2.manualEntrySecret);
+      expect(result1.encryptedSecret).not.toBe(result2.encryptedSecret);
     });
 
     it('should generate encrypted secret for storage', async () => {
       const result = await generateSecret('testuser');
 
       // Secret should be in encrypted format: iv:authTag:ciphertext (all base64)
-      const parts = result.secret.split(':');
+      const parts = result.encryptedSecret.split(':');
       expect(parts.length).toBe(3);
 
       // Each part should be valid base64
@@ -61,6 +63,22 @@ describe('Two-Factor Authentication Service', () => {
       });
     });
 
+    it('should return the base32 manual-entry secret that the stored ciphertext encrypts', async () => {
+      const result = await generateSecret('testuser');
+
+      expect(result.manualEntrySecret).toMatch(/^[A-Z2-7]+=*$/);
+      expect(encryption.decryptIfEncrypted(result.encryptedSecret)).toBe(result.manualEntrySecret);
+    });
+
+    it('should verify a code generated from the manual-entry secret against the stored secret', async () => {
+      const result = await generateSecret('testuser');
+
+      // A user typing the manual-entry code into an authenticator app must
+      // produce codes the server accepts against the stored ciphertext.
+      const code = generateSync({ secret: result.manualEntrySecret });
+      expect(verifyToken(result.encryptedSecret, code)).toBe(true);
+    });
+
     it('should generate secret that can be verified with verifyToken', async () => {
       // Generate a secret
       const result = await generateSecret('testuser');
@@ -68,7 +86,7 @@ describe('Two-Factor Authentication Service', () => {
       // The secret is encrypted, but verifyToken should handle decryption
       // We can't test actual TOTP validation without controlling time,
       // but we can verify the function handles encrypted secrets without throwing
-      const verifyResult = verifyToken(result.secret, '000000');
+      const verifyResult = verifyToken(result.encryptedSecret, '000000');
       expect(typeof verifyResult).toBe('boolean');
     });
   });

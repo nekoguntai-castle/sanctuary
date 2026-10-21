@@ -11,6 +11,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 RESET_SCRIPT="$PROJECT_ROOT/scripts/reset-user-2fa.sh"
 
+# shellcheck source=tests/install/utils/assertion-tracking.sh
+source "$PROJECT_ROOT/tests/install/utils/assertion-tracking.sh"
+
 TESTS_RUN=0
 TESTS_PASSED=0
 TESTS_FAILED=0
@@ -28,6 +31,7 @@ assert_contains() {
   echo -e "${RED}ASSERTION FAILED:${NC} $message"
   echo "  Missing: $needle"
   echo "  Output: $haystack"
+  install_test_record_assertion_failure
   return 1
 }
 
@@ -43,6 +47,7 @@ assert_not_contains() {
   echo -e "${RED}ASSERTION FAILED:${NC} $message"
   echo "  Unexpected: $needle"
   echo "  Output: $haystack"
+  install_test_record_assertion_failure
   return 1
 }
 
@@ -56,6 +61,7 @@ assert_file_exists() {
 
   echo -e "${RED}ASSERTION FAILED:${NC} $message"
   echo "  Missing file: $file"
+  install_test_record_assertion_failure
   return 1
 }
 
@@ -74,6 +80,7 @@ assert_file_mode() {
   echo "  Expected: $expected"
   echo "  Actual:   $actual"
   echo "  File:     $file"
+  install_test_record_assertion_failure
   return 1
 }
 
@@ -84,10 +91,7 @@ run_test() {
   TESTS_RUN=$((TESTS_RUN + 1))
   echo -n "  Running: $test_name... "
 
-  set +e
-  "$test_func"
-  local exit_code=$?
-  set -e
+  install_test_run_function "$test_func"; local exit_code="$INSTALL_TEST_LAST_STATUS"
 
   if [ "$exit_code" -eq 0 ]; then
     echo -e "${GREEN}PASSED${NC}"

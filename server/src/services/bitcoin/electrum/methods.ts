@@ -140,7 +140,8 @@ export function decodeRawTransaction(rawTx: string, network: BitcoinNetwork): Tr
         value: Number(output.value) / 100000000, // Convert satoshis to BTC
         n: index,
         scriptPubKey: {
-          hex: output.script.toString('hex'),
+          // bitcoinjs-lib 7 returns Uint8Array, whose toString ignores the encoding
+          hex: Buffer.from(output.script).toString('hex'),
           address: address, // Single address for segwit
           addresses: address ? [address] : [], // Array for legacy compatibility
         },
@@ -156,7 +157,8 @@ export function decodeRawTransaction(rawTx: string, network: BitcoinNetwork): Tr
 
     return {
       txid: tx.getId(),
-      hash: tx.getHash().toString('hex'),
+      // Bitcoin Core's `hash`: hash256 of the full serialization (witness included), display order
+      hash: Buffer.from(bitcoin.crypto.hash256(Buffer.from(rawTx, 'hex'))).reverse().toString('hex'),
       version: tx.version,
       size: rawTx.length / 2,
       locktime: tx.locktime,

@@ -4,7 +4,15 @@ import type { NodeClientTestContext } from "./nodeClientTestContext";
 export function registerNodeClientTestConfigTests(
   context: NodeClientTestContext,
 ): void {
-  const { mocks, testNodeConfig } = context;
+  const { mocks, mockPrismaClient, testNodeConfig } = context;
+  const storedProxyRow = (overrides: Record<string, unknown> = {}) =>
+    context.buildNodeConfig({
+      type: "electrum",
+      proxyEnabled: true,
+      proxyHost: "127.0.0.1",
+      proxyPort: 9050,
+      ...overrides,
+    });
 
   it("tests node config successfully with verbose capability info", async () => {
     const connect = vi.fn().mockResolvedValue(undefined);
@@ -336,5 +344,67 @@ export function registerNodeClientTestConfigTests(
       lastCapabilityError: "method unavailable",
     });
     expect(disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("dials the test client through the saved Tor proxy", async () => {
+    mockPrismaClient.nodeConfig.findFirst.mockResolvedValueOnce(storedProxyRow());
+
+    const result = await testNodeConfig({
+      host: "exampleonionaddress.onion",
+      port: 50001,
+      protocol: "tcp",
+    });
+
+    expect(result.success).toBe(true);
+    expect(mocks.electrumClientCtor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        host: "exampleonionaddress.onion",
+        proxy: { enabled: true, host: "127.0.0.1", port: 9050 },
+      }),
+    );
+  });
+
+  it("fails closed without dialling when the saved proxy password cannot be decrypted", async () => {
+    // Three base64 parts look encrypted; the 3-byte auth tag makes decrypt throw.
+    mockPrismaClient.nodeConfig.findFirst.mockResolvedValueOnce(
+      storedProxyRow({ proxyPassword: "aaaa:bbbb:cccc" }),
+    );
+
+    const result = await testNodeConfig({
+      host: "exampleonionaddress.onion",
+      port: 50001,
+      protocol: "tcp",
+    });
+
+    expect(mocks.electrumClientCtor).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      success: false,
+      failureKind: "proxy_configuration",
+    });
+    expect(result.message).toContain("proxy password cannot be decrypted");
+  });
+
+  it("dials directly when the saved proxy is disabled", async () => {
+    mockPrismaClient.nodeConfig.findFirst.mockResolvedValueOnce(
+      storedProxyRow({ proxyEnabled: false }),
+    );
+
+    await testNodeConfig({ host: "electrum.example.com", port: 50002, protocol: "ssl" });
+
+    const [ctorConfig] = mocks.electrumClientCtor.mock.calls[0];
+    expect(ctorConfig).not.toHaveProperty("proxy");
+  });
+
+  it("forwards allowSelfSignedCert to the test client", async () => {
+    await testNodeConfig({
+      host: "electrum.example.com",
+      port: 50002,
+      protocol: "ssl",
+      allowSelfSignedCert: true,
+    });
+
+    expect(mocks.electrumClientCtor).toHaveBeenCalledWith(
+      expect.objectContaining({ allowSelfSignedCert: true }),
+    );
   });
 }

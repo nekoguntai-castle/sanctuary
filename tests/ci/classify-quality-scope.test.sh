@@ -117,6 +117,60 @@ classify_commit() {
   printf '%s\n' "$head_sha"
 }
 
+# D-11.18 static guard: the gate, backup and pre-commit scripts that the
+# ci-classifier-tests suites exercise. Tokens are kept only when, after
+# stripping trailing punctuation, they are tracked regular files, so directory
+# tokens (scripts/quality/) and untracked temp-tree files are dropped.
+CLASSIFIER_SUBJECT_SUITES=(
+  tests/ci/jscpd-only.test.sh
+  tests/ci/check-lockfile-peer-resolution.test.sh
+  tests/ci/quality-lizard-bootstrap.test.sh
+  tests/ci/quality-audit.test.sh
+  tests/ci/sanctuary-backup.test.sh
+  tests/ci/pre-commit-agent-gate.test.sh
+)
+EXPECTED_CLASSIFIER_SUBJECTS="scripts/ops/install-sanctuary-backup.sh
+scripts/ops/sanctuary-backup.sh
+scripts/quality.sh
+scripts/quality/check-lockfile-peer-resolution.sh
+scripts/quality/jscpd-only.sh
+scripts/quality/lizard-only.sh
+server/.husky/pre-commit"
+
+derive_classifier_subjects() {
+  local suite token
+  for suite in "${CLASSIFIER_SUBJECT_SUITES[@]}"; do
+    grep -oE '(scripts/quality[A-Za-z0-9_./-]*|scripts/ops/[A-Za-z0-9_./-]*|server/\.husky/[A-Za-z0-9_./-]*)' \
+      "$ROOT_DIR/$suite" || true
+  done | sed -E 's#[.,:;)/]+$##' | LC_ALL=C sort -u | while IFS= read -r token; do
+    if [ -f "$ROOT_DIR/$token" ] && git -C "$ROOT_DIR" ls-files --error-unmatch -- "$token" >/dev/null 2>&1; then
+      printf '%s\n' "$token"
+    fi
+  done
+}
+
+# Commits each derived subject in the fixture and fails listing every one that
+# does not select the classifier suites. Prints the new head SHA.
+assert_classifier_subjects_routed() {
+  local repo_dir="$1"
+  local head_sha="$2"
+  local output_file="$3"
+  local derived subject base_sha unrouted=""
+
+  derived="$(derive_classifier_subjects)"
+  [ "$derived" = "$EXPECTED_CLASSIFIER_SUBJECTS" ] ||
+    fail "classifier suite subjects drifted; derived:"$'\n'"$derived"
+  for subject in $derived; do
+    base_sha="$head_sha"
+    commit_file "$repo_dir" "$subject" 'guard subject' "guard $subject"
+    head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+    run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+    [ "$(sed -n 's/^run_ci_classifier_tests=//p' "$output_file")" = true ] || unrouted="$unrouted $subject"
+  done
+  [ -z "$unrouted" ] || fail "classifier suite subjects do not run ci-classifier-tests:$unrouted"
+  printf '%s\n' "$head_sha"
+}
+
 main() {
   local temp_dir repo_dir output_file base_sha head_sha entry path expected_source expected_dependency expected_classifier
 
@@ -248,6 +302,8 @@ main() {
     server/.gitignore 'generated/' 'nested gitignore change' \
     true true false false false)"
 
+  head_sha="$(assert_classifier_subjects_routed "$repo_dir" "$head_sha" "$output_file")"
+
   for entry in \
     '.github/actions/setup-node-toolchain/action.yml|true|true' \
     '.github/actions/setup-python-toolchain/action.yml|true|false' \
@@ -270,11 +326,24 @@ main() {
       scripts/ci/*) expected_classifier=true ;;
       config/ci-toolchain-lock.json) expected_classifier=true ;;
       .github/actions/setup-node-toolchain/action.yml) expected_classifier=true ;;
+      # Gate scripts whose fail-closed suites run only in ci-classifier-tests
+      # (D-11.18). The allowlist is untracked and optional: creating it runs
+      # its suite, and this entry is its only assertion.
+      scripts/quality.sh|scripts/quality/lizard-only.sh|scripts/quality/jscpd-only.sh) expected_classifier=true ;;
+      scripts/quality/check-lockfile-peer-resolution.sh) expected_classifier=true ;;
+      scripts/quality/lockfile-peer-resolution-allowlist.txt) expected_classifier=true ;;
     esac
     base_sha="$head_sha"
     head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \
       "$path" tool "classify $path" true "$expected_source" "$expected_dependency" false \
       "$expected_classifier")"
+  done
+
+  # The backup and pre-commit scripts run their regression suites.
+  for path in scripts/ops/sanctuary-backup.sh scripts/ops/install-sanctuary-backup.sh server/.husky/pre-commit; do
+    base_sha="$head_sha"
+    head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \
+      "$path" 'echo subject' "classify $path" true false false false true)"
   done
 
   # Host and compose sources the lifecycle scanner reads run its gate without

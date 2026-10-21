@@ -23,6 +23,13 @@ import {
   type ElectrumCapabilityProfile,
 } from './electrum/capabilities';
 import { PooledNodeClient } from './pooledNodeClient';
+import { resolveConfiguredElectrumProxy } from './electrum/connectionConfigResolver';
+import type { ProxyConfig } from './electrum/types';
+
+export { resolveConfiguredElectrumProxy };
+
+/** testNodeConfig failure kind: the saved proxy cannot be used, so nothing was dialled. */
+const PROXY_CONFIGURATION_FAILURE = 'proxy_configuration' as const;
 
 const log = createLogger('BITCOIN:SVC_NODE_CLIENT');
 
@@ -52,6 +59,9 @@ export interface NodeConfig {
   port: number;
   protocol?: 'tcp' | 'ssl';
   network?: NetworkType;
+  // Accept a self-signed TLS certificate. Only set from an explicit operator
+  // opt-in for the server being tested; omitted means certificates are verified.
+  allowSelfSignedCert?: boolean;
   // Pool mode - when true, use multi-server pool; when false, use single server
   poolEnabled?: boolean;
 }
@@ -384,6 +394,8 @@ export async function getElectrumClientIfActive(
 export async function testNodeConfig(config: NodeConfig): Promise<{
   success: boolean;
   message: string;
+  /** Set when the saved proxy cannot be used; no connection was attempted. */
+  failureKind?: typeof PROXY_CONFIGURATION_FAILURE;
   info?: {
     blockHeight: number;
     supportsVerbose?: boolean;
@@ -402,12 +414,31 @@ export async function testNodeConfig(config: NodeConfig): Promise<{
   };
   let testClient: CapabilityProbeClient | null = null;
   try {
+    // Dial the way runtime will: through the saved Tor proxy. A proxy that
+    // cannot be used fails the test closed instead of falling back to a
+    // direct connection.
+    let proxy: ProxyConfig | undefined;
+    try {
+      proxy = await resolveConfiguredElectrumProxy();
+    } catch (proxyError) {
+      log.warn('Saved Electrum proxy cannot be used for the connection test', {
+        error: getErrorMessage(proxyError),
+      });
+      return {
+        success: false,
+        message: `Proxy configuration error: ${getErrorMessage(proxyError)}`,
+        failureKind: PROXY_CONFIGURATION_FAILURE,
+      };
+    }
+
     const ElectrumClientClass = (await import('./electrum/index.js')).ElectrumClient;
     testClient = new ElectrumClientClass({
       host: config.host,
       port: config.port,
       protocol: config.protocol || 'ssl',
       network: config.network,
+      allowSelfSignedCert: config.allowSelfSignedCert,
+      ...(proxy?.enabled ? { proxy } : {}),
     }) as CapabilityProbeClient;
 
     await testClient.connect();

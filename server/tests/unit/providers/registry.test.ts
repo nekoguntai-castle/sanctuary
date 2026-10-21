@@ -351,6 +351,202 @@ describe('ProviderRegistry', () => {
   });
 });
 
+function deferredHealth() {
+  let resolve!: (healthy: boolean) => void;
+  const promise = new Promise<boolean>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
+
+function makeCacheRegistry(): ProviderRegistry<TestProvider> {
+  return new ProviderRegistry<TestProvider>({ name: 'cached-health', healthCacheTtlMs: 1_000 });
+}
+
+async function registerStale(
+  registry: ProviderRegistry<TestProvider>,
+  provider: ReturnType<typeof makeProvider>,
+  clock: { now: number }
+) {
+  await registry.register(provider);
+  provider.healthCheck.mockClear();
+  clock.now += 2_000;
+}
+
+describe('ProviderRegistry.getCachedHealth', () => {
+  const clock = { now: 50_000 };
+  let registry: ProviderRegistry<TestProvider>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    clock.now = 50_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => clock.now);
+    registry = makeCacheRegistry();
+  });
+
+  afterEach(async () => {
+    await registry.shutdown();
+    vi.restoreAllMocks();
+  });
+
+  it('serves a fresh cache without probing and reports the cache timestamp', async () => {
+    const provider = makeProvider('fresh', 1, true);
+    await registry.register(provider);
+    const checkedAt = clock.now;
+    provider.healthCheck.mockClear();
+    clock.now += 500;
+
+    const summary = await registry.getCachedHealth();
+
+    expect(provider.healthCheck).not.toHaveBeenCalled();
+    expect(summary).toEqual({
+      totalProviders: 1,
+      healthyProviders: 1,
+      unhealthyProviders: 0,
+      providers: [{ name: 'fresh', healthy: true, lastCheck: new Date(checkedAt) }],
+    });
+  });
+
+  it('shares one probe between concurrent callers when the cache is stale', async () => {
+    const provider = makeProvider('stale', 1, true);
+    await registerStale(registry, provider, clock);
+    const probe = deferredHealth();
+    provider.healthCheck.mockReturnValueOnce(probe.promise);
+
+    const pending = Promise.all([registry.getCachedHealth(), registry.getCachedHealth(), registry.getCachedHealth()]);
+    probe.resolve(false);
+    const summaries = await pending;
+
+    expect(provider.healthCheck).toHaveBeenCalledTimes(1);
+    for (const summary of summaries) {
+      expect(summary.healthyProviders).toBe(0);
+      expect(summary.providers[0]).toEqual({ name: 'stale', healthy: false, lastCheck: new Date(clock.now) });
+    }
+  });
+
+  it('caches a throwing health check as unhealthy', async () => {
+    const provider = makeProvider('crashy', 1, true);
+    await registerStale(registry, provider, clock);
+    provider.healthCheck.mockRejectedValueOnce(new Error('probe crashed'));
+
+    const first = await registry.getCachedHealth();
+    const second = await registry.getCachedHealth();
+
+    expect(provider.healthCheck).toHaveBeenCalledTimes(1);
+    expect(first.unhealthyProviders).toBe(1);
+    expect(second.providers[0].healthy).toBe(false);
+  });
+
+  it('clears the in-flight probe after it settles so the next stale call probes again', async () => {
+    const provider = makeProvider('repeat', 1, true);
+    await registerStale(registry, provider, clock);
+
+    await registry.getCachedHealth();
+    clock.now += 2_000;
+    await registry.getCachedHealth();
+
+    expect(provider.healthCheck).toHaveBeenCalledTimes(2);
+  });
+
+  it('clears the in-flight probe on unregister', async () => {
+    const original = makeProvider('swap', 1, true);
+    await registerStale(registry, original, clock);
+    const hung = deferredHealth();
+    original.healthCheck.mockReturnValueOnce(hung.promise);
+    const pending = registry.getCachedHealth();
+
+    await registry.unregister('swap');
+    const replacement = makeProvider('swap', 1, true);
+    await registry.register(replacement);
+
+    expect(replacement.healthCheck).toHaveBeenCalledTimes(1);
+    hung.resolve(true);
+    const summary = await pending;
+    expect(summary.providers[0]).toMatchObject({ name: 'swap', healthy: true });
+  });
+
+  it('clears in-flight probes on shutdown', async () => {
+    const original = makeProvider('restart', 1, true);
+    await registerStale(registry, original, clock);
+    const hung = deferredHealth();
+    original.healthCheck.mockReturnValueOnce(hung.promise);
+    const pending = registry.getCachedHealth();
+
+    await registry.shutdown();
+    const replacement = makeProvider('restart', 1, false);
+    await registry.register(replacement);
+
+    expect(replacement.healthCheck).toHaveBeenCalledTimes(1);
+    hung.resolve(true);
+    await pending;
+  });
+
+  it('keeps the replacement provider\'s health when a superseded probe resolves', async () => {
+    const original = makeProvider('superseded', 1, true);
+    await registerStale(registry, original, clock);
+    const hung = deferredHealth();
+    original.healthCheck.mockReturnValueOnce(hung.promise);
+    const pending = registry.getCachedHealth();
+
+    await registry.unregister('superseded');
+    await registry.register(makeProvider('superseded', 1, false));
+    hung.resolve(true);
+    await pending;
+
+    const summary = await registry.getCachedHealth();
+    expect(summary.providers[0]).toMatchObject({ name: 'superseded', healthy: false });
+  });
+
+  it('keeps the replacement provider\'s health when a superseded probe throws', async () => {
+    const original = makeProvider('superseded-error', 1, true);
+    await registerStale(registry, original, clock);
+    let fail!: (error: Error) => void;
+    original.healthCheck.mockReturnValueOnce(new Promise<boolean>((_resolve, reject) => {
+      fail = reject;
+    }));
+    const pending = registry.getCachedHealth();
+
+    await registry.unregister('superseded-error');
+    await registry.register(makeProvider('superseded-error', 1, true));
+    fail(new Error('late failure'));
+    await pending;
+
+    const summary = await registry.getCachedHealth();
+    expect(summary.providers[0]).toMatchObject({ name: 'superseded-error', healthy: true });
+  });
+
+  it('bounds a hung health check and caches the provider as unhealthy', async () => {
+    const bounded = new ProviderRegistry<TestProvider>({
+      name: 'bounded-health',
+      healthCacheTtlMs: 1_000,
+      defaultTimeoutMs: 20,
+    });
+    const provider = makeProvider('hung', 1, true);
+    await registerStale(bounded, provider, clock);
+    provider.healthCheck.mockReturnValueOnce(new Promise<boolean>(() => undefined));
+
+    const summary = await bounded.getCachedHealth();
+
+    expect(summary.providers[0]).toMatchObject({ name: 'hung', healthy: false });
+    await bounded.shutdown();
+  });
+
+  it('reports the current time when a provider is unregistered before its probe settles', async () => {
+    const provider = makeProvider('gone', 1, true);
+    await registerStale(registry, provider, clock);
+    const hung = deferredHealth();
+    provider.healthCheck.mockReturnValueOnce(hung.promise);
+    const pending = registry.getCachedHealth();
+
+    await registry.unregister('gone');
+    clock.now += 7;
+    hung.resolve(true);
+    const summary = await pending;
+
+    expect(summary.providers[0]).toEqual({ name: 'gone', healthy: true, lastCheck: new Date(clock.now) });
+  });
+});
+
 describe('createProviderRegistry', () => {
   it('creates a typed registry instance', () => {
     const registry = createProviderRegistry<TestProvider>({ name: 'factory' });

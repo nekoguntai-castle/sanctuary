@@ -66,7 +66,6 @@ describe('advancedTx bip32 derivation branch coverage', () => {
 
   it('rejects the PSBT when a derived input pubkey is missing', async () => {
     const walletId = 'wallet-branch-309';
-    const originalTxid = 'f'.repeat(64);
     const testnetTpub =
       'tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M';
     const spendAddress = testnetAddresses.nativeSegwit[0];
@@ -76,8 +75,10 @@ describe('advancedTx bip32 derivation branch coverage', () => {
       .toOutputScript(spendAddress, bitcoin.networks.testnet))
       .toString('hex');
 
-    const inputHash = Buffer.from('33'.repeat(32), 'hex');
-    const inputTxid = Buffer.from(inputHash).reverse().toString('hex');
+    // Real prevout and original: the node lookups are authenticated by txid.
+    const prevout = bitcoin.Transaction.fromHex(rawPrevoutHex(spendScriptHex));
+    const inputHash = prevout.getHash();
+    const inputTxid = prevout.getId();
 
     const tx = new bitcoin.Transaction();
     tx.version = 2;
@@ -86,6 +87,7 @@ describe('advancedTx bip32 derivation branch coverage', () => {
     tx.addOutput(bitcoin.address.toOutputScript(changeAddress, bitcoin.networks.testnet), BigInt(53_000));
 
     const txHex = tx.toHex();
+    const originalTxid = tx.getId();
 
     mockPrismaClient.wallet.findUnique.mockResolvedValue({
       id: walletId,

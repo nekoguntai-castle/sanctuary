@@ -878,6 +878,21 @@ EOF_DOC
     [ "$expect_backend" = "false" ] || assert_contains_output "$output_file" "backend_files" "$input_path"
   done
 
+  # Shared e2e helpers the render-regression harness imports select the render
+  # lane (D-11.17); browser-only fixtures such as browserFixture.ts do not.
+  for render_input in tests/e2e/helpers.ts tests/e2e/apiSimulator.ts \
+    tests/e2e/fixtures/apiBaseline.ts tests/e2e/fixtures/balanceHistory.ts; do
+    base_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+    mkdir -p "$repo_dir/$(dirname "$render_input")"
+    printf 'export const renderInput = %s;\n' "'$render_input'" > "$repo_dir/$render_input"
+    git -C "$repo_dir" add "$render_input"
+    git -C "$repo_dir" commit -qm "render harness input $render_input"
+    head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+    run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
+    assert_exact_output "$output_file" "render_changed" "true"
+  done
+
   assert_every_test_workflow_script_is_classified
 
   echo "classify-test-changes regression checks passed"

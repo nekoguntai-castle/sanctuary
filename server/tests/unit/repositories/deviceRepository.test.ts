@@ -473,7 +473,7 @@ describe('Device Repository', () => {
   });
 
   describe('findByIdsAndUserWithAccounts', () => {
-    it('should return devices with accounts for given IDs and user', async () => {
+    it('should return devices with accounts for given IDs the user can access (owned, shared or group)', async () => {
       const devicesWithAccounts = [
         { ...mockDevice, accounts: [{ id: 'acc-1', deviceId: 'device-123' }] },
       ];
@@ -488,7 +488,11 @@ describe('Device Repository', () => {
       expect(prisma.device.findMany).toHaveBeenCalledWith({
         where: {
           id: { in: ['device-123', 'device-456'] },
-          userId: 'user-456',
+          OR: [
+            { userId: 'user-456' },
+            { users: { some: { userId: 'user-456' } } },
+            { groupId: { not: null }, group: { members: { some: { userId: 'user-456' } } } },
+          ],
         },
         include: { accounts: true, model: true },
       });

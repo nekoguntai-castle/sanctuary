@@ -42,6 +42,7 @@ const releaseSurfacePaths = [
   'start.sh',
   'install.sh',
   'scripts/setup.sh',
+  'server/scripts/migrate.sh',
 ];
 
 assertEventPathsCover(releaseSurfacePaths, { name: 'push', ...triggers.push });

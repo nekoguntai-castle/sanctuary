@@ -595,7 +595,8 @@ export function registerCreateBatchTransactionContracts() {
       const legacyFixture = singleSigBatchFixture(walletId, "legacy");
       legacyFixture.utxos = [legacyFixture.utxos[0]];
       installBatchBindingFixture(legacyFixture);
-      mockGetTransaction.mockResolvedValue(legacyFixture.rawTransactionHex!);
+      // The real node client returns the decoded transaction, whose bytes are authenticated by txid
+      mockGetTransaction.mockResolvedValue({ txid: legacyFixture.utxos[0].txid, hex: legacyFixture.rawTransactionHex! });
 
       const outputs = [{ address: testnetAddresses.legacy[0], amount: 50_000 }];
       const result = await createBatchTransaction(walletId, outputs, 10);

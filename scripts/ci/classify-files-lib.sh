@@ -289,6 +289,12 @@ is_render_file() {
     tests/e2e/render-regression.spec.ts|tests/e2e/render-regression/*|tests/e2e/render-regression.spec.ts-snapshots/*)
       return 0
       ;;
+    # Exact shared e2e files the render harness imports (D-11.17); kept in sync
+    # by tests/ci/renderHarnessInputsClassified.test.ts. Not a fixtures glob:
+    # browser-only fixtures must not select the render lane.
+    tests/e2e/helpers.ts|tests/e2e/apiSimulator.ts|tests/e2e/fixtures/apiBaseline.ts|tests/e2e/fixtures/balanceHistory.ts)
+      return 0
+      ;;
   esac
   return 1
 }

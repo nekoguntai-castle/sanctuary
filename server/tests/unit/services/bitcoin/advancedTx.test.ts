@@ -5,6 +5,7 @@ import { registerBatchFeeAndConstantContracts } from './advancedTx/advancedTx.ba
 import { registerCpfpContracts } from './advancedTx/advancedTx.cpfp.contracts';
 import { registerRbfDetectionContracts } from './advancedTx/advancedTx.rbf-detection.contracts';
 import { registerRbfTransactionCreationContracts } from './advancedTx/advancedTx.rbf-creation.contracts';
+import { registerNodeAuthenticationContracts } from './advancedTx/advancedTx.node-authentication.contracts';
 
 describe('Advanced Transaction Features', () => {
   registerAdvancedTxTestSetup();
@@ -12,4 +13,5 @@ describe('Advanced Transaction Features', () => {
   registerRbfTransactionCreationContracts();
   registerCpfpContracts();
   registerBatchFeeAndConstantContracts();
+  registerNodeAuthenticationContracts();
 });

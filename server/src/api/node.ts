@@ -14,6 +14,7 @@ import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
 import { asyncHandler } from '../errors/errorHandler';
 import { ErrorCodes } from '../errors/ApiError';
+import { resolveConfiguredElectrumProxy, testNodeConfig } from '../services/bitcoin/nodeClient';
 
 const router = Router();
 const log = createLogger('NODE:ROUTE');
@@ -66,10 +67,12 @@ interface ElectrumTestConfig {
   allowSelfSignedCertificate: boolean;
 }
 
+type NodeTestResult = { success: boolean; message: string; serverInfo?: Record<string, unknown> };
+
 /**
  * Test Electrum server connection
  */
-async function testElectrumConnection(config: ElectrumTestConfig): Promise<{ success: boolean; message: string; serverInfo?: Record<string, unknown> }> {
+async function testElectrumConnection(config: ElectrumTestConfig): Promise<NodeTestResult> {
   return new Promise((resolve) => {
     const { host, port, protocol, allowSelfSignedCertificate } = config;
     let socket: net.Socket | tls.TLSSocket;
@@ -186,6 +189,33 @@ async function testElectrumConnection(config: ElectrumTestConfig): Promise<{ suc
 }
 
 /**
+ * Test through the saved Tor proxy when one is configured. The raw-socket probe
+ * cannot speak SOCKS, so it is used only without a proxy; a saved proxy that
+ * cannot be used fails closed and never falls back to a direct dial.
+ */
+async function testNodeConnection(config: ElectrumTestConfig): Promise<NodeTestResult> {
+  let proxy: Awaited<ReturnType<typeof resolveConfiguredElectrumProxy>>;
+  try {
+    proxy = await resolveConfiguredElectrumProxy();
+  } catch (error) {
+    log.warn('Saved Electrum proxy cannot be used for the node test', { error: getErrorMessage(error) });
+    return { success: false, message: `Proxy configuration error: ${getErrorMessage(error)}` };
+  }
+
+  if (!proxy?.enabled) {
+    return testElectrumConnection(config);
+  }
+
+  const result = await testNodeConfig({
+    host: config.host,
+    port: config.port,
+    protocol: config.protocol,
+    allowSelfSignedCert: config.allowSelfSignedCertificate,
+  });
+  return { success: result.success, message: result.message };
+}
+
+/**
  * POST /api/v1/node/test
  * Test connection to an Electrum server
  */
@@ -199,7 +229,7 @@ router.post('/test', requireAdmin, validate(
 
   const portNum = parseInt(port, 10);
 
-  const result = await testElectrumConnection({
+  const result = await testNodeConnection({
     host,
     port: portNum,
     protocol: protocol as 'tcp' | 'ssl',

@@ -35,6 +35,9 @@ MIGRATE_RUNTIME_SECRETS_SCRIPT="$PROJECT_ROOT/scripts/secrets/migrate-runtime-se
 RUNTIME_SECRETS_GUIDE="$PROJECT_ROOT/docs/how-to/runtime-secrets.md"
 POSTGRES_AUTH_DRIFT_GUIDE="$PROJECT_ROOT/docs/reference/upgrade-postgres-auth-drift-findings.md"
 
+# shellcheck source=tests/install/utils/assertion-tracking.sh
+source "$PROJECT_ROOT/tests/install/utils/assertion-tracking.sh"
+
 # ============================================
 # Test Framework
 # ============================================
@@ -50,6 +53,7 @@ assert_equals() {
         echo -e "${RED}ASSERTION FAILED:${NC} $message"
         echo "  Expected: '$expected'"
         echo "  Actual:   '$actual'"
+        install_test_record_assertion_failure
         return 1
     fi
 }
@@ -63,6 +67,7 @@ assert_not_empty() {
     else
         echo -e "${RED}ASSERTION FAILED:${NC} $message"
         echo "  Value is empty"
+        install_test_record_assertion_failure
         return 1
     fi
 }
@@ -76,6 +81,7 @@ assert_file_exists() {
     else
         echo -e "${RED}ASSERTION FAILED:${NC} $message"
         echo "  File not found: $file"
+        install_test_record_assertion_failure
         return 1
     fi
 }
@@ -89,6 +95,7 @@ assert_command_exists() {
     else
         echo -e "${RED}ASSERTION FAILED:${NC} $message"
         echo "  Command not found: $cmd"
+        install_test_record_assertion_failure
         return 1
     fi
 }
@@ -104,6 +111,7 @@ assert_exit_code() {
         echo -e "${RED}ASSERTION FAILED:${NC} $message"
         echo "  Expected exit code: $expected"
         echo "  Actual exit code:   $actual"
+        install_test_record_assertion_failure
         return 1
     fi
 }
@@ -118,6 +126,7 @@ assert_contains() {
     else
         echo -e "${RED}ASSERTION FAILED:${NC} $message"
         echo "  String does not contain: '$needle'"
+        install_test_record_assertion_failure
         return 1
     fi
 }
@@ -128,6 +137,7 @@ assert_not_contains() {
     local message="${3:-unexpected content found}"
     if [[ "$haystack" == *"$needle"* ]]; then
         echo -e "${RED}ASSERTION FAILED:${NC} $message"
+        install_test_record_assertion_failure
         return 1
     fi
 }
@@ -164,6 +174,7 @@ assert_length() {
         echo -e "${RED}ASSERTION FAILED:${NC} $message"
         echo "  Expected minimum length: $min_length"
         echo "  Actual length:          $actual_length"
+        install_test_record_assertion_failure
         return 1
     fi
 }
@@ -175,11 +186,8 @@ run_test() {
     TESTS_RUN=$((TESTS_RUN + 1))
     echo -n "  Running: $test_name... "
 
-    # Run the test function and capture exit status
-    set +e
-    $test_func
-    local exit_code=$?
-    set -e
+    # Fails on a non-zero status or any failed assertion (assertion-tracking.sh)
+    install_test_run_function "$test_func"; local exit_code="$INSTALL_TEST_LAST_STATUS"
 
     if [ $exit_code -eq 0 ]; then
         echo -e "${GREEN}PASSED${NC}"
