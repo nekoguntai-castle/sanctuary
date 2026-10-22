@@ -133,43 +133,6 @@ const buildInputMetadata = (
     amount: utxo.amount ?? 0,
   }));
 
-const buildOutputMetadata = (input: {
-  recipient: string;
-  effectiveAmount: number;
-  changeAddress?: string;
-  changeAmount: number;
-  decoyOutputs?: Array<{ address: string; amount: number }>;
-}) => {
-  const outputs = [
-    {
-      address: input.recipient,
-      amount: input.effectiveAmount,
-      outputType: 'recipient',
-      isOurs: true,
-    },
-  ];
-
-  if (input.changeAddress && input.changeAmount > 0) {
-    outputs.push({
-      address: input.changeAddress,
-      amount: input.changeAmount,
-      outputType: 'change',
-      isOurs: true,
-    });
-  }
-
-  for (const decoy of input.decoyOutputs ?? []) {
-    outputs.push({
-      address: decoy.address,
-      amount: decoy.amount,
-      outputType: 'decoy',
-      isOurs: true,
-    });
-  }
-
-  return outputs;
-};
-
 function toEffectivePolicyAmount(effectiveAmount: number): bigint {
   if (!Number.isSafeInteger(effectiveAmount) || effectiveAmount < 0) {
     throw new InvalidInputError('effective transaction amount must be a non-negative safe integer', 'amount', {
@@ -350,7 +313,12 @@ export async function submitAgentFundingDraft(
       const effectiveAmountSats = toEffectivePolicyAmount(txData.effectiveAmount);
       const effectiveAmount = effectiveAmountSats.toString();
       attemptAmount = effectiveAmount;
-      const policyDecision = await enforceAgentFundingPolicy(context.agentId, operationalWalletId, effectiveAmountSats);
+      // One instant for the cap window and the accepted record, so an attempt
+      // checked against one UTC day or week is filed in that day or week.
+      const checkedAt = new Date();
+      const policyDecision = await enforceAgentFundingPolicy(
+        context.agentId, operationalWalletId, effectiveAmountSats, checkedAt,
+      );
       const effectiveDraftLabel = policyDecision.overrideId ? `${draftLabel} (owner override)` : draftLabel;
       const vaultPolicyDecision = await policyEvaluationEngine.evaluatePolicies({
         walletId: fundingWalletId,
@@ -385,13 +353,8 @@ export async function submitAgentFundingDraft(
         enableRBF,
         subtractFees,
         sendMax,
-        outputs: buildOutputMetadata({
-          recipient,
-          effectiveAmount: txData.effectiveAmount,
-          changeAddress: txData.changeAddress,
-          changeAmount: txData.changeAmount,
-          decoyOutputs: txData.decoyOutputs,
-        }),
+        // The payment only, in the draft output shape; change and decoys travel in their own fields.
+        outputs: [{ address: recipient, amount: txData.effectiveAmount }],
         inputs: buildInputMetadata(txData.utxos),
         decoyOutputs: txData.decoyOutputs ?? undefined,
         isRBF: false,
@@ -433,6 +396,7 @@ export async function submitAgentFundingDraft(
         operationalWalletId,
         draftId: createdDraft.id,
         status: 'accepted',
+        createdAt: checkedAt,
         amount: effectiveAmountSats,
         feeRate: feeRateNumber,
         recipient,

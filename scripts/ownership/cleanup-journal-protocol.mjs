@@ -2,6 +2,7 @@ import { canonicalSha256 } from './canonical-json.mjs';
 import {
   CLEANUP_FAILURE_CLASSES, CLEANUP_RESULTS, CLEANUP_STATES,
 } from './cleanup-schema-contract.mjs';
+import { cleanupTerminalOutcome, isSuccessfulCleanupResult } from './cleanup-terminal-state.mjs';
 
 const DIGEST = /^[a-f0-9]{64}$/;
 export const MAX_CLEANUP_ACTIONS = 3_000;
@@ -74,7 +75,7 @@ function validateIntent(payload) {
 }
 
 function validateSuccessfulResult(payload) {
-  const successful = ['cleaned', 'absent', 'retained'].includes(payload.result);
+  const successful = isSuccessfulCleanupResult(payload);
   const verifiedNoMutationAbsence = payload.result === 'absent'
     && payload.mutationOutcome === 'not_started'
     && payload.reconciliationState === 'absent';
@@ -257,18 +258,13 @@ function handleResult(state, checkpoint) {
   state.openIntent = null;
   state.nextAction += 1;
   state.results.push(payload);
-  if (!['cleaned', 'absent', 'retained'].includes(payload.result)) state.halted = true;
+  if (!isSuccessfulCleanupResult(payload)) state.halted = true;
 }
 
 function terminalOutcome(state) {
-  const ambiguous = state.results.some((entry) => entry.result === 'ambiguous');
-  if (ambiguous) return 'ambiguous';
-  if (state.cancellationSeen || state.results.some((entry) => entry.failureClass === 'cancelled')) return 'cancelled';
-  if (state.genesis.payload.actionCount === 0) return state.recoverySeen ? 'recovered' : 'no_op';
-  const successful = state.results.filter((entry) => ['cleaned', 'absent', 'retained'].includes(entry.result)).length;
-  if (successful === state.results.length) return state.recoverySeen ? 'recovered' : 'cleaned';
-  if (successful > 0) return 'partial';
-  return state.results.every((entry) => entry.result === 'refused') ? 'refused' : 'partial';
+  return cleanupTerminalOutcome(state.results, {
+    recovered: state.recoverySeen, cancelled: state.cancellationSeen,
+  });
 }
 
 function handleTerminal(state, checkpoint) {

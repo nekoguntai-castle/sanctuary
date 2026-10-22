@@ -324,6 +324,45 @@ describe('TransactionsTab', () => {
     expect(screen.getByText('Showing 1 of 2 loaded transactions; more are not loaded')).toBeInTheDocument();
   });
 
+  describe('AI summary counts only rows the list renders', () => {
+    const replacedRow = {
+      id: 'tx-3', txid: 'ghi', walletId: 'wallet-1', amount: -60, timestamp: Date.now(), type: 'sent', rbfStatus: 'replaced',
+    };
+
+    it('says "Showing X of Y" without RBF-replaced rows', () => {
+      render(
+        <TransactionsTab
+          {...baseProps}
+          aiEnabled={true}
+          aiQueryFilter={{ type: 'transactions', aggregation: null }}
+          aiAggregationResult={null}
+          hasMoreTx={false}
+          transactions={[...baseProps.transactions, replacedRow] as any}
+          filteredTransactions={[...baseProps.filteredTransactions, replacedRow] as any}
+        />
+      );
+
+      expect(screen.getByText('Showing 1 of 2 transactions')).toBeInTheDocument();
+    });
+
+    it('names the displayable loaded count in the partial aggregate notice', () => {
+      render(
+        <TransactionsTab
+          {...baseProps}
+          aiEnabled={true}
+          aiQueryFilter={{ type: 'transactions', aggregation: 'sum' }}
+          aiAggregationResult={12345}
+          hasMoreTx={true}
+          transactions={[...baseProps.transactions, replacedRow] as any}
+        />
+      );
+
+      expect(screen.getByTestId('ai-filter-partial-notice')).toHaveTextContent(
+        'over the 2 loaded transactions; older transactions are not included'
+      );
+    });
+  });
+
   describe('manual filters over loaded pages only', () => {
     const PARTIAL_TEXT =
       'Partial result: 1 of the 2 loaded transactions match these filters. Older transactions are not included, ' +

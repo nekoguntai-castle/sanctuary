@@ -5,10 +5,6 @@ import {
   prisma,
   resetAgentRepositoryMocks,
 } from './agentRepository.testHarness';
-import {
-  BROADCASTED_DRAFT_STATUS,
-  DRAFT_LIFECYCLE_STATUS_VALUES,
-} from '@sanctuary/shared/constants/drafts';
 
 describe('agentRepository', () => {
   beforeEach(resetAgentRepositoryMocks);
@@ -241,36 +237,26 @@ describe('agentRepository', () => {
       data: { lastFundingDraftAt: new Date('2026-04-16T00:00:00.000Z') },
     });
 
-    prisma.draftTransaction.aggregate.mockResolvedValue({
+    // Accepted attempts, not draft rows: a deleted or broadcast-without-draft
+    // funding request keeps counting toward the caps.
+    prisma.agentFundingAttempt.aggregate.mockResolvedValue({
       _sum: { amount: 50000n },
     });
     const since = new Date('2026-04-16T00:00:00.000Z');
     await expect(
-      agentRepository.sumAgentDraftAmountsSince(
-        'agent-1',
-        since,
-      ),
+      agentRepository.sumAcceptedFundingAmountsSince('agent-1', since),
     ).resolves.toBe(50000n);
-    expect(prisma.draftTransaction.aggregate).toHaveBeenCalledWith({
-      where: {
-        agentId: 'agent-1',
-        createdAt: { gte: since },
-        status: { in: [...DRAFT_LIFECYCLE_STATUS_VALUES] },
-      },
+    expect(prisma.agentFundingAttempt.aggregate).toHaveBeenCalledWith({
+      where: { agentId: 'agent-1', status: 'accepted', createdAt: { gte: since } },
       _sum: { amount: true },
     });
-    expect(
-      prisma.draftTransaction.aggregate.mock.calls[0][0].where.status.in,
-    ).toContain(BROADCASTED_DRAFT_STATUS);
+    expect(prisma.draftTransaction.aggregate).not.toHaveBeenCalled();
 
-    prisma.draftTransaction.aggregate.mockResolvedValueOnce({
+    prisma.agentFundingAttempt.aggregate.mockResolvedValueOnce({
       _sum: { amount: null },
     });
     await expect(
-      agentRepository.sumAgentDraftAmountsSince(
-        'agent-1',
-        new Date('2026-04-16T00:00:00.000Z'),
-      ),
+      agentRepository.sumAcceptedFundingAmountsSince('agent-1', since),
     ).resolves.toBe(0n);
   });
 

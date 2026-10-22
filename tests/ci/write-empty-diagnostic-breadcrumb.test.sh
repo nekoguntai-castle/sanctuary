@@ -170,11 +170,12 @@ else
   assert_contains "$diag/post-action-failure.log.status.json" '"wrapped_exit": 1' "post-action breadcrumb sidecar" || true
   # sanctuary#1009: verify-vectors run 14568 (job 184154) failed via a podman
   # "context deadline exceeded" copying SUMMARY.md out of the job container
-  # after every captured verification step had already succeeded. The generic
-  # breadcrumb text left that indistinguishable from an actual proof
-  # regression; it must name this as a post-verification runner/infra fault.
-  assert_contains "$diag/post-action-failure.log" "captured verification step(s) succeeded" "post-verification infra wording" || true
-  assert_contains "$diag/post-action-failure.log" "not a proof regression" "post-verification infra wording" || true
+  # after every captured verification step had already succeeded. The
+  # breadcrumb names that runner fault as one possibility, next to a step that
+  # failed before its first run-with-log.sh log, and asserts neither.
+  assert_contains "$diag/post-action-failure.log" "outside run-with-log.sh" "unwrapped-step wording" || true
+  assert_contains "$diag/post-action-failure.log" "sanctuary#1009" "post-verification fault still named" || true
+  assert_not_contains "$diag/post-action-failure.log" "not a proof regression" "no unproven infra verdict" || true
   [ "$FAIL" -eq "$prev_fail" ] && end_test_pass
 fi
 
@@ -252,7 +253,7 @@ fi
 
 # ----- 8. guard: a sidecar-less non-log file is not a step ----------------
 prev_fail=$FAIL
-start_test "sidecar-less non-log file: keeps the post-verification infra wording"
+start_test "sidecar-less non-log file: keeps the unwrapped-step wording"
 diag="$CURRENT_DIR/diagnostics"
 mkdir -p "$diag"
 write_succeeded_step "$diag"
@@ -262,7 +263,7 @@ status=$?
 if [ "$status" -ne 0 ]; then
   end_test_fail "expected exit 0, got $status"
 else
-  assert_contains "$diag/job-failure.log" "not a proof regression" "infra wording" || true
+  assert_contains "$diag/job-failure.log" "outside run-with-log.sh" "unwrapped-step wording" || true
   assert_not_contains "$diag/job-failure.log" "never finished" "no interrupted wording" || true
   [ "$FAIL" -eq "$prev_fail" ] && end_test_pass
 fi
@@ -280,8 +281,34 @@ status=$?
 if [ "$status" -ne 0 ]; then
   end_test_fail "expected exit 0, got $status"
 else
-  assert_contains "$diag/job-failure.log" "not a proof regression" "infra wording" || true
+  assert_contains "$diag/job-failure.log" "outside run-with-log.sh" "unwrapped-step wording" || true
   assert_not_contains "$diag/job-failure.log" "never finished" "no interrupted wording" || true
+  [ "$FAIL" -eq "$prev_fail" ] && end_test_pass
+fi
+
+# ----- 10. a verification step that failed before its first step log -----
+# i16 recurrence: the receipt-bound PSBT Core step runs container create,
+# image attestation and the readiness wait before its first run-with-log.sh
+# log, after earlier wrapped steps succeeded. The breadcrumb must not tell the
+# operator the proof passed.
+prev_fail=$FAIL
+start_test "unwrapped verification preamble after successful steps: no proof-passed verdict"
+diag="$CURRENT_DIR/diagnostics"
+mkdir -p "$diag"
+write_succeeded_step "$diag"
+echo 'bip174 ok' >"$diag/psbt-bip174-tests.log"
+write_sidecar "$diag/psbt-bip174-tests.log.status.json" '  "wrapped_exit": 0,'
+run_breadcrumb "$diag" "verify-vectors-failure.log" "Verify Bitcoin Vectors" >/dev/null
+status=$?
+if [ "$status" -ne 0 ]; then
+  end_test_fail "expected exit 0, got $status"
+else
+  log="$diag/verify-vectors-failure.log"
+  assert_not_contains "$log" "not a proof regression" "no proof-passed verdict" || true
+  assert_not_contains "$log" "this job failure is a post-verification" "no infra verdict" || true
+  assert_contains "$log" "image attestation" "unwrapped verification preamble named" || true
+  assert_contains "$log" "Find the failed step" "operator told to locate the step" || true
+  assert_contains "$log.status.json" '"wrapped_exit": 1' "breadcrumb sidecar" || true
   [ "$FAIL" -eq "$prev_fail" ] && end_test_pass
 fi
 

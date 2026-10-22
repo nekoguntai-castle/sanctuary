@@ -36,7 +36,7 @@ import {
   findByWalletId,
   findExpired,
   BROADCASTED_DRAFT_STATUS,
-  remove,
+  removeActionable,
   update,
   updateApprovalStatus,
   withDraftTransaction,
@@ -380,19 +380,26 @@ describe('draftRepository', () => {
     });
   });
 
-  it('remove, deleteExpired, countByWalletId and countByStatus delegate to Prisma', async () => {
-    (prisma.draftTransaction.delete as Mock).mockResolvedValue(undefined);
+  it('removeActionable deletes only an actionable draft in the wallet and reports whether it did', async () => {
+    (prisma.draftTransaction.deleteMany as Mock).mockResolvedValue({ count: 1 });
+    await expect(removeActionable('d1', 'wallet-1')).resolves.toBe(true);
+    (prisma.draftTransaction.deleteMany as Mock).mockResolvedValue({ count: 0 });
+    await expect(removeActionable('d1', 'wallet-1')).resolves.toBe(false);
+    expect(prisma.draftTransaction.deleteMany).toHaveBeenCalledWith({
+      where: { id: 'd1', walletId: 'wallet-1', status: { in: ['unsigned', 'partial', 'signed'] } },
+    });
+  });
+
+  it('deleteExpired, countByWalletId and countByStatus delegate to Prisma', async () => {
     (prisma.draftTransaction.deleteMany as Mock).mockResolvedValue({ count: 3 });
     (prisma.draftTransaction.count as Mock)
       .mockResolvedValueOnce(11)
       .mockResolvedValueOnce(4);
 
-    await remove('d1');
     const expiredCount = await deleteExpired();
     const walletCount = await countByWalletId('wallet-1');
     const statusCount = await countByStatus('wallet-1', 'signed');
 
-    expect(prisma.draftTransaction.delete).toHaveBeenCalledWith({ where: { id: 'd1' } });
     expect(prisma.draftTransaction.deleteMany).toHaveBeenCalledWith({
       where: {
         status: { in: ['unsigned', 'partial', 'signed'] },

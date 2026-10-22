@@ -31,7 +31,7 @@ Agent credentials cannot broadcast, approve vault policies, manage wallet settin
    - Funding wallet.
    - Operational wallet. Select an existing single-sig wallet, or use the inline watch-only import to add one from a descriptor/export and auto-select it.
    - Per-request funding cap.
-   - Optional daily and weekly caps.
+   - Optional daily and weekly caps. Daily and weekly caps count every accepted funding request in the window, including requests whose drafts are later rejected, expired, invalidated or deleted; use an owner override (below) for an exceptional refill.
    - Optional cooldown.
    - Operational balance and spend alert thresholds.
 3. Confirm the agent is `active`.

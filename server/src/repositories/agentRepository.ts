@@ -13,7 +13,6 @@ import type {
   AgentFundingOverrideStatus,
   WalletAgentStatus,
 } from '@sanctuary/shared/constants/adminAgents';
-import { DRAFT_LIFECYCLE_STATUS_VALUES } from '@sanctuary/shared/constants/drafts';
 import { InvalidInputError, NotFoundError } from '../errors';
 import {
   Prisma,
@@ -84,6 +83,8 @@ export interface CreateAgentFundingAttemptInput {
   recipient?: string | null;
   ipAddress?: string | null;
   userAgent?: string | null;
+  /** Defaults to the insert time; an accepted attempt passes the instant its caps were checked. */
+  createdAt?: Date;
 }
 
 export interface CreateAgentFundingOverrideInput {
@@ -431,15 +432,15 @@ export async function markAgentFundingDraftCreated(
   });
 }
 
-export async function sumAgentDraftAmountsSince(agentId: string, since: Date): Promise<bigint> {
-  const result = await prisma.draftTransaction.aggregate({
-    where: {
-      agentId,
-      createdAt: { gte: since },
-      // Broadcast drafts are funding already sent; excluding them would let
-      // the daily/weekly caps reset on every broadcast.
-      status: { in: [...DRAFT_LIFECYCLE_STATUS_VALUES] },
-    },
+/**
+ * The agent's accepted funding requests since `since`, for the daily/weekly
+ * caps. An accepted attempt is written in the same transaction as its draft
+ * and outlives it, so deleting, expiring or invalidating the draft, or
+ * broadcasting its intent without the draft, never lowers the total.
+ */
+export async function sumAcceptedFundingAmountsSince(agentId: string, since: Date): Promise<bigint> {
+  const result = await prisma.agentFundingAttempt.aggregate({
+    where: { agentId, status: 'accepted', createdAt: { gte: since } },
     _sum: { amount: true },
   });
 
@@ -770,6 +771,7 @@ export async function createFundingAttempt(
     data: {
       ...toFundingAttemptIdentityData(input),
       ...toFundingAttemptDetailData(input),
+      createdAt: input.createdAt,
     },
   });
 }
@@ -782,7 +784,7 @@ export const agentRepository = {
   findActiveAgentsByOperationalWalletId,
   updateAgent,
   markAgentFundingDraftCreated,
-  sumAgentDraftAmountsSince,
+  sumAcceptedFundingAmountsSince,
   countRejectedFundingAttemptsSince,
   createFundingOverride,
   findFundingOverrides,

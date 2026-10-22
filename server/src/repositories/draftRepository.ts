@@ -377,12 +377,16 @@ export async function update(
 }
 
 /**
- * Delete a draft
+ * Delete an actionable draft in a wallet. Broadcasted drafts are retained
+ * (their approval history and signing-intent replay read them), so the status
+ * guard is part of the DELETE itself: a draft archived as broadcasted after
+ * the caller read it is not removed. Returns whether a row was deleted.
  */
-export async function remove(draftId: string): Promise<void> {
-  await prisma.draftTransaction.delete({
-    where: { id: draftId },
+export async function removeActionable(draftId: string, walletId: string): Promise<boolean> {
+  const result = await prisma.draftTransaction.deleteMany({
+    where: { id: draftId, walletId, status: { in: [...ACTIONABLE_DRAFT_STATUS_VALUES] } },
   });
+  return result.count > 0;
 }
 
 /**
@@ -501,7 +505,7 @@ export const draftRepository = {
   create,
   update,
   updateApprovalStatus,
-  remove,
+  removeActionable,
   deleteExpired,
   countByWalletId,
   countByStatus,

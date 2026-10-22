@@ -18,6 +18,7 @@ import {
   appendCleanupCheckpoint, appendPreparedCleanupCheckpoint, createCleanupJournal,
   prepareCleanupCheckpoint,
 } from './cleanup-journal.mjs';
+import { cleanupRefusalRows, cleanupTerminalOutcome } from './cleanup-terminal-state.mjs';
 import { assertKeyPair, publicKeyFingerprint, sha256 } from './crypto.mjs';
 import { assertLocalPrivateSafe } from './privacy.mjs';
 import {
@@ -45,28 +46,11 @@ export function executionPostconditions(results) {
 }
 
 export function executionRefusalRows(results) {
-  const rows = results.filter((entry) => ['refused', 'ambiguous'].includes(entry.result))
-    .map(({ resourceClass, immutableIdentity, failureClass }) => ({
-      resourceClass, immutableIdentity, failureClass,
-    }));
-  return [...new Map(rows.map((entry) => [
-    `${entry.resourceClass}\0${entry.immutableIdentity}\0${entry.failureClass}`, entry,
-  ])).values()].sort((left, right) => (
-    left.resourceClass.localeCompare(right.resourceClass)
-    || left.immutableIdentity.localeCompare(right.immutableIdentity)
-    || left.failureClass.localeCompare(right.failureClass)
-  ));
+  return cleanupRefusalRows(results);
 }
 
 export function executionTerminalOutcome(results, recovered = false, cancelled = false) {
-  if (results.length === 0) return cancelled ? 'cancelled' : (recovered ? 'recovered' : 'no_op');
-  if (results.some((entry) => entry.result === 'ambiguous')) return 'ambiguous';
-  if (cancelled || results.some((entry) => entry.failureClass === 'cancelled')) return 'cancelled';
-  const successful = results.filter((entry) => ['cleaned', 'absent', 'retained'].includes(entry.result)).length;
-  if (successful === results.length) return recovered ? 'recovered' : 'cleaned';
-  if (successful > 0) return 'partial';
-  if (results.every((entry) => entry.result === 'refused')) return 'refused';
-  return 'partial';
+  return cleanupTerminalOutcome(results, { recovered, cancelled });
 }
 
 export function assertExecutionBindings(inventory, plan, approval) {

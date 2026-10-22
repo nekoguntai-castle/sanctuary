@@ -16,6 +16,7 @@ const mockPrisma = vi.hoisted(() => ({
     updateMany: vi.fn(),
   },
   agentFundingAttempt: {
+    aggregate: vi.fn(),
     create: vi.fn(),
     count: vi.fn(),
   },

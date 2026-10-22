@@ -76,10 +76,11 @@ has_failed_sidecar() {
 
 # sanctuary#1009: verify-vectors run 14568 failed via a podman "context
 # deadline exceeded" copying SUMMARY.md out of the job container, after every
-# wrapped verification step had already exited 0. That failure looked
-# identical, in the generic breadcrumb below, to an actual proof regression.
-# Count succeeded sidecars so the breadcrumb can name the run as a
-# post-verification runner/infrastructure fault instead.
+# wrapped verification step had already exited 0. Succeeded sidecars show that
+# no wrapped step failed, but not that verification finished: a step can fail
+# before its first run-with-log.sh log (the receipt-bound PSBT Core step's
+# create/attest/wait, a subject budget check, a receipt verification action).
+# The breadcrumb names both possibilities and never asserts which one it was.
 count_succeeded_sidecars() {
   local status_path
   local wrapped_exit
@@ -165,12 +166,19 @@ elif [ "$SUCCEEDED_SIDECARS" -gt 0 ]; then
 Diagnostic breadcrumb: $TITLE failed without a failed run-with-log.sh sidecar.
 Diagnostic directory: $DIAGNOSTIC_DIR
 
-All $SUCCEEDED_SIDECARS captured verification step(s) succeeded (wrapped_exit
-0); this job failure is a post-verification runner/infrastructure fault --
-not a proof regression. Known causes on this repo: the runner's own
-container-to-host artifact copy (e.g. SUMMARY.md, GITHUB_PATH) timing out
-against a hung podman/docker socket, or job teardown being interrupted after
-verification finished.
+No captured step failed or was interrupted: all $SUCCEEDED_SIDECARS run-with-log.sh
+step(s) exited 0. The failing step therefore ran outside run-with-log.sh.
+That can be the unwrapped part of a verification step: a subject budget
+check, cleanup coordinator setup or teardown, or a container create,
+image attestation or readiness wait before the step's first log. It can be
+a cleanup receipt verification or another action. Or it can be a
+post-verification runner/infrastructure fault, such as the runner's
+container-to-host artifact copy (SUMMARY.md, GITHUB_PATH) timing out against
+a hung podman/docker socket (sanctuary#1009).
+
+Find the failed step in the Forgejo task output before any retrigger. A failed
+verification, receipt or setup step is that step's failure; only a failure
+after the last verification step is a runner/infrastructure fault.
 
 Inspect the Forgejo task output and the runner/DIND state for the missing
 failure context.

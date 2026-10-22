@@ -8,7 +8,7 @@
 
 import type { DraftTransaction } from '../generated/prisma/client';
 import { draftRepository } from '../repositories';
-import { ForbiddenError, NotFoundError } from '../errors';
+import { ConflictError, ForbiddenError, NotFoundError } from '../errors';
 import { createLogger } from '../utils/logger';
 import { createDraft, dispatchDraftCreatedPostCommitNotifications, runDraftCreatedSideEffects } from './draftCreate';
 import { updateDraft } from './draftUpdate';
@@ -46,8 +46,14 @@ export async function getDraft(
   return draft;
 }
 
+/** A broadcasted draft is a retained record: its approval history and signing-intent replay read it. */
+const retainedDraftConflict = (): ConflictError =>
+  new ConflictError('Broadcasted drafts are retained and cannot be deleted', undefined, {
+    reason: 'draft_retained',
+  });
+
 /**
- * Delete a draft transaction.
+ * Delete an actionable draft transaction.
  *
  * Access control: wallet-level view access handled by requireWalletAccess('view') middleware.
  * Additional authorization (creator or owner only) checked here as business logic.
@@ -69,7 +75,15 @@ export async function deleteDraft(
     throw new ForbiddenError('Only the creator or wallet owner can delete drafts');
   }
 
-  await draftRepository.remove(draftId);
+  // The status guard is inside the DELETE, so a broadcast that archives the
+  // draft after the read above still keeps it. Nothing deleted and no row left
+  // means a concurrent delete won: that is a 404, not a retained draft.
+  if (!await draftRepository.removeActionable(draftId, walletId)) {
+    if (!await draftRepository.findByIdInWallet(draftId, walletId)) {
+      throw new NotFoundError('Draft not found');
+    }
+    throw retainedDraftConflict();
+  }
 
   log.info('Deleted draft', { draftId, walletId, userId });
 }

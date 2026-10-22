@@ -491,4 +491,54 @@ describe('useAITransactionFilter', () => {
     expect(result.current.filteredTransactions).toHaveLength(0);
     expect(result.current.aiAggregationResult).toBeNull();
   });
+
+  describe('RBF-replaced rows the list hides', () => {
+    // The fee-bumped original of txid-2: TransactionList drops it before
+    // rendering (excludeReplacedTransactions), so AI results must too.
+    const replacedOriginal = {
+      id: 'tx-2-original',
+      txid: 'txid-2-original',
+      type: 'sent',
+      amount: -100_000,
+      confirmations: 0,
+      timestamp: 1_700_000_050,
+      labels: [{ name: 'groceries' }],
+      rbfStatus: 'replaced',
+    };
+    const withReplaced = [...transactions, replacedOriginal];
+
+    it('counts a fee-bumped send once in AI sum, count, max and min', () => {
+      const { result } = renderHook(() => useAITransactionFilter({ transactions: withReplaced as any }));
+      const expected = { sum: 12_000, count: 1, max: 12_000, min: 12_000 } as const;
+
+      for (const aggregation of ['sum', 'count', 'max', 'min'] as const) {
+        act(() => {
+          result.current.setAiQueryFilter({ type: 'transactions', filter: { type: 'send' }, aggregation });
+        });
+        expect(result.current.filteredTransactions.map(tx => tx.txid)).toEqual(['txid-2']);
+        expect(result.current.aiAggregationResult).toBe(expected[aggregation]);
+      }
+    });
+
+    it('fills a top-N limit from rows the list renders', () => {
+      const { result } = renderHook(() => useAITransactionFilter({ transactions: withReplaced as any }));
+
+      act(() => {
+        result.current.setAiQueryFilter({
+          type: 'transactions',
+          sort: { field: 'amount', order: 'desc' },
+          limit: 2,
+        });
+      });
+
+      expect(result.current.filteredTransactions.map(tx => tx.txid)).toEqual(['txid-3', 'txid-1']);
+    });
+
+    it('passes the loaded list through untouched while no AI filter is active', () => {
+      const { result } = renderHook(() => useAITransactionFilter({ transactions: withReplaced as any }));
+
+      expect(result.current.filteredTransactions).toBe(withReplaced);
+      expect(result.current.aiAggregationResult).toBeNull();
+    });
+  });
 });

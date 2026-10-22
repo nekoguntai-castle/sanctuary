@@ -85,7 +85,13 @@ export const draftPaths = {
             + 'selectedUtxoIds (omitted counts as []) must be exactly the intent inputs, fee (omitted counts as 0) '
             + 'must be inputs minus outputs, recipient must be the first external output and effectiveAmount '
             + '(or amount) the net external spend (no sendMax/subtractFees exemption), non-zero totalInput/'
-            + 'totalOutput must equal the intent sums, and isRBF requires an intent with a replacement target',
+            + 'totalOutput must equal the intent sums, and isRBF requires an intent with a replacement target, '
+            + 'outputs must be distinct intent outputs covering every external output (required when the intent '
+            + 'pays more than one; amount equal, or 0 on the one sendMax entry, or on a subtractFees draft above '
+            + 'it by at most the fee in total), each decoy and the change address a further distinct wallet-owned '
+            + 'intent output with its amount (changeAmount 0 without a change address), '
+            + 'supplied inputs exactly the intent inputs with their prevout address and amount, a consolidation\'s '
+            + 'recipient one of its outputs, and amount equal to the effective amount',
         },
         401: apiErrorResponse,
         403: apiErrorResponse,
@@ -115,7 +121,9 @@ export const draftPaths = {
     delete: {
       tags: ['Drafts'],
       summary: 'Delete draft',
-      description: 'Delete a draft transaction. The creator or wallet owner may delete it.',
+      description:
+        'Delete an actionable draft transaction. The creator or wallet owner may delete it; broadcasted drafts '
+        + 'are retained.',
       security: bearerAuth,
       parameters: [walletIdParameter, draftIdParameter],
       responses: {
@@ -123,6 +131,11 @@ export const draftPaths = {
         401: apiErrorResponse,
         403: apiErrorResponse,
         404: apiErrorResponse,
+        409: {
+          ...apiErrorResponse,
+          description:
+            'details.reason draft_retained: the draft was broadcast (or is no longer actionable) and is kept',
+        },
       },
     },
     patch: {

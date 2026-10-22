@@ -5,6 +5,9 @@ import {
   CLEANUP_RESULTS, CLEANUP_STATES, MAX_CLEANUP_JOURNAL_BYTES,
 } from './cleanup-schema-contract.mjs';
 import {
+  cleanupTerminalRowsError, cleanupTerminalStateCandidates, isSuccessfulCleanupResult,
+} from './cleanup-terminal-state.mjs';
+import {
   array, digest, enumeration, identifier, integer, object, string, timestamp, unique,
 } from './validation.mjs';
 
@@ -59,29 +62,6 @@ function postcondition(value, action, path) {
   }
 }
 
-function stateCandidates(value) {
-  const ambiguous = value.results.some((entry) => entry.result === 'ambiguous')
-    || value.postconditions.some((entry) => entry.state === 'ambiguous');
-  const cancelled = value.results.some((entry) => entry.failureClass === 'cancelled')
-    || value.postconditions.some((entry) => entry.failureClass === 'cancelled');
-  const successful = value.results.filter((entry) => (
-    ['cleaned', 'absent', 'retained'].includes(entry.result)
-  )).length;
-  const allSuccessful = value.actions.length > 0 && successful === value.actions.length
-    && value.postconditions.every((entry) => entry.state === 'satisfied')
-    && value.refusals.length === 0;
-  if (value.actions.length === 0) {
-    if (ambiguous) return ['ambiguous'];
-    return value.refusals.length > 0 ? ['refused'] : ['no_op', 'recovered', 'cancelled'];
-  }
-  if (ambiguous) return ['ambiguous'];
-  if (cancelled) return ['cancelled'];
-  if (allSuccessful) return ['cleaned', 'recovered', 'cancelled'];
-  if (successful > 0) return ['partial'];
-  if (value.refusals.length > 0 || value.results.some((entry) => entry.result === 'refused')) return ['refused'];
-  return ['partial'];
-}
-
 export function validateExecutionReceipt(value, now) {
   object(value, '$', [
     'schemaVersion', 'artifactType', 'phase', 'deploymentId', 'operationRunId',
@@ -129,7 +109,7 @@ export function validateExecutionReceipt(value, now) {
         || entry.immutableIdentity !== target.immutableIdentity || entry.result === 'pending') {
       throw new Error(`$.results[${index}] must correspond to its ordered action`);
     }
-    if ((['cleaned', 'absent', 'retained'].includes(entry.result)) !== (entry.failureClass === 'none')) {
+    if (isSuccessfulCleanupResult(entry) !== (entry.failureClass === 'none')) {
       throw new Error(`$.results[${index}] result and failureClass are inconsistent`);
     }
   });
@@ -143,7 +123,9 @@ export function validateExecutionReceipt(value, now) {
   const postconditions = array(value.postconditions, '$.postconditions', { max: 3_000 });
   if (postconditions.length !== actions.length) throw new Error('$.postconditions must correspond one-to-one with actions');
   postconditions.forEach((entry, index) => postcondition(entry, actions[index], `$.postconditions[${index}]`));
-  if (!stateCandidates(value).includes(value.state)) {
+  const rowsError = cleanupTerminalRowsError(value);
+  if (rowsError) throw new Error(`$: ${rowsError}`);
+  if (!cleanupTerminalStateCandidates(value.results).has(value.state)) {
     throw new Error('$.state is inconsistent with results, refusals, and postconditions');
   }
   const { receiptCoreDigest, approvalStateGeneration: _generation, ...envelopeCore } = value;

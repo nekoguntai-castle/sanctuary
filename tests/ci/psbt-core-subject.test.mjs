@@ -31,6 +31,7 @@ function fixtureEnv(root, extra = {}) {
     SANCTUARY_COMMIT: commit,
     SANCTUARY_CLEANUP_CREATED_AT: '2026-09-01T00:00:00.000Z',
     SANCTUARY_RESOURCE_LIFECYCLE: 'obsolete',
+    PSBT_MODE: 'live',
     ...extra,
   };
 }
@@ -52,7 +53,10 @@ function installFakeDocker(root, options = {}) {
 set -euo pipefail
 printf '%s\\n' "$*" >> "$DOCKER_LOG"
 case "\${1:-}" in
-  pull) exit 0 ;;
+  pull)
+    [ -f "$DIAGNOSTIC_DIR/psbt-core-setup-$PSBT_MODE.log" ] && echo 'setup log present at pull' >> "$DOCKER_LOG"
+    exit 0
+    ;;
   create)
     cidfile=''
     while [ "$#" -gt 0 ]; do
@@ -108,6 +112,14 @@ fi
 exit 99
 `);
   chmodSync(docker, 0o755);
+}
+
+function setupLog(env, mode) {
+  return readFileSync(join(env.DIAGNOSTIC_DIR, `psbt-core-setup-${mode}.log`), 'utf8');
+}
+
+function setupSidecar(env, mode) {
+  return JSON.parse(readFileSync(join(env.DIAGNOSTIC_DIR, `psbt-core-setup-${mode}.log.status.json`), 'utf8'));
 }
 
 function installSuccessfulProofCommands(root) {
@@ -185,7 +197,7 @@ test('PSBT successful create rejects a valid foreign ID after exact tuple reinsp
     const env = fixtureEnv(root);
     const result = spawnSync(subject, ['live'], { env, encoding: 'utf8' });
     assert.equal(result.status, 1, result.stderr);
-    assert.match(result.stderr, /cidfile did not bind the verified created ID/);
+    assert.match(setupLog(env, 'live'), /cidfile did not bind the verified created ID/);
     assert.equal(readFileSync(join(root, 'psbt-test-bitcoin-core.cid'), 'utf8').trim(), containerId);
     const calls = readFileSync(env.DOCKER_LOG, 'utf8').trim().split('\n');
     assert.equal(calls.filter(call => call.startsWith('container inspect ')).length, 2);
@@ -257,3 +269,45 @@ for (const [label, dockerOptions] of [
     }
   });
 }
+
+for (const mode of ['live', 'regenerate']) {
+  test(`${mode} PSBT Core setup runs as its own step log before the first Docker call`, () => {
+    const root = mkdtempSync(join(tmpdir(), `psbt-subject-setup-log-${mode}-`));
+    try {
+      installFakeDocker(root, { createStatus: 0 });
+      installSuccessfulProofCommands(root);
+      const env = fixtureEnv(root, { PSBT_MODE: mode });
+      const result = spawnSync(subject, [mode], { env, encoding: 'utf8' });
+      assert.equal(result.status, 0, result.stderr);
+      const calls = readFileSync(env.DOCKER_LOG, 'utf8').trim().split('\n');
+      assert.equal(calls[1], 'setup log present at pull');
+      assert.equal(setupSidecar(env, mode).wrapped_exit, 0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+}
+
+test('a failed PSBT Core attestation leaves a failed setup step, so the job breadcrumb is not needed', () => {
+  const root = mkdtempSync(join(tmpdir(), 'psbt-subject-attestation-breadcrumb-'));
+  try {
+    installFakeDocker(root, { createStatus: 0, repoDigest: `sha256:${'d'.repeat(64)}` });
+    installSuccessfulProofCommands(root);
+    const env = fixtureEnv(root);
+    mkdirSync(env.DIAGNOSTIC_DIR, { recursive: true });
+    writeFileSync(join(env.DIAGNOSTIC_DIR, 'psbt-bip174-tests.log'), 'ok\n');
+    writeFileSync(join(env.DIAGNOSTIC_DIR, 'psbt-bip174-tests.log.status.json'), '{\n  "wrapped_exit": 0,\n}\n');
+    const result = spawnSync(subject, ['live'], { env, encoding: 'utf8' });
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(setupLog(env, 'live'), /does not attest expected digest/);
+    assert.equal(setupSidecar(env, 'live').wrapped_exit, 1);
+    const breadcrumb = spawnSync(join(repoRoot, 'scripts/ci/write-empty-diagnostic-breadcrumb.sh'), [
+      env.DIAGNOSTIC_DIR, 'verify-vectors-failure.log', 'Verify Bitcoin Vectors',
+    ], { encoding: 'utf8' });
+    assert.equal(breadcrumb.status, 0, breadcrumb.stderr);
+    assert.match(breadcrumb.stdout, /failed diagnostic sidecar already exists; breadcrumb not needed/);
+    assert.equal(existsSync(join(env.DIAGNOSTIC_DIR, 'verify-vectors-failure.log')), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

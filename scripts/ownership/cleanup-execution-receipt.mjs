@@ -4,6 +4,9 @@ import { publicKeyFingerprint, sha256, verifyDetached } from './crypto.mjs';
 import { assertLocalPrivateSafe } from './privacy.mjs';
 import { CLEANUP_FAILURE_CLASSES, validateArtifact } from './schemas.mjs';
 import { MAX_CLEANUP_JOURNAL_BYTES } from './cleanup-schema-contract.mjs';
+import {
+  cleanupTerminalRowsError, cleanupTerminalStateCandidates, isSuccessfulCleanupResult,
+} from './cleanup-terminal-state.mjs';
 
 const DIGEST = /^[a-f0-9]{64}$/;
 const ID = /^[a-z0-9][a-z0-9._:-]{0,127}$/;
@@ -173,7 +176,7 @@ function validateResult(result, action, index) {
   }
   if (!RESULTS.has(result.result)) throw new Error(`result ${index} has an invalid result`);
   if (!CLEANUP_FAILURE_CLASSES.includes(result.failureClass)) throw new Error(`result ${index} has an invalid failure class`);
-  if ((['cleaned', 'absent', 'retained'].includes(result.result)) !== (result.failureClass === 'none')) {
+  if (isSuccessfulCleanupResult(result) !== (result.failureClass === 'none')) {
     throw new Error(`result ${index} result and failureClass are inconsistent`);
   }
 }
@@ -228,53 +231,10 @@ function validateRows(core) {
   assertSortedRefusals(core.refusals);
 }
 
-function hasAmbiguousOutcome(core) {
-  return core.results.some((entry) => entry.result === 'ambiguous')
-    || core.postconditions.some((entry) => entry.state === 'ambiguous');
-}
-
-function hasCancelledOutcome(core) {
-  return core.results.some((entry) => entry.failureClass === 'cancelled')
-    || core.postconditions.some((entry) => entry.failureClass === 'cancelled');
-}
-
-function successfulResultCount(core) {
-  return core.results.filter((entry) => (
-    ['cleaned', 'absent', 'retained'].includes(entry.result)
-  )).length;
-}
-
-function allActionsSuccessful(core, successful) {
-  return core.actions.length > 0
-    && successful === core.actions.length
-    && core.postconditions.every((entry) => entry.state === 'satisfied')
-    && core.refusals.length === 0;
-}
-
-function hasRefusedOutcome(core) {
-  return core.refusals.length > 0
-    || core.results.some((entry) => entry.result === 'refused');
-}
-
-function expectedTerminalStates(core) {
-  const ambiguous = hasAmbiguousOutcome(core);
-  const cancelled = hasCancelledOutcome(core);
-  const successful = successfulResultCount(core);
-  if (core.actions.length === 0) {
-    if (ambiguous) return new Set(['ambiguous']);
-    if (core.refusals.length > 0) return new Set(['refused']);
-    return new Set(['no_op', 'recovered', 'cancelled']);
-  }
-  if (ambiguous) return new Set(['ambiguous']);
-  if (cancelled) return new Set(['cancelled']);
-  if (allActionsSuccessful(core, successful)) return new Set(['cleaned', 'recovered', 'cancelled']);
-  if (successful > 0) return new Set(['partial']);
-  if (hasRefusedOutcome(core)) return new Set(['refused']);
-  return new Set(['partial']);
-}
-
 function validateTerminalState(core) {
-  if (!expectedTerminalStates(core).has(core.state)) {
+  const rowsError = cleanupTerminalRowsError(core);
+  if (rowsError) throw new Error(`receipt ${rowsError}`);
+  if (!cleanupTerminalStateCandidates(core.results).has(core.state)) {
     throw new Error('receipt state is inconsistent with results, refusals, and postconditions');
   }
 }

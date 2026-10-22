@@ -127,7 +127,7 @@ This document describes the state machines and interaction flows in Sanctuary. U
 | PARTIAL | SIGNED | Quorum reached | `draftsController.addSignature()` |
 | SIGNED | BROADCAST | POST /drafts/:id/broadcast | `draftsController.broadcast()` |
 | UNSIGNED | EXPIRED | 7 days timeout | Background job |
-| PARTIAL/SIGNED | DELETED | DELETE /drafts/:id | `draftsController.delete()` |
+| UNSIGNED/PARTIAL/SIGNED | DELETED | DELETE /drafts/:id (BROADCAST is retained: 409 draft_retained) | `draftsController.delete()` |
 
 ### Single-sig vs Multi-sig
 

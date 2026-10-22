@@ -4,7 +4,7 @@ import { InvalidInputError, NotFoundError } from '../../../src/errors';
 const mocks = vi.hoisted(() => ({
   agentRepository: {
     findAgentById: vi.fn(),
-    sumAgentDraftAmountsSince: vi.fn(),
+    sumAcceptedFundingAmountsSince: vi.fn(),
     findUsableFundingOverride: vi.fn(),
   },
   utxoRepository: {
@@ -25,7 +25,7 @@ describe('agentFundingPolicy', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.agentRepository.findAgentById.mockResolvedValue(agentFixture());
-    mocks.agentRepository.sumAgentDraftAmountsSince.mockResolvedValue(0n);
+    mocks.agentRepository.sumAcceptedFundingAmountsSince.mockResolvedValue(0n);
     mocks.agentRepository.findUsableFundingOverride.mockResolvedValue(null);
     mocks.utxoRepository.getUnspentBalance.mockResolvedValue(0n);
   });
@@ -35,7 +35,7 @@ describe('agentFundingPolicy', () => {
       overrideId: null,
     });
 
-    expect(mocks.agentRepository.sumAgentDraftAmountsSince).toHaveBeenCalledTimes(2);
+    expect(mocks.agentRepository.sumAcceptedFundingAmountsSince).toHaveBeenCalledTimes(2);
     expect(mocks.utxoRepository.getUnspentBalance).toHaveBeenCalledWith('operational-wallet');
   });
 
@@ -54,7 +54,7 @@ describe('agentFundingPolicy', () => {
     });
 
     expect(mocks.utxoRepository.getUnspentBalance).not.toHaveBeenCalled();
-    expect(mocks.agentRepository.sumAgentDraftAmountsSince).not.toHaveBeenCalled();
+    expect(mocks.agentRepository.sumAcceptedFundingAmountsSince).not.toHaveBeenCalled();
     expect(mocks.agentRepository.findUsableFundingOverride).not.toHaveBeenCalled();
   });
 
@@ -86,10 +86,10 @@ describe('agentFundingPolicy', () => {
     }));
     await expect(enforceAgentFundingPolicy('agent-1', 'operational-wallet', 1n, now)).rejects.toThrow('cooldown');
 
-    mocks.agentRepository.sumAgentDraftAmountsSince.mockResolvedValueOnce(90000n);
+    mocks.agentRepository.sumAcceptedFundingAmountsSince.mockResolvedValueOnce(90000n);
     await expect(enforceAgentFundingPolicy('agent-1', 'operational-wallet', 20000n, now)).rejects.toThrow('daily funding limit');
 
-    mocks.agentRepository.sumAgentDraftAmountsSince
+    mocks.agentRepository.sumAcceptedFundingAmountsSince
       .mockResolvedValueOnce(0n)
       .mockResolvedValueOnce(490000n);
     await expect(enforceAgentFundingPolicy('agent-1', 'operational-wallet', 20000n, now)).rejects.toThrow('weekly funding limit');
@@ -97,14 +97,14 @@ describe('agentFundingPolicy', () => {
 
   it('calculates weekly funding windows from the previous Monday when now is Sunday', async () => {
     const sunday = new Date('2026-04-19T12:00:00.000Z');
-    mocks.agentRepository.sumAgentDraftAmountsSince
+    mocks.agentRepository.sumAcceptedFundingAmountsSince
       .mockResolvedValueOnce(0n)
       .mockResolvedValueOnce(490000n);
 
     await expect(enforceAgentFundingPolicy('agent-1', 'operational-wallet', 20000n, sunday))
       .rejects.toThrow('weekly funding limit');
 
-    expect(mocks.agentRepository.sumAgentDraftAmountsSince).toHaveBeenNthCalledWith(
+    expect(mocks.agentRepository.sumAcceptedFundingAmountsSince).toHaveBeenNthCalledWith(
       2,
       'agent-1',
       new Date('2026-04-13T00:00:00.000Z')
@@ -149,7 +149,7 @@ describe('agentFundingPolicy', () => {
 
   it('preserves the first cap violation message when several caps fail', async () => {
     mocks.utxoRepository.getUnspentBalance.mockResolvedValueOnce(190000n);
-    mocks.agentRepository.sumAgentDraftAmountsSince
+    mocks.agentRepository.sumAcceptedFundingAmountsSince
       .mockResolvedValueOnce(90000n)
       .mockResolvedValueOnce(490000n);
 

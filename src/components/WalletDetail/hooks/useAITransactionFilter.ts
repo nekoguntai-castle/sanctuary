@@ -8,6 +8,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { Transaction } from '../../../types';
 import { parseTransactionDateMillis } from '../../../app/consoleTransactionNavigation';
+import { excludeReplacedTransactions } from '../../TransactionList/displayedTransactions';
 import type { NaturalQueryResult } from '../../../api/ai';
 import type { RouteToken } from '../../../hooks/requestOwnership';
 import { useWalletRouteOwnership } from './useWalletRouteOwnership';
@@ -28,7 +29,10 @@ export interface UseAITransactionFilterReturn {
   aiQueryFilter: NaturalQueryResult | null;
   /** Set or clear the AI query filter */
   setAiQueryFilter: (filter: NaturalQueryResult | null) => void;
-  /** Transactions after applying the AI filter/sort/limit */
+  /**
+   * Transactions after applying the AI filter/sort/limit. While an AI
+   * transaction filter is active, RBF-replaced rows are excluded first.
+   */
   filteredTransactions: Transaction[];
   /** Computed aggregation value (sum, count, max, min) or null */
   aiAggregationResult: number | null;
@@ -205,7 +209,10 @@ const applyAITransactionFilter = (
     return transactions;
   }
 
-  let result = [...transactions];
+  // Filter, sort, limit and aggregate the rows TransactionList renders: an
+  // RBF-replaced original would double-count a fee-bumped send and take a
+  // top-N slot the list then hides.
+  let result = excludeReplacedTransactions(transactions);
 
   const filter = aiQueryFilter.filter;
   if (filter) {

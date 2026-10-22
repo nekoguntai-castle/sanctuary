@@ -1,6 +1,5 @@
 import React from 'react';
 import { X } from 'lucide-react';
-import type { Transaction } from '../../../../types';
 import type { NaturalQueryResult } from '../../../../api/ai';
 import { usePriceFreeFormatter } from '../../../../contexts/CurrencyContext';
 import { FILTER_SUMMARY_PANEL_CLASS } from './filterSummaryPanel';
@@ -8,9 +7,11 @@ import { FILTER_SUMMARY_PANEL_CLASS } from './filterSummaryPanel';
 interface AiFilterSummaryProps {
   aiQueryFilter: NaturalQueryResult | null;
   aiAggregationResult: number | null;
-  filteredTransactions: Transaction[];
-  transactions: Transaction[];
-  /** Older pages are unloaded: filtering and aggregation covered only `transactions`. */
+  /** Matching rows the list renders (RBF-replaced rows excluded). */
+  shownCount: number;
+  /** Loaded rows the list can render (RBF-replaced rows excluded). */
+  loadedCount: number;
+  /** Older pages are unloaded: filtering and aggregation covered only the loaded rows. */
   hasMoreTx: boolean;
   onAiQueryChange: (result: NaturalQueryResult | null) => void;
 }
@@ -18,8 +19,8 @@ interface AiFilterSummaryProps {
 export const AiFilterSummary: React.FC<AiFilterSummaryProps> = ({
   aiQueryFilter,
   aiAggregationResult,
-  filteredTransactions,
-  transactions,
+  shownCount,
+  loadedCount,
   hasMoreTx,
   onAiQueryChange,
 }) => {
@@ -41,12 +42,12 @@ export const AiFilterSummary: React.FC<AiFilterSummaryProps> = ({
                 {aiQueryFilter.aggregation && <span className="text-sanctuary-500 ml-1">({aiQueryFilter.aggregation})</span>}
                 {hasMoreTx && (
                   <span data-testid="ai-filter-partial-notice" className="text-sanctuary-500 ml-1">
-                    {'\u2014'} over the {transactions.length} loaded transactions; older transactions are not included. Load more to extend.
+                    {'\u2014'} over the {loadedCount} loaded transactions; older transactions are not included. Load more to extend.
                   </span>
                 )}
               </>
             ) : (
-              <>Showing {filteredTransactions.length} of {transactions.length} {countSuffix}</>
+              <>Showing {shownCount} of {loadedCount} {countSuffix}</>
             )}
           </span>
         </div>

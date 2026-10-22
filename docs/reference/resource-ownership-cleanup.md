@@ -95,7 +95,9 @@ file, and sync its parent. Mutable pointers are a separate atomic-replace mode.
 Final states are `dry_run`, `no_op`, `cleaned`, `partial`, `cancelled`, `refused`,
 `ambiguous`, or `recovered`. A cleanup command timeout is not success and does
 not prove the daemon request stopped. Inspect exact identities and postconditions
-before recovery proceeds.
+before recovery proceeds. `refused` means no action was attempted; a run whose
+first action failed and whose remaining actions were refused is `partial`, and an
+interrupted execution of that shape is completed by recovery.
 
 Verify the detached signature against the configured public key and expected
 fingerprint, then verify every bound digest and timestamp. Timestamps must satisfy

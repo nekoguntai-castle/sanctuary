@@ -1,5 +1,11 @@
 import type { DraftTransaction, Prisma } from '../generated/prisma/client';
-import { CreateDraftRequestSchema } from '@sanctuary/shared/schemas/draftRequests';
+import {
+  CreateDraftRequestSchema,
+  type CreateDraftRequest,
+  type DraftDecoyOutputRequest,
+  type DraftInputRequest,
+  type DraftOutputRequest,
+} from '@sanctuary/shared/schemas/draftRequests';
 import { canonicalSegwitAddressCase } from '@sanctuary/shared/utils/bitcoin';
 import { draftRepository, systemSettingRepository, transactionSigningIntentRepository } from '../repositories';
 import type { DraftDbClient } from '../repositories/draftRepository';
@@ -89,10 +95,13 @@ const buildDraftRequestValidationInput = (data: CreateDraftInput): Record<string
   intentDigest: data.intentDigest,
 });
 
-const assertValidCreateDraftInput = (data: CreateDraftInput): void => {
-  if (!CreateDraftRequestSchema.safeParse(buildDraftRequestValidationInput(data)).success) {
+/** Returns the request as the strict schema parsed it, so the display rules read typed entries. */
+const parseCreateDraftInput = (data: CreateDraftInput): CreateDraftRequest => {
+  const parsed = CreateDraftRequestSchema.safeParse(buildDraftRequestValidationInput(data));
+  if (!parsed.success) {
     throw new InvalidInputError('recipient, amount, feeRate, and psbtBase64 are required');
   }
+  return parsed.data;
 };
 
 const getDraftExpirationDays = async (): Promise<number> => {
@@ -349,10 +358,13 @@ const assertIntegerMatches = (field: string, expected: number, value: unknown): 
 const sumAmounts = (items: Array<{ amount: number }>): number =>
   items.reduce((sum, item) => sum + item.amount, 0);
 
+/** Txids compare case-insensitively wherever an outpoint is keyed. */
+const outpointKey = (txid: string, vout: number): string => `${txid.toLowerCase()}:${vout}`;
+
 /** (i) The selected UTXOs are exactly the intent's inputs; returns them normalised for locking. */
 const assertSelectedOutpointsMatch = (data: CreateDraftInput, spend: IntentSpend): string[] => {
   const selected = (data.selectedUtxoIds || []).map(id => id.toLowerCase());
-  const canonical = new Set(spend.inputs.map(input => `${input.txid.toLowerCase()}:${input.vout}`));
+  const canonical = new Set(spend.inputs.map(input => outpointKey(input.txid, input.vout)));
   const distinct = new Set(selected);
   const matches = distinct.size === selected.length
     && distinct.size === canonical.size
@@ -381,6 +393,11 @@ const assertAmountMatches = (data: CreateDraftInput, spend: IntentSpend): void =
   assertIntegerMatches('amount', spend.amount, data.effectiveAmount || data.amount);
 };
 
+/** (x) The stored amount is the stored effective amount, which (iii) binds to the intent when anything leaves the wallet. */
+const assertStoredAmountMatches = (data: CreateDraftInput): void => {
+  assertIntegerMatches('amount', Number(data.effectiveAmount || data.amount), data.amount);
+};
+
 /** (iv) Reported totals, when supplied non-zero, are the intent's sums. */
 const assertTotalsMatch = (data: CreateDraftInput, totalInput: number, totalOutput: number): void => {
   const totals: Array<[string, unknown, number]> = [
@@ -394,6 +411,151 @@ const assertTotalsMatch = (data: CreateDraftInput, totalInput: number, totalOutp
   }
 };
 
+/** (iii) With nothing paid outside the wallet, the recipient is still one of the intent's outputs. */
+const assertConsolidationRecipient = (data: CreateDraftInput, spend: IntentSpend): void => {
+  const recipient = canonicalSegwitAddressCase(data.recipient);
+  if (!spend.outputs.some(output => output.address === recipient)) {
+    throw intentMismatch('recipient', spend.outputs.map(output => output.address), data.recipient);
+  }
+};
+
+type IntentOutput = IntentSpend['outputs'][number];
+/** Intent output indexes already backing a displayed entry, shared by outputs, decoys and change. */
+type ClaimedOutputs = Set<number>;
+
+const isExternalOutput = (output: IntentOutput): boolean =>
+  !output.isOurs && output.address.length > 0 && output.amount > 0;
+
+/**
+ * Claim the first unclaimed intent output at `address` that `fits`; -1 when
+ * none does. Each intent output backs at most one displayed entry, whether it
+ * is shown as an output, a decoy or the change.
+ */
+const claimOutput = (
+  spend: IntentSpend,
+  claimed: ClaimedOutputs,
+  address: string,
+  fits: (output: IntentOutput) => boolean,
+): number => {
+  const wanted = canonicalSegwitAddressCase(address);
+  const index = spend.outputs.findIndex((output, i) => !claimed.has(i) && output.address === wanted && fits(output));
+  if (index >= 0) claimed.add(index);
+  return index;
+};
+
+/**
+ * A displayed output amount is the intent's, except the two client shapes the
+ * send flow stores: a sendMax entry may carry 0, and a subtractFees entry the
+ * typed amount, which exceeds the paid amount by at most the fee not already
+ * taken by earlier entries.
+ */
+const outputAmountFits = (
+  request: CreateDraftRequest,
+  entry: DraftOutputRequest,
+  canonical: number,
+  unclaimedFee: number,
+): boolean => {
+  const amount = Number(entry.amount);
+  if (amount === canonical) return true;
+  if (entry.sendMax === true && request.sendMax === true && amount === 0) return true;
+  return request.subtractFees === true && amount > canonical && amount <= canonical + unclaimedFee;
+};
+
+/** Claims an intent output for every entry; false when one has none. Overstatements share one fee budget. */
+const claimOutputEntries = (
+  request: CreateDraftRequest,
+  entries: DraftOutputRequest[],
+  spend: IntentSpend,
+  fee: number,
+  claimed: ClaimedOutputs,
+): boolean => {
+  let unclaimedFee = fee;
+  for (const entry of entries) {
+    const index = claimOutput(spend, claimed, entry.address,
+      output => outputAmountFits(request, entry, output.amount, unclaimedFee));
+    if (index < 0) return false;
+    unclaimedFee -= Math.max(0, Number(entry.amount) - spend.outputs[index].amount);
+  }
+  return true;
+};
+
+/**
+ * (vi) Every displayed output is a distinct intent output, every external
+ * output is displayed, and at most one entry is sendMax. Omitted outputs fall
+ * back to the bound recipient, so they are allowed only when the intent pays at
+ * most one external output.
+ */
+const assertOutputListMatches = (
+  request: CreateDraftRequest,
+  spend: IntentSpend,
+  fee: number,
+  claimed: ClaimedOutputs,
+): void => {
+  const entries = request.outputs ?? [];
+  if (entries.length === 0 && spend.externalOutputs.length <= 1) return;
+  const listed = entries.filter(entry => entry.sendMax === true).length <= 1
+    && claimOutputEntries(request, entries, spend, fee, claimed);
+  if (!listed || !spend.outputs.every((output, i) => claimed.has(i) || !isExternalOutput(output))) {
+    throw intentMismatch('outputs', spend.outputs.map(({ address, amount }) => ({ address, amount })), request.outputs);
+  }
+};
+
+/** (vii) Each decoy is a distinct, otherwise undisplayed wallet-owned intent output with its amount. */
+const assertDecoysMatch = (request: CreateDraftRequest, spend: IntentSpend, claimed: ClaimedOutputs): void => {
+  const decoys: DraftDecoyOutputRequest[] = request.decoyOutputs ?? [];
+  for (const decoy of decoys) {
+    const amount = Number(decoy.amount);
+    if (claimOutput(spend, claimed, decoy.address, output => output.isOurs && output.amount === amount) < 0) {
+      throw intentMismatch('decoyOutputs', undefined, request.decoyOutputs);
+    }
+  }
+};
+
+/**
+ * (vii) The change address is an otherwise undisplayed wallet-owned intent
+ * output paying exactly the change amount; with no change address the change
+ * amount is 0 (decoy change is reported through decoyOutputs). Compared as
+ * stored (`changeAmount || 0`).
+ */
+const assertChangeMatches = (request: CreateDraftRequest, spend: IntentSpend, claimed: ClaimedOutputs): void => {
+  const changeAmount = Number(request.changeAmount || 0);
+  if (!request.changeAddress) {
+    assertIntegerMatches('changeAmount', 0, changeAmount);
+    return;
+  }
+  if (claimOutput(spend, claimed, request.changeAddress, output => output.isOurs && output.amount === changeAmount) < 0) {
+    throw intentMismatch('changeAddress', undefined, { changeAddress: request.changeAddress, changeAmount: request.changeAmount });
+  }
+};
+
+/** One claimed set, so no intent output is shown as more than one of an output, a decoy and the change. */
+const assertDisplayOutputsMatch = (request: CreateDraftRequest, spend: IntentSpend, fee: number): void => {
+  const claimed: ClaimedOutputs = new Set();
+  // Decoys and change need an exact amount on a wallet-owned output, so they claim first; only the flexible
+  // outputs entries (subtractFees overstatement, sendMax 0) are then matched greedily against what is left.
+  assertDecoysMatch(request, spend, claimed);
+  assertChangeMatches(request, spend, claimed);
+  assertOutputListMatches(request, spend, fee, claimed);
+};
+
+/** (viii) Displayed inputs, when supplied, are exactly the intent's inputs with their prevout address and amount. */
+const assertDisplayInputsMatch = (request: CreateDraftRequest, spend: IntentSpend): void => {
+  const entries: DraftInputRequest[] = request.inputs ?? [];
+  if (entries.length === 0) return;
+  const canonical = new Map(spend.inputs.map(input => [outpointKey(input.txid, input.vout), input]));
+  const seen = new Set<string>();
+  const matches = entries.length === canonical.size && entries.every(entry => {
+    const key = outpointKey(entry.txid, entry.vout);
+    const input = canonical.get(key);
+    if (!input || seen.has(key)) return false;
+    seen.add(key);
+    return canonicalSegwitAddressCase(entry.address) === input.address && Number(entry.amount) === input.amount;
+  });
+  if (!matches) {
+    throw intentMismatch('inputs', [...canonical.keys()], request.inputs);
+  }
+};
+
 /** (v) isRBF (which skips UTXO locks) needs the intent's authenticated replacement target. */
 const assertRbfBinding = (data: CreateDraftInput, spend: IntentSpend): void => {
   if (data.isRBF === true && !spend.replacementTxid) {
@@ -402,11 +564,17 @@ const assertRbfBinding = (data: CreateDraftInput, spend: IntentSpend): void => {
 };
 
 /**
- * Refuse a draft whose display fields, totals, selected UTXOs or RBF flag
+ * Refuse a draft whose display fields (recipient, amount, outputs, inputs,
+ * change, decoys), totals, selected UTXOs or RBF flag
  * disagree with the signing intent. Returns the input with its selected UTXO
- * ids normalised, so the locks cover the PSBT's real inputs.
+ * ids normalised, so the locks cover the PSBT's real inputs. `request` is
+ * `data` as the strict schema parsed it; the display rules read its entries.
  */
-const assertDraftMatchesIntent = (data: CreateDraftInput, spend: IntentSpend): CreateDraftInput => {
+const assertDraftMatchesIntent = (
+  data: CreateDraftInput,
+  request: CreateDraftRequest,
+  spend: IntentSpend,
+): CreateDraftInput => {
   const selectedUtxoIds = assertSelectedOutpointsMatch(data, spend);
   const totalInput = sumAmounts(spend.inputs);
   const totalOutput = sumAmounts(spend.outputs);
@@ -414,9 +582,14 @@ const assertDraftMatchesIntent = (data: CreateDraftInput, spend: IntentSpend): C
   if (spend.externalOutputs.length > 0) {
     assertRecipientMatches(data, spend);
     assertAmountMatches(data, spend);
+  } else {
+    assertConsolidationRecipient(data, spend);
   }
+  assertStoredAmountMatches(data);
   assertTotalsMatch(data, totalInput, totalOutput);
   assertRbfBinding(data, spend);
+  assertDisplayOutputsMatch(request, spend, totalInput - totalOutput);
+  assertDisplayInputsMatch(request, spend);
   return { ...data, selectedUtxoIds };
 };
 
@@ -485,13 +658,13 @@ export async function createDraft(
   if (!intent.signingContext) {
     throw new InvalidInputError('Draft signing intent has no authenticated account binding');
   }
-  assertValidCreateDraftInput(data);
+  const request = parseCreateDraftInput(data);
   // Derived once (the same derivation broadcast makes) and reused for policy.
   const spend = await deriveIntentSpend(walletId, intent.snapshot.network, intent.snapshot);
   // Assigned back to `data`: the binding normalises the selected UTXO ids, and
   // requiresApproval(data) is recomputed by the record builder and the
   // approval-request step below.
-  data = assertDraftMatchesIntent(data, spend);
+  data = assertDraftMatchesIntent(data, request, spend);
   data = await withServerPolicyEvaluation(data, walletId, userId, intent, spend);
 
   const initialSigningState = await validateInitialSigningState(walletId, data);

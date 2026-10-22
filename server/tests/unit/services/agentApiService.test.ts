@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { DraftOutputRequestSchema } from '@sanctuary/shared/schemas/draftRequests';
 
 import {
   ConflictError,
@@ -402,26 +403,9 @@ describe('agentApiService', () => {
       expect.objectContaining({
         decoyOutputs: [{ address: 'tb1qdecoy', amount: 200 }],
         inputs: [{ txid: 'txid', vout: 0, address: '', amount: 0 }],
-        outputs: [
-          {
-            address: 'tb1qrecipient',
-            amount: 1000,
-            outputType: 'recipient',
-            isOurs: true,
-          },
-          {
-            address: 'tb1qchange',
-            amount: 300,
-            outputType: 'change',
-            isOurs: true,
-          },
-          {
-            address: 'tb1qdecoy',
-            amount: 200,
-            outputType: 'decoy',
-            isOurs: true,
-          },
-        ],
+        outputs: [{ address: 'tb1qrecipient', amount: 1000 }],
+        changeAddress: 'tb1qchange',
+        changeAmount: 300,
         policyEvaluation,
       }),
       expect.objectContaining({
@@ -442,6 +426,29 @@ describe('agentApiService', () => {
       expect.objectContaining({ policyEvaluation }),
     );
     expect(mocks.runDraftCreatedSideEffects).not.toHaveBeenCalled();
+  });
+
+  it('sends createDraft only the payment output, in the strict draft request shape', async () => {
+    mocks.createTransaction.mockResolvedValueOnce(
+      makeTransactionData({ changeAddress: 'tb1qchange', changeAmount: 300 }),
+    );
+
+    await submitAgentFundingDraft({ context: agentContext, fundingWalletId: 'funding-wallet', body: baseFundingDraftBody });
+
+    const outputs = mocks.createDraft.mock.calls[0][2].outputs;
+    expect(DraftOutputRequestSchema.array().safeParse(outputs).success).toBe(true);
+    expect(outputs).toEqual([{ address: 'tb1qrecipient', amount: 1000 }]);
+  });
+
+  it('files the accepted attempt at the instant its caps were checked', async () => {
+    await submitAgentFundingDraft({ context: agentContext, fundingWalletId: 'funding-wallet', body: baseFundingDraftBody });
+
+    const checkedAt = mocks.enforceAgentFundingPolicy.mock.calls[0][3];
+    expect(checkedAt).toBeInstanceOf(Date);
+    expect(mocks.createFundingAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'accepted', createdAt: checkedAt }),
+      expect.any(Object),
+    );
   });
 
   it('rolls back agent draft acceptance when accepted attempt recording fails', async () => {

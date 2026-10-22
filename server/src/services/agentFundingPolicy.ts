@@ -96,7 +96,7 @@ export async function enforceAgentFundingPolicy(
   }
 
   if (agent.dailyFundingLimitSats != null) {
-    const dayTotal = await agentRepository.sumAgentDraftAmountsSince(
+    const dayTotal = await agentRepository.sumAcceptedFundingAmountsSince(
       agentId,
       startOfUtcDay(now),
     );
@@ -109,7 +109,7 @@ export async function enforceAgentFundingPolicy(
   }
 
   if (agent.weeklyFundingLimitSats != null) {
-    const weekTotal = await agentRepository.sumAgentDraftAmountsSince(
+    const weekTotal = await agentRepository.sumAcceptedFundingAmountsSince(
       agentId,
       startOfUtcWeek(now),
     );

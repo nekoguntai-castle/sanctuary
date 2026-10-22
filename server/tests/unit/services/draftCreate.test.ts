@@ -29,7 +29,6 @@ const txTracker = vi.hoisted(() => {
 vi.mock('../../../src/repositories', () => ({
   draftRepository: {
     create: vi.fn(),
-    remove: vi.fn(),
     withTransaction: txTracker.withTransaction,
   },
   systemSettingRepository: {
@@ -117,8 +116,8 @@ import {
 const externalSpend = (overrides: Record<string, unknown> = {}) => ({
   inputs: [{ txid: 'a'.repeat(64), vout: 1, address: 'tb1qwallet', amount: 120000 }],
   outputs: [
-    { address: 'tb1qexternal', amount: 100000 },
-    { address: 'tb1qchange', amount: 19000 },
+    { address: 'tb1qexternal', amount: 100000, isOurs: false },
+    { address: 'tb1qchange', amount: 19000, isOurs: true },
   ],
   externalOutputs: [{ address: 'tb1qexternal', amount: 100000 }],
   amount: 100000,
@@ -594,6 +593,7 @@ describe('createDraft binds draft metadata to the signing intent', () => {
     ['a different recipient', { recipient: 'tb1qattacker' }, 'recipient'],
     ['a different effectiveAmount', { effectiveAmount: 99000 }, 'amount'],
     ['a sendMax draft with a different effectiveAmount', { sendMax: true, effectiveAmount: 90000 }, 'amount'],
+    ['a stored amount that is not the effective amount', { amount: 1 }, 'amount'],
     ['a subtractFees draft with a different recipient', { subtractFees: true, recipient: 'tb1qattacker' }, 'recipient'],
     ['a fee that is not inputs minus outputs', { fee: 500 }, 'fee'],
     ['an omitted fee (counts as 0)', { fee: undefined }, 'fee'],
@@ -607,6 +607,22 @@ describe('createDraft binds draft metadata to the signing intent', () => {
     ['a totalInput that is not the input sum', { totalInput: 119000, totalOutput: 119000 }, 'totalInput'],
     ['a totalOutput that is not the output sum', { totalInput: 120000, totalOutput: 100000 }, 'totalOutput'],
     ['an unsafe-integer totalInput', { totalInput: String(unsafe) }, 'totalInput'],
+    ['an output the intent does not pay', { outputs: [{ address: 'tb1qattacker', amount: 100000 }] }, 'outputs'],
+    ['outputs that leave out the external payment', { outputs: [{ address: 'tb1qchange', amount: 19000 }] }, 'outputs'],
+    ['an output with a different amount', { outputs: [{ address: 'tb1qexternal', amount: 90000 }] }, 'outputs'],
+    ['one intent output listed twice', { outputs: [{ address: 'tb1qexternal', amount: 100000 }, { address: 'tb1qexternal', amount: 100000 }] }, 'outputs'],
+    ['a 0 sendMax entry on a draft that is not sendMax', { outputs: [{ address: 'tb1qexternal', amount: 0, sendMax: true }] }, 'outputs'],
+    ['a subtractFees entry above the paid amount plus the fee', { subtractFees: true, outputs: [{ address: 'tb1qexternal', amount: 101001 }] }, 'outputs'],
+    ['a change address the intent does not pay', { changeAddress: 'tb1qattacker', changeAmount: 19000 }, 'changeAddress'],
+    ['the external payment shown as change', { changeAddress: 'tb1qexternal', changeAmount: 100000 }, 'changeAddress'],
+    ['a change amount that is not the change output', { changeAddress: 'tb1qchange', changeAmount: 18000 }, 'changeAddress'],
+    ['a change amount without a change address', { changeAmount: 19000 }, 'changeAmount'],
+    ['a decoy the intent does not pay', { decoyOutputs: [{ address: 'tb1qattacker', amount: 19000 }] }, 'decoyOutputs'],
+    ['the external payment shown as a decoy', { decoyOutputs: [{ address: 'tb1qexternal', amount: 100000 }] }, 'decoyOutputs'],
+    ['an input the intent does not spend', { inputs: [{ txid: 'b'.repeat(64), vout: 1, address: 'tb1qwallet', amount: 120000 }] }, 'inputs'],
+    ['an input with a different amount', { inputs: [{ txid: 'a'.repeat(64), vout: 1, address: 'tb1qwallet', amount: 1 }] }, 'inputs'],
+    ['an input with a different address', { inputs: [{ txid: 'a'.repeat(64), vout: 1, address: 'tb1qattacker', amount: 120000 }] }, 'inputs'],
+    ['one intent input listed twice', { inputs: [{ txid: 'a'.repeat(64), vout: 1, address: 'tb1qwallet', amount: 120000 }, { txid: 'A'.repeat(64), vout: 1, address: 'tb1qwallet', amount: 120000 }] }, 'inputs'],
   ])('rejects %s', async (_name, overrides, field) => {
     await expectMismatch(overrides, field);
   });
@@ -638,6 +654,10 @@ describe('createDraft binds draft metadata to the signing intent', () => {
     ['a sendMax draft whose outputs carry 0', { sendMax: true, outputs: [{ address: 'tb1qexternal', amount: 0, sendMax: true }] }],
     ['a subtractFees draft with unreduced outputs', { subtractFees: true, outputs: [{ address: 'tb1qexternal', amount: 101000 }] }],
     ['an amount-only draft (effectiveAmount omitted)', { effectiveAmount: undefined }],
+    ['the change output with its amount', { changeAddress: 'tb1qchange', changeAmount: '19000' }],
+    ['a wallet-owned decoy with its amount', { decoyOutputs: [{ address: 'tb1qchange', amount: 19000 }] }],
+    ['outputs that also list a wallet-owned output', { outputs: [{ address: 'tb1qchange', amount: 19000 }, { address: 'tb1qexternal', amount: 100000 }] }],
+    ['the intent inputs with an upper-case txid', { inputs: [{ txid: 'A'.repeat(64), vout: 1, address: 'tb1qwallet', amount: '120000' }] }],
   ])('accepts %s', async (_name, overrides) => {
     await expectAccepted(overrides);
   });
@@ -658,25 +678,105 @@ describe('createDraft binds draft metadata to the signing intent', () => {
     expect(lockUtxosForDraft).not.toHaveBeenCalled();
   });
 
-  it('skips recipient and amount for a consolidation that pays nothing outside the wallet', async () => {
+  it('accepts a consolidation whose recipient is an intent output and whose amount is its effective amount', async () => {
     (deriveIntentSpend as Mock).mockResolvedValue(externalSpend({ externalOutputs: [], amount: 0 }));
 
-    await expectAccepted({ recipient: 'tb1qchange', effectiveAmount: 119000 });
+    await expectAccepted({ recipient: 'tb1qchange', amount: 119000, effectiveAmount: 119000 });
   });
 
-  it('binds a multi-recipient draft to the first external output and the summed amount', async () => {
-    (deriveIntentSpend as Mock).mockResolvedValue(externalSpend({
-      outputs: [
-        { address: 'tb1qexternal', amount: 60000 },
-        { address: 'tb1qsecond', amount: 40000 },
-        { address: 'tb1qchange', amount: 19000 },
-      ],
-      externalOutputs: [{ address: 'tb1qexternal', amount: 60000 }, { address: 'tb1qsecond', amount: 40000 }],
-      amount: 100000,
-    }));
+  it('rejects a consolidation whose amount is not its effective amount', async () => {
+    (deriveIntentSpend as Mock).mockResolvedValue(externalSpend({ externalOutputs: [], amount: 0 }));
 
-    await expectAccepted({});
+    await expectMismatch({ recipient: 'tb1qchange', amount: 100000, effectiveAmount: 119000 }, 'amount');
+  });
+
+  it('rejects displayed inputs that repeat one intent input and leave out another', async () => {
+    const inputs = [1, 2].map(vout => ({ txid: 'a'.repeat(64), vout, address: 'tb1qwallet', amount: 60000 }));
+    (deriveIntentSpend as Mock).mockResolvedValue(externalSpend({ inputs }));
+
+    await expectMismatch({ selectedUtxoIds: inputs.map(input => `${input.txid}:${input.vout}`), inputs: [inputs[0], inputs[0]] }, 'inputs');
+  });
+
+  it('rejects a consolidation recipient the intent does not pay', async () => {
+    (deriveIntentSpend as Mock).mockResolvedValue(externalSpend({ externalOutputs: [], amount: 0 }));
+
+    await expectMismatch({ recipient: 'tb1qattacker', effectiveAmount: 119000 }, 'recipient');
+  });
+
+  // Two external payments (60000 + 40000) and 19000 change; the canonical fee is still 1000.
+  const multiRecipientSpend = () => externalSpend({
+    outputs: [
+      { address: 'tb1qexternal', amount: 60000, isOurs: false },
+      { address: 'tb1qsecond', amount: 40000, isOurs: false },
+      { address: 'tb1qchange', amount: 19000, isOurs: true },
+    ],
+    externalOutputs: [{ address: 'tb1qexternal', amount: 60000 }, { address: 'tb1qsecond', amount: 40000 }],
+    amount: 100000,
+  });
+  const bothPayments = [{ address: 'tb1qexternal', amount: 60000 }, { address: 'tb1qsecond', amount: 40000 }];
+
+  it('binds a multi-recipient draft to the first external output and the summed amount', async () => {
+    (deriveIntentSpend as Mock).mockResolvedValue(multiRecipientSpend());
+
+    await expectAccepted({ outputs: bothPayments });
     expect(deriveIntentSpend).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['omits outputs (the second payment would be hidden)', { outputs: undefined }],
+    ['sends an empty outputs list', { outputs: [] }],
+    ['overstates its subtractFees entries by more than the fee in total', {
+      subtractFees: true, outputs: [{ address: 'tb1qexternal', amount: 61000 }, { address: 'tb1qsecond', amount: 41000 }],
+    }],
+    ['marks more than one entry sendMax', {
+      sendMax: true,
+      outputs: [{ address: 'tb1qexternal', amount: 0, sendMax: true }, { address: 'tb1qsecond', amount: 0, sendMax: true }],
+    }],
+  ])('rejects a multi-recipient draft that %s', async (_name, overrides) => {
+    (deriveIntentSpend as Mock).mockResolvedValue(multiRecipientSpend());
+
+    await expectMismatch(overrides, 'outputs');
+  });
+
+  it('accepts a multi-recipient subtractFees draft whose entries overstate the payments by the fee in total', async () => {
+    (deriveIntentSpend as Mock).mockResolvedValue(multiRecipientSpend());
+
+    await expectAccepted({
+      subtractFees: true, outputs: [{ address: 'tb1qexternal', amount: 60500 }, { address: 'tb1qsecond', amount: 40500 }],
+    });
+  });
+
+  // A subtractFees self-send to the freshly prepared change address: the typed 20000 entry also fits the 19500
+  // change output (19500 < 20000 <= 19500 + 1000 fee). Outputs are shuffled when built, so both orders must pass.
+  const changeAddressSelfSend = (changeFirst: boolean) => {
+    const change = { address: 'tb1qchange', amount: 19500, isOurs: true };
+    const payment = { address: 'tb1qchange', amount: 19000, isOurs: true };
+    return externalSpend({
+      inputs: [{ txid: 'a'.repeat(64), vout: 1, address: 'tb1qwallet', amount: 39500 }],
+      outputs: changeFirst ? [change, payment] : [payment, change],
+      externalOutputs: [],
+      amount: 0,
+    });
+  };
+
+  it.each([
+    ['change output first', true],
+    ['payment output first', false],
+  ])('accepts a subtractFees self-send to the change address (%s)', async (_name, changeFirst) => {
+    (deriveIntentSpend as Mock).mockResolvedValue(changeAddressSelfSend(changeFirst));
+
+    await expectAccepted({
+      recipient: 'tb1qchange', amount: 19000, effectiveAmount: 19000, subtractFees: true,
+      outputs: [{ address: 'tb1qchange', amount: 20000 }], changeAddress: 'tb1qchange', changeAmount: 19500,
+    });
+  });
+
+  it.each([
+    ['as change and as a decoy', { changeAddress: 'tb1qchange', changeAmount: 19000, decoyOutputs: [{ address: 'tb1qchange', amount: 19000 }] }, 'changeAddress'],
+    ['as an outputs entry and as change', { outputs: [{ address: 'tb1qexternal', amount: 100000 }, { address: 'tb1qchange', amount: 19000 }], changeAddress: 'tb1qchange', changeAmount: 19000 }, 'outputs'],
+    ['as an outputs entry and as a decoy', { outputs: [{ address: 'tb1qexternal', amount: 100000 }, { address: 'tb1qchange', amount: 19000 }], decoyOutputs: [{ address: 'tb1qchange', amount: 19000 }] }, 'outputs'],
+  ])('rejects one wallet-owned output shown %s', async (_name, overrides, field) => {
+    await expectMismatch(overrides, field);
   });
 });
 

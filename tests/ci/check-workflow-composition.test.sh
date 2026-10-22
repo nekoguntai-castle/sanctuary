@@ -3068,7 +3068,7 @@ assert_not_contains "$PSBT_SUBJECT" \
 
 assert_contains_in_order "$PSBT_SUBJECT" \
   "PSBT subject recovers create response loss and preserves the create failure" \
-  'durable_id="$(tr' \
+  'durable_id="$(read_cidfile_id)"' \
   'recovered_id="$(recover_exact_created_container "$container_name")" || {' \
   'printf' \
   '[ "$create_status" -eq 0 ] || return "$create_status"'
@@ -3085,6 +3085,15 @@ assert_contains_in_order "$PSBT_SUBJECT" \
   'npm run generate:signed' \
   'git -C "$SANCTUARY_PROJECT_DIR" diff --exit-code' \
   'tests/unit/services/bitcoin/psbt.signed-vectors.test.ts'
+
+# D-16.C1b: Core create, image attestation and the readiness wait are a
+# run-with-log.sh step of their own, so the job failure breadcrumb never reads
+# a failed or timed-out preamble as a post-verification fault.
+assert_contains_in_order "$PSBT_SUBJECT" \
+  "PSBT subject runs Core setup as its own diagnostic step before the proof" \
+  'attest_and_start_core "$container_id"' \
+  '"$SCRIPT_DIR/run-with-log.sh" "$DIAGNOSTIC_DIR/psbt-core-setup-$mode.log"' \
+  'if [ "$mode" = live ]; then run_live_proof; else run_regenerate_proof; fi'
 
 for forbidden_cleanup in 'docker rm' 'docker stop' 'docker kill'; do
   assert_not_contains "$VV" \

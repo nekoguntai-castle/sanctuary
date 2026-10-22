@@ -119,6 +119,7 @@ describe("Agent Routes funding drafts", () => {
       "agent-1",
       "operational-wallet",
       BigInt(10000),
+      expect.any(Date),
     );
     expect(mockEvaluatePolicies).toHaveBeenCalledWith({
       walletId: "funding-wallet",
@@ -231,6 +232,7 @@ describe("Agent Routes funding drafts", () => {
       "agent-1",
       "operational-wallet",
       15000n,
+      expect.any(Date),
     );
     expect(mockEvaluatePolicies).toHaveBeenCalledWith(
       expect.objectContaining({

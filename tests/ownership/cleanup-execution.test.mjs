@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { generateKeyPairSync } from 'node:crypto';
 import {
   chmodSync, existsSync, mkdtempSync, readFileSync, unlinkSync, writeFileSync,
 } from 'node:fs';
@@ -19,91 +18,9 @@ import {
 import { recoverCleanupExecution } from '../../scripts/ownership/cleanup-recovery.mjs';
 import { verifyCleanupJournal } from '../../scripts/ownership/cleanup-journal.mjs';
 import { buildCleanupPlan, buildPlanningReceipt } from '../../scripts/ownership/cleanup-planner.mjs';
-import { publicKeyFingerprint } from '../../scripts/ownership/crypto.mjs';
-
-const HASH = 'a'.repeat(64);
-const ID = 'b'.repeat(64);
-const AUTH_SIGNER = 'c'.repeat(64);
-
-function keys(directory) {
-  const pair = generateKeyPairSync('rsa', { modulusLength: 2048 });
-  const privateKey = pair.privateKey.export({ type: 'pkcs8', format: 'pem' });
-  const publicKey = pair.publicKey.export({ type: 'spki', format: 'pem' });
-  const privateKeyPath = path.join(directory, 'private.pem');
-  const publicKeyPath = path.join(directory, 'public.pem');
-  writeFileSync(privateKeyPath, privateKey, { mode: 0o600 });
-  writeFileSync(publicKeyPath, publicKey, { mode: 0o600 });
-  return { privateKey, publicKey, privateKeyPath, publicKeyPath, signerKeyId: publicKeyFingerprint(publicKey) };
-}
-
-function ownership(identity = ID) {
-  return {
-    project: 'fixture', deploymentId: 'deploy-1', ownerId: 'owner-1',
-    resourceClass: 'compose_network', lifecycle: 'obsolete', cleanupPolicy: 'exact_delete',
-    createdAt: '2026-08-30T00:00:00.000Z', createdByRelease: 'unreleased',
-    createdByCommit: 'd'.repeat(40), creationRunId: 'create-1', immutableIdentity: identity,
-  };
-}
-
-function row(identity = ID) {
-  const authority = ownership(identity);
-  return {
-    resourceClass: 'compose_network', locatorKind: 'engine_id', locator: identity,
-    immutableIdentity: identity, ownership: authority, ownershipDigest: canonicalSha256(authority),
-    observationDigest: HASH, disposition: 'eligible', failureClasses: [], references: [],
-    contentDigests: [], dependencyIdentities: [], active: false, protected: false, data: false,
-    running: null,
-  };
-}
-
-function inventory(resources, observedAt) {
-  return {
-    schemaVersion: '1.2.0', artifactType: 'inventory', deploymentId: 'deploy-1',
-    operationRunId: 'cleanup-1', generation: 1, observedAt, complete: true,
-    policyDigest: HASH, deploymentManifestDigest: HASH, runManifestDigest: HASH,
-    contextFingerprint: HASH, resources, ambiguities: [],
-  };
-}
-
-const contract = {
-  resourceClasses: [{ classId: 'compose_network', dependsOn: [], cleanupPolicies: ['exact_delete'] }],
-};
-
-function fixture(nonce) {
-  const checkoutRoot = mkdtempSync(path.join(os.tmpdir(), `cleanup-${nonce}-checkout-`));
-  const runtimeDirectory = mkdtempSync(path.join(os.tmpdir(), `cleanup-${nonce}-runtime-`));
-  chmodSync(checkoutRoot, 0o700);
-  chmodSync(runtimeDirectory, 0o700);
-  const signer = keys(runtimeDirectory);
-  const before = inventory([row()], '2026-08-30T00:00:00.000Z');
-  const plan = buildCleanupPlan(before, contract, { policyDigest: HASH });
-  const dryRunReceipt = buildPlanningReceipt(before, plan, {
-    signerKeyId: signer.signerKeyId, now: () => new Date('2026-08-30T00:00:01.000Z'),
-  });
-  const approval = buildCleanupApproval(plan, dryRunReceipt, {
-    signerKeyId: AUTH_SIGNER, nonce, expiresAt: '2026-08-30T12:00:00.000Z',
-    now: () => new Date('2026-08-30T00:00:02.000Z'),
-  });
-  return {
-    checkoutRoot, runtimeDirectory, signer, before, inventoryBefore: before,
-    plan, dryRunReceipt, approval,
-  };
-}
-
-function fixtureWithResources(nonce, resources) {
-  const values = fixture(nonce);
-  const before = inventory(resources, '2026-08-30T00:00:00.000Z');
-  const plan = buildCleanupPlan(before, contract, { policyDigest: HASH });
-  const dryRunReceipt = buildPlanningReceipt(before, plan, {
-    signerKeyId: values.signer.signerKeyId,
-    now: () => new Date('2026-08-30T00:00:01.000Z'),
-  });
-  const approval = buildCleanupApproval(plan, dryRunReceipt, {
-    signerKeyId: AUTH_SIGNER, nonce, expiresAt: '2026-08-30T12:00:00.000Z',
-    now: () => new Date('2026-08-30T00:00:02.000Z'),
-  });
-  return { ...values, before, inventoryBefore: before, plan, dryRunReceipt, approval };
-}
+import {
+  AUTH_SIGNER, HASH, ID, contract, fixture, inventory, keys, ownership, row,
+} from './fixtures/cleanup-execution-fixture.mjs';
 
 function executionCallbacks(afterBoundary, inventoryAfter = inventory([], '2026-08-30T00:00:08.000Z')) {
   return {
@@ -1140,7 +1057,7 @@ for (const [abortReason, journalReason] of [
   for (const timing of ['before', 'between', 'after']) {
     test(`${abortReason} ${timing} actions stops at the exact action boundary`, async () => {
       const secondId = 'e'.repeat(64);
-      const values = fixtureWithResources(
+      const values = fixture(
         `cancel-boundary-${abortReason}-${timing}`.toLowerCase(),
         [row(), row(secondId)],
       );

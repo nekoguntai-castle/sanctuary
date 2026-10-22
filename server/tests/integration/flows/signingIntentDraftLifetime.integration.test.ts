@@ -187,6 +187,18 @@ describeIfDatabase('signing intent lifetime follows its draft', () => {
     await expect(load(intent, true)).rejects.toThrow('Signing intent has expired');
   });
 
+  it('refuses to delete a broadcasted draft and keeps the row', async () => {
+    const db = await getTestPrisma();
+    const draft = await createLinkedDraft(await issueIntent());
+    await db.draftTransaction.update({ where: { id: draft.id }, data: { status: 'broadcasted' } });
+
+    await expect(deleteDraft(walletId, draft.id, userId, 'owner')).rejects.toMatchObject({
+      statusCode: 409,
+      details: { reason: 'draft_retained' },
+    });
+    await expect(db.draftTransaction.findUnique({ where: { id: draft.id } })).resolves.not.toBeNull();
+  });
+
   const otherWalletId = async () => {
     const db = await getTestPrisma();
     const other = await createTestUser(db, { username: 'intent-lifetime-2', email: 'intent-lifetime-2@example.com' });

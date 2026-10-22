@@ -263,9 +263,10 @@ test('receipt content is privacy scanned and raw secrets are rejected', () => {
       immutableIdentity: `bc1${'q'.repeat(40)}`,
       failureClass: 'active',
     }];
+  const results = [{ ...base.results[0], result: 'failed', failureClass: 'mutation_failed' }];
   assert.throws(() => buildExecutionReceiptCore({
-    ...base, state: 'partial', refusals,
-    journal: terminalJournal({ ...base, state: 'partial', refusals }),
+    ...base, state: 'partial', results, refusals,
+    journal: terminalJournal({ ...base, state: 'partial', results, refusals }),
   }), /private material/);
 });
 

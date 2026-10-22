@@ -29,7 +29,7 @@ vi.mock('../../../src/repositories', () => ({
     findByIdInWallet: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
-    remove: vi.fn(),
+    removeActionable: vi.fn(),
     deleteExpired: vi.fn(),
     withTransaction: (fn: (tx: unknown) => Promise<unknown>) => fn({}),
   },
@@ -175,10 +175,21 @@ describe('DraftService', () => {
     // The intent spend validInput describes: one input, no fee (fee omitted), nothing external.
     const canonicalSpend = {
       inputs: [{ txid: 'a'.repeat(64), vout: 1, address: 'tb1qwallet', amount: 1000 }],
-      outputs: [{ address: 'tb1qwallet', amount: 1000 }],
+      outputs: [{ address: 'tb1qtest...', amount: 1000, isOurs: true }],
       externalOutputs: [],
       amount: 0,
     };
+    // The intent behind the JSON-metadata cases: the inputs, outputs and decoys they display.
+    const metadataSpend = (txid: string) => ({
+      inputs: [{ txid, vout: 0, address: 'tb1qinput', amount: 100000 }],
+      outputs: [
+        { address: 'tb1qtest...', amount: 70000, isOurs: true },
+        { address: 'tb1qoutput', amount: 25000, isOurs: true },
+        { address: 'tb1qdecoy', amount: 5000, isOurs: true },
+      ],
+      externalOutputs: [],
+      amount: 0,
+    });
 
     beforeEach(() => {
       (deriveIntentSpend as Mock).mockResolvedValue(canonicalSpend);
@@ -216,8 +227,10 @@ describe('DraftService', () => {
     });
 
     it('normalizes string fee rates and rejects invalid direct create payloads', async () => {
+      (deriveIntentSpend as Mock).mockResolvedValueOnce(metadataSpend('a'.repeat(64)));
       await createDraft(walletId, userId, {
         ...validInput,
+        selectedUtxoIds: ['a'.repeat(64) + ':0'],
         amount: '100000',
         feeRate: '5.5',
         outputs: [{ address: 'tb1qoutput', amount: '25000' }],
@@ -245,8 +258,10 @@ describe('DraftService', () => {
     });
 
     it('keeps numeric nested amount metadata and accepts null JSON metadata fields', async () => {
+      (deriveIntentSpend as Mock).mockResolvedValueOnce(metadataSpend('b'.repeat(64)));
       await createDraft(walletId, userId, {
         ...validInput,
+        selectedUtxoIds: ['b'.repeat(64) + ':0'],
         outputs: [{ address: 'tb1qoutput', amount: 25000 }],
         inputs: [{ txid: 'b'.repeat(64), vout: 0, address: 'tb1qinput', amount: 100000 }],
         decoyOutputs: null,
@@ -351,7 +366,7 @@ describe('DraftService', () => {
     });
 
     it('uses empty selectedUtxoIds default when none are provided', async () => {
-      (deriveIntentSpend as Mock).mockResolvedValueOnce({ inputs: [], outputs: [], externalOutputs: [], amount: 0 });
+      (deriveIntentSpend as Mock).mockResolvedValueOnce({ ...canonicalSpend, inputs: [], outputs: [{ address: 'tb1qtest...', amount: 0, isOurs: true }] });
       await createDraft(walletId, userId, {
         recipient: validInput.recipient,
         amount: validInput.amount,
@@ -397,7 +412,7 @@ describe('DraftService', () => {
 
       await expect(createDraft(walletId, userId, validInput)).rejects.toThrow(ConflictError);
       // The draft's own transaction rolls the insert back; nothing is deleted.
-      expect(draftRepository.remove).not.toHaveBeenCalled();
+      expect(draftRepository.removeActionable).not.toHaveBeenCalled();
     });
 
     it('leaves transaction-scoped drafts for rollback when UTXO locking fails', async () => {
@@ -419,7 +434,7 @@ describe('DraftService', () => {
         isRBF: false,
         client,
       });
-      expect(draftRepository.remove).not.toHaveBeenCalled();
+      expect(draftRepository.removeActionable).not.toHaveBeenCalled();
     });
 
     it('continues when some selected UTXOs are not found', async () => {
@@ -912,7 +927,7 @@ describe('DraftService', () => {
     draftRepository: {
       deleteExpired: draftRepository.deleteExpired as Mock,
       findByIdInWallet: draftRepository.findByIdInWallet as Mock,
-      remove: draftRepository.remove as Mock,
+      removeActionable: draftRepository.removeActionable as Mock,
     },
     mockDraft,
     userId,

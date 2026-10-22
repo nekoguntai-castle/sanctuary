@@ -5,7 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 mode="${1:-}"
-case "$mode" in live|regenerate) ;; *) echo 'run-psbt-core-subject: expected live or regenerate' >&2; exit 2 ;; esac
+case "$mode" in live|regenerate|setup-live|setup-regenerate) ;; *) echo 'run-psbt-core-subject: expected live or regenerate (setup-live|setup-regenerate are the internal setup step)' >&2; exit 2 ;; esac
 [ "${SANCTUARY_CLEANUP_COORDINATED:-0}" = 1 ] && [ -n "${SANCTUARY_OWNERSHIP_ROOT:-}" ] || {
   echo 'PSBT Core subject requires the signed cleanup coordinator' >&2
   exit 2
@@ -24,6 +24,16 @@ ownership_label_args compose_container exact_delete
 container_name="${COMPOSE_PROJECT_NAME}-bitcoin-core"
 cidfile="$(ci_temp_dir)/${container_name}.cid"
 
+# Prints the cidfile's container ID; fails when the file is missing or does not
+# hold one full 64-hex ID.
+read_cidfile_id() {
+  local id
+  [ -f "$cidfile" ] || return 1
+  id="$(tr -d '\r\n' < "$cidfile")"
+  [[ "$id" =~ ^[0-9a-f]{64}$ ]] || return 1
+  printf '%s\n' "$id"
+}
+
 create_core() {
   local create_status=0 create_output durable_id='' durable_status=0 recovered_id register_status=0
   [ ! -e "$cidfile" ] || { echo 'PSBT Core cidfile already exists before create' >&2; return 1; }
@@ -36,12 +46,7 @@ create_core() {
     -regtest=1 -server=1 -rpcuser=sanctuary -rpcpassword=sanctuary-verify \
     -rpcallowip=0.0.0.0/0 -rpcbind=0.0.0.0 -fallbackfee=0.00001 \
     -txindex=1 -printtoconsole=1)" || create_status=$?
-  if [ -f "$cidfile" ]; then
-    durable_id="$(tr -d '\r\n' < "$cidfile")"
-    [[ "$durable_id" =~ ^[0-9a-f]{64}$ ]] || durable_status=1
-  else
-    durable_status=1
-  fi
+  durable_id="$(read_cidfile_id)" || durable_status=1
 
   # Neither stdout nor the cidfile is authority. Reinspect the exact name and
   # full immutable ownership tuple on both normal and response-loss paths, then
@@ -141,10 +146,34 @@ run_regenerate_proof() {
     tests/unit/services/bitcoin/psbt.signed-vectors.test.ts)
 }
 
-container_id="$(create_core)"
-attest_and_start_core "$container_id"
-rpc_port="$(docker inspect "$container_id" --format '{{(index (index .NetworkSettings.Ports "18443/tcp") 0).HostPort}}')"
-case "$rpc_port" in ''|*[!0-9]*) echo "Invalid Bitcoin Core RPC port: $rpc_port" >&2; exit 1 ;; esac
+core_rpc_port() {
+  local port
+  port="$(docker inspect "$1" --format '{{(index (index .NetworkSettings.Ports "18443/tcp") 0).HostPort}}')"
+  case "$port" in ''|*[!0-9]*) echo "Invalid Bitcoin Core RPC port: $port" >&2; return 1 ;; esac
+  printf '%s\n' "$port"
+}
+
+# Create, attest and wait for Core as a run-with-log.sh step of its own, so a
+# failed attestation leaves a failed step log and a step killed at its timeout
+# leaves an unfinished one. The CI failure breadcrumb otherwise sees only the
+# earlier steps' successful sidecars and reads the failure as infrastructure.
+case "$mode" in
+  setup-*)
+    container_id="$(create_core)"
+    attest_and_start_core "$container_id"
+    rpc_port="$(core_rpc_port "$container_id")"
+    wait_for_core "$container_id" "$rpc_port"
+    exit 0
+    ;;
+esac
+setup_status=0
+"$SCRIPT_DIR/run-with-log.sh" "$DIAGNOSTIC_DIR/psbt-core-setup-$mode.log" \
+  "$SCRIPT_DIR/run-psbt-core-subject.sh" "setup-$mode" || setup_status=$?
+if [ "$setup_status" -ne 0 ]; then
+  echo "PSBT Core setup failed (exit $setup_status); see $DIAGNOSTIC_DIR/psbt-core-setup-$mode.log" >&2
+  exit "$setup_status"
+fi
+container_id="$(read_cidfile_id)" || { echo 'PSBT Core setup did not leave a verified container ID' >&2; exit 1; }
+rpc_port="$(core_rpc_port "$container_id")"
 export VERIFY_PSBT_CORE_PROVENANCE_MODE=pinned-container BITCOIN_RPC_PORT="$rpc_port"
-wait_for_core "$container_id" "$rpc_port"
 if [ "$mode" = live ]; then run_live_proof; else run_regenerate_proof; fi

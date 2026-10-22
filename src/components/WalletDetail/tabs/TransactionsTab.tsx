@@ -52,7 +52,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
   const { data: walletLabels = [] } = useWalletLabels(walletId);
   const transactionsCount = transactions.length;
   // TransactionList drops RBF-replaced rows before rendering rows and tiles, so
-  // the partial-result counts do too.
+  // the AI summary and partial-result counts do too.
   const displayedLoadedCount = useMemo(() => excludeReplacedTransactions(transactions).length, [transactions]);
   const displayedFilteredCount = useMemo(
     () => excludeReplacedTransactions(filteredTransactions).length,
@@ -92,8 +92,8 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
       <AiFilterSummary
         aiQueryFilter={aiQueryFilter}
         aiAggregationResult={aiAggregationResult}
-        filteredTransactions={filteredTransactions}
-        transactions={transactions}
+        shownCount={displayedFilteredCount}
+        loadedCount={displayedLoadedCount}
         hasMoreTx={hasMoreTx}
         onAiQueryChange={onAiQueryChange}
       />
