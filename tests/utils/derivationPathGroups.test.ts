@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   derivationNetworkGroup,
+  derivationPathCoinType,
   derivationPathMatchesNetwork,
   groupAccountsByNetwork,
   groupAccountsByPurpose,
@@ -52,5 +53,20 @@ describe("derivationPathGroups", () => {
       single_sig: [accounts[0]],
       multisig: [accounts[1]],
     });
+  });
+
+  it("classifies h-notation account paths by coin type", () => {
+    expect(isTestnetSignetDerivationPath("m/84h/1h/0h")).toBe(true);
+    expect(isTestnetSignetDerivationPath("m/48H/1H/0H/2H")).toBe(true);
+    expect(derivationPathMatchesNetwork("m/84h/0h/0h", "mainnet")).toBe(true);
+    expect(derivationNetworkGroup("m/86h/1h/0h")).toBe("testnet-signet");
+    const accounts = [{ id: "h-test", derivationPath: "m/84h/1h/0h" }];
+    expect(groupAccountsByNetwork(accounts)).toEqual({ mainnet: [], "testnet-signet": [accounts[0]] });
+    expect(splitTestnetSignetAccounts(accounts)).toEqual({ primaryAccounts: [], testnetSignetAccounts: [accounts[0]] });
+  });
+
+  it("guard: keeps non-canonical paths unparsed", () => {
+    expect(derivationPathCoinType("M/84h/0h/0h")).toBeNull();
+    expect(derivationPathCoinType("not-a-path")).toBeNull();
   });
 });

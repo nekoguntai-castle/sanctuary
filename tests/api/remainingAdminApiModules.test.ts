@@ -257,7 +257,6 @@ describe("Remaining Admin API Modules", () => {
         "https://grafana.example",
       );
       await adminMonitoringApi.getGrafanaConfig();
-      await adminMonitoringApi.updateGrafanaConfig({ anonymousAccess: true });
       await adminMonitoringApi.getWebSocketStats();
       await adminMonitoringApi.getTorContainerStatus();
       await adminMonitoringApi.startTorContainer();
@@ -284,9 +283,6 @@ describe("Remaining Admin API Modules", () => {
         customUrl: "https://grafana.example",
       });
       expect(mockGet).toHaveBeenCalledWith("/admin/monitoring/grafana");
-      expect(mockPut).toHaveBeenCalledWith("/admin/monitoring/grafana", {
-        anonymousAccess: true,
-      });
       expect(mockGet).toHaveBeenCalledWith("/admin/websocket/stats");
       expect(mockGet).toHaveBeenCalledWith("/admin/tor-container/status");
       expect(mockPost).toHaveBeenCalledWith("/admin/tor-container/start", {});

@@ -41,7 +41,7 @@ Recommended remote access:
 
 - Prefer SSH tunnels or a private VPN.
 - If browser access is required, expose only Grafana through authenticated HTTPS and keep Prometheus, Alertmanager, Jaeger, Loki, and OTLP ingestion private.
-- Keep `GRAFANA_ANONYMOUS_ENABLED=false` for production.
+- Keep `GRAFANA_ANONYMOUS_ENABLED=false` for production. Administration › Monitoring shows the running Grafana container's live anonymous-access state read-only; the env var is the only control, and a change needs the Grafana container recreated.
 
 ## API And Gateway Exposure
 

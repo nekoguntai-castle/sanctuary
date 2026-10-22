@@ -193,6 +193,7 @@ export const registerWalletCrudContracts = () => {
       ['unsafe string total signers', { quorum: 2, totalSigners: '9007199254740992' }, 'totalSigners must be a positive safe integer'],
       ['one total signer', { quorum: 1, totalSigners: 1 }, 'totalSigners must be at least 2 for multi-sig wallets'],
       ['quorum exceeds total signers', { quorum: 3, totalSigners: 2 }, 'quorum cannot exceed totalSigners'],
+      ['too many total signers', { quorum: 2, totalSigners: 17 }, 'Multisig wallets support at most 16 signers'],
     ])('should reject invalid multisig quorum settings: %s', async (_case, quorumFields, expectedMessage) => {
       const response = await request(walletRouter)
         .post('/api/v1/wallets')

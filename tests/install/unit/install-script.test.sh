@@ -592,6 +592,41 @@ test_install_script_loads_runtime_env_for_upgrades() {
     fi
 }
 
+# Behavioural evidence for the env-discovery branch the legacy-runtime-env
+# upgrade fixture drives end to end (D-14.C3): runtime env first, then the
+# repo-root .env, and an explicit SANCTUARY_ENV_FILE always wins.
+resolve_runtime_env_file_in() {
+    local resolver="$1"
+    local install_dir="$2"
+    local default_env_file="$3"
+
+    INSTALL_DIR="$install_dir" DEFAULT_ENV_FILE="$default_env_file" \
+        bash -c "$resolver"$'\nresolve_runtime_env_file'
+}
+
+test_install_resolve_runtime_env_file_prefers_runtime_then_legacy() {
+    local root="$TEST_TMP_DIR/resolve-env"
+    local resolver output
+    resolver="$(extract_shell_function resolve_runtime_env_file "$INSTALL_SCRIPT")"
+    if [ -z "$resolver" ]; then
+        echo -e "${RED}ASSERTION FAILED:${NC} could not extract resolve_runtime_env_file from install.sh"
+        return 1
+    fi
+    mkdir -p "$root/install" "$root/runtime"
+    printf 'A=1\n' > "$root/runtime/sanctuary.env"
+    printf 'A=2\n' > "$root/install/.env"
+
+    output="$(unset SANCTUARY_ENV_FILE; resolve_runtime_env_file_in "$resolver" "$root/install" "$root/runtime/sanctuary.env")"
+    assert_equals "$root/runtime/sanctuary.env" "$output" "runtime env should win over the repo-root .env" || return 1
+
+    mv "$root/runtime/sanctuary.env" "$root/runtime/hidden.env"
+    output="$(unset SANCTUARY_ENV_FILE; resolve_runtime_env_file_in "$resolver" "$root/install" "$root/runtime/sanctuary.env")"
+    assert_equals "$root/install/.env" "$output" "repo-root .env should be the fallback without a runtime env" || return 1
+
+    output="$(export SANCTUARY_ENV_FILE="$root/custom.env"; resolve_runtime_env_file_in "$resolver" "$root/install" "$root/runtime/sanctuary.env")"
+    assert_equals "$root/custom.env" "$output" "an explicit SANCTUARY_ENV_FILE should win even when only .env exists"
+}
+
 test_install_script_detects_skip_checkout_upgrade_mode() {
     if grep -q 'SKIP_GIT_CHECKOUT' "$INSTALL_SCRIPT" \
         && grep -q "Existing runtime env detected" "$INSTALL_SCRIPT"; then
@@ -2977,6 +3012,7 @@ main() {
     run_test "fresh install supplies WORKER_DIAGNOSTICS_SECRET" test_fresh_install_supplies_worker_diagnostics_secret
     run_test "install script loads runtime env for upgrades" test_install_script_loads_runtime_env_for_upgrades
     run_test "install script detects skip-checkout upgrade mode" test_install_script_detects_skip_checkout_upgrade_mode
+    run_test "install resolve runtime env file prefers runtime then legacy" test_install_resolve_runtime_env_file_prefers_runtime_then_legacy
     run_test "install script has silent openssl check" test_install_script_has_silent_openssl_check
     run_test "install script uses has_openssl for capture" test_install_script_uses_has_openssl_for_capture
     run_test "install script no hardcoded container names" test_install_script_no_hardcoded_container_names

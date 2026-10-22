@@ -130,7 +130,8 @@ Repository workflow permissions are intentionally read-only:
 (currently `bitcoinjs-lib`, the `@ledgerhq/*` transports, `@trezor/connect{,-web}`,
 and `cbor-x`), together with the exact `manifests` and `lockfiles` that must
 all agree on it. `scripts/ci/check-supply-chain-locks.mjs` (`npm run
-check:supply-chain-locks`, run in the "CI classifier tests" job) fails closed
+check:supply-chain-locks`, run in the Determine Quality Scope job on every
+quality run, whatever paths changed) fails closed
 if any of them drift. `bitcoinjs-lib` alone spans four manifests and three
 lockfiles (root, `server`, `scripts/verify-addresses`,
 `scripts/verify-psbt`); those verifier lockfiles are deliberately **not**

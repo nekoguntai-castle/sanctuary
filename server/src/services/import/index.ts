@@ -21,7 +21,9 @@
  *   2. Import and register below with appropriate priority
  */
 
+import { WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import { importFormatRegistry } from './registry';
+import { assertSupportedMultisigSignerCount } from '../bitcoin/multisigSignerLimit';
 import type { ParsedDescriptor } from './types';
 import type { JsonImportDevice, ScriptType } from '../bitcoin/descriptorParser';
 
@@ -83,6 +85,9 @@ const formatIdMap: Record<string, ParseImportInputResult['format']> = {
  */
 export function parseImportInput(input: string): ParseImportInputResult {
   const result = importFormatRegistry.parse(input);
+  if (result.parsed.type === WalletType.MULTI_SIG) {
+    assertSupportedMultisigSignerCount(result.parsed.devices.length);
+  }
 
   // Map the format ID to the legacy format name
   const format = formatIdMap[result.format] || 'descriptor';

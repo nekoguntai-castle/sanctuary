@@ -33,6 +33,7 @@ import {
   renderCanonicalDescriptor,
   replaceCanonicalDescriptorBranch,
 } from './descriptorParser';
+import { assertSupportedMultisigSignerCount } from './multisigSignerLimit';
 
 type Network = LegacyNetworkType;
 
@@ -146,6 +147,7 @@ export function buildMultiSigDescriptor(
   if (devices.length < 2) {
     throw new Error('Multi-sig requires at least 2 devices');
   }
+  assertSupportedMultisigSignerCount(devices.length);
   if (devices.some(device => !device.derivationPath)) {
     throw new Error('Every device account origin is required');
   }

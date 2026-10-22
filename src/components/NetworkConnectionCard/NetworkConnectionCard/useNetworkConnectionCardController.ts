@@ -56,8 +56,20 @@ export function useNetworkConnectionCardController({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [serverActionError, setServerActionError] = useState("");
 
+  const updateNetworkConfigFields = (updates: Partial<Record<NetworkConfigField, unknown>>) => {
+    onConfigChange(createNetworkConfigPatch(network, updates));
+  };
+
   const updateNetworkConfig = (field: string, value: unknown) => {
-    onConfigChange(createNetworkConfigPatch(network, field, value));
+    updateNetworkConfigFields({ [field]: value });
+  };
+
+  const applySingletonPreset = (preset: PresetServer) => {
+    updateNetworkConfigFields({
+      singletonHost: preset.host,
+      singletonPort: preset.port,
+      singletonSsl: preset.useSsl,
+    });
   };
 
   const handleModeChange = (nextMode: ConnectionMode) => {
@@ -276,6 +288,7 @@ export function useNetworkConnectionCardController({
     setNewServer,
     setShowAdvanced,
     updateNetworkConfig,
+    applySingletonPreset,
     handleEnabledChange,
     handleModeChange,
     handleTestSingleton,
@@ -300,12 +313,15 @@ function createEmptyServer(
   return { label: "", host: "", port: getDefaultPort(network), useSsl: true };
 }
 
+export type NetworkConfigField =
+  | "enabled" | "mode" | "singletonHost" | "singletonPort" | "singletonSsl"
+  | "poolMin" | "poolMax" | "poolLoadBalancing";
+
 function createNetworkConfigPatch(
   network: NetworkConnectionCardProps["network"],
-  field: string,
-  value: unknown,
+  updates: Partial<Record<NetworkConfigField, unknown>>,
 ): Partial<NodeConfigType> {
-  const fieldMap: Record<string, string> = {
+  const fieldMap: Record<NetworkConfigField, string> = {
     enabled: `${network}Enabled`,
     mode: `${network}Mode`,
     singletonHost: `${network}SingletonHost`,
@@ -316,7 +332,11 @@ function createNetworkConfigPatch(
     poolLoadBalancing: `${network}PoolLoadBalancing`,
   };
 
-  return { [fieldMap[field]]: value } as Partial<NodeConfigType>;
+  const patch: Record<string, unknown> = {};
+  for (const [field, value] of Object.entries(updates)) {
+    patch[fieldMap[field as NetworkConfigField]] = value;
+  }
+  return patch as Partial<NodeConfigType>;
 }
 
 function scheduleServerStatusClear(

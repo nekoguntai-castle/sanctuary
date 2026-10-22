@@ -54,6 +54,7 @@ export const NetworkConnectionCard: React.FC<NetworkConnectionCardProps> = ({
           testMessage={controller.testMessage}
           onUpdateConfig={controller.updateNetworkConfig}
           onTestSingleton={controller.handleTestSingleton}
+          onApplyPreset={controller.applySingletonPreset}
         />
       )}
 

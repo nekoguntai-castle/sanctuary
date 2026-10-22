@@ -13,6 +13,7 @@ import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ErrorCodes, NotFoundError } from '../../errors/ApiError';
 import * as walletService from '../../services/wallet';
+import { MULTISIG_SIGNER_LIMIT_MESSAGE, exceedsMultisigSignerLimit } from '../../services/bitcoin/multisigSignerLimit';
 import { requireAuthenticatedUser } from '../../middleware/auth';
 import { isGatewayRequest } from '../../middleware/gatewayRequest';
 import { mobilePermissionService } from '../../services/mobilePermissions';
@@ -95,6 +96,14 @@ const CreateWalletBodySchema = z.object({
       code: z.ZodIssueCode.custom,
       message: 'quorum cannot exceed totalSigners',
       path: ['quorum'],
+    });
+  }
+
+  if (exceedsMultisigSignerLimit(data.totalSigners)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: MULTISIG_SIGNER_LIMIT_MESSAGE,
+      path: ['totalSigners'],
     });
   }
 }).transform(data => (

@@ -14,6 +14,7 @@ interface SingletonConfigProps {
   testMessage: string;
   onUpdateConfig: (field: string, value: unknown) => void;
   onTestSingleton: () => void;
+  onApplyPreset: (preset: PresetServer) => void;
 }
 
 export const SingletonConfig: React.FC<SingletonConfigProps> = ({
@@ -26,6 +27,7 @@ export const SingletonConfig: React.FC<SingletonConfigProps> = ({
   testMessage,
   onUpdateConfig,
   onTestSingleton,
+  onApplyPreset,
 }) => (
   <div className="space-y-4 p-4 surface-muted rounded-lg">
     <div className="grid grid-cols-2 gap-4">
@@ -104,11 +106,7 @@ export const SingletonConfig: React.FC<SingletonConfigProps> = ({
         {presets.map((preset) => (
           <button
             key={preset.name}
-            onClick={() => {
-              onUpdateConfig('singletonHost', preset.host);
-              onUpdateConfig('singletonPort', preset.port);
-              onUpdateConfig('singletonSsl', preset.useSsl);
-            }}
+            onClick={() => onApplyPreset(preset)}
             className="px-2 py-1 text-xs rounded-lg bg-sanctuary-100 dark:bg-sanctuary-800 text-sanctuary-600 dark:text-sanctuary-400 hover:bg-sanctuary-200 dark:hover:bg-sanctuary-700"
           >
             {preset.name}

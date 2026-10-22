@@ -495,6 +495,22 @@ describe('Descriptor Builder Service', () => {
     });
 
     describe('Error handling', () => {
+      const signers = (n: number, path = "m/48'/0'/0'/2'") => Array.from({ length: n }, (_, i) => ({
+        fingerprint: (0x10000000 + i).toString(16),
+        xpub: accountXpub(path, i + 1),
+        derivationPath: path,
+      }));
+
+      it.each([17, 20, 21])('rejects a %i-signer sortedmulti policy', (n) => {
+        expect(() => buildMultiSigDescriptor(signers(n), 2, 'native_segwit', 'mainnet'))
+          .toThrow('Multisig wallets support at most 16 signers');
+      });
+
+      it.each(['native_segwit', 'nested_segwit'] as const)('accepts the 16-signer maximum for %s', (scriptType) => {
+        const path = scriptType === 'nested_segwit' ? "m/48'/0'/0'/1'" : "m/48'/0'/0'/2'";
+        expect(buildMultiSigDescriptor(signers(16, path), 2, scriptType, 'mainnet')).toContain('sortedmulti(2,');
+      });
+
       it('should throw for less than 2 devices', () => {
         expect(() => {
           buildMultiSigDescriptor([devices[0]], 1, 'native_segwit', 'mainnet');

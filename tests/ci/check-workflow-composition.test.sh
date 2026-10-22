@@ -4035,6 +4035,20 @@ assert_contains_in_order "$QUALITY_WORKFLOW" \
   'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Determine Scope"' \
   "ci-diagnostics-quality-determine-scope"
 
+# D-14.C5: the supply-chain lock gate reads repository-wide inputs that no
+# classifier path list covers, so it runs unconditionally in determine-scope
+# (no job- or step-level if:) and has exactly one owner in quality.yml.
+assert_named_job_step_contains_in_order "$QUALITY_WORKFLOW" "determine-scope" "Check supply-chain locks" \
+  "quality runs the supply-chain lock gate on every event (D-14.C5)" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/supply-chain-locks.log"' \
+  'scripts/ci/check-supply-chain-locks.mjs'
+assert_named_job_step_not_contains "$QUALITY_WORKFLOW" "determine-scope" "Check supply-chain locks" \
+  "supply-chain lock step is unconditional" 'if:'
+assert_named_job_not_contains "$QUALITY_WORKFLOW" "determine-scope" \
+  "determine-scope has no job-level condition" $'\n    if:'
+assert_named_job_not_contains "$QUALITY_WORKFLOW" "ci-classifier-tests" \
+  "supply-chain lock gate has one owner" 'npm run check:supply-chain-locks'
+
 assert_contains_in_order "$QUALITY_WORKFLOW" \
   "quality lint diagnostics" \
   "lint:" \

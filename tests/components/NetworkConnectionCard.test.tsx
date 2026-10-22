@@ -248,8 +248,11 @@ describe("NetworkConnectionCard", () => {
 
       await user.click(screen.getByText("Blockstream (TCP)"));
 
+      expect(defaultProps.onConfigChange).toHaveBeenCalledTimes(1);
       expect(defaultProps.onConfigChange).toHaveBeenCalledWith({
         mainnetSingletonHost: "electrum.blockstream.info",
+        mainnetSingletonPort: 50001,
+        mainnetSingletonSsl: false,
       });
     });
 

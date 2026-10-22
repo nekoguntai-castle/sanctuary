@@ -51,15 +51,6 @@ export async function getGrafanaConfig(): Promise<GrafanaConfig> {
   return apiClient.get<GrafanaConfig>('/admin/monitoring/grafana');
 }
 
-/**
- * Update Grafana configuration (admin only)
- */
-export async function updateGrafanaConfig(config: {
-  anonymousAccess?: boolean;
-}): Promise<{ success: boolean; message: string }> {
-  return apiClient.put<{ success: boolean; message: string }>('/admin/monitoring/grafana', config);
-}
-
 // ========================================
 // WEBSOCKET STATISTICS
 // ========================================

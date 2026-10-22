@@ -2,6 +2,7 @@ import { Prisma, type ElectrumServer } from "../generated/prisma/client";
 import { ConflictError, NotFoundError } from "../errors/ApiError";
 import { nodeConfigRepository } from "../repositories/nodeConfigRepository";
 import { reloadElectrumServers } from "./bitcoin/electrumPool";
+import { publishElectrumConfigChange } from "./bitcoin/electrumConfigChanges";
 import type { NetworkType } from "./bitcoin/electrumPool";
 import { testNodeConfig } from "./bitcoin/nodeClient";
 import {
@@ -85,10 +86,15 @@ export async function listElectrumServers(
 export async function reorderElectrumServers(
   serverIds: string[],
 ): Promise<void> {
-  await nodeConfigRepository.electrumServer.reorderPriorities(
-    serverIds.map((id, index) => ({ id, priority: index })),
+  const previousPriorities = new Map(
+    (await listElectrumServers()).map((server) => [server.id, server.priority]),
   );
+  const priorities = serverIds.map((id, index) => ({ id, priority: index }));
+  await nodeConfigRepository.electrumServer.reorderPriorities(priorities);
   await reloadElectrumServers();
+  if (priorities.some(({ id, priority }) => previousPriorities.get(id) !== priority)) {
+    publishElectrumServersChange();
+  }
 }
 
 /**
@@ -146,7 +152,7 @@ export async function createElectrumServer(
     serverUsage: normalizeServerUsage(input.serverUsage),
   });
 
-  await reloadElectrumServers(toNetworkType(input.network));
+  await reloadElectrumServersEverywhere(toNetworkType(input.network));
   return server;
 }
 
@@ -184,7 +190,7 @@ export async function deleteElectrumServer(
 ): Promise<ElectrumServer> {
   const server = await findElectrumServerOrThrow(id);
   await nodeConfigRepository.electrumServer.delete(id);
-  await reloadElectrumServers(toNetworkType(server.network));
+  await reloadElectrumServersEverywhere(toNetworkType(server.network));
   return server;
 }
 
@@ -232,6 +238,7 @@ export async function testSavedElectrumServer(
     }),
   });
 
+  // A health check changes no pool configuration, so other processes keep theirs.
   await reloadElectrumServers(toNetworkType(server.network));
 
   return {
@@ -352,13 +359,29 @@ function toNetworkType(network: string): NetworkType | undefined {
   return isNetworkType(network) ? network : undefined;
 }
 
+/**
+ * Tell the worker processes to reload their pools. Not awaited: a stalled
+ * event bus must not hold the admin request open.
+ */
+function publishElectrumServersChange(network?: NetworkType): void {
+  void publishElectrumConfigChange({ scope: "electrum-servers", network: network ?? null });
+}
+
+/**
+ * Reload this process's pool, then tell the worker processes to reload theirs.
+ */
+async function reloadElectrumServersEverywhere(network?: NetworkType): Promise<void> {
+  await reloadElectrumServers(network);
+  publishElectrumServersChange(network);
+}
+
 async function reloadPoolsForServerUpdate(
   previousNetwork: string,
   nextNetwork: string,
 ): Promise<void> {
-  await reloadElectrumServers(toNetworkType(previousNetwork));
+  await reloadElectrumServersEverywhere(toNetworkType(previousNetwork));
   if (nextNetwork !== previousNetwork) {
-    await reloadElectrumServers(toNetworkType(nextNetwork));
+    await reloadElectrumServersEverywhere(toNetworkType(nextNetwork));
   }
 }
 

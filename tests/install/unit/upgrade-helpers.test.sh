@@ -2809,6 +2809,261 @@ test_backend_replacement_selects_shared_frontend_network() {
     "backend replacement should use the exact network shared with frontend"
 }
 
+# --- D-14.C1-C4: the upgrade lane runs the target installer like an operator ---
+# These tests evaluate the real harness functions from upgrade-install.test.sh
+# against a fake install.sh written under $TEST_TMP_DIR. Each body is a
+# ( ... ) subshell so the secrets it exports cannot leak into later tests.
+
+C1_RUNTIME_SECRET_NAMES="JWT_SECRET ENCRYPTION_KEY ENCRYPTION_SALT GATEWAY_SECRET WORKER_DIAGNOSTICS_SECRET POSTGRES_PASSWORD GRAFANA_PASSWORD LLM_EGRESS_PROXY_SECRET REDIS_PASSWORD"
+
+extract_harness_function() {
+  local function_name="$1"
+  local source_file="${2:-$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh}"
+
+  awk -v function_name="$function_name" '
+      $0 ~ "^" function_name "\\(\\)[[:space:]]*\\{" {
+          in_function = 1
+      }
+      in_function {
+          line = $0
+          print line
+          opens += gsub(/\{/, "{", line)
+          closes += gsub(/\}/, "}", line)
+          if (opens > 0 && opens == closes) {
+              exit
+          }
+      }
+  ' "$source_file"
+}
+
+load_upgrade_installer_harness() {
+  local function_name
+  for function_name in resolve_env_file load_runtime_env run_install_script_command test_verify_secrets_preserved; do
+    eval "$(extract_harness_function "$function_name")"
+  done
+  initialize_install_test_ownership_for_root() { :; }
+  TEST_RUNTIME_DIR="$TEST_TMP_DIR/runtime"
+  TEST_ENV_FILE="$TEST_RUNTIME_DIR/sanctuary.env"
+  TEST_SSL_DIR="$TEST_TMP_DIR/ssl"
+  TEST_COMPOSE_SSL_DIR="$TEST_TMP_DIR/compose-ssl"
+  TARGET_PROJECT_ROOT="$TEST_TMP_DIR/target"
+  UPGRADE_ENABLE_MONITORING=no
+  UPGRADE_ENABLE_TOR=no
+  UPGRADE_ENABLE_MCP=no
+  mkdir -p "$TEST_RUNTIME_DIR" "$TARGET_PROJECT_ROOT"
+}
+
+write_upgrade_runtime_env_fixture() {
+  printf 'JWT_SECRET=j1\nENCRYPTION_KEY=k1\nENCRYPTION_SALT=s1\nGATEWAY_SECRET=g1\nPOSTGRES_PASSWORD=p1\n' > "$1"
+}
+
+set_upgrade_original_secrets() {
+  ORIGINAL_JWT_SECRET=j1
+  ORIGINAL_ENCRYPTION_KEY=k1
+  ORIGINAL_ENCRYPTION_SALT=s1
+  ORIGINAL_GATEWAY_SECRET=g1
+  ORIGINAL_POSTGRES_PASSWORD=p1
+}
+
+# The fake reports every inherited runtime secret and the env selection.
+write_inheritance_reporting_installer() {
+  {
+    printf 'for k in %s; do\n' "$C1_RUNTIME_SECRET_NAMES"
+    printf '  if [ -n "${!k+x}" ]; then echo "inherited $k"; fi\n'
+    printf 'done\n'
+    printf 'echo "SANCTUARY_ENV_FILE=${SANCTUARY_ENV_FILE-unset}"\n'
+    printf 'echo "SANCTUARY_RUNTIME_DIR=${SANCTUARY_RUNTIME_DIR-unset}"\n'
+  } > "$TARGET_PROJECT_ROOT/install.sh"
+}
+
+# Mirrors setup.sh's secret handling: keep an inherited value, otherwise
+# generate one. With reads_env_file=false it never reads the existing file.
+write_secret_writing_installer() {
+  local reads_env_file="$1"
+  {
+    printf 'out="${SANCTUARY_ENV_FILE:-$SANCTUARY_RUNTIME_DIR/sanctuary.env}"\n'
+    if [ "$reads_env_file" = "true" ]; then
+      printf 'set -a; . "$out"; set +a\n'
+    fi
+    printf ': > "$out"\n'
+    printf 'for k in %s; do\n' "$C1_RUNTIME_SECRET_NAMES"
+    printf '  if [ -n "${!k:-}" ]; then echo "$k=${!k}" >> "$out"; else echo "$k=regenerated-$k-$RANDOM" >> "$out"; fi\n'
+    printf 'done\n'
+  } > "$TARGET_PROJECT_ROOT/install.sh"
+}
+
+test_upgrade_installer_scrubs_inherited_runtime_secrets() (
+  load_upgrade_installer_harness
+  local name output
+  for name in $C1_RUNTIME_SECRET_NAMES; do
+    export "$name=inherited-$name"
+  done
+  export SANCTUARY_ENV_FILE="$TEST_ENV_FILE"
+  write_inheritance_reporting_installer
+
+  output="$(run_install_script_command "$TARGET_PROJECT_ROOT")" || return 1
+  assert_equals "" "$(printf '%s\n' "$output" | grep '^inherited ' || true)" \
+    "the target installer must not inherit the harness's runtime secrets"
+)
+
+test_upgrade_installer_uses_default_runtime_env_discovery() (
+  load_upgrade_installer_harness
+  local output
+  export SANCTUARY_ENV_FILE="$TEST_ENV_FILE"
+  write_inheritance_reporting_installer
+
+  output="$(run_install_script_command "$TARGET_PROJECT_ROOT")" || return 1
+  assert_contains "$output" "SANCTUARY_ENV_FILE=unset" \
+    "the runtime env at the default path must be discovered, not injected" || return 1
+  assert_contains "$output" "SANCTUARY_RUNTIME_DIR=$TEST_RUNTIME_DIR" \
+    "the installer must get the runtime directory"
+)
+
+test_upgrade_installer_keeps_explicit_custom_env_file() (
+  load_upgrade_installer_harness
+  local output
+  TEST_ENV_FILE="$TEST_TMP_DIR/custom/sanctuary.env"
+  write_inheritance_reporting_installer
+
+  output="$(run_install_script_command "$TARGET_PROJECT_ROOT")" || return 1
+  assert_contains "$output" "SANCTUARY_ENV_FILE=$TEST_TMP_DIR/custom/sanctuary.env" \
+    "a custom env location must be passed explicitly, as an operator would"
+)
+
+test_legacy_fixture_target_install_takes_repo_root_fallback() (
+  load_upgrade_installer_harness
+  local output resolver
+  UPGRADE_USE_LEGACY_RUNTIME_ENV=true
+  TEST_ENV_FILE="$TARGET_PROJECT_ROOT/.env"
+  write_upgrade_runtime_env_fixture "$TEST_ENV_FILE"
+  export SANCTUARY_ENV_FILE="$TEST_ENV_FILE"
+  resolver="$(extract_harness_function resolve_runtime_env_file "$PROJECT_ROOT/install.sh")"
+  if [ -z "$resolver" ]; then
+    echo 'could not extract resolve_runtime_env_file from install.sh' >&2
+    return 1
+  fi
+  {
+    printf 'INSTALL_DIR="${SANCTUARY_DIR:-$HOME/sanctuary}"\n'
+    printf 'DEFAULT_RUNTIME_DIR="${SANCTUARY_RUNTIME_DIR:-$HOME/.config/sanctuary}"\n'
+    printf 'DEFAULT_ENV_FILE="$DEFAULT_RUNTIME_DIR/sanctuary.env"\n'
+    printf '%s\n' "$resolver"
+    printf 'echo "resolved=$(resolve_runtime_env_file)"\n'
+    printf 'echo "SANCTUARY_ENV_FILE=${SANCTUARY_ENV_FILE-unset}"\n'
+  } > "$TARGET_PROJECT_ROOT/install.sh"
+
+  output="$(run_install_script_command "$TARGET_PROJECT_ROOT")" || return 1
+  assert_contains "$output" "SANCTUARY_ENV_FILE=unset" \
+    "the legacy target must not be told where its env file is" || return 1
+  assert_contains "$output" "resolved=$TARGET_PROJECT_ROOT/.env" \
+    "install.sh must reach the repo-root .env through its legacy fallback"
+)
+
+test_secrets_preserved_check_catches_installer_that_ignores_env_file() (
+  load_upgrade_installer_harness
+  write_upgrade_runtime_env_fixture "$TEST_ENV_FILE"
+  set_upgrade_original_secrets
+  load_runtime_env || return 1
+  write_secret_writing_installer false
+  run_install_script_command "$TARGET_PROJECT_ROOT" >/dev/null || return 1
+  if test_verify_secrets_preserved; then
+    echo 'preservation check passed for an installer that never read the env file' >&2
+    return 1
+  fi
+
+  write_upgrade_runtime_env_fixture "$TEST_ENV_FILE"
+  load_runtime_env || return 1
+  write_secret_writing_installer true
+  run_install_script_command "$TARGET_PROJECT_ROOT" >/dev/null || return 1
+  if ! test_verify_secrets_preserved; then
+    echo 'preservation check failed for an installer that reloaded the env file' >&2
+    return 1
+  fi
+)
+
+test_secrets_preserved_check_fails_without_runtime_env() (
+  load_upgrade_installer_harness
+  write_upgrade_runtime_env_fixture "$TEST_ENV_FILE"
+  set_upgrade_original_secrets
+  load_runtime_env || return 1
+  rm -f "$TEST_ENV_FILE"
+  if test_verify_secrets_preserved; then
+    echo 'preservation check passed with no post-upgrade runtime env' >&2
+    return 1
+  fi
+)
+
+test_secrets_preserved_check_fails_on_dropped_secret() (
+  load_upgrade_installer_harness
+  write_upgrade_runtime_env_fixture "$TEST_ENV_FILE"
+  set_upgrade_original_secrets
+  load_runtime_env || return 1
+  sed -i '/^ENCRYPTION_SALT=/d' "$TEST_ENV_FILE"
+  if test_verify_secrets_preserved; then
+    echo 'preservation check passed with ENCRYPTION_SALT dropped from the runtime env' >&2
+    return 1
+  fi
+)
+
+test_runtime_secret_scrub_list_covers_setup_inherited_secrets() {
+  local setup_names export_names name missing=""
+  setup_names="$(sed -n 's/^ *echo "  - \([A-Z_]*\): using existing"$/\1/p' "$PROJECT_ROOT/scripts/setup.sh")"
+  assert_equals 9 "$(printf '%s\n' "$setup_names" | grep -c .)" \
+    "setup.sh should keep exactly nine inherited secrets" || return 1
+  export_names="$(sed -n 's/^ *export \(JWT_SECRET .*\)$/\1/p' "$PROJECT_ROOT/install.sh")"
+  assert_not_empty "$export_names" "install.sh should export the runtime secrets to setup.sh" || return 1
+
+  for name in $setup_names $export_names; do
+    case " ${UPGRADE_INHERITABLE_RUNTIME_SECRETS[*]-} " in
+      *" $name "*) ;;
+      *) missing="$missing $name" ;;
+    esac
+  done
+  assert_equals "" "$missing" "UPGRADE_INHERITABLE_RUNTIME_SECRETS must list every inherited secret"
+}
+
+test_install_output_upgrade_assertion_requires_expected_env_file() {
+  local log="$TEST_TMP_DIR/install.log"
+  printf '[INFO] Existing runtime env detected: /x/sanctuary.env\n[INFO] Loading existing configuration...\n' > "$log"
+  if ! assert_install_output_was_upgrade "$log" /x/sanctuary.env; then
+    echo 'upgrade assertion rejected a log naming the expected env file' >&2
+    return 1
+  fi
+  if assert_install_output_was_upgrade "$log" /y/.env; then
+    echo 'upgrade assertion accepted a log naming a different env file' >&2
+    return 1
+  fi
+  printf '[INFO] Existing runtime env detected: /x/sanctuary.env\n' > "$log"
+  if assert_install_output_was_upgrade "$log" /x/sanctuary.env; then
+    echo 'upgrade assertion accepted a log that never loaded the existing configuration' >&2
+    return 1
+  fi
+}
+
+test_legacy_runtime_env_move_refuses_overwrite() {
+  local runtime_env="$TEST_TMP_DIR/runtime.env"
+  local legacy_env="$TEST_TMP_DIR/legacy.env"
+  printf 'A=1\n' > "$runtime_env"
+  move_runtime_env_to_legacy_path "$runtime_env" "$legacy_env" || return 1
+  assert_equals "absent" "$([ -e "$runtime_env" ] && echo present || echo absent)" \
+    "the runtime env should be moved" || return 1
+  assert_equals 600 "$(stat -c %a "$legacy_env")" "the legacy env should be private" || return 1
+
+  printf 'B=1\n' > "$runtime_env"
+  if move_runtime_env_to_legacy_path "$runtime_env" "$legacy_env"; then
+    echo 'move overwrote an existing legacy env' >&2
+    return 1
+  fi
+  assert_equals 'B=1' "$(cat "$runtime_env")" "a refused move must keep the runtime env" || return 1
+  assert_equals 'A=1' "$(cat "$legacy_env")" "a refused move must keep the legacy env" || return 1
+
+  if move_runtime_env_to_legacy_path "$TEST_TMP_DIR/missing.env" "$TEST_TMP_DIR/other.env"; then
+    echo 'move succeeded without a runtime env' >&2
+    return 1
+  fi
+  assert_equals "absent" "$([ -e "$TEST_TMP_DIR/other.env" ] && echo present || echo absent)" \
+    "a refused move must not create the legacy env"
+}
+
 main() {
   echo ""
   echo "Upgrade Helper Unit Tests"
@@ -2897,6 +3152,16 @@ main() {
   run_test "registered container start preserves failure status" test_registered_container_start_preserves_failure_status
   run_test "install retirement refuses ambiguous postcondition" test_install_container_retirement_refuses_ambiguous_postcondition
   run_test "upgrade harness exports operator runtime state" test_upgrade_harness_exports_operator_runtime_state
+  run_test "upgrade installer scrubs inherited runtime secrets" test_upgrade_installer_scrubs_inherited_runtime_secrets
+  run_test "upgrade installer uses default runtime env discovery" test_upgrade_installer_uses_default_runtime_env_discovery
+  run_test "upgrade installer keeps explicit custom env file" test_upgrade_installer_keeps_explicit_custom_env_file
+  run_test "legacy fixture target install takes repo-root fallback" test_legacy_fixture_target_install_takes_repo_root_fallback
+  run_test "secrets check catches installer that ignores env file" test_secrets_preserved_check_catches_installer_that_ignores_env_file
+  run_test "secrets check fails without runtime env" test_secrets_preserved_check_fails_without_runtime_env
+  run_test "secrets check fails on dropped secret" test_secrets_preserved_check_fails_on_dropped_secret
+  run_test "runtime secret scrub list covers setup inherited secrets" test_runtime_secret_scrub_list_covers_setup_inherited_secrets
+  run_test "install output upgrade assertion requires expected env file" test_install_output_upgrade_assertion_requires_expected_env_file
+  run_test "legacy runtime env move refuses overwrite" test_legacy_runtime_env_move_refuses_overwrite
   run_test "install ownership rebinds workspace identity" test_install_ownership_rebinds_workspace_identity_to_compose_lane
   run_test "backend replacement failure restores backend" test_backend_replacement_failure_restores_backend
   run_test "backend replacement rejects uncoordinated mutation" test_backend_replacement_rejects_uncoordinated_mutation

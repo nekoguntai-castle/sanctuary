@@ -24,14 +24,26 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   Network,
 };
 
+// Badge for Grafana's effective anonymous-viewing state (null = could not be read)
+const ANONYMOUS_STATE_BADGE_BASE = 'px-2 py-0.5 text-xs rounded';
+const ANONYMOUS_STATE_BADGE_NEUTRAL = `${ANONYMOUS_STATE_BADGE_BASE} bg-sanctuary-100 text-sanctuary-600 dark:bg-sanctuary-800 dark:text-sanctuary-300`;
+
+const ANONYMOUS_STATE_BADGES: Record<'true' | 'false' | 'null', { label: string; className: string }> = {
+  true: {
+    label: 'On',
+    className: `${ANONYMOUS_STATE_BADGE_BASE} bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300`,
+  },
+  false: { label: 'Off', className: ANONYMOUS_STATE_BADGE_NEUTRAL },
+  null: { label: 'Unknown', className: `${ANONYMOUS_STATE_BADGE_NEUTRAL} italic` },
+};
+
 interface ServiceCardProps {
   service: MonitoringService;
   onEditUrl: (service: MonitoringService) => void;
   hostname: string;
   credentials?: ServiceCredentials;
-  anonymousAccess?: boolean;
-  onToggleAnonymous?: () => void;
-  isTogglingAnonymous?: boolean;
+  anonymousAccess?: boolean | null;
+  anonymousAccessNote?: string;
 }
 
 /**
@@ -44,8 +56,7 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
   hostname,
   credentials,
   anonymousAccess,
-  onToggleAnonymous,
-  isTogglingAnonymous,
+  anonymousAccessNote,
 }) => {
   const Icon = iconMap[service.icon] || Activity;
   const [showPassword, setShowPassword] = useState(false);
@@ -71,6 +82,10 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
       copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
     }
   };
+
+  const anonymousBadge = anonymousAccess === undefined
+    ? undefined
+    : ANONYMOUS_STATE_BADGES[String(anonymousAccess) as keyof typeof ANONYMOUS_STATE_BADGES];
 
   // Generate actual URL by replacing {host} placeholder
   const actualUrl = service.url.includes('{host}')
@@ -143,34 +158,24 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
                   : 'Set GRAFANA_PASSWORD in the Sanctuary runtime environment'}
               </p>
 
-              {/* Anonymous access toggle for Grafana */}
-              {onToggleAnonymous && (
+              {/* Effective anonymous viewing state for Grafana (read-only) */}
+              {anonymousBadge && (
                 <div className="mt-2 pt-2 border-t border-sanctuary-200 dark:border-sanctuary-700">
-                  <label className="flex items-center justify-between cursor-pointer">
+                  <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2 text-sm text-sanctuary-600 dark:text-sanctuary-400">
                       <ShieldOff className="w-3.5 h-3.5" />
                       <span>Anonymous viewing</span>
                     </div>
-                    <button
-                      onClick={onToggleAnonymous}
-                      disabled={isTogglingAnonymous}
-                      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                        anonymousAccess
-                          ? 'bg-primary-600'
-                          : 'bg-sanctuary-300 dark:bg-sanctuary-600'
-                      } ${isTogglingAnonymous ? 'opacity-50' : ''}`}
+                    <span
+                      data-testid="grafana-anonymous-state"
+                      className={anonymousBadge.className}
                     >
-                      <span
-                        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
-                          anonymousAccess ? 'translate-x-4.5' : 'translate-x-1'
-                        }`}
-                        style={{ transform: anonymousAccess ? 'translateX(16px)' : 'translateX(4px)' }}
-                      />
-                    </button>
-                  </label>
-                  <p className="text-[9px] text-sanctuary-400 mt-1">
-                    Requires container restart to take effect
-                  </p>
+                      {anonymousBadge.label}
+                    </span>
+                  </div>
+                  {anonymousAccessNote && (
+                    <p className="text-[10px] text-sanctuary-400 mt-1">{anonymousAccessNote}</p>
+                  )}
                 </div>
               )}
             </div>

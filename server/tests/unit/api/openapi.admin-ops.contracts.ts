@@ -177,7 +177,6 @@ export function registerOpenApiAdminOpsTests() {
       ['/admin/monitoring/services', 'get'],
       ['/admin/monitoring/services/{serviceId}', 'put'],
       ['/admin/monitoring/grafana', 'get'],
-      ['/admin/monitoring/grafana', 'put'],
     ];
 
     for (const [path, method] of routes) {
@@ -262,25 +261,9 @@ export function registerOpenApiAdminOpsTests() {
     expect(openApiSpec.components.schemas.AdminGrafanaConfigResponse.properties.passwordConfigured)
       .toEqual({ type: 'boolean' });
 
-    expect(openApiSpec.paths['/admin/monitoring/grafana'].put.requestBody.content['application/json'].schema)
-      .toEqual({
-        $ref: '#/components/schemas/AdminUpdateGrafanaRequest',
-      });
-    expect(openApiSpec.components.schemas.AdminUpdateGrafanaRequest).toHaveProperty(
-      'additionalProperties',
-      false,
-    );
-    expect(openApiSpec.components.schemas.AdminUpdateGrafanaRequest.properties.anonymousAccess).toEqual({
-      type: 'boolean',
-    });
-    expect(openApiSpec.paths['/admin/monitoring/grafana'].put.responses[200].content['application/json'].schema)
-      .toEqual({
-        $ref: '#/components/schemas/AdminGrafanaUpdateResponse',
-      });
-    expect(openApiSpec.components.schemas.AdminGrafanaUpdateResponse.required).toEqual([
-      'success',
-      'message',
-    ]);
+    expect(openApiSpec.components.schemas.AdminGrafanaConfigResponse.properties.anonymousAccess)
+      .toEqual({ type: 'boolean', nullable: true });
+    expect(openApiSpec.paths['/admin/monitoring/grafana']).not.toHaveProperty('put');
   });
 
   it('documents admin user management routes', () => {

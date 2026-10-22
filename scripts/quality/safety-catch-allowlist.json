@@ -38,6 +38,15 @@
       "targetRemovalSlice": "fail-closed-safety-follow-up"
     },
     {
+      "file": "server/src/services/bitcoin/electrumConfigChanges.ts",
+      "functionName": "publishElectrumConfigChange",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Best-effort cross-process notification after the node-config/Electrum-server write has committed: a pub/sub failure must not fail the admin request; it is logged, and a worker that misses the event re-reads config on its next start (accepted residual OQ-A1).",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "intentional-post-commit-notification-boundary"
+    },
+    {
       "file": "server/src/services/bitcoin/electrumPool/connectionManager.ts",
       "functionName": "reconnectConnection",
       "issue": "non-terminal-catch",

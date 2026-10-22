@@ -365,3 +365,136 @@ assert_post_upgrade_user_smoke() {
 
     log_success "Post-upgrade user-visible smoke assertions passed"
 }
+
+# ============================================
+# Runtime env handling for installer children (D-14.C1-C4)
+# ============================================
+
+# Exactly install.sh's secret export list to setup.sh, and exactly setup.sh's
+# "using existing" set: setup.sh keeps any of these it inherits, so a child
+# that inherits them would write the source secrets back even if it never
+# found or read the existing runtime env. A unit test pins both lists.
+UPGRADE_INHERITABLE_RUNTIME_SECRETS=(
+    JWT_SECRET ENCRYPTION_KEY ENCRYPTION_SALT GATEWAY_SECRET WORKER_DIAGNOSTICS_SECRET
+    POSTGRES_PASSWORD GRAFANA_PASSWORD LLM_EGRESS_PROXY_SECRET REDIS_PASSWORD
+)
+UPGRADE_REQUIRED_RUNTIME_SECRETS=(JWT_SECRET ENCRYPTION_KEY ENCRYPTION_SALT GATEWAY_SECRET POSTGRES_PASSWORD)
+
+# Call only inside the subshell that runs install.sh, setup.sh or start.sh:
+# the harness shell keeps its exported values for its own psql and API calls.
+scrub_inherited_runtime_secrets() {
+    unset "${UPGRADE_INHERITABLE_RUNTIME_SECRETS[@]}"
+}
+
+# Prints the env file the installer must be told about, or nothing when
+# install.sh finds it on its own: the default runtime env under the exported
+# SANCTUARY_RUNTIME_DIR, or the repo-root .env legacy fallback. An operator
+# passes SANCTUARY_ENV_FILE only for a custom location.
+upgrade_installer_env_file_override() {
+    local project_dir="$1"
+    local env_file="$2"
+    local runtime_dir="$3"
+
+    if [ "$env_file" = "$runtime_dir/sanctuary.env" ]; then
+        return 0
+    fi
+    if [ "$env_file" = "$project_dir/.env" ] && [ -f "$env_file" ] && [ ! -f "$runtime_dir/sanctuary.env" ]; then
+        return 0
+    fi
+    printf '%s\n' "$env_file"
+}
+
+# Hides the runtime env behind the repo-root .env, the shape of a
+# pre-migration operator. Refuses to overwrite or to move a missing file.
+move_runtime_env_to_legacy_path() {
+    local runtime_env="$1"
+    local legacy_env="$2"
+
+    if [ ! -f "$runtime_env" ] || [ -e "$legacy_env" ]; then
+        return 1
+    fi
+    mv "$runtime_env" "$legacy_env" || return 1
+    chmod 600 "$legacy_env"
+}
+
+# The last KEY= value in an env file, read without sourcing it; status 1 when
+# the key is absent or empty. Every installer writer emits unquoted KEY=value.
+runtime_env_file_value() {
+    local file="$1"
+    local key="$2"
+    local value
+
+    value="$(awk -v key="$key" '
+        index($0, key "=") == 1 { value = substr($0, length(key) + 2) }
+        END { print value }
+    ' "$file")" || return 1
+    [ -n "$value" ] || return 1
+    printf '%s\n' "$value"
+}
+
+# Sets ORIGINAL_<NAME> from the file for every inheritable secret, so the
+# preservation check compares files, never the harness's own shell.
+capture_runtime_env_secrets() {
+    local file="$1"
+    local name value
+
+    if [ ! -f "$file" ]; then
+        log_error "Pre-upgrade runtime env not found: $file"
+        return 1
+    fi
+    for name in "${UPGRADE_INHERITABLE_RUNTIME_SECRETS[@]}"; do
+        value="$(runtime_env_file_value "$file" "$name")" || value=""
+        printf -v "ORIGINAL_$name" '%s' "$value"
+    done
+    for name in "${UPGRADE_REQUIRED_RUNTIME_SECRETS[@]}"; do
+        value="ORIGINAL_$name"
+        if [ -z "${!value}" ]; then
+            log_error "$name missing from pre-upgrade runtime env: $file"
+            return 1
+        fi
+    done
+}
+
+# Fails on a missing file, or on any secret captured non-empty before the
+# upgrade that is now missing or different. No upgrade path rotates one.
+assert_runtime_env_secrets_preserved() {
+    local file="$1"
+    local name original_var current
+
+    if [ ! -f "$file" ]; then
+        log_error "Post-upgrade runtime env not found: $file"
+        return 1
+    fi
+    for name in "${UPGRADE_INHERITABLE_RUNTIME_SECRETS[@]}"; do
+        original_var="ORIGINAL_$name"
+        [ -n "${!original_var:-}" ] || continue
+        if ! current="$(runtime_env_file_value "$file" "$name")"; then
+            log_error "$name missing from post-upgrade runtime env: $file"
+            return 1
+        fi
+        if [ "$current" != "${!original_var}" ]; then
+            log_error "$name changed after upgrade"
+            return 1
+        fi
+    done
+    log_success "Runtime env secrets preserved in $file"
+}
+
+# The target install.sh must classify the run as an upgrade of exactly the
+# expected env file, and reload it.
+assert_install_output_was_upgrade() {
+    local install_log="$1"
+    local expected_env_file="$2"
+
+    if ! awk -v want="Existing runtime env detected: $expected_env_file" '
+        length($0) >= length(want) && substr($0, length($0) - length(want) + 1) == want { found = 1 }
+        END { exit found ? 0 : 1 }
+    ' "$install_log"; then
+        log_error "install.sh did not detect the existing runtime env $expected_env_file (log: $install_log)"
+        return 1
+    fi
+    if ! grep -q "Loading existing configuration" "$install_log"; then
+        log_error "install.sh did not load the existing configuration (log: $install_log)"
+        return 1
+    fi
+}

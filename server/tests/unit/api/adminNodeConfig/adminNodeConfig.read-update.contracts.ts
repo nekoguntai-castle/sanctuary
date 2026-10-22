@@ -1,13 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { DEFAULT_NODE_MEMPOOL_ESTIMATOR } from '@sanctuary/shared/constants/nodeConfig';
 
+import { buildNodeConfigData, type NodeConfigInput } from '../../../../src/api/admin/nodeConfigData';
+import { eventBus } from '../../../../src/events/eventBus';
 import { mockPrismaClient } from '../../../mocks/prisma';
 import {
   buildNodeConfig,
   getAdminNodeConfigApp,
   mockAuditLogFromRequest,
   mockEncrypt,
+  mockLogError,
   mockResetNodeClient,
 } from './adminNodeConfigTestHarness';
 
@@ -795,6 +798,132 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
           }),
         })
       );
+    });
+
+    const baseNodeConfigBody: NodeConfigInput = {
+      type: 'electrum',
+      host: 'updated.example.com',
+      port: 50002,
+      proxyEnabled: true,
+      proxyHost: 'tor',
+      proxyPort: 9050,
+      proxyPassword: 'secret',
+    };
+
+    function saveNodeConfig(body: Partial<NodeConfigInput> = { type: 'electrum', host: 'updated.example.com', port: 50002 }) {
+      return request(getAdminNodeConfigApp())
+        .put('/api/v1/admin/node-config')
+        .send(body);
+    }
+
+    function storeNodeConfig(body: NodeConfigInput) {
+      mockPrismaClient.nodeConfig.findFirst.mockResolvedValue({ id: 'default-existing', ...buildNodeConfigData(body) });
+      mockPrismaClient.nodeConfig.update.mockResolvedValue(buildNodeConfig({ id: 'default-existing' }));
+    }
+
+    it.each([
+      ['an unchanged save', {}, []],
+      ['a mainnet singleton host', { mainnetSingletonHost: 'mainnet.example.com' }, ['mainnet']],
+      ['the unprefixed mainnet explorer URL', { explorerUrl: 'https://explorer.example.com' }, ['mainnet']],
+      ['testnet3 settings, mirrored into the legacy testnet columns', { testnet3SingletonHost: 'tn3.example.com' }, ['testnet3']],
+      ['testnet4 and signet settings', { testnet4Enabled: true, signetMode: 'pool' }, ['testnet4', 'signet']],
+      ['a global proxy field alongside a network field', { mainnetSingletonHost: 'mainnet.example.com', proxyHost: 'other-tor' }, [null]],
+      ['the masked proxy password', { proxyPassword: '********' }, []],
+    ])('publishes node-config changes scoped to what changed: %s', async (_label, changes, networks) => {
+      const emitAsync = vi.spyOn(eventBus, 'emitAsync').mockResolvedValue(undefined);
+      try {
+        storeNodeConfig(baseNodeConfigBody);
+
+        const response = await saveNodeConfig({ ...baseNodeConfigBody, ...changes });
+
+        expect(response.status).toBe(200);
+        expect(emitAsync.mock.calls).toEqual(networks.map((network) => [
+          'system:electrumConfig.changed',
+          { scope: 'node-config', network },
+        ]));
+      } finally {
+        emitAsync.mockRestore();
+      }
+    });
+
+    it('publishes an all-network node-config change when the first config is created', async () => {
+      const emitAsync = vi.spyOn(eventBus, 'emitAsync').mockResolvedValue(undefined);
+      try {
+        mockPrismaClient.nodeConfig.findFirst.mockResolvedValue(null);
+        mockPrismaClient.nodeConfig.create.mockResolvedValue(buildNodeConfig());
+
+        const response = await saveNodeConfig();
+
+        expect(response.status).toBe(200);
+        expect(emitAsync.mock.calls).toEqual([
+          ['system:electrumConfig.changed', { scope: 'node-config', network: null }],
+        ]);
+      } finally {
+        emitAsync.mockRestore();
+      }
+    });
+
+    it('responds without waiting for a stalled node-config change publish', async () => {
+      const emitAsync = vi.spyOn(eventBus, 'emitAsync').mockReturnValue(new Promise<void>(() => {}));
+      try {
+        storeNodeConfig(baseNodeConfigBody);
+
+        const response = await saveNodeConfig({ ...baseNodeConfigBody, mainnetSingletonHost: 'mainnet.example.com' });
+
+        expect(response.status).toBe(200);
+        expect(emitAsync).toHaveBeenCalledTimes(1);
+      } finally {
+        emitAsync.mockRestore();
+      }
+    }, 2000);
+
+    it('publishes a node-config change to other processes after resetting the API node client', async () => {
+      const emitAsync = vi.spyOn(eventBus, 'emitAsync').mockResolvedValue(undefined);
+      try {
+        mockPrismaClient.nodeConfig.findFirst.mockResolvedValue({ id: 'default-existing' });
+        mockPrismaClient.nodeConfig.update.mockResolvedValue(buildNodeConfig({ id: 'default-existing' }));
+
+        const response = await saveNodeConfig();
+
+        expect(response.status).toBe(200);
+        expect(emitAsync).toHaveBeenCalledWith('system:electrumConfig.changed', { scope: 'node-config', network: null });
+        expect(mockResetNodeClient.mock.invocationCallOrder[0]).toBeLessThan(emitAsync.mock.invocationCallOrder[0]);
+      } finally {
+        emitAsync.mockRestore();
+      }
+    });
+
+    it('does not publish a node-config change when the save fails', async () => {
+      const emitAsync = vi.spyOn(eventBus, 'emitAsync').mockResolvedValue(undefined);
+      try {
+        mockPrismaClient.nodeConfig.findFirst.mockResolvedValue({ id: 'default-existing' });
+        mockPrismaClient.nodeConfig.update.mockRejectedValue(new Error('write failed'));
+
+        const response = await saveNodeConfig();
+
+        expect(response.status).toBe(500);
+        expect(emitAsync).not.toHaveBeenCalled();
+      } finally {
+        emitAsync.mockRestore();
+      }
+    });
+
+    it('still returns success when publishing the node-config change fails', async () => {
+      const emitAsync = vi.spyOn(eventBus, 'emitAsync').mockRejectedValueOnce(new Error('redis down'));
+      try {
+        mockPrismaClient.nodeConfig.findFirst.mockResolvedValue({ id: 'default-existing' });
+        mockPrismaClient.nodeConfig.update.mockResolvedValue(buildNodeConfig({ id: 'default-existing' }));
+
+        const response = await saveNodeConfig();
+
+        expect(response.status).toBe(200);
+        await vi.waitFor(() => expect(mockLogError).toHaveBeenCalledWith(
+          'Failed to publish Electrum config change',
+          expect.objectContaining({ error: 'redis down' }),
+        ));
+      } finally {
+        emitAsync.mockRestore();
+      }
     });
 
     it('returns 500 when updating node config fails', async () => {

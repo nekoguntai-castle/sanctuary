@@ -5,6 +5,10 @@ import {
 } from '@sanctuary/shared/constants/adminMonitoring';
 import { InvalidInputError } from '../errors/ApiError';
 import { systemSettingRepository, SystemSettingKeys } from '../repositories/systemSettingRepository';
+import { createLogger } from '../utils/logger';
+import { getErrorMessage } from '../utils/errors';
+
+const log = createLogger('ADMIN:MONITORING');
 
 export interface MonitoringService {
   id: MonitoringServiceId;
@@ -35,14 +39,8 @@ export type GrafanaConfigResponse = {
   passwordSource: 'GRAFANA_PASSWORD' | null;
   password: string | null;
   passwordConfigured: boolean;
-  anonymousAccess: boolean;
+  anonymousAccess: boolean | null;
   anonymousAccessNote: string;
-};
-
-export type GrafanaUpdateResponse = {
-  success: true;
-  message: string;
-  changed: boolean;
 };
 
 const monitoringSettingKeyByServiceId: Record<MonitoringServiceId, string> = {
@@ -118,12 +116,38 @@ export async function updateMonitoringServiceUrl(
   return { success: true, action: 'cleared' };
 }
 
-export async function getGrafanaConfig(): Promise<GrafanaConfigResponse> {
-  const anonymousAccess = await systemSettingRepository.getBoolean(
-    SystemSettingKeys.GRAFANA_ANONYMOUS_ACCESS,
-    false,
-  );
+const GRAFANA_INTERNAL_BASE_URL = 'http://grafana:3000';
+const GRAFANA_ANONYMOUS_PROBE_URL = `${GRAFANA_INTERNAL_BASE_URL}/api/search?limit=1`;
+const MONITORING_FETCH_TIMEOUT_MS = 3000;
 
+function grafanaAnonymousAccessNote(anonymousAccess: boolean | null): string {
+  if (anonymousAccess === null) {
+    return 'Could not reach the bundled Grafana container to read its anonymous-access state.';
+  }
+  return anonymousAccess
+    ? 'Grafana allows dashboards to be viewed without logging in. Set GRAFANA_ANONYMOUS_ENABLED=false in the Sanctuary runtime environment and recreate the Grafana container to turn this off.'
+    : 'Grafana requires a login. Logged-out access is controlled by GRAFANA_ANONYMOUS_ENABLED in the Sanctuary runtime environment.';
+}
+
+/**
+ * Grafana's anonymous access is a startup setting (GRAFANA_ANONYMOUS_ENABLED), so report the running
+ * container's effective state: an unauthenticated search is 200 when anonymous viewing is on and 401
+ * when it is off. Anything else is unknown (null), so the UI never claims "off" without proof.
+ */
+async function probeGrafanaAnonymousAccess(): Promise<boolean | null> {
+  try {
+    const response = await fetchWithTimeout(GRAFANA_ANONYMOUS_PROBE_URL);
+    if (response.status === 200) return true;
+    if (response.status === 401) return false;
+    return null;
+  } catch (error) {
+    log.debug('Grafana anonymous-access probe failed', { error: getErrorMessage(error) });
+    return null;
+  }
+}
+
+export async function getGrafanaConfig(): Promise<GrafanaConfigResponse> {
+  const anonymousAccess = await probeGrafanaAnonymousAccess();
   const grafanaPassword = process.env.GRAFANA_PASSWORD || null;
 
   return {
@@ -132,51 +156,36 @@ export async function getGrafanaConfig(): Promise<GrafanaConfigResponse> {
     password: grafanaPassword,
     passwordConfigured: grafanaPassword !== null,
     anonymousAccess,
-    anonymousAccessNote: 'Changing anonymous access requires restarting the Grafana container',
-  };
-}
-
-export async function updateGrafanaConfig(anonymousAccess: boolean | undefined): Promise<GrafanaUpdateResponse> {
-  if (typeof anonymousAccess === 'boolean') {
-    await systemSettingRepository.setBoolean(
-      SystemSettingKeys.GRAFANA_ANONYMOUS_ACCESS,
-      anonymousAccess,
-    );
-  }
-
-  return {
-    success: true,
-    changed: typeof anonymousAccess === 'boolean',
-    message: anonymousAccess
-      ? 'Anonymous access enabled. Restart Grafana container to apply.'
-      : 'Anonymous access disabled. Restart Grafana container to apply.',
+    anonymousAccessNote: grafanaAnonymousAccessNote(anonymousAccess),
   };
 }
 
 async function addMonitoringHealthStatus(service: MonitoringService): Promise<void> {
   try {
-    const response = await fetchMonitoringHealth(service.id);
+    const response = await fetchWithTimeout(getMonitoringHealthUrl(service.id));
     service.status = response.ok ? 'healthy' : 'unhealthy';
   } catch {
     service.status = 'unhealthy';
   }
 }
 
-async function fetchMonitoringHealth(serviceId: string): Promise<Response> {
-  const checkUrl = getMonitoringHealthUrl(serviceId);
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 3000);
-
+/**
+ * Fetch a status-only check. Callers read the status alone, so the body is
+ * discarded to release the connection instead of leaving it to be collected.
+ */
+async function fetchWithTimeout(checkUrl: string): Promise<Response> {
+  const response = await fetch(checkUrl, { signal: AbortSignal.timeout(MONITORING_FETCH_TIMEOUT_MS) });
   try {
-    return await fetch(checkUrl, { signal: controller.signal });
-  } finally {
-    clearTimeout(timeout);
+    await response.body?.cancel();
+  } catch (error) {
+    log.debug('Discarding a monitoring response body failed', { error: getErrorMessage(error) });
   }
+  return response;
 }
 
 function getMonitoringHealthUrl(serviceId: string): string {
   if (serviceId === 'grafana') {
-    return 'http://grafana:3000/api/health';
+    return `${GRAFANA_INTERNAL_BASE_URL}/api/health`;
   }
 
   if (serviceId === 'prometheus') {

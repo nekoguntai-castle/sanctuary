@@ -16,6 +16,8 @@ import {
   getNodeNetworkDefaults,
   type NodeMempoolEstimator,
 } from "@sanctuary/shared/constants/nodeConfig";
+import type { ElectrumConfigChange } from "../../services/bitcoin/electrumConfigChanges";
+import type { NetworkType } from "../../services/bitcoin/electrumPool";
 
 type NullableString = string | null;
 type NullableStringOrNumber = string | number | null;
@@ -411,6 +413,43 @@ export function buildNodeConfigData(
     ...buildTestnet4Data(input),
     ...buildSignetData(input),
   };
+}
+
+// Longer prefixes first: the legacy `testnet*` columns mirror testnet3.
+const NETWORK_FIELD_PREFIXES: ReadonlyArray<readonly [string, NetworkType]> = [
+  ["mainnet", "mainnet"],
+  ["testnet3", "testnet3"],
+  ["testnet4", "testnet4"],
+  ["testnet", "testnet3"],
+  ["signet", "signet"],
+];
+const MAINNET_UNPREFIXED_FIELDS: ReadonlySet<string> = new Set(["explorerUrl", "feeEstimatorUrl"]);
+
+function networkForNodeConfigField(field: string): NetworkType | null {
+  if (MAINNET_UNPREFIXED_FIELDS.has(field)) return "mainnet";
+  return NETWORK_FIELD_PREFIXES.find(([prefix]) => field.startsWith(prefix))?.[1] ?? null;
+}
+
+/**
+ * The node-config change events a save needs: one per network whose stored
+ * settings changed, or a single all-network event (`network: null`) when a
+ * global field such as the proxy changed or no config existed before. An
+ * unchanged save needs none.
+ */
+export function nodeConfigChanges(
+  existing: Record<string, unknown> | null,
+  next: Record<string, unknown>,
+): ElectrumConfigChange[] {
+  const allNetworks: ElectrumConfigChange[] = [{ scope: "node-config", network: null }];
+  if (!existing) return allNetworks;
+  const networks = new Set<NetworkType>();
+  for (const [field, value] of Object.entries(next)) {
+    if (existing[field] === value) continue;
+    const network = networkForNodeConfigField(field);
+    if (!network) return allNetworks;
+    networks.add(network);
+  }
+  return [...networks].map((network) => ({ scope: "node-config", network }));
 }
 
 function buildNodeConfigBaseResponse(

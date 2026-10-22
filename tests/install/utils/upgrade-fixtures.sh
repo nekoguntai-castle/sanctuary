@@ -172,7 +172,8 @@ upgrade_fixture_usage() {
 Upgrade fixtures:
   baseline             Changed admin password, encrypted 2FA, seeded app state, browser-path smoke.
   browser-origin-ip    Baseline plus 127.0.0.1 browser-visible origin.
-  legacy-runtime-env   Baseline using repo-root .env compatibility path across source/target checkouts.
+  legacy-runtime-env   Baseline where the target install discovers the repo-root .env through
+                       install.sh's fallback; the runtime env is hidden.
   notification-delivery Baseline plus seeded notification config and post-upgrade worker/DLQ proof.
   optional-profiles    Baseline with monitoring, Tor, and MCP enabled through setup/start paths.
                        Pinned to a pre-ownership source (v0.8.69); see optional-owned-source.

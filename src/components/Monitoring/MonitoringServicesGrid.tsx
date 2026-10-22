@@ -7,10 +7,8 @@ interface MonitoringServicesGridProps {
   data: MonitoringServicesResponse | null;
   hostname: string;
   grafanaConfig: GrafanaConfig | null;
-  isTogglingAnonymous: boolean;
   getCredentialsForService: (serviceId: string) => ServiceCredentials | undefined;
   onEditUrl: (service: MonitoringService) => void;
-  onToggleAnonymous: () => void;
 }
 
 const isGrafana = (service: MonitoringService) => service.id === 'grafana';
@@ -19,10 +17,8 @@ export const MonitoringServicesGrid: React.FC<MonitoringServicesGridProps> = ({
   data,
   hostname,
   grafanaConfig,
-  isTogglingAnonymous,
   getCredentialsForService,
   onEditUrl,
-  onToggleAnonymous,
 }) => {
   if (!data) {
     return null;
@@ -38,8 +34,7 @@ export const MonitoringServicesGrid: React.FC<MonitoringServicesGridProps> = ({
           hostname={hostname}
           credentials={getCredentialsForService(service.id)}
           anonymousAccess={isGrafana(service) ? grafanaConfig?.anonymousAccess : undefined}
-          onToggleAnonymous={isGrafana(service) ? onToggleAnonymous : undefined}
-          isTogglingAnonymous={isGrafana(service) ? isTogglingAnonymous : undefined}
+          anonymousAccessNote={isGrafana(service) ? grafanaConfig?.anonymousAccessNote : undefined}
         />
       ))}
     </div>

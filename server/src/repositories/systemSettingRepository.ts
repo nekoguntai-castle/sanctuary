@@ -64,9 +64,6 @@ export const SystemSettingKeys = {
   MONITORING_GRAFANA_URL: 'monitoring.grafanaUrl',
   MONITORING_PROMETHEUS_URL: 'monitoring.prometheusUrl',
   MONITORING_JAEGER_URL: 'monitoring.jaegerUrl',
-
-  // Grafana settings
-  GRAFANA_ANONYMOUS_ACCESS: 'grafana.anonymousAccess',
 } as const;
 
 export type SystemSettingKey = typeof SystemSettingKeys[keyof typeof SystemSettingKeys];

@@ -95,6 +95,15 @@ jobs:
           ${{ github.workspace }}/scripts/ci/retry-command.sh "classify quality scope"
           bash ${{ github.workspace }}/scripts/ci/classify-quality-scope.sh
 
+      # The supply-chain lock gate reads Dockerfiles, compose files, workflows,
+      # manifests and lockfiles across the whole tree, which no classifier path
+      # list can track, so it runs on every quality event (D-14.C5). It needs
+      # only Node built-ins and runs after classify so the scope outputs exist.
+      - name: Check supply-chain locks
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/supply-chain-locks.log"
+          node ${{ github.workspace }}/scripts/ci/check-supply-chain-locks.mjs
+
       - name: Write quality scope failure breadcrumb
         if: failure()
         continue-on-error: true
@@ -862,7 +871,6 @@ jobs:
           node --test tests/ci/runtime-prisma-dependencies.test.cjs
           node --test tests/ci/gateway-runtime-dependencies.test.cjs
           node --test tests/ci/check-playwright-runner-contract.test.mjs
-          npm run check:supply-chain-locks
           node tests/ci/check-root-layout.test.mjs
           node tests/ci/docker-compose-test-contract.test.mjs
           node --test tests/ci/backend-docker-test.test.mjs tests/ci/backend-docker-subject.test.mjs

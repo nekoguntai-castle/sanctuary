@@ -19,6 +19,7 @@ import { authenticate, requireAdmin } from '../../middleware/auth';
 import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError } from '../../errors/ApiError';
 import { testNodeConfig, resetNodeClient, NodeConfig } from '../../services/bitcoin/nodeClient';
+import { publishElectrumConfigChange } from '../../services/bitcoin/electrumConfigChanges';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { auditService, AuditAction, AuditCategory } from '../../services/auditService';
@@ -26,6 +27,7 @@ import {
   buildNodeConfigData,
   buildNodeConfigResponse,
   MASKED_PROXY_PASSWORD,
+  nodeConfigChanges,
   type NodeConfigInput,
 } from './nodeConfigData';
 import proxyTestRouter from './proxyTest';
@@ -297,6 +299,10 @@ router.put('/node-config', authenticate, requireAdmin, asyncHandler(async (req, 
 
   // Reset the active node client so it reconnects with new config
   await resetNodeClient();
+  // Not awaited: a stalled event bus must not hold the admin request open.
+  for (const change of nodeConfigChanges(existingConfig, configData)) {
+    void publishElectrumConfigChange(change);
+  }
 
   const response = buildNodeConfigResponse(nodeConfig as unknown as Record<string, unknown>);
   res.json({

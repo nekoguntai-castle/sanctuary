@@ -15,7 +15,6 @@ import { createLogger } from '../../utils/logger';
 import {
   getGrafanaConfig,
   getMonitoringServices,
-  updateGrafanaConfig,
   updateMonitoringServiceUrl,
 } from '../../services/adminMonitoringService';
 
@@ -34,14 +33,9 @@ const MonitoringServiceUpdateBodySchema = z.object({
   customUrl: z.string().nullable().optional(),
 }).strict();
 
-const GrafanaUpdateBodySchema = z.object({
-  anonymousAccess: z.boolean().optional(),
-}).strict();
-
 type MonitoringServicesQuery = z.infer<typeof MonitoringServicesQuerySchema>;
 type MonitoringServiceParams = z.infer<typeof MonitoringServiceParamsSchema>;
 type MonitoringServiceUpdateBody = z.infer<typeof MonitoringServiceUpdateBodySchema>;
-type GrafanaUpdateBody = z.infer<typeof GrafanaUpdateBodySchema>;
 
 const monitoringServiceUpdateValidationMessage = (issues: Array<{ path: string; message: string }>) => {
   if (issues.some(issue => issue.path === 'serviceId')) {
@@ -95,34 +89,10 @@ router.put('/services/:serviceId', authenticate, requireAdmin, validate(
 
 /**
  * GET /api/v1/admin/monitoring/grafana
- * Get Grafana configuration including credentials hint and anonymous access setting
+ * Get Grafana configuration including credentials hint and the effective anonymous-access state
  */
 router.get('/grafana', authenticate, requireAdmin, asyncHandler(async (_req, res) => {
   res.json(await getGrafanaConfig());
-}));
-
-/**
- * PUT /api/v1/admin/monitoring/grafana
- * Update Grafana settings (anonymous access)
- */
-router.put('/grafana', authenticate, requireAdmin, validate(
-  { body: GrafanaUpdateBodySchema },
-  { message: 'Invalid Grafana settings update request', code: ErrorCodes.INVALID_INPUT }
-), asyncHandler(async (req, res) => {
-  const { anonymousAccess } = req.body as GrafanaUpdateBody;
-  const result = await updateGrafanaConfig(anonymousAccess);
-
-  if (result.changed) {
-    log.info('Grafana anonymous access updated', {
-      anonymousAccess,
-      admin: req.user?.username,
-    });
-  }
-
-  res.json({
-    success: result.success,
-    message: result.message,
-  });
 }));
 
 export default router;

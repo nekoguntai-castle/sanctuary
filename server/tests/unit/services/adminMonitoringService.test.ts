@@ -5,8 +5,6 @@ const mocks = vi.hoisted(() => ({
   getValue: vi.fn(),
   set: vi.fn(),
   deleteSetting: vi.fn(),
-  getBoolean: vi.fn(),
-  setBoolean: vi.fn(),
 }));
 
 vi.mock('../../../src/config', () => ({
@@ -18,16 +16,19 @@ vi.mock('../../../src/repositories/systemSettingRepository', () => ({
     getValue: mocks.getValue,
     set: mocks.set,
     delete: mocks.deleteSetting,
-    getBoolean: mocks.getBoolean,
-    setBoolean: mocks.setBoolean,
   },
   SystemSettingKeys: {
     MONITORING_GRAFANA_URL: 'monitoring.grafanaUrl',
     MONITORING_PROMETHEUS_URL: 'monitoring.prometheusUrl',
     MONITORING_JAEGER_URL: 'monitoring.jaegerUrl',
-    GRAFANA_ANONYMOUS_ACCESS: 'grafana.anonymousAccess',
   },
 }));
+
+const NOTES = {
+  true: 'Grafana allows dashboards to be viewed without logging in. Set GRAFANA_ANONYMOUS_ENABLED=false in the Sanctuary runtime environment and recreate the Grafana container to turn this off.',
+  false: 'Grafana requires a login. Logged-out access is controlled by GRAFANA_ANONYMOUS_ENABLED in the Sanctuary runtime environment.',
+  null: 'Could not reach the bundled Grafana container to read its anonymous-access state.',
+};
 
 const loadService = async () => {
   vi.resetModules();
@@ -53,8 +54,6 @@ describe('adminMonitoringService', () => {
     mocks.getValue.mockResolvedValue(null);
     mocks.set.mockResolvedValue(undefined);
     mocks.deleteSetting.mockResolvedValue(undefined);
-    mocks.getBoolean.mockResolvedValue(false);
-    mocks.setBoolean.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -122,31 +121,81 @@ describe('adminMonitoringService', () => {
     expect(mocks.deleteSetting).not.toHaveBeenCalled();
   });
 
-  it('returns only the independent Grafana password and persists anonymous access changes', async () => {
+  it('returns only the independent Grafana password', async () => {
     process.env.GRAFANA_PASSWORD = 'grafana-secret';
     process.env.ENCRYPTION_KEY = 'fallback-secret';
-    mocks.getBoolean.mockResolvedValue(true);
-    const { getGrafanaConfig, updateGrafanaConfig } = await loadService();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 401 }));
+    const { getGrafanaConfig } = await loadService();
 
     await expect(getGrafanaConfig()).resolves.toMatchObject({
       username: 'admin',
       passwordSource: 'GRAFANA_PASSWORD',
       password: 'grafana-secret',
       passwordConfigured: true,
-      anonymousAccess: true,
     });
+  });
 
-    await expect(updateGrafanaConfig(false)).resolves.toEqual({
-      success: true,
-      changed: true,
-      message: 'Anonymous access disabled. Restart Grafana container to apply.',
-    });
-    expect(mocks.setBoolean).toHaveBeenCalledWith('grafana.anonymousAccess', false);
+  it("reports Grafana's live anonymous access, not a stored setting", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ status: 200 });
+    vi.stubGlobal('fetch', fetchMock);
+    const { getGrafanaConfig } = await loadService();
+
+    await expect(getGrafanaConfig()).resolves.toMatchObject({ anonymousAccess: true, anonymousAccessNote: NOTES.true });
+    expect(fetchMock).toHaveBeenCalledWith('http://grafana:3000/api/search?limit=1', expect.anything());
+    expect(fetchMock.mock.calls[0][1]?.headers).toBeUndefined();
+    expect(mocks.getValue).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['401', () => Promise.resolve({ status: 401 }), false, NOTES.false],
+    ['500', () => Promise.resolve({ status: 500 }), null, NOTES.null],
+    ['reject', () => Promise.reject(new Error('ECONNREFUSED')), null, NOTES.null],
+  ] as const)('maps probe %s', async (_l, impl, anonymousAccess, anonymousAccessNote) => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(impl));
+    const { getGrafanaConfig } = await loadService();
+    await expect(getGrafanaConfig()).resolves.toMatchObject({ anonymousAccess, anonymousAccessNote });
+  });
+
+  it('maps a probe timeout to null', async () => {
+    const timeout = new AbortController();
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(timeout.signal);
+    try {
+      vi.stubGlobal('fetch', vi.fn((_u: string, init: RequestInit) => new Promise((_r, reject) => {
+        init.signal!.addEventListener('abort', () => reject(new Error('aborted')));
+      })));
+      const { getGrafanaConfig } = await loadService();
+      const pending = getGrafanaConfig();
+      expect(timeoutSpy).toHaveBeenCalledWith(3000);
+      timeout.abort();
+      await expect(pending).resolves.toMatchObject({ anonymousAccess: null, anonymousAccessNote: NOTES.null });
+    } finally {
+      timeoutSpy.mockRestore();
+    }
+  });
+
+  it('discards a check response body after reading its status', async () => {
+    const response = new Response('[]', { status: 200 });
+    const cancel = vi.spyOn(response.body!, 'cancel');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
+    const { getGrafanaConfig } = await loadService();
+
+    await expect(getGrafanaConfig()).resolves.toMatchObject({ anonymousAccess: true });
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('still reports the status when discarding the response body fails', async () => {
+    const body = { cancel: vi.fn().mockRejectedValue(new Error('stream locked')) };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 401, body }));
+    const { getGrafanaConfig } = await loadService();
+
+    await expect(getGrafanaConfig()).resolves.toMatchObject({ anonymousAccess: false, anonymousAccessNote: NOTES.false });
+    expect(body.cancel).toHaveBeenCalledTimes(1);
   });
 
   it('never falls back to the encryption master key', async () => {
     delete process.env.GRAFANA_PASSWORD;
     process.env.ENCRYPTION_KEY = 'sentinel-master-key';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 401 }));
     const { getGrafanaConfig } = await loadService();
 
     await expect(getGrafanaConfig()).resolves.toMatchObject({

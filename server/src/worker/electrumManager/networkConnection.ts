@@ -40,6 +40,21 @@ function detachEventHandlers(state: NetworkState): void {
   }
 }
 
+/**
+ * Drop a network's live subscription state and close its client. Handlers are
+ * detached before the disconnect so the client's own 'close' cannot schedule a
+ * second reconnect; the caller decides whether to reconnect.
+ */
+export function teardownNetworkState(state: NetworkState): void {
+  state.connected = false;
+  state.subscribedToHeaders = false;
+  state.subscribedAddresses.clear();
+  pendingLiveHeaders.delete(state);
+  detachEventHandlers(state);
+  activeClientStates.delete(state.client);
+  state.client.disconnect();
+}
+
 function queueLatestLiveHeader(
   state: NetworkState,
   block: HeaderObservation,
@@ -270,13 +285,7 @@ export function setupEventHandlers(
         log.error(`Failed to reconcile ${network} block header at height ${next.height}`, {
           error: getErrorMessage(error),
         });
-        state.connected = false;
-        state.subscribedToHeaders = false;
-        state.subscribedAddresses.clear();
-        pendingLiveHeaders.delete(state);
-        detachEventHandlers(state);
-        activeClientStates.delete(client);
-        client.disconnect();
+        teardownNetworkState(state);
         if (isRunning()) scheduleReconnect(network);
       }
     });
@@ -303,12 +312,7 @@ export function setupEventHandlers(
   // Handle connection close
   client.on('close', () => {
     log.warn(`Electrum ${network} connection closed`);
-    state.connected = false;
-    state.subscribedToHeaders = false;
-    state.subscribedAddresses.clear();
-    pendingLiveHeaders.delete(state);
-    detachEventHandlers(state);
-    activeClientStates.delete(client);
+    teardownNetworkState(state);
 
     if (isRunning()) {
       scheduleReconnect(network);

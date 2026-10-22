@@ -26,6 +26,7 @@ const presets: PresetServer[] = [
 const renderConfig = (overrides: Partial<React.ComponentProps<typeof SingletonConfig>> = {}) => {
   const onUpdateConfig = vi.fn();
   const onTestSingleton = vi.fn();
+  const onApplyPreset = vi.fn();
 
   const view = render(
     <SingletonConfig
@@ -38,16 +39,17 @@ const renderConfig = (overrides: Partial<React.ComponentProps<typeof SingletonCo
       testMessage=""
       onUpdateConfig={onUpdateConfig}
       onTestSingleton={onTestSingleton}
+      onApplyPreset={onApplyPreset}
       {...overrides}
     />
   );
 
-  return { ...view, onUpdateConfig, onTestSingleton };
+  return { ...view, onUpdateConfig, onTestSingleton, onApplyPreset };
 };
 
 describe('SingletonConfig branch coverage', () => {
   it('covers port parsing fallback, protocol toggles, and preset updates', () => {
-    const { onUpdateConfig } = renderConfig();
+    const { onUpdateConfig, onApplyPreset } = renderConfig();
 
     const hostInput = screen.getByRole('textbox');
     fireEvent.change(hostInput, { target: { value: 'next.example.com' } });
@@ -58,15 +60,17 @@ describe('SingletonConfig branch coverage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'SSL' }));
     fireEvent.click(screen.getByRole('button', { name: 'TCP' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Preset B' }));
 
     expect(onUpdateConfig).toHaveBeenCalledWith('singletonHost', 'next.example.com');
     expect(onUpdateConfig).toHaveBeenCalledWith('singletonPort', 60001);
     expect(onUpdateConfig).toHaveBeenCalledWith('singletonPort', 50002);
     expect(onUpdateConfig).toHaveBeenCalledWith('singletonSsl', true);
     expect(onUpdateConfig).toHaveBeenCalledWith('singletonSsl', false);
-    expect(onUpdateConfig).toHaveBeenCalledWith('singletonHost', 'b.example.com');
-    expect(onUpdateConfig).toHaveBeenCalledWith('singletonPort', 50001);
+
+    onUpdateConfig.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Preset B' }));
+    expect(onUpdateConfig).not.toHaveBeenCalled();
+    expect(onApplyPreset).toHaveBeenCalledWith(presets[1]);
   });
 
   it('covers status UI branches for testing/success/error and ssl class toggles', () => {
@@ -95,6 +99,7 @@ describe('SingletonConfig branch coverage', () => {
         testMessage="connected"
         onUpdateConfig={vi.fn()}
         onTestSingleton={onTestSingleton}
+        onApplyPreset={vi.fn()}
       />
     );
 
@@ -114,6 +119,7 @@ describe('SingletonConfig branch coverage', () => {
         testMessage="failed"
         onUpdateConfig={vi.fn()}
         onTestSingleton={onTestSingleton}
+        onApplyPreset={vi.fn()}
       />
     );
 

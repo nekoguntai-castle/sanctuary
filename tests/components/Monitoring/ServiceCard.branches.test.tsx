@@ -14,6 +14,14 @@ const serviceBase = {
   status: 'healthy' as const,
 } satisfies MonitoringService;
 
+const grafanaCredentials = {
+  username: 'admin',
+  password: 'secret',
+  passwordSource: 'GRAFANA_PASSWORD',
+  passwordConfigured: true,
+  hasAuth: true,
+} as const;
+
 describe('Monitoring ServiceCard branch coverage', () => {
   beforeEach(() => {
     Object.defineProperty(navigator, 'clipboard', {
@@ -119,5 +127,39 @@ describe('Monitoring ServiceCard branch coverage', () => {
     expect(screen.getByText('Not configured')).toBeInTheDocument();
     expect(screen.getByText(/Set GRAFANA_PASSWORD/)).toBeInTheDocument();
     expect(screen.queryByTitle('Copy password')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [true, 'On', 'note on', 'px-2 py-0.5 text-xs rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'],
+    [false, 'Off', undefined, 'px-2 py-0.5 text-xs rounded bg-sanctuary-100 text-sanctuary-600 dark:bg-sanctuary-800 dark:text-sanctuary-300'],
+    [null, 'Unknown', 'note unknown', 'px-2 py-0.5 text-xs rounded bg-sanctuary-100 text-sanctuary-600 dark:bg-sanctuary-800 dark:text-sanctuary-300 italic'],
+  ] as const)('renders the read-only anonymous viewing pill for %s', (anonymousAccess, label, note, className) => {
+    render(
+      <ServiceCard
+        service={serviceBase}
+        onEditUrl={vi.fn()}
+        hostname="node.local"
+        credentials={grafanaCredentials}
+        anonymousAccess={anonymousAccess}
+        anonymousAccessNote={note}
+      />
+    );
+    const pill = screen.getByTestId('grafana-anonymous-state');
+    expect(pill).toHaveTextContent(label);
+    expect(pill.className).toBe(className);
+    const section = pill.parentElement!.parentElement!;
+    expect(section.querySelector('p')?.textContent).toBe(note);
+  });
+
+  it('renders no anonymous viewing pill when the state is undefined', () => {
+    render(
+      <ServiceCard
+        service={serviceBase}
+        onEditUrl={vi.fn()}
+        hostname="node.local"
+        credentials={grafanaCredentials}
+      />
+    );
+    expect(screen.queryByTestId('grafana-anonymous-state')).toBeNull();
   });
 });

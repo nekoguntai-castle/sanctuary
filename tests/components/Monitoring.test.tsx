@@ -2,7 +2,7 @@
  * Tests for Monitoring component
  */
 
-import { render,screen,waitFor } from '@testing-library/react';
+import { render,screen,waitFor,within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderToString } from 'react-dom/server';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
@@ -13,7 +13,6 @@ import * as adminApi from '../../src/api/admin';
 vi.mock('../../src/api/admin', () => ({
   getMonitoringServices: vi.fn(),
   getGrafanaConfig: vi.fn(),
-  updateGrafanaConfig: vi.fn(),
   updateMonitoringServiceUrl: vi.fn(),
 }));
 
@@ -78,7 +77,6 @@ describe('Monitoring', () => {
 
     vi.mocked(adminApi.getMonitoringServices).mockResolvedValue(mockServices as any);
     vi.mocked(adminApi.getGrafanaConfig).mockResolvedValue(mockGrafanaConfig as any);
-    vi.mocked(adminApi.updateGrafanaConfig).mockResolvedValue({ success: true, message: 'Updated' });
     vi.mocked(adminApi.updateMonitoringServiceUrl).mockResolvedValue({ success: true });
   });
 
@@ -293,70 +291,35 @@ describe('Monitoring', () => {
     });
   });
 
-  describe('anonymous access toggle', () => {
-    it('shows anonymous access toggle for Grafana', async () => {
+  describe('anonymous viewing status', () => {
+    it.each([
+      [true, 'On', 'note-on'],
+      [false, 'Off', 'note-off'],
+      [null, 'Unknown', 'note-unknown'],
+    ] as const)('shows the effective state %s as %s', async (anonymousAccess, label, note) => {
+      vi.mocked(adminApi.getGrafanaConfig).mockResolvedValue({
+        ...mockGrafanaConfig,
+        anonymousAccess,
+        anonymousAccessNote: note,
+      } as any);
+      render(<Monitoring />);
+
+      expect(await screen.findByTestId('grafana-anonymous-state')).toHaveTextContent(label);
+      expect(screen.getByText(note)).toBeInTheDocument();
+      expect(screen.getAllByText(/anonymous viewing/i)).toHaveLength(1);
+    });
+
+    it('offers no anonymous-access control', async () => {
       render(<Monitoring />);
 
       await waitFor(() => {
         expect(screen.getByText('Anonymous viewing')).toBeInTheDocument();
       });
-    });
+      const row = screen.getByText('Anonymous viewing').parentElement!.parentElement!;
+      expect(within(row).queryByRole('button')).toBeNull();
 
-    it('toggles anonymous access', async () => {
-      const user = userEvent.setup();
-      render(<Monitoring />);
-
-      await waitFor(() => {
-        expect(screen.getByText('Anonymous viewing')).toBeInTheDocument();
-      });
-
-      // Find the anonymous toggle (should be the one inside the credentials section)
-      const toggleButtons = document.querySelectorAll('button[class*="rounded-full"]');
-      const anonymousToggle = Array.from(toggleButtons).find(btn =>
-        btn.closest('label')?.textContent?.includes('Anonymous viewing')
-      );
-
-      if (anonymousToggle) {
-        await user.click(anonymousToggle);
-
-        await waitFor(() => {
-          expect(adminApi.updateGrafanaConfig).toHaveBeenCalledWith({
-            anonymousAccess: true,
-          });
-        });
-      }
-    });
-
-    it('shows restart notice for anonymous access', async () => {
-      render(<Monitoring />);
-
-      await waitFor(() => {
-        expect(screen.getByText(/Requires container restart/)).toBeInTheDocument();
-      });
-    });
-
-    it('does not update local toggle state when anonymous update fails', async () => {
-      vi.mocked(adminApi.updateGrafanaConfig).mockRejectedValue(new Error('toggle failed'));
-
-      const user = userEvent.setup();
-      render(<Monitoring />);
-
-      await waitFor(() => {
-        expect(screen.getByText('Anonymous viewing')).toBeInTheDocument();
-      });
-
-      const toggleButtons = document.querySelectorAll('button[class*="rounded-full"]');
-      const anonymousToggle = Array.from(toggleButtons).find(btn =>
-        btn.closest('label')?.textContent?.includes('Anonymous viewing')
-      );
-
-      if (anonymousToggle) {
-        await user.click(anonymousToggle);
-      }
-
-      await waitFor(() => {
-        expect(adminApi.updateGrafanaConfig).toHaveBeenCalledWith({ anonymousAccess: true });
-      });
+      const actual = await vi.importActual<typeof import('../../src/api/admin')>('../../src/api/admin');
+      expect('updateGrafanaConfig' in actual).toBe(false);
     });
   });
 

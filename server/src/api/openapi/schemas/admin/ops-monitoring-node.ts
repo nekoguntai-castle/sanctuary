@@ -131,25 +131,10 @@ export const adminOpsMonitoringNodeSchemas = {
       passwordSource: { type: 'string', enum: ['GRAFANA_PASSWORD'], nullable: true },
       password: { type: 'string', format: 'password', nullable: true },
       passwordConfigured: { type: 'boolean' },
-      anonymousAccess: { type: 'boolean' },
+      anonymousAccess: { type: 'boolean', nullable: true },
       anonymousAccessNote: { type: 'string' },
     },
     required: ['username', 'passwordSource', 'password', 'passwordConfigured', 'anonymousAccess', 'anonymousAccessNote'],
-  },
-  AdminUpdateGrafanaRequest: {
-    type: 'object',
-    properties: {
-      anonymousAccess: { type: 'boolean' },
-    },
-    additionalProperties: false,
-  },
-  AdminGrafanaUpdateResponse: {
-    type: 'object',
-    properties: {
-      success: { type: 'boolean' },
-      message: { type: 'string' },
-    },
-    required: ['success', 'message'],
   },
   AdminNodeConfig: {
     type: 'object',

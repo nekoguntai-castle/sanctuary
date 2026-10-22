@@ -117,6 +117,12 @@ is_ci_classifier_file() {
     scripts/ops/sanctuary-backup.sh|scripts/ops/install-sanctuary-backup.sh|server/.husky/pre-commit)
       return 0
       ;;
+    # Real checkout files read by the classifier-only contract suites (D-14.C6).
+    # Exact paths: other compose files and Dockerfiles are covered by the
+    # always-on supply-chain lock step in determine-scope (D-14.C5).
+    docker/compose/test.yml|docker/frontend/Dockerfile|docker/test/backend.Dockerfile|docker/test/backend.Dockerfile.dockerignore|scripts/run-tests.sh|scripts/run-integration-tests.sh|scripts/verify-addresses/verify-repeatable.sh|scripts/verify-addresses/docker-compose.yml|scripts/verify-addresses/implementations/go.mod|scripts/verify-addresses/implementations/go.sum)
+      return 0
+      ;;
     package.json|scripts/bump-version.sh|scripts/release/*|tests/release/*|CLAUDE.md|.claude/commands/release.md|.claude/commands/pre-release.md|.github/CONTRIBUTING.md|docs/reference/release-distribution.md|docs/reference/release-gates.md|docs/reference/changelog.md|docs/how-to/release-candidate-canary.md)
       return 0
       ;;

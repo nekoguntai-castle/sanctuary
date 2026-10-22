@@ -161,6 +161,7 @@ apply_upgrade_fixture_defaults "$UPGRADE_FIXTURE"
 apply_upgrade_test_network_defaults
 
 TEST_RUNTIME_DIR="${SANCTUARY_RUNTIME_DIR:-$TEST_ROOT/sanctuary-upgrade-runtime-${TEST_ID}}"
+DEFAULT_RUNTIME_ENV_FILE="$TEST_RUNTIME_DIR/sanctuary.env"
 TEST_SSL_DIR="$(upgrade_test_ssl_dir "$TEST_RUNTIME_DIR" "$TEST_ROOT" "$COMPOSE_PROJECT_NAME")"
 TEST_COMPOSE_SSL_DIR="${SANCTUARY_COMPOSE_SSL_DIR:-$(docker_visible_path "$TEST_SSL_DIR")}"
 # Same treatment as the SSL directory: give compose paths the engine can read.
@@ -196,7 +197,7 @@ LEGACY_TARGET_ENV_FILE="$TARGET_PROJECT_ROOT/.env"
 if [ "$UPGRADE_USE_LEGACY_RUNTIME_ENV" = "true" ] && [ -z "${SANCTUARY_ENV_FILE:-}" ]; then
     TEST_ENV_FILE="$UPGRADE_SOURCE_CHECKOUT/.env"
 else
-    TEST_ENV_FILE="${SANCTUARY_ENV_FILE:-$TEST_RUNTIME_DIR/sanctuary.env}"
+    TEST_ENV_FILE="${SANCTUARY_ENV_FILE:-$DEFAULT_RUNTIME_ENV_FILE}"
 fi
 # Keep the operator-facing runtime selection available after the installer
 # subshell exits. Manifest-backed commands (including account recovery and
@@ -206,6 +207,9 @@ export SANCTUARY_RUNTIME_DIR="$TEST_RUNTIME_DIR"
 export SANCTUARY_ENV_FILE="$TEST_ENV_FILE"
 UPGRADE_SOURCE_CREATED=false
 UPGRADE_CREATED_TARGET_LEGACY_ENV=false
+# legacy-runtime-env moved the runtime env to the target .env; teardown moves
+# it back so the coordinator's post-subject steps find the file they bound.
+UPGRADE_HID_RUNTIME_ENV=false
 UPGRADE_SOURCE_LABEL=""
 UPGRADE_TARGET_LABEL="$(git -C "$TARGET_PROJECT_ROOT" describe --tags --always 2>/dev/null || git -C "$TARGET_PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || echo "current-checkout")"
 UPGRADE_ALLOW_RESTART_FALLBACK="${SANCTUARY_UPGRADE_ALLOW_RESTART_FALLBACK:-false}"
@@ -732,6 +736,9 @@ run_install_script_command() {
 
     (
         initialize_install_test_ownership_for_root "$project_dir"
+        # An operator's install.sh starts with no runtime secret in its shell
+        # and must find and reload the existing env itself (D-14.C1).
+        scrub_inherited_runtime_secrets
         export HTTPS_PORT
         export HTTP_PORT
         export GATEWAY_PORT
@@ -752,7 +759,14 @@ run_install_script_command() {
         fi
         export SANCTUARY_DIR="$project_dir"
         export SANCTUARY_RUNTIME_DIR="$TEST_RUNTIME_DIR"
-        export SANCTUARY_ENV_FILE="$TEST_ENV_FILE"
+        # Pass the env path only when install.sh could not find it (D-14.C2).
+        local env_override
+        env_override="$(upgrade_installer_env_file_override "$project_dir" "$TEST_ENV_FILE" "$TEST_RUNTIME_DIR")"
+        if [ -n "$env_override" ]; then
+            export SANCTUARY_ENV_FILE="$env_override"
+        else
+            unset SANCTUARY_ENV_FILE
+        fi
         export SANCTUARY_SSL_DIR="$TEST_SSL_DIR"
         export SANCTUARY_COMPOSE_SSL_DIR="$TEST_COMPOSE_SSL_DIR"
         export SKIP_GIT_CHECKOUT="true"
@@ -1099,7 +1113,10 @@ teardown() {
         rm -f "$COOKIE_JAR"
     fi
 
-    if [ "$UPGRADE_CREATED_TARGET_LEGACY_ENV" = "true" ] && [ -f "$LEGACY_TARGET_ENV_FILE" ]; then
+    if [ "$UPGRADE_HID_RUNTIME_ENV" = "true" ] && [ ! -e "$DEFAULT_RUNTIME_ENV_FILE" ] \
+        && [ -f "$LEGACY_TARGET_ENV_FILE" ]; then
+        mv "$LEGACY_TARGET_ENV_FILE" "$DEFAULT_RUNTIME_ENV_FILE"
+    elif [ "$UPGRADE_CREATED_TARGET_LEGACY_ENV" = "true" ] && [ -f "$LEGACY_TARGET_ENV_FILE" ]; then
         rm -f "$LEGACY_TARGET_ENV_FILE"
     fi
 
@@ -1219,12 +1236,8 @@ test_ensure_existing_installation() {
             verify_mcp_profile_container "$PROJECT_ROOT" || return 1
         fi
 
-        ORIGINAL_JWT_SECRET="$JWT_SECRET"
-        ORIGINAL_ENCRYPTION_KEY="$ENCRYPTION_KEY"
-        ORIGINAL_ENCRYPTION_SALT="$ENCRYPTION_SALT"
-        ORIGINAL_GATEWAY_SECRET="$GATEWAY_SECRET"
-        ORIGINAL_POSTGRES_PASSWORD="$POSTGRES_PASSWORD"
-        log_info "Loaded initial secrets from $(resolve_env_file)"
+        capture_runtime_env_secrets "$TEST_ENV_FILE" || return 1
+        log_info "Loaded initial secrets from $TEST_ENV_FILE"
     fi
 
     register_owned_source_resources || return 1
@@ -1315,17 +1328,9 @@ test_capture_pre_upgrade_state() {
     log_info "Capturing pre-upgrade state..."
 
     # Capture runtime env contents
-    if load_runtime_env; then
-        ORIGINAL_JWT_SECRET="$JWT_SECRET"
-        ORIGINAL_ENCRYPTION_KEY="$ENCRYPTION_KEY"
-        ORIGINAL_ENCRYPTION_SALT="$ENCRYPTION_SALT"
-        ORIGINAL_GATEWAY_SECRET="$GATEWAY_SECRET"
-        ORIGINAL_POSTGRES_PASSWORD="$POSTGRES_PASSWORD"
-        log_info "Captured required upgrade secrets"
-    else
-        log_error "Runtime env not found"
-        return 1
-    fi
+    capture_runtime_env_secrets "$TEST_ENV_FILE" || return 1
+    load_runtime_env || return 1
+    log_info "Captured required upgrade secrets from $TEST_ENV_FILE"
 
     # Capture database state
     local user_count=$(compose_exec postgres psql -U sanctuary -d sanctuary -t -c \
@@ -1809,8 +1814,16 @@ test_simulate_git_update() {
             return 1
         fi
 
-        cp "$TEST_ENV_FILE" "$LEGACY_TARGET_ENV_FILE"
-        chmod 600 "$LEGACY_TARGET_ENV_FILE" 2>/dev/null || true
+        if [ "$TEST_ENV_FILE" = "$DEFAULT_RUNTIME_ENV_FILE" ]; then
+            # Coordinated lane: hide the runtime env so the target sees a
+            # pre-migration operator's shape, only <target>/.env, and must take
+            # install.sh's repo-root fallback on its own (D-14.C3).
+            move_runtime_env_to_legacy_path "$TEST_ENV_FILE" "$LEGACY_TARGET_ENV_FILE" || return 1
+            UPGRADE_HID_RUNTIME_ENV=true
+        else
+            cp "$TEST_ENV_FILE" "$LEGACY_TARGET_ENV_FILE"
+            chmod 600 "$LEGACY_TARGET_ENV_FILE" 2>/dev/null || true
+        fi
         TEST_ENV_FILE="$LEGACY_TARGET_ENV_FILE"
         export SANCTUARY_ENV_FILE="$TEST_ENV_FILE"
         UPGRADE_CREATED_TARGET_LEGACY_ENV=true
@@ -1853,6 +1866,9 @@ test_restart_containers_after_upgrade() {
     if ! run_install_script "$PROJECT_ROOT"; then
         return 1
     fi
+    # TEST_ENV_FILE is the file the target had to find on its own: the runtime
+    # env, or the target .env on the legacy-runtime-env fixture (D-14.C4).
+    assert_install_output_was_upgrade "$(install_log_path "$PROJECT_ROOT")" "$TEST_ENV_FILE" || return 1
     verify_legacy_docker_resources_preserved || return 1
     disable_compose_project_restart_policy "$COMPOSE_PROJECT_NAME"
 
@@ -1884,36 +1900,10 @@ test_restart_containers_after_upgrade() {
 test_verify_secrets_preserved() {
     log_info "Verifying secrets were preserved..."
 
-    # Reload runtime env
-    load_runtime_env
-
-    if [ "$JWT_SECRET" != "$ORIGINAL_JWT_SECRET" ]; then
-        log_error "JWT_SECRET changed after upgrade"
-        return 1
-    fi
-
-    if [ "$ENCRYPTION_KEY" != "$ORIGINAL_ENCRYPTION_KEY" ]; then
-        log_error "ENCRYPTION_KEY changed after upgrade"
-        return 1
-    fi
-
-    if [ "$ENCRYPTION_SALT" != "$ORIGINAL_ENCRYPTION_SALT" ]; then
-        log_error "ENCRYPTION_SALT changed after upgrade"
-        return 1
-    fi
-
-    if [ "$GATEWAY_SECRET" != "$ORIGINAL_GATEWAY_SECRET" ]; then
-        log_error "GATEWAY_SECRET changed after upgrade"
-        return 1
-    fi
-
-    if [ "$POSTGRES_PASSWORD" != "$ORIGINAL_POSTGRES_PASSWORD" ]; then
-        log_error "POSTGRES_PASSWORD changed after upgrade"
-        return 1
-    fi
-
-    log_success "All 5 secrets preserved correctly"
-    return 0
+    # Compare the file the installer wrote, never the harness's own shell:
+    # sourcing never unsets a key, so a reload would hide a dropped secret.
+    assert_runtime_env_secrets_preserved "$TEST_ENV_FILE" || return 1
+    load_runtime_env || return 1
 }
 
 wait_for_optional_profile_container() {
@@ -1973,6 +1963,11 @@ test_verify_fixture_runtime_shape() {
         if [ "$(resolve_env_file)" != "$LEGACY_TARGET_ENV_FILE" ]; then
             log_error "legacy-runtime-env fixture did not use target .env"
             log_error "Resolved env: $(resolve_env_file)"
+            return 1
+        fi
+        if [ "$UPGRADE_HID_RUNTIME_ENV" = "true" ] && [ -e "$DEFAULT_RUNTIME_ENV_FILE" ]; then
+            log_error "legacy-runtime-env target wrote a new runtime env instead of updating the target .env"
+            log_error "Unexpected runtime env: $DEFAULT_RUNTIME_ENV_FILE"
             return 1
         fi
     fi
@@ -2299,6 +2294,7 @@ test_recover_postgres_password_drift() {
         backend worker frontend gateway llm-egress-proxy migrate 2>&1 || true
 
     setup_output=$(
+        scrub_inherited_runtime_secrets
         export SANCTUARY_ENV_FILE="$TEST_ENV_FILE"
         export SANCTUARY_SSL_DIR="$TEST_SSL_DIR"
         export SANCTUARY_COMPOSE_SSL_DIR="$TEST_COMPOSE_SSL_DIR"
@@ -2430,6 +2426,7 @@ test_force_rebuild_upgrade() {
     local rebuild_output=""
     set +e
     rebuild_output=$(
+        scrub_inherited_runtime_secrets
         export HTTPS_PORT
         export HTTP_PORT
         export GATEWAY_PORT

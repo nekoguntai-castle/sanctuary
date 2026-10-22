@@ -47,7 +47,6 @@ vi.mock('../../../src/repositories/systemSettingRepository', () => ({
     MONITORING_GRAFANA_URL: 'monitoring.grafanaUrl',
     MONITORING_PROMETHEUS_URL: 'monitoring.prometheusUrl',
     MONITORING_JAEGER_URL: 'monitoring.jaegerUrl',
-    GRAFANA_ANONYMOUS_ACCESS: 'grafana.anonymousAccess',
   },
 }));
 
@@ -352,10 +351,10 @@ describe('Admin Monitoring Routes', () => {
     expect(response.body.code).toBe('INTERNAL_ERROR');
   });
 
-  it('returns the independent grafana credential and anonymous setting', async () => {
+  it('returns the independent grafana credential and live anonymous state', async () => {
     process.env.GRAFANA_PASSWORD = 'grafana-secret';
     process.env.ENCRYPTION_KEY = 'enc-key';
-    mockGetBoolean.mockResolvedValue(true);
+    mockFetch.mockResolvedValue({ status: 200 });
 
     const response = await request(app).get('/api/v1/admin/monitoring/grafana');
 
@@ -367,108 +366,47 @@ describe('Admin Monitoring Routes', () => {
       passwordConfigured: true,
       anonymousAccess: true,
     });
-    expect(response.body.anonymousAccessNote).toContain('restarting the Grafana container');
+    expect(response.body.anonymousAccessNote).toBe('Grafana allows dashboards to be viewed without logging in. Set GRAFANA_ANONYMOUS_ENABLED=false in the Sanctuary runtime environment and recreate the Grafana container to turn this off.');
   });
 
   it('never returns the encryption key when grafana password is not configured', async () => {
     delete process.env.GRAFANA_PASSWORD;
     process.env.ENCRYPTION_KEY = 'fallback-key';
-    mockGetBoolean.mockResolvedValue(false);
+    mockFetch.mockResolvedValue({ status: 401 });
 
     const response = await request(app).get('/api/v1/admin/monitoring/grafana');
 
     expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({
-      passwordSource: null,
-      password: null,
-      passwordConfigured: false,
-    });
+    expect(response.body).toMatchObject({ passwordSource: null, password: null, passwordConfigured: false });
     expect(JSON.stringify(response.body)).not.toContain('fallback-key');
   });
 
   it('returns empty grafana password when no related environment variables are configured', async () => {
     delete process.env.GRAFANA_PASSWORD;
     delete process.env.ENCRYPTION_KEY;
-    mockGetBoolean.mockResolvedValue(false);
+    mockFetch.mockResolvedValue({ status: 401 });
 
     const response = await request(app).get('/api/v1/admin/monitoring/grafana');
 
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
-      passwordSource: null,
-      password: null,
-      passwordConfigured: false,
-      anonymousAccess: false,
+      passwordSource: null, password: null, passwordConfigured: false, anonymousAccess: false,
     });
   });
 
-  it('returns 500 when grafana config lookup fails', async () => {
-    mockGetBoolean.mockRejectedValue(new Error('db error'));
+  it('returns anonymousAccess null and the unknown note when the probe rejects', async () => {
+    mockFetch.mockRejectedValue(new Error('ECONNREFUSED'));
 
     const response = await request(app).get('/api/v1/admin/monitoring/grafana');
 
-    expect(response.status).toBe(500);
-    expect(response.body.code).toBe('INTERNAL_ERROR');
-  });
-
-  it('updates grafana anonymous access when boolean is provided', async () => {
-    const response = await request(app)
-      .put('/api/v1/admin/monitoring/grafana')
-      .send({ anonymousAccess: true });
-
     expect(response.status).toBe(200);
-    expect(response.body.success).toBe(true);
-    expect(response.body.message).toContain('enabled');
-    expect(mockSetBoolean).toHaveBeenCalledWith('grafana.anonymousAccess', true);
+    expect(response.body.anonymousAccess).toBeNull();
+    expect(response.body.anonymousAccessNote).toBe('Could not reach the bundled Grafana container to read its anonymous-access state.');
   });
 
-  it('returns success without updating when anonymousAccess is omitted', async () => {
-    const response = await request(app)
-      .put('/api/v1/admin/monitoring/grafana')
-      .send({});
-
-    expect(response.status).toBe(200);
-    expect(response.body.success).toBe(true);
-    expect(response.body.message).toContain('disabled');
+  it('no longer routes PUT /admin/monitoring/grafana', async () => {
+    const response = await request(app).put('/api/v1/admin/monitoring/grafana').send({ anonymousAccess: true });
+    expect(response.status).toBe(404);
     expect(mockSetBoolean).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    ['string', { anonymousAccess: 'true' }],
-    ['number', { anonymousAccess: 1 }],
-    ['null', { anonymousAccess: null }],
-  ])('rejects malformed grafana update body: %s', async (_label, body) => {
-    const response = await request(app)
-      .put('/api/v1/admin/monitoring/grafana')
-      .send(body);
-
-    expect(response.status).toBe(400);
-    expect(response.body.code).toBe('INVALID_INPUT');
-    expect(response.body.message).toContain('Invalid Grafana settings update request');
-    expect(mockSetBoolean).not.toHaveBeenCalled();
-  });
-
-  it('rejects extra grafana update fields', async () => {
-    const response = await request(app)
-      .put('/api/v1/admin/monitoring/grafana')
-      .send({
-        anonymousAccess: true,
-        restartContainer: true,
-      });
-
-    expect(response.status).toBe(400);
-    expect(response.body.message).toContain('Invalid Grafana settings update request');
-    expect(mockSetBoolean).not.toHaveBeenCalled();
-  });
-
-  it('returns 500 when grafana update fails', async () => {
-    mockSetBoolean.mockRejectedValue(new Error('write failure'));
-
-    const response = await request(app)
-      .put('/api/v1/admin/monitoring/grafana')
-      .send({ anonymousAccess: false });
-
-    expect(response.status).toBe(500);
-    expect(response.body.code).toBe('INTERNAL_ERROR');
   });
 });

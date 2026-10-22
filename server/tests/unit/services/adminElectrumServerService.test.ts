@@ -14,6 +14,11 @@ const mocks = vi.hoisted(() => ({
   reorderPriorities: vi.fn(),
   reloadElectrumServers: vi.fn(),
   testNodeConfig: vi.fn(),
+  emitAsync: vi.fn(),
+}));
+
+vi.mock('../../../src/infrastructure', () => ({
+  getDistributedEventBus: () => ({ emitAsync: mocks.emitAsync }),
 }));
 
 vi.mock('../../../src/repositories/nodeConfigRepository', () => ({
@@ -110,6 +115,7 @@ describe('adminElectrumServerService', () => {
     mocks.getMaxPriority.mockResolvedValue(4);
     mocks.reorderPriorities.mockResolvedValue(undefined);
     mocks.reloadElectrumServers.mockResolvedValue(undefined);
+    mocks.emitAsync.mockResolvedValue(undefined);
     mocks.testNodeConfig.mockResolvedValue({
       success: true,
       message: 'Connected',
@@ -125,6 +131,93 @@ describe('adminElectrumServerService', () => {
         lastCapabilityError: null,
       },
     });
+  });
+
+  type AdminElectrumServerService = Awaited<ReturnType<typeof loadService>>;
+  const reloadingOperations: Array<[string, (service: AdminElectrumServerService) => Promise<unknown>]> = [
+    ['reorder', (service) => service.reorderElectrumServers(['srv-2', 'srv-1'])],
+    ['create', (service) => service.createElectrumServer({
+      label: 'New Server',
+      host: 'new.example.com',
+      port: 50002,
+      useSsl: true,
+      enabled: true,
+      network: 'testnet4',
+    })],
+    ['delete', (service) => service.deleteElectrumServer('srv-1')],
+    ['network move', (service) => {
+      mocks.findById.mockResolvedValueOnce(buildServer({ network: 'mainnet', host: 'move.example.com' }));
+      return service.updateElectrumServer('srv-1', { network: 'testnet4' });
+    }],
+    ['update with an unsupported previous network', (service) => {
+      mocks.findById.mockResolvedValueOnce(buildServer({ id: 'srv-legacy', network: 'testnet', host: 'legacy.example.com' }));
+      return service.updateElectrumServer('srv-legacy', { network: 'mainnet' });
+    }],
+  ];
+
+  it.each(reloadingOperations)('publishes an electrum-servers change for every pool reload: %s', async (_name, operation) => {
+    const service = await loadService();
+
+    await operation(service);
+
+    const reloads = mocks.reloadElectrumServers.mock.calls;
+    expect(reloads.length).toBeGreaterThan(0);
+    expect(mocks.emitAsync).toHaveBeenCalledTimes(reloads.length);
+    reloads.forEach(([network], index) => {
+      expect(mocks.emitAsync).toHaveBeenNthCalledWith(index + 1, 'system:electrumConfig.changed', {
+        scope: 'electrum-servers',
+        network: network ?? null,
+      });
+      expect(mocks.reloadElectrumServers.mock.invocationCallOrder[index])
+        .toBeLessThan(mocks.emitAsync.mock.invocationCallOrder[index]);
+    });
+  });
+
+  it('reloads the local pool after a saved-server test without publishing a change', async () => {
+    const { testSavedElectrumServer } = await loadService();
+
+    await testSavedElectrumServer('srv-1');
+
+    expect(mocks.reloadElectrumServers).toHaveBeenCalledWith('mainnet');
+    expect(mocks.emitAsync).not.toHaveBeenCalled();
+  });
+
+  it('reloads the local pool without publishing when a reorder keeps every priority', async () => {
+    const { reorderElectrumServers } = await loadService();
+    mocks.findByConfig.mockResolvedValue([
+      buildServer({ id: 'srv-1', priority: 0 }),
+      buildServer({ id: 'srv-2', priority: 1 }),
+    ]);
+
+    await reorderElectrumServers(['srv-1', 'srv-2']);
+
+    expect(mocks.emitAsync).not.toHaveBeenCalled();
+    expect(mocks.reorderPriorities).toHaveBeenCalledTimes(1);
+    expect(mocks.reloadElectrumServers).toHaveBeenCalledTimes(1);
+  });
+
+  it('completes a server update while the change publish is stalled', async () => {
+    const { updateElectrumServer } = await loadService();
+    mocks.emitAsync.mockReturnValue(new Promise<void>(() => {}));
+
+    await expect(updateElectrumServer('srv-1', { label: 'Renamed' })).resolves.toBeDefined();
+
+    expect(mocks.emitAsync).toHaveBeenCalledTimes(1);
+  }, 2000);
+
+  it('does not publish when the saved-server test fails on proxy configuration', async () => {
+    const { testSavedElectrumServer } = await loadService();
+    mocks.findById.mockResolvedValueOnce(buildServer({ id: 'srv-3', healthCheckFails: 1 }));
+    mocks.testNodeConfig.mockResolvedValueOnce({
+      success: false,
+      message: 'Proxy configuration error: re-enter it in Node Config',
+      failureKind: 'proxy_configuration',
+    });
+
+    await testSavedElectrumServer('srv-3');
+
+    expect(mocks.reloadElectrumServers).not.toHaveBeenCalled();
+    expect(mocks.emitAsync).not.toHaveBeenCalled();
   });
 
   it('lists servers for the default node config and returns empty when none exists', async () => {

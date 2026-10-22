@@ -47,7 +47,7 @@ interface SortedMultiPolicy {
   n: number;
 }
 
-const MAX_STANDARD_MULTISIG_KEYS = 16;
+export const MAX_STANDARD_MULTISIG_KEYS = 16;
 const MAX_ECDSA_SIGNATURE_BYTES = 73;
 const COMPRESSED_PUBLIC_KEY_BYTES = 33;
 const OUTPOINT_AND_SEQUENCE_BYTES = 40;

@@ -18,9 +18,14 @@ import {
   walletRepository,
 } from '../../repositories';
 import {
+  getDistributedEventBus,
   LockAuthorityUnavailableError,
   type DistributedLock,
 } from '../../infrastructure';
+import { resetNodeClient } from '../../services/bitcoin/nodeClient';
+import { reloadElectrumServers } from '../../services/bitcoin/electrumPool';
+import { ELECTRUM_CONFIG_CHANGED_EVENT } from '../../services/bitcoin/electrumConfigChanges';
+import { applyElectrumConfigChange, isElectrumConfigChange } from './configChanges';
 import { HEALTH_CHECK_INTERVAL_MS, ELECTRUM_SUBSCRIPTION_LOCK_RETRY_MS } from './types';
 import type {
   AddressWalletInfo,
@@ -29,7 +34,7 @@ import type {
   ElectrumManagerCallbacks,
 } from './types';
 import { acquireSubscriptionLock, startLockRefresh, releaseSubscriptionLock } from './lockCoordination';
-import { connectNetwork } from './networkConnection';
+import { connectNetwork, teardownNetworkState } from './networkConnection';
 import { scheduleReconnect } from './reconnection';
 import {
   subscribeAddressBatch,
@@ -61,6 +66,8 @@ export class ElectrumSubscriptionManager {
   private ownershipEpoch = 0;
   private explicitlyStopped = false;
   private networkConnections = new Map<BitcoinNetwork, Promise<void>>();
+  private configChangeUnsubscribe: (() => void) | null = null;
+  private configChangeChain: Promise<void> = Promise.resolve();
 
   constructor(callbacks: ElectrumManagerCallbacks) {
     this.callbacks = callbacks;
@@ -71,6 +78,12 @@ export class ElectrumSubscriptionManager {
    */
   async start(): Promise<void> {
     this.explicitlyStopped = false;
+    if (!this.configChangeUnsubscribe) {
+      this.configChangeUnsubscribe = getDistributedEventBus().on(
+        ELECTRUM_CONFIG_CHANGED_EVENT,
+        (change) => this.handleConfigChange(change),
+      );
+    }
     if (this.isRunningFlag) {
       log.warn('Electrum manager already running');
       return;
@@ -172,6 +185,52 @@ export class ElectrumSubscriptionManager {
       throw error;
     } finally {
       this.startupInFlight = false;
+    }
+  }
+
+  /**
+   * Apply a Node Config / Electrum server change published by the API.
+   * Changes are chained so they apply in arrival order and never interleave.
+   * A malformed payload is dropped before it reaches the chain, and a failed
+   * change is logged without rejecting the chain, so neither blocks later changes.
+   */
+  private handleConfigChange(change: unknown): Promise<void> {
+    if (!isElectrumConfigChange(change)) {
+      log.warn('Ignoring malformed Electrum config change', {
+        scope: (change as { scope?: unknown } | null | undefined)?.scope,
+      });
+      return this.configChangeChain;
+    }
+    const { scope, network } = change;
+    this.configChangeChain = this.configChangeChain
+      .then(() => applyElectrumConfigChange(change, {
+        resetNodeClient,
+        reloadElectrumServers,
+        reconnectSubscriptions: (net) => this.reconnectSubscriptionsForConfigChange(net),
+      }))
+      .catch((error: unknown) => {
+        log.error('Failed to apply Electrum config change', {
+          scope,
+          network,
+          error: getErrorMessage(error),
+        });
+      });
+    return this.configChangeChain;
+  }
+
+  /**
+   * After a node-config reset the subscription clients are closed (and the
+   * mainnet one deregistered) without a 'close' event, so the owner drops the
+   * affected networks' subscription state (every network when none is named)
+   * and reconnects through a freshly resolved client.
+   */
+  private reconnectSubscriptionsForConfigChange(network?: BitcoinNetwork): void {
+    if (!this.isSubscriptionOwner()) return;
+    for (const [net, state] of this.networks) {
+      if (network && net !== network) continue;
+      teardownNetworkState(state);
+      state.reconnectAttempts = 0;
+      this.doScheduleReconnect(net);
     }
   }
 
@@ -469,6 +528,8 @@ export class ElectrumSubscriptionManager {
    */
   async stop(): Promise<void> {
     this.explicitlyStopped = true;
+    this.configChangeUnsubscribe?.();
+    this.configChangeUnsubscribe = null;
     this.stopSubscriptionOwnershipRetry();
     await this.stopRunningManager();
   }

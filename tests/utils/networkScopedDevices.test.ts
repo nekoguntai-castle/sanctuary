@@ -71,4 +71,14 @@ describe('networkScopedDevices', () => {
 
     expect(filterDevicesByNetwork(devices, 'mainnet')).toEqual(devices);
   });
+
+  it('keeps h-notation devices visible on their own network family', () => {
+    const devices = [
+      { id: 'h-acct', accounts: [{ derivationPath: 'm/84h/0h/0h' }], wallets: [], walletCount: 0 },
+      { id: 'h-legacy', derivationPath: 'm/49h/1h/0h', wallets: [], walletCount: 0 },
+    ];
+    expect(filterDevicesByNetwork(devices, 'mainnet').map((d) => d.id)).toEqual(['h-acct']);
+    expect(filterDevicesByNetwork(devices, 'testnet4').map((d) => d.id)).toEqual(['h-legacy']);
+    expect(filterDevicesByNetwork(devices, 'signet').map((d) => d.id)).toEqual(['h-legacy']);
+  });
 });

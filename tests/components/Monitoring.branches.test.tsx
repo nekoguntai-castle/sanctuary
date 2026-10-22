@@ -6,7 +6,6 @@ import * as adminApi from '../../src/api/admin';
 
 const state = vi.hoisted(() => ({
   loadExecute: vi.fn(),
-  toggleExecute: vi.fn(),
   saveExecute: vi.fn(),
   clearSaveError: vi.fn(),
 }));
@@ -14,7 +13,6 @@ const state = vi.hoisted(() => ({
 vi.mock('../../src/api/admin', () => ({
   getMonitoringServices: vi.fn(),
   getGrafanaConfig: vi.fn(),
-  updateGrafanaConfig: vi.fn(),
   updateMonitoringServiceUrl: vi.fn(),
 }));
 
@@ -23,23 +21,13 @@ let loadingHookCall = 0;
 vi.mock('../../src/hooks/useLoadingState', () => ({
   useLoadingState: () => {
     loadingHookCall += 1;
-    const branch = ((loadingHookCall - 1) % 3) + 1;
+    const branch = ((loadingHookCall - 1) % 2) + 1;
     if (branch === 1) {
       return {
         loading: false,
         error: null,
         data: null,
         execute: state.loadExecute,
-        clearError: vi.fn(),
-        reset: vi.fn(),
-      };
-    }
-    if (branch === 2) {
-      return {
-        loading: false,
-        error: null,
-        data: null,
-        execute: state.toggleExecute,
         clearError: vi.fn(),
         reset: vi.fn(),
       };
@@ -56,12 +44,8 @@ vi.mock('../../src/hooks/useLoadingState', () => ({
 }));
 
 vi.mock('../../src/components/Monitoring/ServiceCard', () => ({
-  ServiceCard: ({ service, onToggleAnonymous }: any) => (
-    <div data-testid={`service-${service.id}`}>
-      <button data-testid={`toggle-${service.id}`} onClick={() => onToggleAnonymous?.()}>
-        Toggle
-      </button>
-    </div>
+  ServiceCard: ({ service }: any) => (
+    <div data-testid={`service-${service.id}`} />
   ),
 }));
 
@@ -113,26 +97,10 @@ describe('Monitoring branch coverage', () => {
 
     vi.mocked(adminApi.getMonitoringServices).mockResolvedValue(services as any);
     vi.mocked(adminApi.getGrafanaConfig).mockResolvedValue(grafanaConfig as any);
-    vi.mocked(adminApi.updateGrafanaConfig).mockResolvedValue({ success: true, message: 'Updated' });
     vi.mocked(adminApi.updateMonitoringServiceUrl).mockResolvedValue({ success: true });
 
     state.loadExecute.mockImplementation(executeWithCatch);
-    state.toggleExecute.mockImplementation(executeWithCatch);
     state.saveExecute.mockImplementation(executeWithCatch);
-  });
-
-  it('guards anonymous toggle when grafana config is unavailable', async () => {
-    const user = userEvent.setup();
-    vi.mocked(adminApi.getGrafanaConfig).mockRejectedValue(new Error('missing'));
-
-    render(<Monitoring />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId('toggle-grafana')).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByTestId('toggle-grafana'));
-    expect(adminApi.updateGrafanaConfig).not.toHaveBeenCalled();
   });
 
   it('guards save when no service is being edited', async () => {

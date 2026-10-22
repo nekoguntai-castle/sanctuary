@@ -16,7 +16,6 @@ export const useMonitoringController = () => {
   const [editUrl, setEditUrl] = useState('');
 
   const { loading, error, execute: runLoad } = useLoadingState({ initialLoading: true });
-  const { loading: isTogglingAnonymous, execute: runToggle } = useLoadingState();
   const { loading: isSaving, error: saveError, execute: runSave, clearError: clearSaveError } = useLoadingState();
 
   const loadServices = useCallback(async (checkHealth = false) => {
@@ -39,19 +38,6 @@ export const useMonitoringController = () => {
   useEffect(() => {
     loadServices(true);
   }, [loadServices]);
-
-  const handleToggleAnonymous = useCallback(async () => {
-    if (!grafanaConfig) return;
-
-    const newValue = !grafanaConfig.anonymousAccess;
-    const result = await runToggle(async () => {
-      await adminApi.updateGrafanaConfig({ anonymousAccess: newValue });
-    });
-
-    if (result !== null) {
-      setGrafanaConfig({ ...grafanaConfig, anonymousAccess: newValue });
-    }
-  }, [grafanaConfig, runToggle]);
 
   const getCredentialsForService = useCallback((serviceId: string): ServiceCredentials | undefined => {
     if (serviceId === 'grafana' && grafanaConfig) {
@@ -113,13 +99,11 @@ export const useMonitoringController = () => {
     editUrl,
     loading,
     error,
-    isTogglingAnonymous,
     isSaving,
     saveError,
     hostname: getHostname(),
     loadServices,
     setEditUrl,
-    handleToggleAnonymous,
     getCredentialsForService,
     handleEditUrl,
     handleCloseModal,

@@ -7,6 +7,7 @@ import { registerElectrumManagerIsConnectedContracts } from './electrumManager/e
 import { registerElectrumManagerReconcileContracts } from './electrumManager/electrumManager.reconcile.contracts';
 import { registerElectrumManagerStandaloneContracts } from './electrumManager/electrumManager.standalone.contracts';
 import { registerElectrumManagerStartContracts } from './electrumManager/electrumManager.start.contracts';
+import { registerElectrumManagerConfigChangeContracts } from './electrumManager/electrumManager.config-changes.contracts';
 import { registerElectrumManagerWalletSubscriptionContracts } from './electrumManager/electrumManager.wallet-subscriptions.contracts';
 
 describe('ElectrumSubscriptionManager', () => {
@@ -18,4 +19,5 @@ describe('ElectrumSubscriptionManager', () => {
   registerElectrumManagerStandaloneContracts();
   registerElectrumManagerHealthMetricContracts();
   registerElectrumManagerIsConnectedContracts();
+  registerElectrumManagerConfigChangeContracts();
 });

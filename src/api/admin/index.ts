@@ -125,7 +125,6 @@ export {
   getMonitoringServices,
   updateMonitoringServiceUrl,
   getGrafanaConfig,
-  updateGrafanaConfig,
   getWebSocketStats,
   getTorContainerStatus,
   startTorContainer,

@@ -33,10 +33,8 @@ export const Monitoring: React.FC = () => {
         data={controller.data}
         hostname={controller.hostname}
         grafanaConfig={controller.grafanaConfig}
-        isTogglingAnonymous={controller.isTogglingAnonymous}
         getCredentialsForService={controller.getCredentialsForService}
         onEditUrl={controller.handleEditUrl}
-        onToggleAnonymous={controller.handleToggleAnonymous}
       />
 
       <MonitoringAbout />

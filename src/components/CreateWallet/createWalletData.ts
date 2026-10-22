@@ -7,6 +7,7 @@ import {
 import {
   accountPathMatchesWalletPolicy,
 } from '@sanctuary/shared/constants/walletPolicy';
+import { normalizeDerivationPath } from '@sanctuary/shared/utils/bitcoin';
 import type { TabNetwork } from '../../app/networks';
 import type {
   CreateWalletPayload,
@@ -36,7 +37,7 @@ function accountMatchesSelection(
 ): boolean {
   return account.purpose === requiredPurpose
     && account.scriptType === scriptType
-    && accountPathMatchesWalletPolicy(account.derivationPath, {
+    && accountPathMatchesWalletPolicy(normalizeDerivationPath(account.derivationPath), {
       walletType: requiredPurpose === 'multisig' ? WalletType.MULTI_SIG : WalletType.SINGLE_SIG,
       scriptType,
       chainEnvironment: network,
@@ -53,7 +54,19 @@ export function getExactAccount(
   const matches = (device.accounts ?? []).filter(account => (
     accountMatchesSelection(account, requiredPurpose, scriptType, network)
   ));
-  return matches.length === 1 ? matches[0] : null;
+  return collapseNotationVariants(matches);
+}
+
+/** One account, or one account stored in several hardened notations with the same xpub; else null. */
+function collapseNotationVariants(matches: DeviceAccount[]): DeviceAccount | null {
+  const [first] = matches;
+  if (!first) return null;
+  const path = normalizeDerivationPath(first.derivationPath);
+  const sameAccount = matches.every(account => (
+    normalizeDerivationPath(account.derivationPath) === path && account.xpub === first.xpub
+  ));
+  if (!sameAccount) return null;
+  return matches.find(account => account.derivationPath === path) ?? first;
 }
 
 /** Single-sig script types in picker order; the first supported one is the signer's default. */

@@ -175,6 +175,10 @@ export interface SystemEvents {
     digest: string;
     snapshot: Record<string, boolean>;
   };
+  'system:electrumConfig.changed': {
+    scope: 'node-config' | 'electrum-servers';
+    network: string | null;
+  };
 }
 
 /**

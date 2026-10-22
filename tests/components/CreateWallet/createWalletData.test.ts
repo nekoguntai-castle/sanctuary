@@ -127,6 +127,38 @@ describe('createWalletData', () => {
     )).toBeNull();
   });
 
+  it('accepts an exact account stored in h-notation', () => {
+    const h = { ...singleMainnetDevice, accounts: [{ ...singleMainnetDevice.accounts[0], derivationPath: 'm/84h/0h/0h' }] };
+    expect(getExactAccount(h as any, WalletType.SINGLE_SIG, WalletScriptType.NATIVE_SEGWIT, 'mainnet'))
+      .toEqual(h.accounts[0]);
+  });
+
+  it('keeps a device with a notation-variant duplicate row selectable', () => {
+    const dup = { ...singleMainnetDevice, accounts: [
+      ...singleMainnetDevice.accounts,
+      { ...singleMainnetDevice.accounts[0], id: 'dup-h', derivationPath: 'm/84h/0h/0h' },
+    ] };
+    expect(getExactAccount(dup as any, WalletType.SINGLE_SIG, WalletScriptType.NATIVE_SEGWIT, 'mainnet')?.id)
+      .toBe('single-mainnet-account');
+  });
+
+  it('fails closed when notation variants carry different xpubs', () => {
+    const dup = { ...singleMainnetDevice, accounts: [
+      ...singleMainnetDevice.accounts,
+      { ...singleMainnetDevice.accounts[0], id: 'dup-h', derivationPath: 'm/84h/0h/0h', xpub: 'xpub-other' },
+    ] };
+    expect(getExactAccount(dup as any, WalletType.SINGLE_SIG, WalletScriptType.NATIVE_SEGWIT, 'mainnet')).toBeNull();
+  });
+
+  it('collapses notation variants when no row is in apostrophe form', () => {
+    const dup = { ...singleMainnetDevice, accounts: [
+      { ...singleMainnetDevice.accounts[0], id: 'h', derivationPath: 'm/84h/0h/0h' },
+      { ...singleMainnetDevice.accounts[0], id: 'H', derivationPath: 'm/84H/0H/0H' },
+    ] };
+    expect(getExactAccount(dup as any, WalletType.SINGLE_SIG, WalletScriptType.NATIVE_SEGWIT, 'mainnet')?.id)
+      .toBe('h');
+  });
+
   it('fails closed when matching metadata has an unparseable network path', () => {
     const invalidPath = {
       ...singleMainnetDevice,

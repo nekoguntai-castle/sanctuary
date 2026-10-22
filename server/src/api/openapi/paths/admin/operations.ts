@@ -341,23 +341,10 @@ export const adminOperationsPaths = {
     get: {
       tags: ['Admin'],
       summary: 'Get Grafana configuration',
-      description: 'Get Grafana admin credential hints and anonymous-access setting for administrators.',
+      description: 'Get Grafana admin credential hints and the effective anonymous-access state probed from Grafana (null when unreachable).',
       security: bearerAuth,
       responses: {
         200: jsonResponse('Grafana configuration', '#/components/schemas/AdminGrafanaConfigResponse'),
-        401: apiErrorResponse,
-        403: apiErrorResponse,
-        500: apiErrorResponse,
-      },
-    },
-    put: {
-      tags: ['Admin'],
-      summary: 'Update Grafana configuration',
-      description: 'Update Grafana anonymous access. Applying the change requires restarting the Grafana container.',
-      security: bearerAuth,
-      requestBody: jsonRequestBody('#/components/schemas/AdminUpdateGrafanaRequest'),
-      responses: {
-        200: jsonResponse('Grafana configuration updated', '#/components/schemas/AdminGrafanaUpdateResponse'),
         401: apiErrorResponse,
         403: apiErrorResponse,
         500: apiErrorResponse,

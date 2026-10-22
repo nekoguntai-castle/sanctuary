@@ -87,6 +87,18 @@ export function registerWalletCreateAccountSelectionValidationTests({
       ).rejects.toThrow("Quorum cannot exceed total signers");
     });
 
+    it("rejects multi-sig wallets with more than 16 signers", async () => {
+      await expect(
+        createWallet(userId, {
+          name: "Too Many",
+          type: "multi_sig",
+          scriptType: "native_segwit",
+          quorum: 2,
+          totalSigners: 17,
+        }),
+      ).rejects.toThrow("Multisig wallets support at most 16 signers");
+    });
+
     it("should reject single-sig wallet with multiple devices", async () => {
       const device1 = createMockDevice("device-1", "abc12345", [
         {

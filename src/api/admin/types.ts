@@ -306,7 +306,7 @@ export interface GrafanaConfig {
   passwordSource: 'GRAFANA_PASSWORD' | null;
   password: string | null;
   passwordConfigured: boolean;
-  anonymousAccess: boolean;
+  anonymousAccess: boolean | null;
   anonymousAccessNote: string;
 }
 

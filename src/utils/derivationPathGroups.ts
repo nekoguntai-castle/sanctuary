@@ -1,3 +1,4 @@
+import { normalizeDerivationPath } from "@sanctuary/shared/utils/bitcoin";
 import { parseCanonicalAccountPath } from "@sanctuary/shared/constants/walletPolicy";
 import {
   DeviceAccountPurpose,
@@ -33,7 +34,7 @@ export type PurposeGroupedAccounts<T extends { purpose: DeviceAccountPurposeValu
 >;
 
 export function derivationPathCoinType(path: string): number | null {
-  return parseCanonicalAccountPath(path)?.coinType ?? null;
+  return parseCanonicalAccountPath(normalizeDerivationPath(path))?.coinType ?? null;
 }
 
 export function isTestnetSignetDerivationPath(path: string): boolean {

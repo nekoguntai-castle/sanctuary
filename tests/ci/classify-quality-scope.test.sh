@@ -137,37 +137,85 @@ scripts/quality/jscpd-only.sh
 scripts/quality/lizard-only.sh
 server/.husky/pre-commit"
 
-derive_classifier_subjects() {
-  local suite token
-  for suite in "${CLASSIFIER_SUBJECT_SUITES[@]}"; do
-    grep -oE '(scripts/quality[A-Za-z0-9_./-]*|scripts/ops/[A-Za-z0-9_./-]*|server/\.husky/[A-Za-z0-9_./-]*)' \
-      "$ROOT_DIR/$suite" || true
-  done | sed -E 's#[.,:;)/]+$##' | LC_ALL=C sort -u | while IFS= read -r token; do
+# Reads candidate path tokens on stdin and prints, sorted and unique, those
+# that are tracked regular files once trailing punctuation is stripped.
+filter_tracked_subjects() {
+  local token
+  sed -E 's#[.,:;)/]+$##' | LC_ALL=C sort -u | while IFS= read -r token; do
     if [ -f "$ROOT_DIR/$token" ] && git -C "$ROOT_DIR" ls-files --error-unmatch -- "$token" >/dev/null 2>&1; then
       printf '%s\n' "$token"
     fi
   done
 }
 
-# Commits each derived subject in the fixture and fails listing every one that
-# does not select the classifier suites. Prints the new head SHA.
-assert_classifier_subjects_routed() {
-  local repo_dir="$1"
-  local head_sha="$2"
-  local output_file="$3"
+derive_classifier_subjects() {
+  local suite
+  for suite in "${CLASSIFIER_SUBJECT_SUITES[@]}"; do
+    grep -oE '(scripts/quality[A-Za-z0-9_./-]*|scripts/ops/[A-Za-z0-9_./-]*|server/\.husky/[A-Za-z0-9_./-]*)' \
+      "$ROOT_DIR/$suite" || true
+  done | filter_tracked_subjects
+}
+
+# D-14.C6 static guard: real checkout files read by classifier-only contract
+# suites. Tokens anchored on $ROOT_DIR/, $REPO_ROOT/ or readFileSync(' plus
+# const x = '<dir>/<file>' literals; kept only when, after stripping trailing
+# punctuation, they are tracked regular files (as derive_classifier_subjects).
+REAL_INPUT_SUITES=(
+  tests/ci/docker-compose-test-contract.test.mjs
+  tests/ci/integration-compose-isolation.test.sh
+  tests/ci/verify-addresses-repeatable.test.sh
+  tests/ci/verify-repeatable-rpc-wait.test.sh
+)
+EXPECTED_REAL_INPUT_SUBJECTS="docker/compose/test.yml
+docker/frontend/Dockerfile
+docker/test/backend.Dockerfile
+docker/test/backend.Dockerfile.dockerignore
+scripts/ci/docker-endpoint-lib.sh
+scripts/ci/provider-context.sh
+scripts/ownership/producer-hooks.sh
+scripts/run-integration-tests.sh
+scripts/run-tests.sh
+scripts/verify-addresses/docker-compose.yml
+scripts/verify-addresses/implementations/go.mod
+scripts/verify-addresses/implementations/go.sum
+scripts/verify-addresses/verify-repeatable.sh
+server/tests/integration/ops/phase2OperationsProof.integration.test.ts"
+
+derive_real_input_subjects() {
+  local suite
+  for suite in "${REAL_INPUT_SUITES[@]}"; do
+    {
+      grep -oE '\$(ROOT_DIR|REPO_ROOT)/[A-Za-z0-9_./-]+' "$ROOT_DIR/$suite" | sed -E 's#^\$[A-Z_]+/##' || true
+      grep -oE "readFileSync\('[A-Za-z0-9_./-]+'" "$ROOT_DIR/$suite" | sed -E "s#^readFileSync\\('##; s#'\$##" || true
+      grep -oE "const [A-Za-z_]+ = '[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+'" "$ROOT_DIR/$suite" | sed -E "s#^[^']*'##; s#'\$##" || true
+    }
+  done | filter_tracked_subjects
+}
+
+# assert_subjects_routed <derive_fn> <expected> <label> <repo_dir> <head_sha> <output_file>
+# Checks the derived subjects against the expected list, commits each one in
+# the fixture, and fails listing every subject that does not select the
+# classifier suites. Prints the new head SHA.
+assert_subjects_routed() {
+  local derive_fn="$1"
+  local expected="$2"
+  local label="$3"
+  local repo_dir="$4"
+  local head_sha="$5"
+  local output_file="$6"
   local derived subject base_sha unrouted=""
 
-  derived="$(derive_classifier_subjects)"
-  [ "$derived" = "$EXPECTED_CLASSIFIER_SUBJECTS" ] ||
-    fail "classifier suite subjects drifted; derived:"$'\n'"$derived"
+  derived="$("$derive_fn")"
+  [ "$derived" = "$expected" ] ||
+    fail "$label subjects drifted; derived:"$'\n'"$derived"
   for subject in $derived; do
     base_sha="$head_sha"
-    commit_file "$repo_dir" "$subject" 'guard subject' "guard $subject"
+    commit_file "$repo_dir" "$subject" "$label subject" "$label $subject"
     head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
     run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
     [ "$(sed -n 's/^run_ci_classifier_tests=//p' "$output_file")" = true ] || unrouted="$unrouted $subject"
   done
-  [ -z "$unrouted" ] || fail "classifier suite subjects do not run ci-classifier-tests:$unrouted"
+  [ -z "$unrouted" ] || fail "$label subjects do not run ci-classifier-tests:$unrouted"
   printf '%s\n' "$head_sha"
 }
 
@@ -302,7 +350,10 @@ main() {
     server/.gitignore 'generated/' 'nested gitignore change' \
     true true false false false)"
 
-  head_sha="$(assert_classifier_subjects_routed "$repo_dir" "$head_sha" "$output_file")"
+  head_sha="$(assert_subjects_routed derive_classifier_subjects "$EXPECTED_CLASSIFIER_SUBJECTS" \
+    'classifier suite' "$repo_dir" "$head_sha" "$output_file")"
+  head_sha="$(assert_subjects_routed derive_real_input_subjects "$EXPECTED_REAL_INPUT_SUBJECTS" \
+    'real-input suite' "$repo_dir" "$head_sha" "$output_file")"
 
   for entry in \
     '.github/actions/setup-node-toolchain/action.yml|true|true' \

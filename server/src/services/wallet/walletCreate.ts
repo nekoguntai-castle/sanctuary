@@ -28,6 +28,7 @@ import {
   resolveWalletSignerBindings,
 } from "./walletAccountSelection";
 import { isBitcoinNetwork } from "../bitcoin/networks";
+import { MULTISIG_SIGNER_LIMIT_MESSAGE, exceedsMultisigSignerLimit } from "../bitcoin/multisigSignerLimit";
 import { WalletType } from "@sanctuary/shared/constants/walletIdentity";
 import { assertHardwareWalletCapability } from "../hardwareWalletCapabilities";
 import {
@@ -72,6 +73,10 @@ function validateWalletInput(input: CreateWalletInput): void {
 
   if (input.quorum > input.totalSigners) {
     throw new InvalidInputError("Quorum cannot exceed total signers");
+  }
+
+  if (exceedsMultisigSignerLimit(input.totalSigners)) {
+    throw new InvalidInputError(MULTISIG_SIGNER_LIMIT_MESSAGE);
   }
 }
 

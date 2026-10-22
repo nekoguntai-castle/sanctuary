@@ -8,6 +8,21 @@
 import { afterEach, beforeEach, vi } from 'vitest';
 import { EventEmitter } from 'events';
 
+const configChangeMocks = vi.hoisted(() => {
+  const mockConfigChangeUnsubscribe = vi.fn();
+  return {
+    mockConfigChangeUnsubscribe,
+    mockDistributedEventBus: { on: vi.fn((_event: string, _handler: (change: unknown) => Promise<void>) => mockConfigChangeUnsubscribe) },
+    mockLog: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  };
+});
+export const mockConfigChangeUnsubscribe = configChangeMocks.mockConfigChangeUnsubscribe;
+export const mockDistributedEventBus = configChangeMocks.mockDistributedEventBus;
+export const mockLog = configChangeMocks.mockLog;
+
+vi.mock('../../../../src/services/bitcoin/nodeClient', () => ({ resetNodeClient: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('../../../../src/services/bitcoin/electrumPool', () => ({ reloadElectrumServers: vi.fn().mockResolvedValue(undefined) }));
+
 // Mock prisma before importing the module
 vi.mock('../../../../src/models/prisma', () => ({
   default: {
@@ -64,12 +79,7 @@ vi.mock('../../../../src/services/bitcoin/blockchain', () => ({
 }));
 
 vi.mock('../../../../src/utils/logger', () => ({
-  createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
+  createLogger: () => configChangeMocks.mockLog,
 }));
 
 vi.mock('../../../../src/infrastructure', () => ({
@@ -82,6 +92,7 @@ vi.mock('../../../../src/infrastructure', () => ({
     }
   },
   releaseLock: vi.fn(),
+  getDistributedEventBus: vi.fn(() => configChangeMocks.mockDistributedEventBus),
 }));
 
 import { getElectrumClientForNetwork } from '../../../../src/services/bitcoin/electrum';
