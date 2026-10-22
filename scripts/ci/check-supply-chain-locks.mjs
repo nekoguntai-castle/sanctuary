@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -7,7 +8,35 @@ import { isMainModule } from '../lib/is-main-module.mjs';
 
 const SHA256 = /^sha256:[a-f0-9]{64}$/;
 const IMAGE_TOKEN = /[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9][a-z0-9._/-]*)*(?::[A-Za-z0-9._-]+)?@sha256:[a-f0-9]{64}|[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9][a-z0-9._/-]*)*:[A-Za-z0-9._-]+/g;
+const DIGEST_IMAGE_TOKEN = /[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9][a-z0-9._/-]*)*(?::[A-Za-z0-9._-]+)?@sha256:[a-f0-9]{64}/g;
+const IMAGE_REFERENCE = /^[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9][a-z0-9._-]*)*(?::[A-Za-z0-9._-]+)?(?:@sha256:[a-f0-9]{64})?$/;
 const IGNORED_DIRS = new Set(['.git', '.tmp', 'coverage', 'dist', 'node_modules', 'playwright-report', 'reports', 'tasks', 'test-results']);
+// The image scan reads every tracked or unignored file except prose, generated
+// output and test data that writes image strings as fixtures. The install
+// lanes' harness (tests/install/utils, tests/install/e2e) runs a real daemon,
+// so it stays in scope.
+const IMAGE_SCAN_EXCLUDED = /^(?:docs|tasks|reports)\/|(?:^|\/)fixtures\/|^scripts\/verify-addresses\/output\/|^server\/tests\/|^tests\/(?!install\/(?:utils|e2e)\/)|^\.github\/actions\/vendor\//;
+// docker/podman run, create and pull options that consume the next token as
+// their value (docker run reference plus common podman additions). An unlisted
+// flag still consumes a following digit-leading token (sizes, counts, CPU sets).
+const DOCKER_VALUE_FLAGS = new Set(['-a', '--add-host', '--annotation', '--arch', '--attach', '--blkio-weight',
+  '--blkio-weight-device', '-c', '--cap-add', '--cap-drop', '--cgroup-parent', '--cgroupns', '--cidfile', '--cpu-count',
+  '--cpu-percent', '--cpu-period', '--cpu-quota', '--cpu-rt-period', '--cpu-rt-runtime', '--cpu-shares', '--cpus',
+  '--cpuset-cpus', '--cpuset-mems', '--detach-keys', '--device', '--device-cgroup-rule', '--device-read-bps',
+  '--device-read-iops', '--device-write-bps', '--device-write-iops', '--dns', '--dns-option', '--dns-search',
+  '--domainname', '-e', '--entrypoint', '--env', '--env-file', '--expose', '--gidmap', '--gpus', '--group-add', '-h',
+  '--health-cmd', '--health-interval', '--health-retries', '--health-start-interval', '--health-start-period',
+  '--health-timeout', '--hostname', '--ip', '--ip6', '--ipc', '--isolation', '--kernel-memory', '-l', '--label',
+  '--label-file', '--link', '--link-local-ip', '--log-driver', '--log-opt', '-m', '--mac-address', '--memory',
+  '--memory-reservation', '--memory-swap', '--memory-swappiness', '--mount', '--name', '--net', '--net-alias',
+  '--network', '--network-alias', '--oom-score-adj', '--os', '-p', '--pid', '--pids-limit', '--platform', '--pod',
+  '--publish', '--pull', '--restart', '--runtime', '--secret', '--security-opt', '--shm-size', '--stop-signal',
+  '--stop-timeout', '--storage-opt', '--sysctl', '--tmpfs', '--tz', '-u', '--uidmap', '--ulimit', '--umask', '--user',
+  '--userns', '--uts', '-v', '--variant', '--volume', '--volume-driver', '--volumes-from', '-w', '--workdir']);
+// The command's binary: docker or podman, or a variable naming a container CLI
+// ("$DOCKER", ${CONTAINER_ENGINE}, $(PODMAN) in a Makefile).
+const DOCKER_COMMAND = /(?:\b(?:docker|podman)|[\x22\x27]?\$[({]?(\w+)[)}]?[\x22\x27]?)\s+(?:container\s+|image\s+)?(?:run|create|pull)\b/g;
+const CONTAINER_CLI_VARIABLE = /docker|podman|container|engine/i;
 const OFFLINE_RUNTIME_OVERLAYS = new Set([
   'docker/compose/offline-core.yml',
   'docker/compose/offline-monitoring.yml',
@@ -32,24 +61,29 @@ function walk(root, relativeDir = '') {
   return files;
 }
 
-function isImageSource(relativePath) {
-  const basename = path.basename(relativePath);
-  if (/Dockerfile(?:\..+)?$/.test(basename)) return true;
-  if (/\.(?:ya?ml)$/.test(relativePath)) return relativePath === 'docker-compose.yml'
-    || relativePath.startsWith('.github/workflows/')
-    || relativePath.startsWith('docker/')
-    || relativePath.startsWith('scripts/verify-');
-  if (/config\/(?:trezor-emulator-proof|jade-emulator-proof|jade-protocol-harness)\.json$/.test(relativePath)) return true;
-  return [
-    'scripts/ci/observe-runtime-image-cves.sh',
-    'scripts/offline/bundle-common.sh',
-    'scripts/ops/phase2-alert-receiver-smoke.mjs',
-  ].includes(relativePath);
+// Tracked plus new, unignored files: a new file must not bypass the gate before
+// it is committed. A root that is not a git work tree fails closed.
+function listImageScanFiles(root) {
+  let listed;
+  try {
+    listed = execFileSync('git', ['-C', root, 'ls-files', '-z', '--cached', '--others', '--exclude-standard'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (error) {
+    throw new Error(`image scan needs a git work tree at ${root}: ${error instanceof Error ? error.message.trim() : String(error)}`);
+  }
+  return listed.split('\0').filter((file) => file && !IMAGE_SCAN_EXCLUDED.test(file) && existsSync(path.join(root, file))).sort();
 }
 
-// Declared above contextualImageLine on purpose: lizard misparses that function
-// as running to the end of the file (exactly at the nloc=200 limit), so new
-// logic below it would trip the complexity lane.
+function imageSourceKind(relativePath) {
+  const basename = path.basename(relativePath);
+  if (/(?:^|\.)(?:Docker|Container)file(?:\.(?!dockerignore$)[^.]+)?$/.test(basename)) return 'dockerfile';
+  if (/\.(?:sh|bash|mk)$|^(?:GNU)?[Mm]akefile$/.test(basename)) return 'shell';
+  if (/\.ya?ml$/.test(basename)) return 'yaml';
+  return /\.(?:json|jq|[cm]?js|ts)$/.test(basename) ? 'data' : null;
+}
+
 function verifyFundsCriticalPackages(root, config, manifests, locks, errors) {
   const before = errors.length;
   for (const policy of config.fundsCriticalPackages ?? []) verifyCriticalPackage(root, policy, manifests, locks, errors);
@@ -58,11 +92,88 @@ function verifyFundsCriticalPackages(root, config, manifests, locks, errors) {
   }
 }
 
-function contextualImageLine(line, relativePath) {
-  if (relativePath === 'scripts/ci/observe-runtime-image-cves.sh' && /^readonly TRIVY_IMAGE=/.test(line)) return true;
-  if (/^\s*FROM\s+/i.test(line) || /^\s*image:\s*/.test(line) || /"image"\s*:/.test(line)) return true;
-  if (/\bdocker\s+(?:run|pull)\b/.test(line)) return true;
-  return relativePath === 'scripts/offline/bundle-common.sh' && /^\s*"/.test(line);
+// One entry per command: backslash continuations are joined onto the line that
+// starts the command, and full-line comments are dropped.
+function logicalLines(contents, kind) {
+  const lines = [];
+  let pending = '';
+  let start = 0;
+  contents.split(/\r?\n/).forEach((raw, index) => {
+    const text = kind !== 'data' && /^\s*\x23/.test(raw) ? '' : raw;
+    if (!pending) start = index + 1;
+    if (text.endsWith('\x5c')) {
+      pending += `${text.slice(0, -1)} `;
+      return;
+    }
+    lines.push({ text: pending + text, line: start });
+    pending = '';
+  });
+  if (pending) lines.push({ text: pending, line: start });
+  return lines;
+}
+
+function unquote(token) {
+  return token.replace(/^[\x22\x27]|[\x22\x27]$/g, '');
+}
+
+function dockerCommandArguments(text) {
+  for (const match of text.matchAll(DOCKER_COMMAND)) {
+    if (match[1] === undefined || CONTAINER_CLI_VARIABLE.test(match[1])) return text.slice(match.index + match[0].length);
+  }
+  return null;
+}
+
+// The image is the first argument that is neither an option nor an option's
+// value. A variable argument ($EXTRA_ARGS, or "$image" itself) is skipped;
+// after one, only an unambiguous reference (with a tag, registry or digest)
+// counts, so `docker run "$image" true` does not read `true` as the image.
+function dockerCommandImage(text) {
+  const argumentsText = dockerCommandArguments(text);
+  if (argumentsText === null) return null;
+  const tokens = argumentsText.match(/\x22[^\x22]*\x22|\x27[^\x27]*\x27|\S+/g) ?? [];
+  let afterVariable = false;
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (/^\x22?\$\{\w+\[[@*]\]\}\x22?$/.test(token)) continue;
+    if (/^[\x22\x27]?\$/.test(token)) {
+      afterVariable = true;
+    } else if (token.startsWith('-')) {
+      if (!token.includes('=') && (DOCKER_VALUE_FLAGS.has(token) || /^[0-9]/.test(tokens[index + 1] ?? ''))) index += 1;
+    } else {
+      const image = unquote(token);
+      return !afterVariable || /[:/@]/.test(image) ? image : null;
+    }
+  }
+  return null;
+}
+
+function structuredImage(text, kind, stages) {
+  if (kind === 'dockerfile') {
+    const from = text.match(/^\s*FROM\s+(?:--platform=\S+\s+)?(\S+)(?:\s+AS\s+(\S+))?/i);
+    if (from) {
+      const stage = stages.has(from[1].toLowerCase());
+      if (from[2]) stages.add(from[2].toLowerCase());
+      return stage ? null : from[1];
+    }
+  }
+  const keyed = text.match(/^\s*(?:-\s+)?(?:image|container):\s*[\x22\x27]?([^\x22\x27\s\x23]+)/) ?? text.match(/\buses:\s*docker:[/]{2}(\S+)/);
+  return keyed ? keyed[1] : dockerCommandImage(text);
+}
+
+function isTaggedContext(text, relativePath) {
+  if (/\x22image\x22\s*:/.test(text) || /^\s*(?:-\s+)?image:/.test(text)) return true;
+  if (/^\s*(?:readonly\s+|local\s+|export\s+)?\w*image\w*=/i.test(text)) return true;
+  return relativePath === 'scripts/offline/bundle-common.sh' && /^\s*\x22/.test(text);
+}
+
+function imagesInLine(text, kind, relativePath, stages) {
+  const found = new Set(text.match(DIGEST_IMAGE_TOKEN) ?? []);
+  if (isTaggedContext(text, relativePath)) for (const token of text.match(IMAGE_TOKEN) ?? []) found.add(token);
+  if (kind !== 'data') {
+    const image = structuredImage(text, kind, stages);
+    if (image && !image.includes('$') && image !== 'scratch') found.add(image);
+  }
+  return [...found].filter((image) => IMAGE_REFERENCE.test(image) && looksLikeImageReference(splitImage(image).reference));
 }
 
 function looksLikeImageReference(reference) {
@@ -73,14 +184,13 @@ function looksLikeImageReference(reference) {
 
 function extractImageUses(root) {
   const uses = [];
-  for (const relativePath of walk(root).filter(isImageSource)) {
-    const lines = readFileSync(path.join(root, relativePath), 'utf8').split(/\r?\n/);
-    lines.forEach((line, index) => {
-      if (!contextualImageLine(line, relativePath)) return;
-      for (const image of line.match(IMAGE_TOKEN) ?? []) {
-        if (looksLikeImageReference(splitImage(image).reference)) uses.push({ image, file: relativePath, line: index + 1 });
-      }
-    });
+  for (const relativePath of listImageScanFiles(root)) {
+    const kind = imageSourceKind(relativePath);
+    if (!kind) continue;
+    const stages = new Set();
+    for (const { text, line } of logicalLines(readFileSync(path.join(root, relativePath), 'utf8'), kind)) {
+      for (const image of imagesInLine(text, kind, relativePath, stages)) uses.push({ image, file: relativePath, line });
+    }
   }
   return uses;
 }
@@ -92,46 +202,67 @@ function splitImage(image) {
     : { reference: image.slice(0, marker), digest: image.slice(marker + 1) };
 }
 
+// Docker Hub spellings name one image: docker.io/library/alpine:3.20 is alpine:3.20.
+function canonicalReference(reference) {
+  return reference.replace(/^(?:index\.)?docker\.io[/]/, '').replace(/^library[/](?=[^/]+$)/, '');
+}
+
+function isUntagged(reference) {
+  return !reference.slice(reference.lastIndexOf('/') + 1).includes(':');
+}
+
 function isLocalImage(reference, prefixes) {
   return reference.includes('${') || prefixes.some((prefix) => reference.startsWith(prefix));
 }
 
-export function inspectContainerLocks(root) {
-  const errors = [];
-  const config = readJson(root, 'config/container-image-lock.json');
-  if (config.schemaVersion !== 1) errors.push('container image lock schemaVersion must be 1');
+function readLockedImages(config, errors) {
   const locked = new Map();
   for (const entry of config.lockedImages ?? []) {
     if (!entry.reference || !SHA256.test(entry.digest ?? '') || !entry.scope) {
       errors.push(`invalid locked image entry: ${JSON.stringify(entry)}`);
       continue;
     }
-    if (locked.has(entry.reference)) errors.push(`duplicate locked image reference: ${entry.reference}`);
-    locked.set(entry.reference, entry.digest);
+    const key = canonicalReference(entry.reference);
+    if (locked.has(key)) errors.push(`duplicate locked image reference: ${entry.reference}`);
+    locked.set(key, { reference: entry.reference, digest: entry.digest });
   }
+  return locked;
+}
 
+function checkImageUse(use, reference, digest, locked, seen, errors) {
+  if (!digest && isUntagged(reference)) {
+    errors.push(`${use.file}:${use.line} external image is untagged and not digest-pinned: ${reference}`);
+    return;
+  }
+  const key = canonicalReference(reference);
+  const expected = locked.get(key);
+  if (!expected) {
+    errors.push(`${use.file}:${use.line} external image is absent from the lock: ${reference}`);
+    return;
+  }
+  seen.add(key);
+  // Docker archives restore named tags, not registry RepoDigest aliases. These
+  // exact offline-only overlays may use the tag from a locked reference after
+  // the signed bundle verifier binds that tag to its expected image ID.
+  if (!digest && !OFFLINE_RUNTIME_OVERLAYS.has(use.file)) {
+    errors.push(`${use.file}:${use.line} external image is not digest-pinned: ${reference}`);
+  } else if (digest && digest !== expected.digest) {
+    errors.push(`${use.file}:${use.line} image digest drift for ${reference}: expected ${expected.digest}, got ${digest}`);
+  }
+}
+
+export function inspectContainerLocks(root) {
+  const errors = [];
+  const config = readJson(root, 'config/container-image-lock.json');
+  if (config.schemaVersion !== 1) errors.push('container image lock schemaVersion must be 1');
+  const locked = readLockedImages(config, errors);
   const seen = new Set();
   for (const use of extractImageUses(root)) {
     const { reference, digest } = splitImage(use.image);
-    if (isLocalImage(reference, config.localImagePrefixes ?? [])) continue;
-    const expected = locked.get(reference);
-    if (!expected) {
-      errors.push(`${use.file}:${use.line} external image is absent from the lock: ${reference}`);
-      continue;
-    }
-    seen.add(reference);
-    // Docker archives restore named tags, not registry RepoDigest aliases. These
-    // exact offline-only overlays may use the tag from a locked reference after
-    // the signed bundle verifier binds that tag to its expected image ID.
-    if (!digest && !OFFLINE_RUNTIME_OVERLAYS.has(use.file)) {
-      errors.push(`${use.file}:${use.line} external image is not digest-pinned: ${reference}`);
-    } else if (digest && digest !== expected) {
-      errors.push(`${use.file}:${use.line} image digest drift for ${reference}: expected ${expected}, got ${digest}`);
-    }
+    if (!isLocalImage(reference, config.localImagePrefixes ?? [])) checkImageUse(use, reference, digest, locked, seen, errors);
   }
-
-  for (const reference of locked.keys()) {
-    if (!seen.has(reference)) errors.push(`unused locked image entry: ${reference}`);
+  for (const [key, entry] of locked) {
+    if (!seen.has(key)) errors.push(`unused locked image entry: ${entry.reference}`);
   }
   verifyOsPackageAcquisition(root, config, errors);
   return errors;
@@ -189,9 +320,7 @@ function verifyCriticalPackage(root, policy, packageManifests, packageLocks, err
   }
 }
 
-function verifyToolchainSources(root, config, errors) {
-  const dockerfile = readFileSync(path.join(root, 'scripts/ci/images/go-runner.Dockerfile'), 'utf8');
-  const parent = `${config.runnerImage.parentReference}@${config.runnerImage.parentDigest}`;
+function verifyToolchainArtifacts(config, errors) {
   const nodeArtifact = config.artifacts?.nodeLinuxX64;
   const npmArtifact = config.artifacts?.npm;
   const expectedNodeUrl = `https://nodejs.org/dist/v${config.runtimes.node}/node-v${config.runtimes.node}-linux-x64.tar.xz`;
@@ -202,6 +331,13 @@ function verifyToolchainSources(root, config, errors) {
   if (npmArtifact?.url !== expectedNpmUrl || !/^[a-f0-9]{128}$/.test(npmArtifact?.sha512 ?? '')) {
     errors.push(`npm ${config.runtimes.npm} archive must have an exact official URL and SHA-512`);
   }
+}
+
+function verifyGoRunnerImage(root, config, errors) {
+  const dockerfile = readFileSync(path.join(root, 'scripts/ci/images/go-runner.Dockerfile'), 'utf8');
+  const parent = `${config.runnerImage.parentReference}@${config.runnerImage.parentDigest}`;
+  const nodeArtifact = config.artifacts?.nodeLinuxX64;
+  const npmArtifact = config.artifacts?.npm;
   for (const [name, version] of Object.entries({ NODE: config.runtimes.node, NPM: config.runtimes.npm, GO: config.runtimes.go })) {
     if (!dockerfile.includes(`ARG ${name}_VERSION=${version}`)) errors.push(`Go runner must bake exact ${name.toLowerCase()} ${version}`);
   }
@@ -213,6 +349,11 @@ function verifyToolchainSources(root, config, errors) {
     errors.push('Go runner npm archive SHA-512 must match the toolchain lock');
   }
   if (!dockerfile.includes('GOTOOLCHAIN="local"')) errors.push('Go runner must disable automatic Go toolchain downloads');
+}
+
+function verifyToolchainSources(root, config, errors) {
+  verifyToolchainArtifacts(config, errors);
+  verifyGoRunnerImage(root, config, errors);
 
   const setupAction = readFileSync(path.join(root, '.github/actions/setup-node-toolchain/action.yml'), 'utf8');
   if (!setupAction.includes('scripts/ci/bootstrap-node.sh')) errors.push('shared Node setup must bootstrap the checksum-locked runtime');

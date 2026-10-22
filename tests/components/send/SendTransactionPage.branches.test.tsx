@@ -147,6 +147,7 @@ describe("SendTransactionPage branch coverage", () => {
 
   const baseFees = {
     fastest: 35,
+    halfHour: 28,
     hour: 20,
     economy: 10,
     minimum: 2,
@@ -205,6 +206,7 @@ describe("SendTransactionPage branch coverage", () => {
     ] as any);
     vi.mocked(bitcoinApi.getFeeEstimates).mockResolvedValue({
       fastest: 35,
+      halfHour: 28,
       hour: 20,
       economy: 10,
       minimum: undefined,

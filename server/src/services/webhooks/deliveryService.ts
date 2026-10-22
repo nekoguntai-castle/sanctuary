@@ -58,18 +58,27 @@ export async function queueWebhookEventDeliveries(
   return queueWebhookEventsDeliveries([event]);
 }
 
+/**
+ * `endpointsByWallet` caches each wallet's enabled endpoints; a caller that
+ * already listed them passes them in so they are not read again.
+ */
 export async function queueWebhookEventsDeliveries(
   events: WalletWebhookEvent[],
+  admits: (endpoint: WebhookEndpoint, eventIndex: number) => boolean = () => true,
+  endpointsByWallet = new Map<string, WebhookEndpoint[]>(),
 ): Promise<QueueWebhookEventResult> {
   const errors: string[] = [];
-  const endpointsByWallet = new Map<string, WebhookEndpoint[]>();
   let queued = 0;
 
-  for (const event of events) {
+  for (const [eventIndex, event] of events.entries()) {
     const endpoints = await getEnabledWalletEndpoints(event.wallet.id, endpointsByWallet);
     for (const endpoint of endpoints) {
       try {
-        if (!matchesEndpointEventType(endpoint, event.eventType) || !matchesEndpointFilters(endpoint, event)) {
+        if (
+          !matchesEndpointEventType(endpoint, event.eventType) ||
+          !matchesEndpointFilters(endpoint, event) ||
+          !admits(endpoint, eventIndex)
+        ) {
           continue;
         }
 

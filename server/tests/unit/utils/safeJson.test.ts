@@ -9,13 +9,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { z } from 'zod';
 
 // Mock logger
+const mockLog = vi.hoisted(() => ({
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  debug: vi.fn(),
+}));
+
 vi.mock('../../../src/utils/logger', () => ({
-  createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
+  createLogger: () => mockLog,
 }));
 
 import {
@@ -23,6 +25,7 @@ import {
   safeJsonParseSensitive,
   safeJsonParseUntyped,
   SystemSettingSchemas,
+  decodeStoredString,
 } from '../../../src/utils/safeJson';
 
 describe('Safe JSON Utilities', () => {
@@ -384,6 +387,20 @@ describe('Safe JSON Utilities', () => {
         'confirmationMilestones'
       );
       expect(result).toEqual([1, 3, 6]);
+    });
+  });
+
+  describe('decodeStoredString', () => {
+    it.each([
+      ['"a"', 'a'],
+      ['""', ''],
+      ['plain', 'plain'],
+      ['587', '587'],
+      ['"unterminated', '"unterminated'],
+    ])('decodes %s to %s', (stored, expected) => {
+      expect(decodeStoredString(stored)).toBe(expected);
+      expect(mockLog.warn).not.toHaveBeenCalled();
+      expect(mockLog.debug).not.toHaveBeenCalled();
     });
   });
 });

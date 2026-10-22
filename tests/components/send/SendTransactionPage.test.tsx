@@ -146,6 +146,7 @@ describe('SendTransactionPage', () => {
 
   const mockFees = {
     fastest: 50,
+    halfHour: 35,
     hour: 25,
     economy: 10,
     minimum: 1,

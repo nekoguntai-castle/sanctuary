@@ -19,6 +19,7 @@ import type {
 } from '../../../api/bitcoin';
 import type { RecentTransaction } from '../../../api/transactions/types';
 import { toTabNetwork } from '../../../app/networks';
+import { toClientFeeEstimate } from '../../../app/feeTiers';
 import type { SoundEvent } from '../../../hooks/useNotificationSound';
 import { getErrorMessage } from '@sanctuary/shared/utils/errors';
 
@@ -141,11 +142,8 @@ export function toDashboardFeeEstimate(feeEstimates: FeeEstimates | undefined): 
     return null;
   }
 
-  return {
-    fast: feeEstimates.fastest,
-    medium: feeEstimates.hour,
-    slow: feeEstimates.economy,
-  };
+  const { fastestFee, halfHourFee, hourFee } = toClientFeeEstimate(feeEstimates);
+  return { fast: fastestFee, medium: halfHourFee, slow: hourFee };
 }
 
 /**

@@ -2348,7 +2348,7 @@ test_recover_postgres_password_drift() {
     postgres_network=$(docker inspect --format '{{range $k, $v := .NetworkSettings.Networks}}{{println $k}}{{end}}' \
         "$postgres_container" | head -n 1)
     db_check=$(docker run --rm --network "$postgres_network" -e "PGPASSWORD=$drifted_password" \
-        postgres:16-alpine \
+        postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777 \
         psql -w -h postgres -U sanctuary -d sanctuary -tAc "SELECT 1" 2>/dev/null || true)
 
     if [ "$db_check" != "1" ]; then

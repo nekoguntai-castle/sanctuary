@@ -206,3 +206,23 @@ function escapeCell(value) {
 function round(value) {
   return Math.round(value * 100) / 100;
 }
+
+/** The benchmark wallet's descriptor, in the multipath form wallet import requires. */
+export const BENCHMARK_MULTIPATH_DESCRIPTOR =
+  "wpkh([aabbccdd/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/<0;1>/*)";
+
+/** Wallet import answers 409 with this prefix, then the existing wallet's name and a closing quote. */
+export const DUPLICATE_WALLET_MESSAGE_PREFIX = 'A wallet with these devices already exists: "';
+
+/** The existing wallet's name from the import 409 message, or null when it does not parse. */
+export function duplicateWalletName(message) {
+  if (
+    typeof message !== 'string'
+    || message.length <= DUPLICATE_WALLET_MESSAGE_PREFIX.length
+    || !message.startsWith(DUPLICATE_WALLET_MESSAGE_PREFIX)
+    || !message.endsWith('"')
+  ) {
+    return null;
+  }
+  return message.slice(DUPLICATE_WALLET_MESSAGE_PREFIX.length, -1);
+}

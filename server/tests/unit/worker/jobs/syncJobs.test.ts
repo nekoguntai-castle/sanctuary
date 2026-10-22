@@ -881,7 +881,7 @@ describe('Sync Jobs', () => {
           expect.anything(),
         );
         expect(populateMissingTransactionFields).toHaveBeenCalledWith(
-          'wallet-intent', expect.any(AbortSignal), undefined, fence, false,
+          'wallet-intent', expect.any(AbortSignal), expect.any(Function), fence, false,
           expect.any(Number), expect.anything(), expect.anything(),
         );
         expect(complete).toHaveBeenCalledWith(

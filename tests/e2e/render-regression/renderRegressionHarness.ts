@@ -558,7 +558,7 @@ const AUTHENTICATED_API_RESPONSES: Record<string, MockApiResponse> = {
     change24h: 3.21,
   }),
   'GET /bitcoin/status': mockResponse(BITCOIN_STATUS_RESPONSE),
-  'GET /bitcoin/fees': mockResponse({ fastest: 22, halfHour: 16, hour: 10, economy: 4 }),
+  'GET /bitcoin/fees': mockResponse({ fastest: 22, halfHour: 10, hour: 4, economy: 2 }),
   'GET /bitcoin/mempool': mockResponse({
     mempool: [],
     blocks: [],

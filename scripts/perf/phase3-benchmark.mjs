@@ -4,7 +4,9 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import {
+  BENCHMARK_MULTIPATH_DESCRIPTOR,
   deriveWebSocketUrl,
+  duplicateWalletName,
   getErrorMessage,
   isLocalUrl,
   isPrivateNetworkUrl,
@@ -45,10 +47,9 @@ const createBenchmarkBackup = process.env.SANCTUARY_BENCHMARK_CREATE_BACKUP === 
 const benchmarkUsername = process.env.SANCTUARY_BENCHMARK_USERNAME || 'admin';
 const benchmarkPassword = process.env.SANCTUARY_BENCHMARK_PASSWORD || 'sanctuary';
 const benchmarkWalletName = process.env.SANCTUARY_BENCHMARK_WALLET_NAME || 'Phase 3 Benchmark Wallet';
-const benchmarkWalletNetwork = process.env.SANCTUARY_BENCHMARK_WALLET_NETWORK || 'testnet';
+const benchmarkWalletNetwork = process.env.SANCTUARY_BENCHMARK_WALLET_NETWORK || 'testnet3';
 const benchmarkWalletDescriptor =
-  process.env.SANCTUARY_BENCHMARK_WALLET_DESCRIPTOR ||
-  "wpkh([aabbccdd/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)";
+  process.env.SANCTUARY_BENCHMARK_WALLET_DESCRIPTOR || BENCHMARK_MULTIPATH_DESCRIPTOR;
 
 const timestamp = new Date().toISOString();
 const runId = timestamp.replace(/[:.]/g, '-');
@@ -345,34 +346,48 @@ async function ensureBenchmarkWallet(bearerToken) {
     }
   }
 
-  const wallet = await apiJson(
-    `${apiBaseUrl}/api/v1/wallets`,
+  // Descriptor wallets are imported (POST /wallets with a descriptor and no
+  // signers is refused). Import refuses a wallet whose key origins this user
+  // already holds with 409; reuse that wallet, named in the 409 message.
+  const imported = await apiJson(
+    `${apiBaseUrl}/api/v1/wallets/import`,
     {
       method: 'POST',
       token: bearerToken,
       body: {
+        data: benchmarkWalletDescriptor,
         name: benchmarkWalletName,
-        type: 'single_sig',
-        scriptType: 'native_segwit',
         network: benchmarkWalletNetwork,
-        descriptor: benchmarkWalletDescriptor,
       },
     },
-    [201],
+    [201, 409],
   );
 
-  if (!wallet.id) {
-    throw new Error('wallet creation response did not include an id');
+  if (imported?.wallet?.id) {
+    fixture.walletSource = 'local-created';
+    notes.push({
+      type: 'fixture',
+      action: 'wallet-create',
+      walletName: benchmarkWalletName,
+      network: benchmarkWalletNetwork,
+    });
+    return imported.wallet.id;
   }
 
-  fixture.walletSource = 'local-created';
+  const duplicateName = duplicateWalletName(imported?.message);
+  const duplicate = Array.isArray(wallets) && duplicateName !== null
+    ? wallets.find((wallet) => wallet?.name === duplicateName)
+    : undefined;
+  if (!duplicate?.id) {
+    throw new Error(`wallet import returned no wallet and no reusable duplicate: ${imported?.message}`);
+  }
+  fixture.walletSource = 'local-existing';
   notes.push({
     type: 'fixture',
-    action: 'wallet-create',
-    walletName: benchmarkWalletName,
-    network: benchmarkWalletNetwork,
+    action: 'wallet-reuse',
+    walletName: duplicateName,
   });
-  return wallet.id;
+  return duplicate.id;
 }
 
 // ADR 0001 / 0002 Phase 6: browser auth is cookie-only. The /auth/login

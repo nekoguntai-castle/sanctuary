@@ -12,7 +12,7 @@ import {
   isOperationalSystemSettingKey,
   OPERATIONAL_SYSTEM_SETTING_PREFIX,
 } from './operationalSystemSettings';
-import { safeJsonParse, safeJsonParseUntyped } from '../utils/safeJson';
+import { decodeStoredString, safeJsonParse, safeJsonParseUntyped } from '../utils/safeJson';
 import { createLogger } from '../utils/logger';
 import type { z } from 'zod';
 
@@ -60,6 +60,9 @@ export const SystemSettingKeys = {
   RATE_LIMIT_REQUESTS: 'rateLimit.requests',
   RATE_LIMIT_WINDOW_MS: 'rateLimit.windowMs',
 
+  // Confirmation settings
+  DEEP_CONFIRMATION_THRESHOLD: 'deepConfirmationThreshold',
+
   // Monitoring URL overrides
   MONITORING_GRAFANA_URL: 'monitoring.grafanaUrl',
   MONITORING_PROMETHEUS_URL: 'monitoring.prometheusUrl',
@@ -83,6 +86,16 @@ export async function get(key: string): Promise<SystemSetting | null> {
 export async function getValue(key: string): Promise<string | null> {
   const setting = await get(key);
   return setting?.value ?? null;
+}
+
+/**
+ * Get a string setting, decoded whether it was stored JSON-encoded (the admin
+ * settings writer) or raw (older and runtime-written rows). Returns null if
+ * not found.
+ */
+export async function getString(key: string): Promise<string | null> {
+  const value = await getValue(key);
+  return value === null ? null : decodeStoredString(value);
 }
 
 /**
@@ -330,6 +343,7 @@ export async function exists(key: string): Promise<boolean> {
 export const systemSettingRepository = {
   get,
   getValue,
+  getString,
   getValueOrDefault,
   getBoolean,
   getNumber,

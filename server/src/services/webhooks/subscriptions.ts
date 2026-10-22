@@ -2,7 +2,7 @@ import type { WebhookEndpoint } from '../../generated/prisma/client';
 import { webhookRepository } from '../../repositories';
 import { getFilterConfig } from './config';
 import { createLogger } from '../../utils/logger';
-import type { WalletWebhookEvent } from './types';
+import { WEBHOOK_EVENT_TRANSACTION_CONFIRMED, type WalletWebhookEvent } from './types';
 
 const log = createLogger('WEBHOOK:SUBSCRIPTIONS');
 
@@ -55,6 +55,24 @@ export function matchesEndpointFilters(
   }
 
   return true;
+}
+
+/**
+ * True when a confirmation change from `previousConfirmations` to
+ * `confirmations` is the one that first makes `event` deliverable to
+ * `endpoint`: the endpoint's threshold (at least 1 for the confirmed event) is
+ * crossed by this change. Earlier changes were filtered by the threshold and
+ * later ones were already delivered, so each endpoint gets each event once.
+ */
+export function crossesEndpointConfirmationThreshold(
+  endpoint: WebhookEndpoint,
+  eventType: string,
+  previousConfirmations: number,
+  confirmations: number,
+): boolean {
+  const configured = getFilterConfig(endpoint).confirmationThreshold ?? 0;
+  const threshold = eventType === WEBHOOK_EVENT_TRANSACTION_CONFIRMED ? Math.max(configured, 1) : configured;
+  return previousConfirmations < threshold && threshold <= confirmations;
 }
 
 function wildcardEventType(eventType: string): string {

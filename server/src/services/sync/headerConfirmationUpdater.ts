@@ -1,5 +1,6 @@
 import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 import { transactionRepository } from '../../repositories';
+import { PENDING_CONFIRMATION_CANDIDATE_THRESHOLD } from '../../constants';
 import {
   HEADER_CONFIRMATION_PAGE_SIZE,
   HEADER_CONFIRMATION_PAGE_TIMEOUT_MS,
@@ -11,7 +12,6 @@ import {
   type PendingConfirmationRefreshResult,
 } from './confirmationUpdater';
 
-const CONFIRMATION_THRESHOLD = 6;
 const QUERY_TIMEOUT_MS = HEADER_CONFIRMATION_PAGE_TIMEOUT_MS - 1_000;
 const OWNERSHIP_POLL_MS = 25;
 
@@ -59,7 +59,7 @@ export async function refreshPendingConfirmationsAtHeight(
       const candidates = await raceConfirmationAbort(
         signal,
         transactionRepository.findWalletIdsRequiringConfirmationUpdateAtHeight(
-          CONFIRMATION_THRESHOLD,
+          PENDING_CONFIRMATION_CANDIDATE_THRESHOLD,
           network,
           authoritativeHeight,
           afterWalletId,

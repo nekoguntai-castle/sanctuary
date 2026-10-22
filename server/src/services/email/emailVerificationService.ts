@@ -62,8 +62,7 @@ export async function isVerificationRequired(): Promise<boolean> {
  * Get the server name for emails
  */
 async function getServerName(): Promise<string> {
-  const name = await systemSettingRepository.getValue(SystemSettingKeys.SERVER_NAME);
-  return name || 'Sanctuary';
+  return (await systemSettingRepository.getString(SystemSettingKeys.SERVER_NAME)) || 'Sanctuary';
 }
 
 /**

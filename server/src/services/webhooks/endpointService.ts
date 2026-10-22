@@ -1,6 +1,8 @@
 import type { WebhookDelivery, WebhookEndpoint } from '../../generated/prisma/client';
 import { queueWebhookDeliveryNotification } from '../../infrastructure';
-import { webhookRepository } from '../../repositories';
+import { SystemSettingKeys, systemSettingRepository, webhookRepository } from '../../repositories';
+import { DEFAULT_DEEP_CONFIRMATION_THRESHOLD, PENDING_CONFIRMATION_CANDIDATE_THRESHOLD } from '../../constants';
+import { SystemSettingSchemas } from '../../utils/safeJson';
 import { encrypt } from '../../utils/encryption';
 import { ConflictError, ForbiddenError, InvalidInputError } from '../../errors';
 import {
@@ -9,6 +11,7 @@ import {
 } from '@sanctuary/shared/constants/walletRoles';
 import { WEBHOOK_REDACTED_VALUE } from '@sanctuary/shared/constants/webhooks';
 import { sendWebhookDelivery } from './deliveryService';
+import { parseFilterConfig } from './config';
 import { redactWebhookDiagnosticHeaders } from './diagnostics';
 
 export interface WebhookEndpointResponse {
@@ -121,6 +124,7 @@ export async function createWalletWebhook(
   walletRole: unknown,
 ): Promise<WebhookEndpointResponse> {
   requireProjectionRole(walletRole);
+  await assertConfirmationThresholdTracked(input.filters);
   const endpoint = await webhookRepository.createEndpoint({
     walletId,
     name: input.name,
@@ -148,6 +152,7 @@ export async function updateWalletWebhook(
   walletRole: unknown,
 ): Promise<WebhookEndpointResponse | null> {
   requireProjectionRole(walletRole);
+  if (input.filters !== undefined) await assertConfirmationThresholdTracked(input.filters);
   if (input.headerConfig !== undefined) prepareHeaderConfig(input.headerConfig, true);
   const secretUpdate = getSecretUpdate(input);
   const update = {
@@ -445,4 +450,22 @@ function applyHeaderPatch(
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+async function assertConfirmationThresholdTracked(filters: unknown): Promise<void> {
+  const threshold = parseFilterConfig(filters).confirmationThreshold;
+  if (threshold === undefined) return;
+  const deep = await systemSettingRepository.getParsed(
+    SystemSettingKeys.DEEP_CONFIRMATION_THRESHOLD,
+    SystemSettingSchemas.number,
+    DEFAULT_DEEP_CONFIRMATION_THRESHOLD,
+  );
+  const tracked = Math.min(deep, PENDING_CONFIRMATION_CANDIDATE_THRESHOLD);
+  if (threshold > tracked) {
+    throw new InvalidInputError(
+      `confirmationThreshold ${threshold} is above the confirmation-tracking horizon ${tracked}. `
+      + `Confirmations stop being tracked at ${tracked}, so this webhook would never fire. `
+      + `Use ${tracked} or less.`,
+    );
+  }
 }

@@ -5,6 +5,7 @@ import { getQuorumM, getQuorumN, isMultisigType, WalletType } from '../../../typ
 import { UNATTRIBUTED_SIGNATURE_ID } from '../../../hooks/send/types';
 import type { SerializableTransactionState, WalletAddress } from '../../../contexts/send/types';
 import type { DraftTransactionData, LoadedSendTransactionPageData } from './types';
+import { toClientFeeEstimate } from '../../../app/feeTiers';
 
 export const emptySendTransactionPageData: LoadedSendTransactionPageData = {
   devices: [],
@@ -68,13 +69,7 @@ export function formatUtxos(utxos: UTXO[], scriptType: Wallet['scriptType']): UT
 }
 
 export function formatFees(feeEstimates: FeeEstimates): FeeEstimate {
-  return {
-    fastestFee: feeEstimates.fastest,
-    halfHourFee: feeEstimates.hour,
-    hourFee: feeEstimates.economy,
-    economyFee: feeEstimates.minimum || 1,
-    minimumFee: feeEstimates.minimum || 1,
-  };
+  return toClientFeeEstimate(feeEstimates);
 }
 
 export function formatMempoolData(mempoolData: MempoolData | null) {

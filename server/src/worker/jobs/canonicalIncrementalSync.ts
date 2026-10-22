@@ -14,13 +14,17 @@ import {
   getCachedBlockHeight,
   syncWallet,
 } from '../../services/bitcoin/blockchain';
-import { populateMissingTransactionFields } from '../../services/bitcoin/sync/confirmations';
+import {
+  populateMissingTransactionFields,
+  type ConfirmationUpdate,
+} from '../../services/bitcoin/sync/confirmations';
 import {
   createSyncStageRuntime,
   isSyncStageBudgetError,
 } from '../../services/bitcoin/sync/attemptRuntime';
 import { resolvePersistedBitcoinNetwork, type BitcoinNetwork } from '../../services/bitcoin/networks';
 import { classifyWalletSyncFailure } from '../../services/sync/failureClassification';
+import { publishCommittedConfirmationUpdates } from '../../services/sync/confirmationUpdater';
 import {
   syncIntentAdmission,
   type ClaimFreshIncrementalSyncResult,
@@ -107,6 +111,19 @@ class PermanentIncrementalSyncError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'PermanentIncrementalSyncError';
+  }
+}
+
+function publishRepairConfirmations(
+  walletId: string,
+  updates: ConfirmationUpdate[],
+): void {
+  const failures = publishCommittedConfirmationUpdates(walletId, updates);
+  if (failures.length > 0) {
+    log.warn('Confirmation events not published', {
+      walletId,
+      txids: failures.map(failure => failure.txid),
+    });
   }
 }
 
@@ -292,10 +309,12 @@ export async function executeCanonicalIncrementalSync(
           phaseProgress,
         );
         phaseProgress?.begin('missing_field_repair');
+        // The repair usually commits a mempool transaction's first
+        // confirmation, before any confirmation sweep sees it.
         await populateMissingTransactionFields(
           data.walletId,
           signal,
-          undefined,
+          commit => publishRepairConfirmations(data.walletId, commit.confirmationUpdates),
           fence,
           false,
           deadlineAt,

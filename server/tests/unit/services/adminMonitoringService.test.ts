@@ -14,6 +14,14 @@ vi.mock('../../../src/config', () => ({
 vi.mock('../../../src/repositories/systemSettingRepository', () => ({
   systemSettingRepository: {
     getValue: mocks.getValue,
+    // Same semantics as the real reader: getValue, then decode a JSON-encoded string.
+    getString: async (key: string) => {
+      const { decodeStoredString } = await vi.importActual<typeof import('../../../src/utils/safeJson')>(
+        '../../../src/utils/safeJson',
+      );
+      const value = await mocks.getValue(key);
+      return value === null ? null : decodeStoredString(value);
+    },
     set: mocks.set,
     delete: mocks.deleteSetting,
   },
@@ -88,6 +96,30 @@ describe('adminMonitoringService', () => {
         isCustomUrl: false,
       }),
     ]);
+  });
+
+  it('reads a custom URL saved through the admin settings API without its JSON quotes', async () => {
+    mocks.getValue.mockImplementation(async (key: string) =>
+      key === 'monitoring.grafanaUrl' ? JSON.stringify('https://grafana.example.com') : null);
+    const { getMonitoringServices } = await loadService();
+
+    const response = await getMonitoringServices(false);
+
+    expect(response.services[0]).toEqual(expect.objectContaining({
+      id: 'grafana', url: 'https://grafana.example.com', isCustomUrl: true,
+    }));
+  });
+
+  it('treats an empty JSON-encoded URL as not customised', async () => {
+    mocks.getValue.mockImplementation(async (key: string) =>
+      key === 'monitoring.grafanaUrl' ? JSON.stringify('') : null);
+    const { getMonitoringServices } = await loadService();
+
+    const response = await getMonitoringServices(false);
+
+    expect(response.services[0]).toEqual(expect.objectContaining({
+      id: 'grafana', url: '{host}:3000', isCustomUrl: false,
+    }));
   });
 
   it('updates and clears monitoring service URL overrides', async () => {

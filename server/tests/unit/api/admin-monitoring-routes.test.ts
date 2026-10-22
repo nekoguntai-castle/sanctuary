@@ -38,6 +38,14 @@ vi.mock('../../../src/config', () => ({
 vi.mock('../../../src/repositories/systemSettingRepository', () => ({
   systemSettingRepository: {
     getValue: mockGetValue,
+    // Same semantics as the real reader: getValue, then decode a JSON-encoded string.
+    getString: async (key: string) => {
+      const { decodeStoredString } = await vi.importActual<typeof import('../../../src/utils/safeJson')>(
+        '../../../src/utils/safeJson',
+      );
+      const value = await mockGetValue(key);
+      return value === null ? null : decodeStoredString(value);
+    },
     set: mockSet,
     delete: mockDelete,
     getBoolean: mockGetBoolean,

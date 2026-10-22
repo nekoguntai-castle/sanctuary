@@ -51,9 +51,9 @@ const monitoringSettingKeyByServiceId: Record<MonitoringServiceId, string> = {
 
 export async function getMonitoringServices(checkHealth: boolean): Promise<MonitoringServicesResponse> {
   const config = getConfig();
-  const customGrafanaUrl = await systemSettingRepository.getValue(SystemSettingKeys.MONITORING_GRAFANA_URL);
-  const customPrometheusUrl = await systemSettingRepository.getValue(SystemSettingKeys.MONITORING_PROMETHEUS_URL);
-  const customJaegerUrl = await systemSettingRepository.getValue(SystemSettingKeys.MONITORING_JAEGER_URL);
+  const customGrafanaUrl = await systemSettingRepository.getString(SystemSettingKeys.MONITORING_GRAFANA_URL);
+  const customPrometheusUrl = await systemSettingRepository.getString(SystemSettingKeys.MONITORING_PROMETHEUS_URL);
+  const customJaegerUrl = await systemSettingRepository.getString(SystemSettingKeys.MONITORING_JAEGER_URL);
 
   const services: MonitoringService[] = [
     {

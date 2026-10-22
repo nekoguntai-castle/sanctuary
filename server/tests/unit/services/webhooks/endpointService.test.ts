@@ -13,7 +13,9 @@ const {
   mockQueueWebhookDeliveryNotification,
   mockSendWebhookDelivery,
   mockUpdateEndpoint,
+  mockGetParsed,
 } = vi.hoisted(() => ({
+  mockGetParsed: vi.fn(),
   mockCreateEndpoint: vi.fn(),
   mockDeleteEndpoint: vi.fn(),
   mockEncrypt: vi.fn((value: string) => `encrypted:${value}`),
@@ -38,6 +40,8 @@ vi.mock('../../../../src/repositories', () => ({
     markDeliveryPendingForReplay: mockMarkDeliveryPendingForReplay,
     updateEndpoint: mockUpdateEndpoint,
   },
+  systemSettingRepository: { getParsed: mockGetParsed },
+  SystemSettingKeys: { DEEP_CONFIRMATION_THRESHOLD: 'deepConfirmationThreshold' },
 }));
 
 vi.mock('../../../../src/infrastructure', () => ({
@@ -67,6 +71,55 @@ import {
 let repositoryUpdateResult: WebhookEndpoint | null;
 let persistedUpdateInputs: Array<Record<string, unknown>>;
 let retirePendingDecisions: boolean[];
+
+describe('webhook endpoint confirmation threshold validation', () => {
+  const input = {
+    name: 'Endpoint',
+    url: 'https://example.com/hook',
+    eventTypes: ['wallet.transaction.confirmed'],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetParsed.mockResolvedValue(3);
+    mockCreateEndpoint.mockResolvedValue(makeEndpoint());
+    mockUpdateEndpoint.mockResolvedValue(makeEndpoint());
+  });
+
+  it('refuses a confirmation threshold above the deep confirmation threshold on create', async () => {
+    await expect(createWalletWebhook('wallet-1', 'user-1', {
+      ...input, filters: { confirmationThreshold: 6 },
+    }, 'owner')).rejects.toMatchObject({ name: 'InvalidInputError', message: expect.stringMatching(/6.*3/) });
+    expect(mockCreateEndpoint).not.toHaveBeenCalled();
+  });
+
+  it('refuses it on update', async () => {
+    await expect(updateWalletWebhook('wallet-1', 'endpoint-1', {
+      filters: { confirmationThreshold: 6 },
+    }, 'owner')).rejects.toMatchObject({ name: 'InvalidInputError' });
+    expect(mockUpdateEndpoint).not.toHaveBeenCalled();
+  });
+
+  it('accepts a threshold equal to the deep confirmation threshold', async () => {
+    await expect(createWalletWebhook('wallet-1', 'user-1', {
+      ...input, filters: { confirmationThreshold: 3 },
+    }, 'owner')).resolves.toMatchObject({ id: 'endpoint-1' });
+    expect(mockGetParsed).toHaveBeenCalledWith('deepConfirmationThreshold', expect.anything(), 3);
+  });
+
+  it('refuses a threshold above the six-confirmation candidate horizon even when the deep threshold is higher', async () => {
+    mockGetParsed.mockResolvedValue(10);
+    await expect(createWalletWebhook('wallet-1', 'user-1', {
+      ...input, filters: { confirmationThreshold: 7 },
+    }, 'owner')).rejects.toMatchObject({ name: 'InvalidInputError', message: expect.stringMatching(/7.*6/) });
+    expect(mockCreateEndpoint).not.toHaveBeenCalled();
+  });
+
+  it('does not read the setting when no threshold is set', async () => {
+    await createWalletWebhook('wallet-1', 'user-1', input, 'owner');
+    expect(mockGetParsed).not.toHaveBeenCalled();
+  });
+});
 
 describe('webhook endpoint service', () => {
   beforeEach(() => {

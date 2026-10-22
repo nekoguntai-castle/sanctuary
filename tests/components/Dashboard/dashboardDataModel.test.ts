@@ -8,6 +8,7 @@ import {
   mapApiWalletToDashboardWallet,
   neverAnswered,
   normalizeQueryError,
+  toDashboardFeeEstimate,
   type BitcoinStatusQueryLike,
 } from '../../../src/components/Dashboard/hooks/dashboardDataModel';
 import type { BitcoinStatus } from '../../../src/api/bitcoin';
@@ -256,5 +257,19 @@ describe('transaction and balance notifications', () => {
     ['btc', btcFormat, -40_000, '-0.00040000 BTC'],
   ] as const)('states a balance change in the %s display unit (%d)', (_unit, format, change, message) => {
     expect(buildBalanceNotification({ change } as never, format)?.message).toBe(message);
+  });
+});
+
+describe('toDashboardFeeEstimate', () => {
+  it('shows the ~3-block rate as normal and the ~6-block rate as slow', () => {
+    expect(toDashboardFeeEstimate({ fastest: 40, halfHour: 30, hour: 20, economy: 10, minimum: 2 })).toEqual({
+      fast: 40,
+      medium: 30,
+      slow: 20,
+    });
+  });
+
+  it('returns null without estimates', () => {
+    expect(toDashboardFeeEstimate(undefined)).toBeNull();
   });
 });

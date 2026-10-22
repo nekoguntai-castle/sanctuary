@@ -294,7 +294,10 @@ export function registerOpenApiWalletTests() {
     const updateWalletSchema = openApiSpec.components.schemas.UpdateWalletRequest;
 
     expect(createWalletSchema.properties).toMatchObject({
-      descriptor: { type: 'string' },
+      descriptor: {
+        type: 'string',
+        description: 'Ignored when signers are given; a descriptor without signers is refused (400). To add a wallet from a descriptor use POST /wallets/import.',
+      },
       changeDescriptor: {
         type: 'string',
         description: 'Change-chain output descriptor paired with the receive descriptor.',

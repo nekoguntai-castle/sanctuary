@@ -14,6 +14,7 @@ import { genericWebhookPayloadProfile } from '../../../../src/services/webhooks/
 import { mappedJsonWebhookPayloadProfile } from '../../../../src/services/webhooks/payloadProfiles/mappedJson';
 import { signWebhookRequest } from '../../../../src/services/webhooks/signers';
 import {
+  crossesEndpointConfirmationThreshold,
   findMatchingWebhookEndpoints,
   matchesEndpointEventType,
   matchesEndpointFilters,
@@ -44,6 +45,23 @@ vi.mock('../../../../src/repositories', () => ({
     findEnabledEndpointsForEvent: mockFindEnabledEndpointsForEvent,
   },
 }));
+
+describe('crossesEndpointConfirmationThreshold', () => {
+  it.each([
+    [null, 'wallet.transaction.observed', 0, 1, false],
+    [null, 'wallet.transaction.confirmed', 0, 1, true],
+    [null, 'wallet.transaction.confirmed', 1, 2, false],
+    [{ confirmationThreshold: 0 }, 'wallet.transaction.confirmed', 0, 1, true],
+    [{ confirmationThreshold: 3 }, 'wallet.transaction.received', 1, 2, false],
+    [{ confirmationThreshold: 3 }, 'wallet.transaction.received', 2, 3, true],
+    [{ confirmationThreshold: 3 }, 'wallet.transaction.confirmed', 0, 6, true],
+    [{ confirmationThreshold: 3 }, 'wallet.transaction.confirmed', 3, 2, false],
+  ])('filters %j, %s, %i -> %i is %s', (filters, eventType, previous, current, expected) => {
+    expect(crossesEndpointConfirmationThreshold(
+      makeEndpoint({ filters: filters as never }), eventType, previous, current,
+    )).toBe(expected);
+  });
+});
 
 describe('webhook core', () => {
   beforeEach(() => {

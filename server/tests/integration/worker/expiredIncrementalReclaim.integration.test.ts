@@ -438,7 +438,7 @@ describeWithRedis('expired incremental reclaim authority chain', () => {
     expect(populate).toHaveBeenCalledWith(
       expired.walletId,
       expect.any(AbortSignal),
-      undefined,
+      expect.any(Function),
       claimedFence,
       false,
       expect.any(Number),

@@ -9,10 +9,38 @@ import {
   request,
   uniqueUsername,
 } from './walletIntegrationTestHarness';
+import { createTestWallet } from '../../setup/helpers';
 
 const TESTNET_XPUB = 'tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M';
 const RECEIVE_DESCRIPTOR = `wpkh([aabbccdd/84'/1'/0']${TESTNET_XPUB}/0/*)`;
 const CHANGE_DESCRIPTOR = `wpkh([aabbccdd/84'/1'/0']${TESTNET_XPUB}/1/*)`;
+
+/** Registers a single-sig signer the way createTestWallet does and returns its signer input. */
+async function registerSingleSigSigner(token: string) {
+  const fingerprint = Math.random().toString(16).slice(2, 10).padEnd(8, '0');
+  const deviceResponse = await request(app)
+    .post('/api/v1/devices')
+    .set(authHeader(token))
+    .send({
+      type: 'bitbox',
+      label: `Group signer ${fingerprint}`,
+      fingerprint,
+      xpub: TESTNET_XPUB,
+      derivationPath: "m/84'/1'/0'",
+    })
+    .expect(201);
+  const account = deviceResponse.body.accounts?.find((candidate: {
+    purpose?: unknown;
+    scriptType?: unknown;
+    derivationPath?: unknown;
+  }) => (
+    candidate.purpose === 'single_sig'
+    && candidate.scriptType === 'native_segwit'
+    && candidate.derivationPath === "m/84'/1'/0'"
+  ));
+  expect(typeof account?.id).toBe('string');
+  return { deviceId: deviceResponse.body.id as string, deviceAccountId: account.id as string, signerIndex: 0 };
+}
 
 export function registerWalletGroupsTelegramTests(): void {
   describe('Create Wallet with Group', () => {
@@ -98,6 +126,7 @@ export function registerWalletGroupsTelegramTests(): void {
       });
 
       // Create wallet via API with groupId
+      const signer = await registerSingleSigSigner(ownerToken);
       const walletResponse = await request(app)
         .post('/api/v1/wallets')
         .set(authHeader(ownerToken))
@@ -106,8 +135,7 @@ export function registerWalletGroupsTelegramTests(): void {
           type: 'single_sig',
           scriptType: 'native_segwit',
           network: 'testnet3',
-          descriptor: RECEIVE_DESCRIPTOR,
-          changeDescriptor: CHANGE_DESCRIPTOR,
+          signers: [signer],
           groupId: group.id,
         })
         .expect(201);
@@ -117,7 +145,7 @@ export function registerWalletGroupsTelegramTests(): void {
       });
       expect(wallet?.groupId).toBe(group.id);
       expect(wallet?.groupRole).toBe('viewer');
-      expect(wallet?.changeDescriptor).toBe(CHANGE_DESCRIPTOR);
+      expect(wallet?.changeDescriptor).not.toBeNull();
       expect(await prisma.walletUser.findFirst({
         where: { walletId: walletResponse.body.id, userId: ownerId },
       })).toMatchObject({ role: 'owner' });
@@ -132,21 +160,10 @@ export function registerWalletGroupsTelegramTests(): void {
     it('should create wallet without groupId (no group assignment)', async () => {
       const { token } = await createAndLoginUser(app, prisma);
 
-      const response = await request(app)
-        .post('/api/v1/wallets')
-        .set(authHeader(token))
-        .send({
-          name: 'No Group Wallet',
-          type: 'single_sig',
-          scriptType: 'native_segwit',
-          network: 'testnet3',
-          descriptor: RECEIVE_DESCRIPTOR,
-          changeDescriptor: CHANGE_DESCRIPTOR,
-        })
-        .expect(201);
+      const created = await createTestWallet(app, token, { name: 'No Group Wallet' });
 
       const wallet = await prisma.wallet.findUnique({
-        where: { id: response.body.id },
+        where: { id: created.id },
       });
       expect(wallet?.groupId).toBeNull();
     });

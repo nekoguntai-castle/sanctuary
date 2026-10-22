@@ -33,7 +33,17 @@ vi.mock('nodemailer', () => ({
 }));
 
 vi.mock('../../../../src/repositories', () => ({
-  systemSettingRepository: mockSystemSettingRepository,
+  systemSettingRepository: {
+    ...mockSystemSettingRepository,
+    // Same semantics as the real reader: getValue, then decode a JSON-encoded string.
+    getString: async (key: string) => {
+      const { decodeStoredString } = await vi.importActual<typeof import('../../../../src/utils/safeJson')>(
+        '../../../../src/utils/safeJson',
+      );
+      const value = await mockSystemSettingRepository.getValue(key);
+      return value === null ? null : decodeStoredString(value);
+    },
+  },
   SystemSettingKeys: {
     SMTP_HOST: 'smtp.host',
     SMTP_PORT: 'smtp.port',

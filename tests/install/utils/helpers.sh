@@ -540,7 +540,7 @@ probe_monitoring_bind_sources() {
         printf '[probe] job view: MISSING\n' >&2
 
     printf '[probe] daemon view of %s (mounted ro):\n' "$rel" >&2
-    docker run --rm -v "$project_dir:/probe:ro" alpine:3 \
+    docker run --rm -v "$project_dir:/probe:ro" alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b \
         ls -la "/probe/$rel" >&2 2>&1 ||
         printf '[probe] daemon view: MISSING or unavailable\n' >&2
 
@@ -716,7 +716,7 @@ sync_monitoring_configs_to_daemon() {
     ownership_label_args compose_container exact_delete || return 1
     sync_ownership_labels=("${OWNERSHIP_LABEL_ARGS[@]}")
     create_output="$(docker create --rm --name "$helper_name" "${sync_ownership_labels[@]}" \
-        -v "$project_dir/docker:/dst" alpine:3 sleep 300 2>&1)" || create_status=$?
+        -v "$project_dir/docker:/dst" alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b sleep 300 2>&1)" || create_status=$?
     cid="$(resolve_registered_created_container "$helper_name" "$create_output" "$create_status")" \
         || resolve_status=$?
     if ! [[ "$cid" =~ ^[0-9a-f]{64}$ ]]; then

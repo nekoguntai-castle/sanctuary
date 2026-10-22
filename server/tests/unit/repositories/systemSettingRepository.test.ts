@@ -29,6 +29,7 @@ import {
   getJson,
   getNumber,
   getParsed,
+  getString,
   getValue,
   getValueOrDefault,
   set,
@@ -55,6 +56,18 @@ describe('systemSettingRepository', () => {
     await expect(getValueOrDefault('missing', 'fallback')).resolves.toBe('fallback');
 
     expect(prisma.systemSetting.findUnique).toHaveBeenNthCalledWith(1, { where: { key: 'k' } });
+  });
+
+  it('getString decodes JSON-encoded and raw strings and returns null when missing', async () => {
+    (prisma.systemSetting.findUnique as Mock)
+      .mockResolvedValueOnce({ key: 'smtp.host', value: '"smtp.example.com"' })
+      .mockResolvedValueOnce({ key: 'smtp.host', value: 'smtp.example.com' })
+      .mockResolvedValueOnce(null);
+
+    await expect(getString('smtp.host')).resolves.toBe('smtp.example.com');
+    await expect(getString('smtp.host')).resolves.toBe('smtp.example.com');
+    await expect(getString('missing')).resolves.toBeNull();
+    expect(systemSettingRepository.getString).toBe(getString);
   });
 
   it('getBoolean handles true/1/false and default', async () => {

@@ -1,16 +1,21 @@
-import type { Prisma, WebhookEndpoint } from '../../generated/prisma/client';
+import type { WebhookEndpoint } from '../../generated/prisma/client';
 import type { WebhookFilterConfig, WebhookRetryConfig } from './types';
 
 export type JsonRecord = Record<string, unknown>;
 
-export function asJsonRecord(value: Prisma.JsonValue | null | undefined): JsonRecord {
+export function asJsonRecord(value: unknown): JsonRecord {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? value as JsonRecord
     : {};
 }
 
 export function getFilterConfig(endpoint: WebhookEndpoint): WebhookFilterConfig {
-  const filters = asJsonRecord(endpoint.filters);
+  return parseFilterConfig(endpoint.filters);
+}
+
+/** Read stored or submitted endpoint filters; delivery and save-time checks share it. */
+export function parseFilterConfig(value: unknown): WebhookFilterConfig {
+  const filters = asJsonRecord(value);
   const rawMinAmount = typeof filters.minAmountSats === 'string' && filters.minAmountSats !== ''
     ? filters.minAmountSats
     : undefined;

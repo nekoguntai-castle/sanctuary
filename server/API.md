@@ -178,7 +178,7 @@ Create a new wallet.
   "network": "mainnet | testnet | regtest (optional)",
   "quorum": "number (required for multi-sig)",
   "totalSigners": "number (required for multi-sig)",
-  "descriptor": "string (optional)",
+  "descriptor": "string (optional; ignored when signers are given; a descriptor without signers is refused (400). To add a wallet from a descriptor use POST /wallets/import.)",
   "fingerprint": "string (optional)",
   "groupId": "uuid (optional)"
 }

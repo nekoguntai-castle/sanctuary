@@ -258,17 +258,23 @@ describeWithDatabase('wallet descriptor persistence atomicity', () => {
   it('rolls back wallet creation when initial address insertion fails', async () => {
     const user = await createTestUser(prisma, getTestUser());
     const walletName = `${TEST_WALLET_PREFIX}create`;
+    const { device, account } = await createSignerFixture(prisma, user.id, {
+      fingerprint: 'aabbccdd',
+      xpub: XPUB,
+      purpose: 'single_sig',
+      derivationPath: "m/84'/1'/0'",
+    });
 
     await expect(createWallet(user.id, {
       name: walletName,
       type: 'single_sig',
       scriptType: 'native_segwit',
       network: 'testnet3',
-      descriptor: RECEIVE_DESCRIPTOR,
-      changeDescriptor: CHANGE_DESCRIPTOR,
+      signers: [{ deviceId: device.id, deviceAccountId: account.id, signerIndex: 0 }],
     })).rejects.toThrow('forced wallet address insert failure');
 
     await expect(prisma.wallet.count({ where: { name: walletName } })).resolves.toBe(0);
+    await expect(prisma.walletDevice.count({ where: { deviceId: device.id } })).resolves.toBe(0);
     await expect(prisma.walletUser.count({ where: { userId: user.id } })).resolves.toBe(0);
     await expect(prisma.user.count({ where: { id: user.id } })).resolves.toBe(1);
   });
@@ -371,13 +377,11 @@ describeWithDatabase('wallet descriptor persistence atomicity', () => {
   it('preserves the live verified wallet byte-for-byte when restore address insertion fails', async () => {
     const user = await createTestUser(prisma, { ...getTestUser(), isAdmin: true });
     await dropAddressInsertFailure(prisma);
-    const wallet = await createWallet(user.id, {
-      name: `${TEST_WALLET_PREFIX}restore-live`,
-      type: 'single_sig',
-      scriptType: 'native_segwit',
-      network: 'testnet3',
+    const { wallet } = await importFromDescriptor(user.id, {
       descriptor: RECEIVE_DESCRIPTOR,
       changeDescriptor: CHANGE_DESCRIPTOR,
+      name: `${TEST_WALLET_PREFIX}restore-live`,
+      network: 'testnet3',
     });
     // Restore is intentionally database-wide. The integration runner supplies a
     // disposable serial database, and createBackup returns only an in-memory payload.

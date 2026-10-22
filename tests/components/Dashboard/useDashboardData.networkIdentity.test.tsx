@@ -37,7 +37,7 @@ describe('useDashboardData cross-network identity gating', () => {
      */
     it('does not render the previous network fee rates while the new query is in flight', () => {
       state.activeNetworkState = 'testnet4';
-      state.feeEstimatesData = { fastest: 18.6, hour: 9, economy: 3.4, network: 'mainnet' };
+      state.feeEstimatesData = { fastest: 18.6, halfHour: 9, hour: 3.4, economy: 1.2, network: 'mainnet' };
 
       expect(renderHook(() => useDashboardData()).result.current.fees).toBeNull();
     });
@@ -68,7 +68,7 @@ describe('useDashboardData cross-network identity gating', () => {
 
     it('renders fees and mempool normally once the identities agree', () => {
       state.activeNetworkState = 'testnet4';
-      state.feeEstimatesData = { fastest: 5, hour: 3, economy: 1, network: 'testnet4' };
+      state.feeEstimatesData = { fastest: 5, halfHour: 3, hour: 2, economy: 1, network: 'testnet4' };
       state.mempoolDataData = {
         mempool: [{ id: 'mp-tn4' }],
         blocks: [{ id: 'b-tn4' }],

@@ -130,27 +130,47 @@ async function login(target) {
 
 async function createProofWallet(target, token) {
   const walletName = 'Phase 3 Scale-Out Wallet ' + proofId;
-  const response = await apiJson(target, '/api/v1/wallets', {
+  // Descriptor wallets are imported, in the multipath form import requires. The
+  // compose smoke provisions the benchmark wallet from the same key origin
+  // first, so import answers 409 naming it; reuse that wallet.
+  const response = await apiJson(target, '/api/v1/wallets/import', {
     method: 'POST',
     token,
     body: {
+      data: walletDescriptor.replace('/0/*', '/<0;1>/*'),
       name: walletName,
-      type: 'single_sig',
-      scriptType: 'native_segwit',
-      network: 'testnet',
-      descriptor: walletDescriptor,
+      network: 'testnet3',
     },
-  }, [201]);
+  }, [201, 409]);
+  const wallet = response.status === 409
+    ? await findDuplicateProofWallet(target, token, response.body && response.body.message)
+    : response.body && response.body.wallet;
 
-  if (!response.body || typeof response.body !== 'object' || typeof response.body.id !== 'string') {
-    throw new Error('wallet creation response from ' + target.name + ' did not include an id');
+  if (!wallet || typeof wallet !== 'object' || typeof wallet.id !== 'string') {
+    throw new Error('wallet import response from ' + target.name + ' did not include an id');
   }
 
   return {
-    id: response.body.id,
-    name: response.body.name || walletName,
-    addressCount: response.body.addressCount ?? null,
+    id: wallet.id,
+    name: wallet.name || walletName,
   };
+}
+
+async function findDuplicateProofWallet(target, token, message) {
+  const prefix = 'A wallet with these devices already exists: "';
+  const parses = typeof message === 'string'
+    && message.length > prefix.length
+    && message.startsWith(prefix)
+    && message.endsWith('"');
+  const name = parses ? message.slice(prefix.length, -1) : null;
+  const wallets = name === null
+    ? null
+    : (await apiJson(target, '/api/v1/wallets', { method: 'GET', token })).body;
+  const existing = Array.isArray(wallets) ? wallets.find((entry) => entry && entry.name === name) : undefined;
+  if (!existing) {
+    throw new Error('wallet import on ' + target.name + ' returned 409 without a reusable wallet: ' + message);
+  }
+  return existing;
 }
 `;
 }

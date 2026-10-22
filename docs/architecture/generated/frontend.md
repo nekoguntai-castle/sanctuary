@@ -110,6 +110,7 @@ n_src_app_appRoutes_tsx["appRoutes.tsx"]
 n_src_app_browserNavigation_ts["browserNavigation.ts"]
 n_src_app_capabilities_ts["capabilities.ts"]
 n_src_app_consoleTransactionNavigation_ts["consoleTransactionNavigation.ts"]
+n_src_app_feeTiers_ts["feeTiers.ts"]
 n_src_app_networks_ts["networks.ts"]
 n_src_app_resolvePageContentWidth_ts["resolvePageContentWidth.ts"]
 n_src_app_routeComponents_tsx["routeComponents.tsx"]
@@ -687,6 +688,7 @@ n_src_components_CreateWallet__collapsed-->n_src_utils_logger_ts
 n_src_components_Dashboard__collapsed-->n_shared_utils_bitcoin_ts
 n_src_components_Dashboard__collapsed-->n_shared_utils_errors_ts
 n_src_components_Dashboard__collapsed-->n_src_api_admin__collapsed
+n_src_components_Dashboard__collapsed-->n_src_app_feeTiers_ts
 n_src_components_Dashboard__collapsed-->n_src_app_networks_ts
 n_src_components_Dashboard__collapsed-->n_src_components_Amount_tsx
 n_src_components_Dashboard__collapsed-->n_src_components_BlockVisualizer__collapsed
@@ -1051,6 +1053,7 @@ n_src_components_send__collapsed-->n_src_api_bitcoin_ts
 n_src_components_send__collapsed-->n_src_api_devices_ts
 n_src_components_send__collapsed-->n_src_api_transactions__collapsed
 n_src_components_send__collapsed-->n_src_api_wallets_ts
+n_src_components_send__collapsed-->n_src_app_feeTiers_ts
 n_src_components_send__collapsed-->n_src_components_BlockVisualizer__collapsed
 n_src_components_send__collapsed-->n_src_components_FiatDisplay_tsx
 n_src_components_send__collapsed-->n_src_components_PrivacyBadge_tsx

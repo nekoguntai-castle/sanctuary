@@ -4,6 +4,7 @@ import {
   sqlLiteral,
   summarizeDurations,
 } from './common.mjs';
+import { BENCHMARK_MULTIPATH_DESCRIPTOR, duplicateWalletName } from '../phase3-benchmark-utils.mjs';
 
 export function createLargeWalletTransactionHistoryProofRunner(context) {
   const {
@@ -99,27 +100,43 @@ export function createLargeWalletTransactionHistoryProofRunner(context) {
   
   async function createLargeWalletProofWallet(token) {
     const walletName = `Phase 3 Large Wallet ${timestamp}`;
-    const response = await publicApiJson(`${apiUrl}/api/v1/wallets`, {
+    // Descriptor wallets are imported. The compose smoke provisions the
+    // benchmark wallet from the same key origin first, so import answers 409
+    // naming it; reuse that wallet.
+    const response = await timedPublicApiJson(`${apiUrl}/api/v1/wallets/import`, {
       method: 'POST',
       token,
       body: {
+        data: BENCHMARK_MULTIPATH_DESCRIPTOR,
         name: walletName,
-        type: 'single_sig',
-        scriptType: 'native_segwit',
-        network: 'testnet',
-        descriptor: "wpkh([aabbccdd/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)",
+        network: 'testnet3',
       },
-    }, [201]);
+    }, [201, 409]);
+    const wallet = response.status === 409
+      ? await findDuplicateProofWallet(token, response.body?.message)
+      : response.body?.wallet;
   
-    if (!response || typeof response !== 'object' || typeof response.id !== 'string') {
-      throw new Error('wallet creation response did not include an id');
+    if (!wallet || typeof wallet !== 'object' || typeof wallet.id !== 'string') {
+      throw new Error('wallet import response did not include an id');
     }
   
     return {
-      id: response.id,
-      name: response.name || walletName,
-      network: response.network || 'testnet',
+      id: wallet.id,
+      name: wallet.name || walletName,
+      network: wallet.network || 'testnet3',
     };
+  }
+  
+  async function findDuplicateProofWallet(token, message) {
+    const name = duplicateWalletName(message);
+    const wallets = name === null
+      ? []
+      : await publicApiJson(`${apiUrl}/api/v1/wallets`, { method: 'GET', token });
+    const existing = Array.isArray(wallets) ? wallets.find((entry) => entry?.name === name) : undefined;
+    if (!existing) {
+      throw new Error(`wallet import returned 409 without a reusable wallet: ${message}`);
+    }
+    return existing;
   }
   
   function seedLargeWalletTransactions(walletId) {

@@ -36,10 +36,19 @@ const FETCH_BATCH_SIZE = 10;
 const MISSING_RESULT = 'missing_result';
 export const MAX_AUTHENTICATED_RAW_HEX_CHARS_PER_ATTEMPT = 64 * 1024 * 1024;
 export const MAX_AUTHENTICATED_INPUTS_PER_ATTEMPT = 100_000;
+/**
+ * Bounds decoded outputs charged to the attempt (legacy detail entries). Compact
+ * envelopes retain none; the current batch's full projections are bounded by the
+ * candidate batch size × the per-transaction output limit.
+ */
 export const MAX_AUTHENTICATED_OUTPUTS_PER_ATTEMPT = 600_000;
 export const MAX_AUTHENTICATED_SCRIPT_HEX_CHARS_PER_ATTEMPT = 64 * 1024 * 1024;
 export const MAX_AUTHENTICATED_INPUTS_PER_TRANSACTION = 25_000;
 export const MAX_AUTHENTICATED_OUTPUTS_PER_TRANSACTION = 25_000;
+/** A refusal caused by the attempt's remaining capacity, not by the transaction alone. */
+export const ATTEMPT_EVIDENCE_CAPACITY_EXCEEDED = 'attempt_evidence_capacity_exceeded';
+const TRANSACTION_COMPLEXITY_EXCEEDED = 'transaction_complexity_exceeded';
+type ComplexityRefusalReason = typeof ATTEMPT_EVIDENCE_CAPACITY_EXCEEDED | typeof TRANSACTION_COMPLEXITY_EXCEEDED;
 
 const isAttemptCancellation = (reason: unknown): boolean => !isSyncStageBudgetError(reason);
 
@@ -59,6 +68,7 @@ interface EvidenceComplexity extends TransactionEvidenceComplexity {}
 const evidenceComplexity = new WeakMap<SyncContext, EvidenceComplexity>();
 const outpointFetchTails = new WeakMap<SyncContext, Promise<void>>();
 const attemptOnlySignals = new WeakMap<AbortSignal, AbortSignal>();
+const capacityLoggedAttempts = new WeakSet<SyncContext>();
 
 export interface EvidenceRequestOptions extends NodeRequestOptions {
   evidenceRole?: EvidenceProjectionRole;
@@ -110,12 +120,22 @@ const addLegacyDetailsComplexity = (
   }
 };
 
+/**
+ * A compact envelope keeps its canonical bytes, packed input outpoints and the
+ * indexes of wallet scripts it pays, never a decoded output. Its outputs were
+ * scanned once by the projector (bounded per transaction) and are not resident,
+ * so they are not charged to the attempt's retained-output ceiling.
+ */
+const retainedEnvelopeComplexity = (
+  complexity: TransactionEvidenceComplexity,
+): TransactionEvidenceComplexity => ({ ...complexity, outputs: 0 });
+
 const complexityFor = (ctx: SyncContext): EvidenceComplexity => {
   const existing = evidenceComplexity.get(ctx);
   if (existing) return existing;
   const initialized = { rawHexChars: 0, inputs: 0, outputs: 0, scriptHexChars: 0 };
   for (const envelope of ctx.authenticatedTransactionEvidence.values()) {
-    addComplexity(initialized, envelope.complexity);
+    addComplexity(initialized, retainedEnvelopeComplexity(envelope.complexity));
   }
   for (const [txid, details] of ctx.txDetailsCache) {
     if (!ctx.authenticatedTransactionEvidence.has(txid)) {
@@ -143,6 +163,60 @@ const rawHexFits = (complexity: EvidenceComplexity, details: RawTransaction): bo
   authenticatedRawHexChars(details)
   <= MAX_AUTHENTICATED_RAW_HEX_CHARS_PER_ATTEMPT - complexity.rawHexChars
 );
+
+/**
+ * Relabels a complexity refusal as attempt capacity when an attempt remainder,
+ * not a per-transaction limit, was the binding one. A raw-hex refusal is
+ * capacity only when the transaction alone would fit a fresh attempt; the
+ * projector arms apply only when the raw-hex check passed.
+ */
+const complexityRefusalReason = (
+  complexity: EvidenceComplexity,
+  details: RawTransaction,
+  rawHexRefused: boolean,
+): ComplexityRefusalReason => {
+  // Each arm reads "the attempt remainder is below the per-transaction bound". A
+  // transaction's script bytes are a subset of its canonical bytes, so its raw-hex
+  // length bounds its script hex. The projector cannot say which limit it hit, so
+  // a refusal on a nearly full attempt reads as capacity (plan D-15.11).
+  const transactionHexChars = authenticatedRawHexChars(details);
+  const attemptBound = rawHexRefused
+    ? MAX_AUTHENTICATED_RAW_HEX_CHARS_PER_ATTEMPT >= transactionHexChars
+    : complexity.inputs
+        > MAX_AUTHENTICATED_INPUTS_PER_ATTEMPT - MAX_AUTHENTICATED_INPUTS_PER_TRANSACTION
+      || complexity.outputs
+        > MAX_AUTHENTICATED_OUTPUTS_PER_ATTEMPT - MAX_AUTHENTICATED_OUTPUTS_PER_TRANSACTION
+      || complexity.scriptHexChars + transactionHexChars
+        > MAX_AUTHENTICATED_SCRIPT_HEX_CHARS_PER_ATTEMPT;
+  return attemptBound ? ATTEMPT_EVIDENCE_CAPACITY_EXCEEDED : TRANSACTION_COMPLEXITY_EXCEEDED;
+};
+
+/**
+ * Records a compact refusal under its label and logs the first capacity refusal
+ * of an attempt once at error, with the used resident counters only (outputs
+ * are not resident, see retainedEnvelopeComplexity).
+ */
+const recordCompactRefusal = (
+  ctx: SyncContext,
+  reason: string,
+  details: RawTransaction | undefined,
+  rawHexRefused: boolean,
+): void => {
+  const label = reason === TRANSACTION_COMPLEXITY_EXCEEDED && details
+    ? complexityRefusalReason(complexityFor(ctx), details, rawHexRefused)
+    : reason;
+  if (label === ATTEMPT_EVIDENCE_CAPACITY_EXCEEDED && !capacityLoggedAttempts.has(ctx)) {
+    capacityLoggedAttempts.add(ctx);
+    const { rawHexChars, inputs, scriptHexChars } = complexityFor(ctx);
+    log.error('[SYNC] Wallet history exceeds the per-attempt authenticated evidence capacity', {
+      walletId: ctx.walletId,
+      rawHexChars,
+      inputs,
+      scriptHexChars,
+    });
+  }
+  recordFailClosed(ctx, label);
+};
 
 const shouldRethrow = (error: unknown, signal?: AbortSignal): boolean => (
   error instanceof DetachedTransactionEvidenceError
@@ -180,12 +254,14 @@ const cacheCompactResult = async (
   signal?: AbortSignal,
   retainOnBudgetExpiry = false,
 ): Promise<boolean> => {
+  let rawHexRefused = false;
   try {
     signal?.throwIfAborted();
     if (!details) throw new Error(MISSING_RESULT);
     const complexity = complexityFor(ctx);
     if (!rawHexFits(complexity, details)) {
-      throw new RawTransactionEvidenceError('transaction_complexity_exceeded');
+      rawHexRefused = true;
+      throw new RawTransactionEvidenceError(TRANSACTION_COMPLEXITY_EXCEEDED);
     }
     const envelope = await projector.projectCompact({
       expectedTxid,
@@ -195,7 +271,7 @@ const cacheCompactResult = async (
     }, localProjectionSignal(ctx, signal));
     if (retainOnBudgetExpiry) throwIfAttemptCancelled(ctx, signal);
     else signal?.throwIfAborted();
-    addComplexity(complexity, envelope.complexity);
+    addComplexity(complexity, retainedEnvelopeComplexity(envelope.complexity));
     ctx.authenticatedTransactionEvidence.set(expectedTxid, envelope);
     recordCompactProjection(
       ctx,
@@ -207,11 +283,13 @@ const cacheCompactResult = async (
   } catch (error) {
     ctx.authenticatedTransactionEvidence.delete(expectedTxid);
     if (shouldRethrow(error, signal)) throw error;
-    recordFailClosed(
+    recordCompactRefusal(
       ctx,
       signal?.aborted && isSyncStageBudgetError(signal.reason)
         ? 'fetch_budget_exhausted'
         : reasonCode(error),
+      details,
+      rawHexRefused,
     );
     return false;
   }

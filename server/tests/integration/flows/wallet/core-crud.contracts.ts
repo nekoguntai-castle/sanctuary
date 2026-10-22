@@ -23,11 +23,11 @@ const TAPROOT_RECEIVE = `tr([aabbccdd/86'/1'/0']${TESTNET_XPUB}/0/*)`;
 
 export function registerWalletCoreCrudTests(): void {
   describe('Create Wallet', () => {
-    it('should create a single-sig native segwit wallet', async () => {
+    it('refuses a signerless descriptor wallet and points at descriptor import', async () => {
       const { token } = await createAndLoginUser(app, prisma);
 
       const walletData = {
-        name: 'My Single Sig Wallet',
+        name: 'My Signerless Descriptor Wallet',
         type: 'single_sig',
         scriptType: 'native_segwit',
         network: 'testnet3',
@@ -39,65 +39,53 @@ export function registerWalletCoreCrudTests(): void {
         .post('/api/v1/wallets')
         .set(authHeader(token))
         .send(walletData)
-        .expect(201);
+        .expect(400);
 
-      expect(response.body.id).toBeDefined();
-      expect(response.body.name).toBe(walletData.name);
-      expect(response.body.type).toBe(walletData.type);
-      expect(response.body.scriptType).toBe(walletData.scriptType);
-      expect(response.body.network).toBe(walletData.network);
-      expect(response.body.descriptor).toBe(walletData.descriptor);
-      expect(response.body.changeDescriptor).toBe(walletData.changeDescriptor);
+      expect(response.body.code).toBe('INVALID_INPUT');
+      expect(response.body.message).toContain('/api/v1/wallets/import');
+      expect(await prisma.wallet.count({ where: { name: walletData.name } })).toBe(0);
     });
 
-    it('should create a multi-sig wallet', async () => {
+    it('should import a multi-sig wallet from its descriptor', async () => {
       const { token } = await createAndLoginUser(app, prisma);
 
-      const walletData = {
+      const importData = {
+        data: MULTISIG_RECEIVE.replaceAll('/0/*', '/<0;1>/*'),
         name: 'My Multi-Sig Wallet',
-        type: 'multi_sig',
-        scriptType: 'native_segwit',
         network: 'testnet3',
-        quorum: 2,
-        totalSigners: 3,
-        descriptor: MULTISIG_RECEIVE,
-        changeDescriptor: MULTISIG_RECEIVE.replaceAll('/0/*', '/1/*'),
       };
 
       const response = await request(app)
-        .post('/api/v1/wallets')
+        .post('/api/v1/wallets/import')
         .set(authHeader(token))
-        .send(walletData)
+        .send(importData)
         .expect(201);
 
-      expect(response.body.id).toBeDefined();
-      expect(response.body.name).toBe(walletData.name);
-      expect(response.body.type).toBe(walletData.type);
-      expect(response.body.quorum).toBe(walletData.quorum);
-      expect(response.body.totalSigners).toBe(walletData.totalSigners);
-      expect(response.body.changeDescriptor).toBe(walletData.changeDescriptor);
+      expect(response.body.wallet.id).toBeDefined();
+      expect(response.body.wallet.name).toBe(importData.name);
+      expect(response.body.wallet.type).toBe('multi_sig');
+      expect(response.body.wallet.scriptType).toBe('native_segwit');
+      expect(response.body.wallet.quorum).toBe(2);
+      expect(response.body.wallet.totalSigners).toBe(3);
     });
 
-    it('should create a taproot wallet', async () => {
+    it('should import a taproot wallet from its descriptor', async () => {
       const { token } = await createAndLoginUser(app, prisma);
 
-      const walletData = {
+      const importData = {
+        data: TAPROOT_RECEIVE.replace('/0/*', '/<0;1>/*'),
         name: 'My Taproot Wallet',
-        type: 'single_sig',
-        scriptType: 'taproot',
         network: 'testnet3',
-        descriptor: TAPROOT_RECEIVE,
-        changeDescriptor: TAPROOT_RECEIVE.replace('/0/*', '/1/*'),
       };
 
       const response = await request(app)
-        .post('/api/v1/wallets')
+        .post('/api/v1/wallets/import')
         .set(authHeader(token))
-        .send(walletData)
+        .send(importData)
         .expect(201);
 
-      expect(response.body.scriptType).toBe('taproot');
-      expect(response.body.changeDescriptor).toBe(walletData.changeDescriptor);
+      expect(response.body.wallet.type).toBe('single_sig');
+      expect(response.body.wallet.scriptType).toBe('taproot');
     });
 
     it('should reject wallet creation with missing required fields', async () => {

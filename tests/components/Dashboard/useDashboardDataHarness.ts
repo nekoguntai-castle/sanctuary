@@ -326,7 +326,7 @@ export const resetState = () => {
     { name: 'Now', value: 8000, timestamp: new Date().toISOString() },
   ];
 
-  state.feeEstimatesData = { fastest: 18.6, hour: 9, economy: 3.4, network: 'mainnet' };
+  state.feeEstimatesData = { fastest: 18.6, halfHour: 9, hour: 3.4, economy: 1.2, network: 'mainnet' };
   state.feesLoading = false;
   state.feesArePlaceholderData = false;
   state.mempoolIsPlaceholderData = false;

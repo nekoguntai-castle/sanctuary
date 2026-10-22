@@ -421,7 +421,7 @@ describe('full-wallet receive evidence authentication', () => {
 
     expect(ctx.txDetailsCache.has(transaction.getId())).toBe(false);
     expect(ctx.rejectedEvidenceReasons).toEqual(new Map([
-      ['transaction_complexity_exceeded', 1],
+      ['attempt_evidence_capacity_exceeded', 1],
     ]));
   });
 
@@ -455,7 +455,7 @@ describe('full-wallet receive evidence authentication', () => {
     await expect(fetchAuthenticatedTransactions(ctx, [transaction.getId()]))
       .resolves.toEqual(new Set());
     expect(ctx.rejectedEvidenceReasons).toEqual(new Map([
-      ['transaction_complexity_exceeded', 1],
+      ['attempt_evidence_capacity_exceeded', 1],
     ]));
   });
 

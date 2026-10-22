@@ -123,3 +123,12 @@ export const SystemSettingSchemas = {
   stringArray: z.array(z.string()),
   numberArray: z.array(z.number()),
 };
+
+/**
+ * Decode a string system setting. The admin settings writer stores every value
+ * JSON-encoded (`"smtp.example.com"`); older and runtime-written rows are raw.
+ * Accept both, and never log the value (it may be a secret).
+ */
+export function decodeStoredString(value: string): string {
+  return safeJsonParseSensitive(value, SystemSettingSchemas.string) ?? value;
+}

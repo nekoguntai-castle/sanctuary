@@ -7,12 +7,15 @@
 
 import type { NotificationFailureClass, NotificationOutcome } from '../outcomes';
 
+/** Stored transaction types that produce a transaction notification. */
+export const TRANSACTION_NOTIFICATION_TYPES = ['received', 'sent', 'consolidation', 'self_transfer'] as const;
+
 /**
  * Transaction notification data
  */
 export interface TransactionNotification {
   txid: string;
-  type: 'received' | 'sent' | 'consolidation' | 'self_transfer';
+  type: typeof TRANSACTION_NOTIFICATION_TYPES[number];
   amount: bigint;
   feeSats?: bigint | null;
   agentId?: string | null;

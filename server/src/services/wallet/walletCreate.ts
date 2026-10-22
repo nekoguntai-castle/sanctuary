@@ -11,7 +11,6 @@ import {
   walletSharingRepository,
 } from "../../repositories";
 import * as descriptorBuilder from "../bitcoin/descriptorBuilder";
-import { parseDescriptorForImport } from "../bitcoin/descriptorParser";
 import { createLogger } from "../../utils/logger";
 import { getErrorMessage } from "../../utils/errors";
 import { hookRegistry, Operations } from "../hooks";
@@ -31,10 +30,7 @@ import { isBitcoinNetwork } from "../bitcoin/networks";
 import { MULTISIG_SIGNER_LIMIT_MESSAGE, exceedsMultisigSignerLimit } from "../bitcoin/multisigSignerLimit";
 import { WalletType } from "@sanctuary/shared/constants/walletIdentity";
 import { assertHardwareWalletCapability } from "../hardwareWalletCapabilities";
-import {
-  descriptorPolicyFingerprint,
-  prepareDescriptorPolicy,
-} from "./descriptorPolicy";
+import { prepareDescriptorPolicy } from "./descriptorPolicy";
 import {
   canonicalPolicyIdentity,
   requireCanonicalWalletPolicy,
@@ -119,30 +115,26 @@ const loadWalletDevices = async (
   return devices;
 };
 
+/**
+ * A descriptor with no signer bindings would persist a wallet that receives but
+ * can never build a PSBT (every spend path requires exact signer snapshots) and
+ * that `addDeviceToWallet` refuses to repair once a descriptor is assigned.
+ * Descriptor-sourced wallets go through import, which materializes signer links.
+ */
+export const DESCRIPTOR_ONLY_CREATE_MESSAGE =
+  "Creating a wallet from a descriptor alone is not supported. Import the descriptor with POST /api/v1/wallets/import, or create the wallet from its signers.";
+
 function buildWalletDescriptorPolicy(
   bindings: readonly WalletSignerBinding[],
   input: CreateWalletInput,
 ) {
   if (bindings.length === 0) {
-    if (!input.descriptor) {
-      return {
-        policy: undefined,
-        fingerprint: input.fingerprint,
-      };
-    }
-    const policy = prepareDescriptorPolicy({
-      receiveDescriptor: input.descriptor,
-      changeDescriptor: input.changeDescriptor,
-      sourceKind: "imported",
-    });
-    assertDescriptorMatchesWalletInput(input, policy.descriptor);
-    const fingerprint = descriptorPolicyFingerprint(policy.descriptor);
-    if (input.fingerprint && input.fingerprint.toLowerCase() !== fingerprint.toLowerCase()) {
-      throw new InvalidInputError("Wallet fingerprint does not match descriptor origins");
+    if (input.descriptor) {
+      throw new InvalidInputError(DESCRIPTOR_ONLY_CREATE_MESSAGE);
     }
     return {
-      policy,
-      fingerprint,
+      policy: undefined,
+      fingerprint: input.fingerprint,
     };
   }
 
@@ -164,40 +156,6 @@ function buildWalletDescriptorPolicy(
     }),
     fingerprint: descriptorResult.fingerprint,
   };
-}
-
-function descriptorNetworkMatchesWallet(
-  descriptorNetwork: ReturnType<typeof parseDescriptorForImport>["network"],
-  walletNetwork: WalletNetwork,
-): boolean {
-  // Extended keys distinguish mainnet from the coin-type-1 family, but cannot
-  // distinguish testnet3, testnet4, signet, and regtest from one another.
-  return descriptorNetwork === "mainnet"
-    ? walletNetwork === "mainnet"
-    : walletNetwork !== "mainnet";
-}
-
-function assertDescriptorMatchesWalletInput(
-  input: CreateWalletInput,
-  descriptor: string,
-): void {
-  const parsed = parseDescriptorForImport(descriptor);
-  const walletNetwork: WalletNetwork = input.network || "mainnet";
-  if (parsed.type !== input.type) {
-    throw new InvalidInputError("Descriptor wallet type does not match requested wallet type");
-  }
-  if (parsed.scriptType !== input.scriptType) {
-    throw new InvalidInputError("Descriptor script type does not match requested script type");
-  }
-  if (!descriptorNetworkMatchesWallet(parsed.network, walletNetwork)) {
-    throw new InvalidInputError("Descriptor network family does not match requested network");
-  }
-  if (
-    parsed.type === WalletType.MULTI_SIG
-    && (parsed.quorum !== input.quorum || parsed.totalSigners !== input.totalSigners)
-  ) {
-    throw new InvalidInputError("Descriptor quorum does not match requested multisig policy");
-  }
 }
 
 function buildWalletResult(

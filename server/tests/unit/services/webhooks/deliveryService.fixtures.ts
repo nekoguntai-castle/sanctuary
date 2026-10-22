@@ -1,5 +1,29 @@
+import type { Mock } from 'vitest';
 import type { WebhookDelivery, WebhookEndpoint } from '../../../../src/generated/prisma/client';
 import type { WalletWebhookEvent } from '../../../../src/services/webhooks/types';
+
+/** The default wallet transaction subscription (shared/constants/webhooks.ts). */
+export const DEFAULT_EVENTS = [
+  'wallet.transaction.received',
+  'wallet.transaction.sent',
+  'wallet.transaction.confirmed',
+];
+
+/** A stored transaction row as transactionRepository.findManyByTxids returns it. */
+export function storedTx(confirmations: number, type = 'received', walletId = 'wallet-1') {
+  return {
+    id: 'row-1', txid: 'tx-1', walletId, type, amount: 50_000n, fee: 141n,
+    confirmations, blockHeight: 900_000, blockTime: new Date('2026-10-01T00:00:00Z'),
+    createdAt: new Date('2026-10-01T00:00:00Z'), memo: null, label: null, counterpartyAddress: null,
+  };
+}
+
+/** Make a webhookRepository.createDelivery mock admit every delivery. */
+export function acceptAllDeliveries(createDelivery: Mock): void {
+  createDelivery.mockImplementation(async (input: { eventId: string }) => ({
+    accepted: true, delivery: { id: `d:${input.eventId}`, attemptCount: 0 },
+  }));
+}
 
 export function makeEndpoint(overrides: Partial<WebhookEndpoint> = {}): WebhookEndpoint {
   return {

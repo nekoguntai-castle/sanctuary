@@ -3,6 +3,7 @@ import type { TransactionNotification } from '../../../../src/services/notificat
 import {
   buildTransactionWebhookEvents,
   buildTransactionWebhookEventsForBatch,
+  buildConfirmationWebhookEventsForBatch,
 } from '../../../../src/services/webhooks/eventBuilder';
 import {
   WEBHOOK_EVENT_TRANSACTION_CONFIRMED,
@@ -67,7 +68,6 @@ describe('webhook event builder', () => {
     ]);
 
     expect(events).toEqual([]);
-    expect(mockFindManyByTxids).not.toHaveBeenCalled();
   });
 
   it('returns no events for an empty batch without hitting repositories', async () => {
@@ -133,6 +133,25 @@ describe('webhook event builder', () => {
         blockTime: null,
       },
     });
+  });
+});
+
+describe('buildConfirmationWebhookEventsForBatch', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns no events and reads nothing for an empty change list', async () => {
+    await expect(buildConfirmationWebhookEventsForBatch('wallet-1', [])).resolves.toEqual([]);
+    expect(mockFindWalletById).not.toHaveBeenCalled();
+    expect(mockFindManyByTxids).not.toHaveBeenCalled();
+  });
+
+  it('returns no events when the wallet is missing', async () => {
+    mockFindWalletById.mockResolvedValue(null);
+    await expect(buildConfirmationWebhookEventsForBatch('wallet-1', [
+      { txid: 'tx-1', oldConfirmations: 0, newConfirmations: 1 },
+    ])).resolves.toEqual([]);
   });
 });
 

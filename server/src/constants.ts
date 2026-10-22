@@ -54,6 +54,13 @@ export const DEFAULT_CONFIRMATION_THRESHOLD = 1;
  */
 export const DEFAULT_DEEP_CONFIRMATION_THRESHOLD = 3;
 
+/**
+ * Wallets are candidates for the automatic confirmation refresh (block sweep,
+ * maintenance sweep, header reconciliation) only while a transaction has fewer
+ * confirmations than this, so confirmations are never tracked past it.
+ */
+export const PENDING_CONFIRMATION_CANDIDATE_THRESHOLD = 6;
+
 // ============================================================================
 // BITCOIN CONSTANTS
 // ============================================================================

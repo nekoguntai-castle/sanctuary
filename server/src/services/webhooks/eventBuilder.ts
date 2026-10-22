@@ -1,6 +1,7 @@
 import { transactionRepository, walletRepository } from '../../repositories';
 import type { Transaction, Wallet } from '../../generated/prisma/client';
-import type { TransactionNotification } from '../notifications/channels';
+import { TRANSACTION_NOTIFICATION_TYPES, type TransactionNotification } from '../notifications/channels/types';
+import type { ConfirmationUpdate } from '../bitcoin/sync/confirmations/types';
 import {
   WEBHOOK_EVENT_TRANSACTION_CONFIRMED,
   WEBHOOK_EVENT_TRANSACTION_OBSERVED,
@@ -24,14 +25,9 @@ export async function buildTransactionWebhookEventsForBatch(
 ): Promise<WalletWebhookEvent[]> {
   if (transactions.length === 0) return [];
 
-  const wallet = await walletRepository.findById(walletId);
-  if (!wallet) return [];
-
-  const storedTransactions = await transactionRepository.findManyByTxids(
-    transactions.map(transaction => transaction.txid),
-    walletId,
-  );
-  const storedByTxid = new Map(storedTransactions.map(transaction => [transaction.txid, transaction]));
+  const loaded = await loadWalletAndStoredTransactions(walletId, transactions.map(transaction => transaction.txid));
+  if (!loaded) return [];
+  const { wallet, storedByTxid } = loaded;
   const events: WalletWebhookEvent[] = [];
 
   for (const transaction of transactions) {
@@ -42,14 +38,63 @@ export async function buildTransactionWebhookEventsForBatch(
   return events;
 }
 
+/**
+ * Build the events for committed confirmation changes, paired with the change
+ * that produced them. Notification fields come from the stored row.
+ */
+export async function buildConfirmationWebhookEventsForBatch(
+  walletId: string,
+  updates: ConfirmationUpdate[],
+): Promise<Array<{ update: ConfirmationUpdate; event: WalletWebhookEvent }>> {
+  if (updates.length === 0) return [];
+
+  const loaded = await loadWalletAndStoredTransactions(walletId, updates.map(update => update.txid));
+  if (!loaded) return [];
+  const { wallet, storedByTxid } = loaded;
+  return updates.flatMap((update) => {
+    const stored = storedByTxid.get(update.txid);
+    if (!stored || !isNotificationType(stored.type)) return [];
+    const notification: TransactionNotification = {
+      txid: stored.txid,
+      type: stored.type,
+      amount: stored.amount,
+      feeSats: stored.fee,
+    };
+    return buildEventsForTransaction(walletId, wallet, stored, notification, 'sync.confirmation')
+      .map(event => ({ update, event }));
+  });
+}
+
+async function loadWalletAndStoredTransactions(
+  walletId: string,
+  txids: string[],
+): Promise<{ wallet: Wallet; storedByTxid: Map<string, Transaction> } | null> {
+  const [wallet, storedTransactions] = await Promise.all([
+    walletRepository.findById(walletId),
+    transactionRepository.findManyByTxids(txids, walletId),
+  ]);
+  if (!wallet) return null;
+  return {
+    wallet,
+    storedByTxid: new Map(storedTransactions.map(transaction => [transaction.txid, transaction])),
+  };
+}
+
+const NOTIFICATION_TYPES: ReadonlySet<string> = new Set(TRANSACTION_NOTIFICATION_TYPES);
+
+function isNotificationType(type: string): type is TransactionNotification['type'] {
+  return NOTIFICATION_TYPES.has(type);
+}
+
 function buildEventsForTransaction(
   walletId: string,
   wallet: Pick<Wallet, 'id' | 'name' | 'network'>,
   storedTransaction: Transaction | null,
   transaction: TransactionNotification,
+  dispatchPath = 'notifications.transaction',
 ): WalletWebhookEvent[] {
   const confirmations = storedTransaction?.confirmations ?? 0;
-  const baseEvent = buildTransactionEventBase(wallet, storedTransaction, transaction);
+  const baseEvent = buildTransactionEventBase(wallet, storedTransaction, transaction, dispatchPath);
 
   return [
     buildTypedTransactionEvent(walletId, transaction.txid, WEBHOOK_EVENT_TRANSACTION_OBSERVED, baseEvent),
@@ -62,6 +107,7 @@ function buildTransactionEventBase(
   wallet: Pick<Wallet, 'id' | 'name' | 'network'>,
   storedTransaction: Transaction | null,
   transaction: TransactionNotification,
+  dispatchPath: string,
 ): TransactionEventBase {
   const timing = getTransactionTiming(storedTransaction);
   const storedFields = getStoredTransactionFields(storedTransaction);
@@ -87,7 +133,7 @@ function buildTransactionEventBase(
     },
     source: {
       service: 'sanctuary' as const,
-      dispatchPath: 'notifications.transaction',
+      dispatchPath,
     },
   };
 }

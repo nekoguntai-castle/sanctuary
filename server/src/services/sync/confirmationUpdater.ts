@@ -7,6 +7,7 @@
  */
 
 import { getConfig } from '../../config';
+import { PENDING_CONFIRMATION_CANDIDATE_THRESHOLD } from '../../constants';
 import { transactionRepository } from '../../repositories';
 import {
   acquireLock,
@@ -24,12 +25,14 @@ import {
 import { updateTransactionConfirmationsAtHeight } from '../bitcoin/sync/confirmations/updateConfirmations';
 import { eventService } from '../eventService';
 import { getErrorMessage } from '../../utils/errors';
+import { createLogger } from '../../utils/logger';
+import { queueTransactionConfirmationWebhooks } from '../webhooks/confirmationDeliveries';
 import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 import {
   runSettledSyncAttemptWithTimeout,
 } from './syncAttemptLifecycle';
 
-const CONFIRMATION_THRESHOLD = 6;
+const log = createLogger('SYNC:CONFIRMATIONS');
 const NOTIFICATION_MILESTONES = new Set([1, 3, 6]);
 const CONFIRMATION_LOCK_WAIT_MS = 30_000;
 const CONFIRMATION_LOCK_RETRY_MS = 100;
@@ -146,6 +149,35 @@ function publishConfirmationUpdates(
   return failures;
 }
 
+/**
+ * Best-effort, after commit, and not awaited: a webhook enqueue can fall back
+ * to an inline HTTP send, which must not hold the wallet sync lock.
+ */
+function queueConfirmationWebhooks(walletId: string, updates: ConfirmationUpdate[]): void {
+  if (updates.length === 0) return;
+  void queueTransactionConfirmationWebhooks(walletId, updates)
+    .then(({ errors }) => {
+      if (errors.length > 0) log.warn('Confirmation webhooks partially queued', { walletId, errors });
+    })
+    .catch((error) => {
+      log.warn('Failed to queue confirmation webhooks', { walletId, error: getErrorMessage(error) });
+    });
+}
+
+/**
+ * Publish committed confirmation changes: the in-app event and the webhook
+ * enqueue. Every writer of confirmations calls this after its commit — the
+ * refresh funnel below and the canonical sync's missing-field repair.
+ */
+export function publishCommittedConfirmationUpdates(
+  walletId: string,
+  updates: ConfirmationUpdate[],
+): ConfirmationPublicationFailure[] {
+  const failures = publishConfirmationUpdates(walletId, updates);
+  queueConfirmationWebhooks(walletId, updates);
+  return failures;
+}
+
 interface RefreshAccumulator {
   fieldUpdates: number;
   confirmationUpdates: Map<string, ConfirmationUpdate>;
@@ -222,7 +254,7 @@ function recordCommittedUpdates(
     accumulator.confirmationUpdates.set(key, update);
     return true;
   });
-  accumulator.publicationFailures.push(...publishConfirmationUpdates(walletId, unpublished));
+  accumulator.publicationFailures.push(...publishCommittedConfirmationUpdates(walletId, unpublished));
 }
 
 function refreshResult(
@@ -453,7 +485,7 @@ export async function refreshPendingConfirmations(
   network: NetworkType,
 ): Promise<PendingConfirmationRefreshResult> {
   const pendingWalletIds = await transactionRepository.findWalletIdsWithPendingConfirmations(
-    CONFIRMATION_THRESHOLD,
+    PENDING_CONFIRMATION_CANDIDATE_THRESHOLD,
     network,
   );
   return refreshPendingConfirmationWallets(pendingWalletIds);
@@ -462,7 +494,7 @@ export async function refreshPendingConfirmations(
 /** Scheduled maintenance intentionally refreshes pending wallets across all networks. */
 export async function refreshAllPendingConfirmations(): Promise<PendingConfirmationRefreshResult> {
   const pendingWalletIds = await transactionRepository.findWalletIdsWithPendingConfirmations(
-    CONFIRMATION_THRESHOLD,
+    PENDING_CONFIRMATION_CANDIDATE_THRESHOLD,
   );
   return refreshPendingConfirmationWallets(pendingWalletIds);
 }

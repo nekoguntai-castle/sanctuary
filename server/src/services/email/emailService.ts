@@ -22,7 +22,7 @@ let cachedConfig: SmtpConfig | null = null;
  * Get SMTP configuration from system settings
  */
 export async function getSmtpConfig(): Promise<SmtpConfig | null> {
-  const host = await systemSettingRepository.getValue(SystemSettingKeys.SMTP_HOST);
+  const host = await systemSettingRepository.getString(SystemSettingKeys.SMTP_HOST);
 
   // If no host configured, SMTP is not set up
   if (!host) {
@@ -31,10 +31,10 @@ export async function getSmtpConfig(): Promise<SmtpConfig | null> {
 
   const port = await systemSettingRepository.getNumber(SystemSettingKeys.SMTP_PORT, 587);
   const secure = await systemSettingRepository.getBoolean(SystemSettingKeys.SMTP_SECURE, false);
-  const user = (await systemSettingRepository.getValue(SystemSettingKeys.SMTP_USER)) || '';
-  const passwordRaw = (await systemSettingRepository.getValue(SystemSettingKeys.SMTP_PASSWORD)) || '';
-  const fromAddress = (await systemSettingRepository.getValue(SystemSettingKeys.SMTP_FROM_ADDRESS)) || '';
-  const fromName = (await systemSettingRepository.getValue(SystemSettingKeys.SMTP_FROM_NAME)) || 'Sanctuary';
+  const user = (await systemSettingRepository.getString(SystemSettingKeys.SMTP_USER)) || '';
+  const passwordRaw = (await systemSettingRepository.getString(SystemSettingKeys.SMTP_PASSWORD)) || '';
+  const fromAddress = (await systemSettingRepository.getString(SystemSettingKeys.SMTP_FROM_ADDRESS)) || '';
+  const fromName = (await systemSettingRepository.getString(SystemSettingKeys.SMTP_FROM_NAME)) || 'Sanctuary';
 
   // Decrypt password if encrypted
   let password = passwordRaw;

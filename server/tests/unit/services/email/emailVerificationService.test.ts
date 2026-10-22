@@ -65,7 +65,17 @@ const {
 vi.mock('../../../../src/repositories', () => ({
   emailVerificationRepository: mockEmailVerificationRepository,
   userRepository: mockUserRepository,
-  systemSettingRepository: mockSystemSettingRepository,
+  systemSettingRepository: {
+    ...mockSystemSettingRepository,
+    // Same semantics as the real reader: getValue, then decode a JSON-encoded string.
+    getString: async (key: string) => {
+      const { decodeStoredString } = await vi.importActual<typeof import('../../../../src/utils/safeJson')>(
+        '../../../../src/utils/safeJson',
+      );
+      const value = await mockSystemSettingRepository.getValue(key);
+      return value === null ? null : decodeStoredString(value);
+    },
+  },
   SystemSettingKeys: {
     EMAIL_VERIFICATION_REQUIRED: 'email.verificationRequired',
     EMAIL_VERIFICATION_TOKEN_EXPIRY_HOURS: 'email.tokenExpiryHours',
@@ -187,6 +197,19 @@ describe('Email Verification Service', () => {
       expect(mockEmailVerificationRepository.replaceUnusedAndCreate).toHaveBeenCalled();
       expect(mockEmailVerificationRepository.create).not.toHaveBeenCalled();
       expect(mockEmailService.sendEmail).toHaveBeenCalled();
+    });
+
+    it('uses a server name saved through the admin settings API without its JSON quotes', async () => {
+      mockEmailService.isSmtpConfigured.mockResolvedValue(true);
+      mockEmailService.sendEmail.mockResolvedValue({ success: true });
+      mockSystemSettingRepository.getValue.mockImplementation(async (key: string) =>
+        key === 'serverName' ? JSON.stringify('Home Vault') : null);
+
+      await createVerificationToken(testUserId, testEmail, testUsername);
+
+      expect(mockEmailService.sendEmail).toHaveBeenCalledWith(
+        expect.objectContaining({ subject: 'Verify your email for Home Vault' }),
+      );
     });
 
     it('should replace existing unused tokens before sending the email', async () => {
