@@ -492,6 +492,35 @@ describe('NodeConfig', () => {
         expect(adminApi.testProxy).toHaveBeenCalled();
       });
     });
+
+    it('sends no null credentials for a reloaded proxy saved without them', async () => {
+      // GET /admin/node-config returns null for an unset proxy username.
+      vi.mocked(adminApi.getNodeConfig).mockResolvedValue({
+        ...mockNodeConfig,
+        proxyEnabled: true,
+        proxyHost: '127.0.0.1',
+        proxyPort: 9050,
+        proxyUsername: null,
+        proxyPassword: null,
+      } as any);
+      vi.mocked(adminApi.testProxy).mockResolvedValue({ success: true, message: 'Connected' });
+
+      render(<NodeConfig />);
+      await waitFor(() => {
+        expect(screen.getByText('Proxy / Tor')).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByText('Proxy / Tor'));
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Verify Connection' })).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Verify Connection' }));
+
+      await waitFor(() => {
+        expect(adminApi.testProxy).toHaveBeenCalledWith({
+          host: '127.0.0.1', port: 9050, username: undefined, password: undefined,
+        });
+      });
+    });
   });
 
   describe('error handling', () => {

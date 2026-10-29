@@ -110,7 +110,7 @@ Admin routes, user management, node configuration, backup/restore, and internal 
 
 ### Backend Events (`services/backendEvents.ts`)
 
-WebSocket client that connects to the backend to receive transaction events.
+WebSocket client that connects to the backend to receive transaction events. Insight and consolidation push events (`ai_insight`, `consolidation_suggestion`) also arrive over it, forwarded by the API from the gateway-only Redis channel with their recipients already resolved.
 
 **Event Flow:**
 1. Backend detects new transaction via Electrum

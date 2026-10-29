@@ -27,6 +27,7 @@ vi.mock('../../../../src/utils/logger', () => ({ createLogger: () => mocks.log }
 import {
   getPushService,
   notifyWalletUsers,
+  resolveWalletPushAudience,
 } from '../../../../src/services/push/pushService';
 
 const message = {
@@ -110,6 +111,20 @@ describe('PushService.notifyWalletUsers', () => {
     });
   });
 
+  it('treats a throwing eligibility predicate as an audience-lookup failure and sends nothing', async () => {
+    mocks.findByWalletAccess.mockResolvedValue([user('u1', 1), user('u2', 1)]);
+
+    await expect(notifyWalletUsers('w1', message, () => {
+      throw new Error('bad preferences');
+    })).resolves.toEqual({
+      success: false,
+      usersNotified: 0,
+      error: 'bad preferences',
+      recorded: false,
+    });
+    expect(sendToUser).not.toHaveBeenCalled();
+  });
+
   it('reports a send-loop failure with the partial count', async () => {
     mocks.findByWalletAccess.mockResolvedValue([user('u1', 1), user('u2', 1)]);
     sendToUser.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('registry broke'));
@@ -120,5 +135,33 @@ describe('PushService.notifyWalletUsers', () => {
       error: 'registry broke',
       recorded: false,
     });
+  });
+});
+
+describe('resolveWalletPushAudience', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.filterUserIdsByMobileAction.mockImplementation(
+      async (_walletId: string, ids: string[]) => ids,
+    );
+  });
+
+  it('resolves capped, device-holding, eligible users without needing push credentials', async () => {
+    mocks.hasConfiguredProviders.mockReturnValue(false);
+    mocks.findByWalletAccess.mockResolvedValue([
+      user('u1', 1), user('no-device', 0), user('capped', 1), user('opted-out', 2),
+    ]);
+    mocks.filterUserIdsByMobileAction.mockResolvedValue(['u1', 'no-device', 'opted-out']);
+
+    await expect(resolveWalletPushAudience('w1', (u) => u.id !== 'opted-out')).resolves.toEqual(['u1']);
+    expect(mocks.hasConfiguredProviders).not.toHaveBeenCalled();
+  });
+
+  it('defaults to every capped user with a device and propagates lookup errors', async () => {
+    mocks.findByWalletAccess.mockResolvedValueOnce([user('u1', 1), user('u2', 3)]);
+    await expect(resolveWalletPushAudience('w1')).resolves.toEqual(['u1', 'u2']);
+
+    mocks.findByWalletAccess.mockRejectedValueOnce(new Error('db down'));
+    await expect(resolveWalletPushAudience('w1')).rejects.toThrow('db down');
   });
 });

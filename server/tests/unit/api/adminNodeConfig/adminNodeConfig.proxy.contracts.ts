@@ -170,6 +170,28 @@ export function registerAdminNodeConfigProxyTests(): void {
         expect(mockDecrypt).toHaveBeenCalledWith('enc:tor-pass');
       });
 
+      // GET /admin/node-config returns proxyUsername: null for a proxy saved
+      // without one (bundled Tor), and Node Config sends it back as-is.
+      it('accepts the null username a reloaded Node Config sends for the stored proxy', async () => {
+        storedProxy({ proxyUsername: null });
+
+        const response = await verify({
+          host: '127.0.0.1', port: 9050, username: null, password: '********',
+        });
+
+        expect(response.status).toBe(200);
+        expect(mockDecrypt).toHaveBeenCalledWith('enc:tor-pass');
+      });
+
+      it('accepts a null username and password for a proxy without credentials', async () => {
+        const response = await verify({ host: '127.0.0.1', port: 9050, username: null, password: null });
+
+        expect(response.status).toBe(200);
+        expect(mockSocksCreateConnection).toHaveBeenCalledWith(
+          expect.objectContaining({ proxy: expect.not.objectContaining({ userId: expect.anything() }) })
+        );
+      });
+
       it.each([
         ['a different host', { host: 'evil.example.com', port: 9050, username: 'tor-user' }],
         ['a different port', { host: '127.0.0.1', port: 9999, username: 'tor-user' }],

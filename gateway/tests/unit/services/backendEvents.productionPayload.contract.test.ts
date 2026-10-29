@@ -262,4 +262,81 @@ describe('production gateway push payload contract', () => {
     );
     expect(mocks.sendToDevices).toHaveBeenCalledTimes(1);
   });
+
+  // The backend re-reads wallet access and name for gateway-only pushes.
+  const walletAccess = (userIds: string[]) => mocks.findAudience.mockResolvedValue({
+    walletId: 'wallet-1',
+    walletName: 'Treasury',
+    transaction: null,
+    candidates: userIds.map((userId) => ({ userId, preferences: null })),
+  });
+
+  it('delivers a gateway-only ai_insight event with the minimal Treasury Intelligence push', async () => {
+    walletAccess(['user-1', 'user-2']);
+    const { server, send } = createConnectedServer();
+
+    const event = await readSerializedEvent(server, send, {
+      type: 'ai_insight',
+      walletId: 'wallet-1',
+      walletName: 'Treasury',
+      userIds: ['user-1', 'user-2', 'user-1'],
+      data: {
+        insightId: 'insight-1',
+        insightType: 'utxo_health',
+        insightTypeLabel: 'UTXO Health',
+        severity: 'warning',
+      },
+    });
+
+    expect(event).toEqual({
+      type: 'ai_insight',
+      walletId: 'wallet-1',
+      walletName: 'Treasury',
+      userIds: ['user-1', 'user-2'],
+      data: {
+        insightId: 'insight-1',
+        insightType: 'utxo_health',
+        insightTypeLabel: 'UTXO Health',
+        severity: 'warning',
+      },
+    });
+    expect(mocks.findAudience).toHaveBeenCalledWith('wallet-1', '');
+
+    await handleEvent(event);
+    expect(mocks.getDevicesForUser.mock.calls.map(([userId]) => userId)).toEqual(['user-1', 'user-2']);
+    expect(mocks.sendToDevices).toHaveBeenCalledWith(expect.any(Array), {
+      title: 'Treasury Intelligence',
+      body: 'Treasury: warning UTXO Health insight',
+      data: { walletId: 'wallet-1', insightId: 'insight-1', kind: 'ai_insight' },
+    });
+  });
+
+  it('delivers a gateway-only consolidation_suggestion event with the fee-rate push', async () => {
+    walletAccess(['user-1']);
+    const { server, send } = createConnectedServer();
+
+    const event = await readSerializedEvent(server, send, {
+      type: 'consolidation_suggestion',
+      walletId: 'wallet-1',
+      walletName: 'Treasury',
+      userIds: ['user-1'],
+      data: { feeRate: 2 },
+    });
+
+    expect(event).toEqual({
+      type: 'consolidation_suggestion',
+      walletId: 'wallet-1',
+      walletName: 'Treasury',
+      userIds: ['user-1'],
+      data: { feeRate: 2 },
+    });
+
+    await handleEvent(event);
+    expect(mocks.getDevicesForUser.mock.calls.map(([userId]) => userId)).toEqual(['user-1']);
+    expect(mocks.sendToDevices).toHaveBeenCalledWith(expect.any(Array), {
+      title: 'Consolidation opportunity',
+      body: 'Treasury: fees are low (2 sat/vB)',
+      data: { walletId: 'wallet-1', kind: 'consolidation_suggestion' },
+    });
+  });
 });

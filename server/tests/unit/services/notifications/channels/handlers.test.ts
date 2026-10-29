@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockTelegramService, mockPushService } = vi.hoisted(() => ({
+const { mockTelegramService, mockPushService, mockGatewayPush } = vi.hoisted(() => ({
   mockTelegramService: {
     notifyNewTransactions: vi.fn(),
     notifyNewDraft: vi.fn(),
@@ -12,11 +12,18 @@ const { mockTelegramService, mockPushService } = vi.hoisted(() => ({
     isPushConfigured: vi.fn(),
     notifyNewTransactions: vi.fn(),
     notifyWalletUsers: vi.fn(),
+    resolveWalletPushAudience: vi.fn(),
+  },
+  mockGatewayPush: {
+    isGatewayPushDeliveryAvailable: vi.fn(() => false),
+    dispatchGatewayPushEvent: vi.fn(),
   },
 }));
 
 vi.mock('../../../../../src/services/telegram/telegramService', () => mockTelegramService);
 vi.mock('../../../../../src/services/push/pushService', () => mockPushService);
+// Direct-send mode by default; gateway delivery is covered in pushGatewayDelivery.test.ts.
+vi.mock('../../../../../src/websocket/gatewayPush', () => mockGatewayPush);
 
 import { telegramChannelHandler } from '../../../../../src/services/notifications/channels/telegram';
 import { pushChannelHandler } from '../../../../../src/services/notifications/channels/push';
@@ -573,12 +580,29 @@ describe('notification channel handlers', () => {
       });
     });
 
-    it('uses push service configuration status in isEnabled', async () => {
+    it('is enabled with local push credentials or gateway delivery', async () => {
       mockPushService.isPushConfigured.mockReturnValueOnce(true);
       await expect(pushChannelHandler.isEnabled()).resolves.toBe(true);
 
       mockPushService.isPushConfigured.mockReturnValueOnce(false);
       await expect(pushChannelHandler.isEnabled()).resolves.toBe(false);
+
+      // The worker: no credentials, but it can hand pushes to the gateway.
+      mockPushService.isPushConfigured.mockReturnValueOnce(false);
+      mockGatewayPush.isGatewayPushDeliveryAvailable.mockReturnValueOnce(true);
+      await expect(pushChannelHandler.isEnabled()).resolves.toBe(true);
+    });
+
+    it('delivers transactions only with local push credentials, never via gateway availability', async () => {
+      mockGatewayPush.isGatewayPushDeliveryAvailable.mockReturnValue(true);
+
+      mockPushService.isPushConfigured.mockReturnValueOnce(true);
+      await expect(pushChannelHandler.isTransactionDeliveryEnabled?.()).resolves.toBe(true);
+
+      mockPushService.isPushConfigured.mockReturnValueOnce(false);
+      await expect(pushChannelHandler.isTransactionDeliveryEnabled?.()).resolves.toBe(false);
+
+      mockGatewayPush.isGatewayPushDeliveryAvailable.mockReturnValue(false);
     });
 
     it('forwards transaction notifications and returns success result', async () => {

@@ -347,8 +347,8 @@ The gateway container provides a secure API for iOS and Android mobile apps:
 **How it works:**
 1. Mobile apps authenticate via `/api/v1/auth/login`
 2. Gateway validates JWT and proxies allowed routes to backend
-3. Gateway subscribes to backend WebSocket for transaction events
-4. When transactions occur, gateway sends push notifications to registered devices
+3. Gateway subscribes to backend WebSocket for transaction, draft, insight and consolidation events
+4. When transactions occur, or a Treasury Intelligence insight or autopilot consolidation suggestion is raised, gateway sends push notifications to registered devices (the backend chooses the recipients; only the gateway holds APNs/FCM credentials)
 
 **Exposed endpoints:**
 - Authentication (login, profile)

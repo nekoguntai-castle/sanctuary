@@ -2,18 +2,36 @@
  * Push Notification Channel Handler
  *
  * Wraps the existing Push service as a notification channel.
+ *
+ * Delivery paths:
+ * - Transactions: direct send only when this process holds APNs/FCM
+ *   credentials (`isTransactionDeliveryEnabled`). Without them, transaction
+ *   pushes already reach the gateway through the broadcast path, so they are
+ *   never sent twice.
+ * - AI insights and consolidation suggestions: the audience is resolved here,
+ *   then either handed to the push gateway (when gateway delivery is
+ *   available) or sent directly -- never both. The worker, which runs these
+ *   jobs, has no credentials and always uses the gateway.
  */
 
 import * as pushService from '../../push/pushService';
+import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
 import { isAutopilotChannelEnabled } from '../../autopilot/settings';
 import { eligibleInsightWalletSettings, INSIGHT_TYPE_LABELS } from './insightEligibility';
-import type {
-  AIInsightNotification,
-  ConsolidationSuggestionNotification,
-  NotificationChannelHandler,
-  TransactionNotification,
-  NotificationResult,
+import {
+  dispatchGatewayPushEvent,
+  isGatewayPushDeliveryAvailable,
+} from '../../../websocket/gatewayPush';
+import type { GatewayPushEvent } from '../../../websocket/types';
+import type { PushMessage } from '../../push/types';
+import {
+  noRecipientsResult,
+  type AIInsightNotification,
+  type ConsolidationSuggestionNotification,
+  type NotificationChannelHandler,
+  type TransactionNotification,
+  type NotificationResult,
 } from './types';
 
 /**
@@ -60,6 +78,50 @@ function toPushFailure(err: unknown): NotificationResult {
   };
 }
 
+const log = createLogger('NOTIFY:SVC_PUSH');
+
+type UserEligibility = (user: pushService.WalletNotificationUser) => boolean;
+
+/**
+ * Map a gateway dispatch to a channel result. Delivered counts the users the
+ * event was handed to a gateway path for (dispatch, not provider acceptance,
+ * as for direct sends). Not delivered means no gateway path took it.
+ */
+async function dispatchToGateway(event: GatewayPushEvent): Promise<NotificationResult> {
+  const { delivered, error } = await dispatchGatewayPushEvent(event);
+  if (error !== undefined) {
+    return toPushResult({ success: false, usersNotified: 0, error, recorded: false });
+  }
+  if (!delivered) return noRecipientsResult('push');
+  return toPushResult({ success: true, usersNotified: event.userIds.length });
+}
+
+/**
+ * Send a wallet-level push through the gateway when gateway delivery is
+ * available, otherwise directly with this process's credentials.
+ */
+async function notifyWalletAudience(
+  walletId: string,
+  directMessage: PushMessage,
+  buildGatewayEvent: (userIds: string[]) => GatewayPushEvent,
+  isUserEligible: UserEligibility,
+): Promise<NotificationResult> {
+  if (!isGatewayPushDeliveryAvailable()) {
+    return toPushResult(await pushService.notifyWalletUsers(walletId, directMessage, isUserEligible));
+  }
+
+  let userIds: string[];
+  try {
+    userIds = await pushService.resolveWalletPushAudience(walletId, isUserEligible);
+  } catch (err) {
+    const error = getErrorMessage(err);
+    log.error('Error resolving wallet push audience', { walletId, error });
+    return toPushResult({ success: false, usersNotified: 0, error, recorded: false });
+  }
+  if (userIds.length === 0) return noRecipientsResult('push');
+  return dispatchToGateway(buildGatewayEvent(userIds));
+}
+
 export const pushChannelHandler: NotificationChannelHandler = {
   id: 'push',
   name: 'Push Notifications',
@@ -74,7 +136,14 @@ export const pushChannelHandler: NotificationChannelHandler = {
   },
 
   async isEnabled(): Promise<boolean> {
-    // Check if any push provider is configured
+    // Enabled with local provider credentials, or when wallet-level pushes can
+    // be handed to the gateway (the worker has no credentials of its own).
+    return pushService.isPushConfigured() || isGatewayPushDeliveryAvailable();
+  },
+
+  async isTransactionDeliveryEnabled(): Promise<boolean> {
+    // Transactions are sent directly only with local credentials; otherwise
+    // they reach the gateway through the broadcast path.
     return pushService.isPushConfigured();
   },
 
@@ -107,16 +176,21 @@ export const pushChannelHandler: NotificationChannelHandler = {
       // Autopilot settings are per user, so each recipient must have it enabled
       // with push left on for this wallet, not just the user whose settings
       // triggered the suggestion.
-      return toPushResult(
-        await pushService.notifyWalletUsers(
+      return await notifyWalletAudience(
+        walletId,
+        {
+          title: 'Consolidation opportunity',
+          body: `${suggestion.walletName}: fees are low (${suggestion.feeRate} sat/vB)`,
+          data: { walletId, kind: 'consolidation_suggestion' },
+        },
+        (userIds) => ({
+          type: 'consolidation_suggestion',
           walletId,
-          {
-            title: 'Consolidation opportunity',
-            body: `${suggestion.walletName}: fees are low (${suggestion.feeRate} sat/vB)`,
-            data: { walletId, kind: 'consolidation_suggestion' },
-          },
-          (user) => isAutopilotChannelEnabled(user.preferences, walletId, 'notifyPush')
-        )
+          walletName: suggestion.walletName,
+          userIds,
+          data: { feeRate: suggestion.feeRate },
+        }),
+        (user) => isAutopilotChannelEnabled(user.preferences, walletId, 'notifyPush')
       );
     } catch (err) {
       return toPushFailure(err);
@@ -129,19 +203,29 @@ export const pushChannelHandler: NotificationChannelHandler = {
   ): Promise<NotificationResult> {
     try {
       const typeLabel = INSIGHT_TYPE_LABELS[insight.type] || insight.type;
-      return toPushResult(
-        await pushService.notifyWalletUsers(
+      return await notifyWalletAudience(
+        walletId,
+        {
+          title: 'Treasury Intelligence',
+          body: `${insight.walletName}: ${insight.severity} ${typeLabel} insight`,
+          data: { walletId, insightId: insight.id, kind: 'ai_insight' },
+        },
+        (userIds) => ({
+          type: 'ai_insight',
           walletId,
-          {
-            title: 'Treasury Intelligence',
-            body: `${insight.walletName}: ${insight.severity} ${typeLabel} insight`,
-            data: { walletId, insightId: insight.id, kind: 'ai_insight' },
+          walletName: insight.walletName,
+          userIds,
+          data: {
+            insightId: insight.id,
+            insightType: insight.type,
+            insightTypeLabel: typeLabel,
+            severity: insight.severity,
           },
-          (user) => {
-            const settings = eligibleInsightWalletSettings(user.preferences, walletId, insight);
-            return settings !== null && settings.notifyPush !== false;
-          }
-        )
+        }),
+        (user) => {
+          const settings = eligibleInsightWalletSettings(user.preferences, walletId, insight);
+          return settings !== null && settings.notifyPush !== false;
+        }
       );
     } catch (err) {
       return toPushFailure(err);

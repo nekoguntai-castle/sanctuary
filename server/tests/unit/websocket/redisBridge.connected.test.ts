@@ -127,7 +127,7 @@ describe('RedisWebSocketBridge (connected mode)', () => {
     await initializeRedisBridge();
     expect(redisBridge.isActive()).toBe(true);
     expect(mocks.subscriber.subscribe).toHaveBeenCalledWith(
-      'sanctuary:ws:broadcast', 'sanctuary:ws:authorization-control',
+      'sanctuary:ws:broadcast', 'sanctuary:ws:authorization-control', 'sanctuary:ws:gateway',
     );
 
     const envelope = {
@@ -374,7 +374,7 @@ describe('RedisWebSocketBridge (connected mode)', () => {
 
     expect(redisBridge.isActive()).toBe(true);
     expect(mocks.subscriber.subscribe).toHaveBeenCalledWith(
-      'sanctuary:ws:broadcast', 'sanctuary:ws:authorization-control',
+      'sanctuary:ws:broadcast', 'sanctuary:ws:authorization-control', 'sanctuary:ws:gateway',
     );
     expect(publisher.once).not.toHaveBeenCalledWith('ready', expect.any(Function));
     expect(subscriber.once).not.toHaveBeenCalledWith('ready', expect.any(Function));
@@ -506,7 +506,7 @@ describe('RedisWebSocketBridge (connected mode)', () => {
     await shutdownRedisBridge();
 
     expect(mocks.subscriber.unsubscribe).toHaveBeenCalledWith(
-      'sanctuary:ws:broadcast', 'sanctuary:ws:authorization-control',
+      'sanctuary:ws:broadcast', 'sanctuary:ws:authorization-control', 'sanctuary:ws:gateway',
     );
     expect(mocks.subscriber.quit).toHaveBeenCalled();
     expect(mocks.publisher.quit).toHaveBeenCalled();
@@ -603,5 +603,181 @@ describe('RedisWebSocketBridge (connected mode)', () => {
     expect(mocks.log.warn).toHaveBeenCalledWith('Redis WebSocket bridge already initialized');
 
     await shutdownRedisBridge();
+  });
+
+  describe('gateway-only push channel', () => {
+    const gatewayEvent = {
+      type: 'ai_insight' as const,
+      walletId: 'wallet-1',
+      walletName: 'Treasury',
+      userIds: ['user-1'],
+      data: { insightId: 'i-1', insightType: 'utxo_health', insightTypeLabel: 'UTXO Health', severity: 'warning' },
+    };
+
+    it('publishes gateway events on their own channel from a publish-only worker, returning PUBLISH count', async () => {
+      const { initializeRedisBridge, redisBridge, mocks } = await loadBridgeWithMocks();
+      await initializeRedisBridge({ publishOnly: true });
+
+      await expect(redisBridge.publishGatewayEvent(gatewayEvent)).resolves.toBe(1);
+
+      expect(mocks.subscriber.subscribe).not.toHaveBeenCalled();
+      expect(mocks.publisher.publish).toHaveBeenCalledTimes(1);
+      const [channel, payload] = mocks.publisher.publish.mock.calls[0];
+      expect(channel).toBe('sanctuary:ws:gateway');
+      expect(JSON.parse(payload)).toMatchObject({ event: gatewayEvent, instanceId: redisBridge.getInstanceId() });
+      expect(redisBridge.getMetrics().published).toBe(1);
+    });
+
+    it('excludes its own subscriber from the receiver count, floored at 0', async () => {
+      const { initializeRedisBridge, redisBridge, mocks } = await loadBridgeWithMocks();
+      await initializeRedisBridge();
+
+      mocks.publisher.publish.mockResolvedValueOnce(2);
+      await expect(redisBridge.publishGatewayEvent(gatewayEvent)).resolves.toBe(1);
+      mocks.publisher.publish.mockResolvedValueOnce(1);
+      await expect(redisBridge.publishGatewayEvent(gatewayEvent)).resolves.toBe(0);
+      mocks.publisher.publish.mockResolvedValueOnce(0);
+      await expect(redisBridge.publishGatewayEvent(gatewayEvent)).resolves.toBe(0);
+    });
+
+    it('resolves 0 without publishing when the bridge is not initialized', async () => {
+      const { redisBridge, mocks } = await loadBridgeWithMocks();
+      await expect(redisBridge.publishGatewayEvent(gatewayEvent)).resolves.toBe(0);
+      expect(mocks.publisher.publish).not.toHaveBeenCalled();
+    });
+
+    it('routes remote gateway events to the gateway handler only, never the broadcast handler', async () => {
+      const { initializeRedisBridge, redisBridge, mocks } = await loadBridgeWithMocks();
+      const broadcastHandler = vi.fn();
+      const gatewayHandler = vi.fn();
+      redisBridge.setBroadcastHandler(broadcastHandler);
+      redisBridge.setGatewayEventHandler(gatewayHandler);
+      await initializeRedisBridge();
+
+      mocks.subscriber.emit('message', 'sanctuary:ws:gateway', JSON.stringify({
+        event: gatewayEvent, instanceId: 'remote-instance', timestamp: Date.now(),
+      }));
+
+      expect(gatewayHandler).toHaveBeenCalledWith(gatewayEvent);
+      expect(broadcastHandler).not.toHaveBeenCalled();
+      expect(redisBridge.getMetrics().received).toBe(1);
+    });
+
+    it('forwards only validated fields, stripping forged top-level and data keys', async () => {
+      const { initializeRedisBridge, redisBridge, mocks } = await loadBridgeWithMocks();
+      await initializeRedisBridge();
+      const gatewayHandler = vi.fn();
+      redisBridge.setGatewayEventHandler(gatewayHandler);
+      const emit = (event: unknown) => mocks.subscriber.emit('message', 'sanctuary:ws:gateway', JSON.stringify({
+        event, instanceId: 'remote-instance', timestamp: 1,
+      }));
+
+      emit({ ...gatewayEvent, userId: 'attacker', data: { ...gatewayEvent.data, body: 'Forged body' } });
+      emit({
+        type: 'consolidation_suggestion', walletId: 'wallet-1', walletName: 'Treasury',
+        userIds: ['user-1'], userId: 'attacker', data: { feeRate: 3, title: 'Forged' },
+      });
+
+      expect(gatewayHandler).toHaveBeenNthCalledWith(1, gatewayEvent);
+      expect(gatewayHandler.mock.calls[0][0]).not.toHaveProperty('userId');
+      expect(gatewayHandler).toHaveBeenNthCalledWith(2, {
+        type: 'consolidation_suggestion', walletId: 'wallet-1', walletName: 'Treasury',
+        userIds: ['user-1'], data: { feeRate: 3 },
+      });
+      expect(gatewayHandler.mock.calls[1][0]).not.toHaveProperty('userId');
+    });
+
+    it('drops self-published gateway events', async () => {
+      const { initializeRedisBridge, redisBridge, mocks } = await loadBridgeWithMocks();
+      const gatewayHandler = vi.fn();
+      redisBridge.setGatewayEventHandler(gatewayHandler);
+      await initializeRedisBridge();
+
+      mocks.subscriber.emit('message', 'sanctuary:ws:gateway', JSON.stringify({
+        event: gatewayEvent, instanceId: redisBridge.getInstanceId(), timestamp: Date.now(),
+      }));
+
+      expect(gatewayHandler).not.toHaveBeenCalled();
+      expect(redisBridge.getMetrics().skippedSelf).toBe(1);
+    });
+
+    it('rejects malformed gateway envelopes and ignores events with no handler set', async () => {
+      const { initializeRedisBridge, redisBridge, mocks } = await loadBridgeWithMocks();
+      await initializeRedisBridge();
+      const emit = (value: unknown) => mocks.subscriber.emit(
+        'message', 'sanctuary:ws:gateway', typeof value === 'string' ? value : JSON.stringify(value),
+      );
+      const envelope = { event: gatewayEvent, instanceId: 'remote', timestamp: 1 };
+
+      // No handler yet: a valid event is ignored without counting as received.
+      emit(envelope);
+      expect(redisBridge.getMetrics().received).toBe(0);
+
+      const gatewayHandler = vi.fn();
+      redisBridge.setGatewayEventHandler(gatewayHandler);
+      emit('{invalid-json');
+      emit(null);
+      emit(5);
+      emit({ ...envelope, instanceId: '' });
+      emit({ ...envelope, timestamp: 'now' });
+      emit({ ...envelope, event: null });
+      emit({ ...envelope, event: 'ai_insight' });
+      emit({ ...envelope, event: { ...gatewayEvent, type: 7 } });
+      emit({ ...envelope, event: { ...gatewayEvent, type: 'transaction' } });
+      emit({ ...envelope, event: { ...gatewayEvent, walletId: '' } });
+      emit({ ...envelope, event: { ...gatewayEvent, walletName: 7 } });
+      emit({ ...envelope, event: { ...gatewayEvent, userIds: ['ok', ''] } });
+      emit({ ...envelope, event: { ...gatewayEvent, userIds: 'user-1' } });
+      emit({ ...envelope, event: { ...gatewayEvent, data: null } });
+      emit({ ...envelope, event: { ...gatewayEvent, data: 'x' } });
+      emit({ ...envelope, event: { ...gatewayEvent, data: { ...gatewayEvent.data, severity: 7 } } });
+      emit({ ...envelope, event: { ...gatewayEvent, data: { ...gatewayEvent.data, insightId: '' } } });
+      emit({ ...envelope, event: { ...gatewayEvent, data: { ...gatewayEvent.data, insightTypeLabel: 5 } } });
+      emit({ ...envelope, event: { ...gatewayEvent, type: 'consolidation_suggestion' } });
+      emit({ ...envelope, event: { ...gatewayEvent, type: 'consolidation_suggestion', data: { feeRate: '2' } } });
+
+      expect(gatewayHandler).not.toHaveBeenCalled();
+      expect(redisBridge.getMetrics().errors).toBe(20);
+      expect(mocks.log.warn).toHaveBeenCalledWith('Rejected malformed gateway push event');
+    });
+
+    it('catches a throwing gateway handler and rejects a synchronously failing publish', async () => {
+      const publisher = createMockPubSubClient({ autoConnect: true, publishThrows: true });
+      const { initializeRedisBridge, redisBridge, mocks } = await loadBridgeWithMocks({ publisher });
+      redisBridge.setGatewayEventHandler(() => {
+        throw new Error('handler exploded');
+      });
+      await initializeRedisBridge();
+
+      mocks.subscriber.emit('message', 'sanctuary:ws:gateway', JSON.stringify({
+        event: gatewayEvent, instanceId: 'remote', timestamp: 1,
+      }));
+      await expect(redisBridge.publishGatewayEvent(gatewayEvent)).rejects.toThrow('publish failed');
+
+      expect(mocks.log.error).toHaveBeenCalledWith(
+        'Failed to handle gateway push event', { error: 'handler exploded' },
+      );
+      expect(mocks.log.error).toHaveBeenCalledWith(
+        'Failed to publish gateway push event', { error: 'publish failed', eventType: 'ai_insight' },
+      );
+      expect(redisBridge.getMetrics()).toMatchObject({ errors: 2, published: 0 });
+    });
+
+    it('rejects an asynchronously failing publish and clears the handler on shutdown', async () => {
+      const publisher = createMockPubSubClient({ autoConnect: true, publishRejects: true });
+      const { initializeRedisBridge, shutdownRedisBridge, redisBridge, mocks } = await loadBridgeWithMocks({
+        publisher,
+      });
+      redisBridge.setGatewayEventHandler(vi.fn());
+      await initializeRedisBridge();
+
+      await expect(redisBridge.publishGatewayEvent(gatewayEvent)).rejects.toThrow('async publish failed');
+
+      expect(mocks.log.error).toHaveBeenCalledWith(
+        'Failed to publish gateway push event', { error: 'async publish failed', eventType: 'ai_insight' },
+      );
+      await shutdownRedisBridge();
+      expect((redisBridge as any).gatewayEventHandler).toBeNull();
+    });
   });
 });

@@ -40,8 +40,9 @@ export function useProxyTorControls({
       const result = await adminApi.testProxy({
         host: nodeConfig.proxyHost,
         port: nodeConfig.proxyPort,
-        username: nodeConfig.proxyUsername,
-        password: nodeConfig.proxyPassword,
+        // The node-config read returns null for unset credentials.
+        username: nodeConfig.proxyUsername ?? undefined,
+        password: nodeConfig.proxyPassword ?? undefined,
       });
       setProxyTestStatus(result.success ? 'success' : 'error');
       setProxyTestMessage(result.message || (result.success ? 'Proxy connection successful' : 'Proxy connection failed'));

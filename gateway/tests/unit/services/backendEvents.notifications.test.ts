@@ -61,6 +61,8 @@ describe('backendEvents notifications formatter', () => {
       'psbt_signing_required',
       'draft_created',
       'draft_approved',
+      'ai_insight',
+      'consolidation_suggestion',
     ]);
   });
 
@@ -230,5 +232,79 @@ describe('backendEvents notifications formatter', () => {
     });
 
     expect(notification).toBeNull();
+  });
+
+  describe('wallet-level gateway push events', () => {
+    it('formats a minimal ai_insight notification with the server-supplied type label', () => {
+      expect(formatNotificationForEvent({
+        type: 'ai_insight',
+        walletId: 'wallet-1',
+        walletName: 'Treasury',
+        userIds: ['user-1'],
+        data: {
+          insightId: 'insight-1',
+          insightType: 'utxo_health',
+          insightTypeLabel: 'UTXO Health',
+          severity: 'warning',
+        },
+      })).toEqual({
+        title: 'Treasury Intelligence',
+        body: 'Treasury: warning UTXO Health insight',
+        data: { walletId: 'wallet-1', insightId: 'insight-1', kind: 'ai_insight' },
+      });
+    });
+
+    it('falls back to the raw insight type, then a generic label, and the default wallet name', () => {
+      expect(formatNotificationForEvent({
+        type: 'ai_insight',
+        walletId: 'wallet-1',
+        data: { insightId: 'insight-1', insightType: 'fee_timing', severity: 'info' },
+      })?.body).toBe('Wallet: info fee_timing insight');
+      expect(formatNotificationForEvent({
+        type: 'ai_insight',
+        walletId: 'wallet-1',
+        data: { insightId: 'insight-1', severity: 'critical' },
+      })?.body).toBe('Wallet: critical wallet insight');
+    });
+
+    it('drops ai_insight events missing the insight id or severity', () => {
+      expect(formatNotificationForEvent({
+        type: 'ai_insight',
+        walletId: 'wallet-1',
+        data: { severity: 'warning' },
+      })).toBeNull();
+      expect(formatNotificationForEvent({
+        type: 'ai_insight',
+        walletId: 'wallet-1',
+        data: { insightId: 'insight-1' },
+      })).toBeNull();
+    });
+
+    it('formats a minimal consolidation_suggestion notification', () => {
+      expect(formatNotificationForEvent({
+        type: 'consolidation_suggestion',
+        walletId: 'wallet-1',
+        walletName: 'Treasury',
+        userIds: ['user-1'],
+        data: { feeRate: 3 },
+      })).toEqual({
+        title: 'Consolidation opportunity',
+        body: 'Treasury: fees are low (3 sat/vB)',
+        data: { walletId: 'wallet-1', kind: 'consolidation_suggestion' },
+      });
+    });
+
+    it('drops consolidation_suggestion events without a finite fee rate', () => {
+      expect(formatNotificationForEvent({
+        type: 'consolidation_suggestion',
+        walletId: 'wallet-1',
+        data: {},
+      })).toBeNull();
+      expect(formatNotificationForEvent({
+        type: 'consolidation_suggestion',
+        walletId: 'wallet-1',
+        data: { feeRate: Number.NaN },
+      })).toBeNull();
+    });
   });
 });

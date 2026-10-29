@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => {
   let redisHandler: ((event: unknown) => void) | null = null;
   let controlHandler: ((control: unknown) => Promise<void>) | null = null;
+  let gatewayHandler: ((event: unknown) => void) | null = null;
 
   class MockClientWsServer {
     localBroadcast = vi.fn(async () => undefined);
@@ -11,6 +12,7 @@ const mocks = vi.hoisted(() => {
 
   class MockGatewayWsServer {
     sendEvent = vi.fn(async () => undefined);
+    forwardPushEvent = vi.fn(() => true);
   }
 
   return {
@@ -22,6 +24,10 @@ const mocks = vi.hoisted(() => {
     setControlHandler: vi.fn((handler: (control: unknown) => Promise<void>) => {
       controlHandler = handler;
     }),
+    setGatewayEventHandler: vi.fn((handler: (event: unknown) => void) => {
+      gatewayHandler = handler;
+    }),
+    emitRedisGatewayEvent: (event: unknown) => gatewayHandler?.(event),
     publishControl: vi.fn(),
     emitRedisControl: async (control: unknown) => controlHandler?.(control),
     emitRedisEvent: (event: unknown) => {
@@ -50,6 +56,7 @@ vi.mock('../../../src/websocket/redisBridge', () => ({
   redisBridge: {
     setBroadcastHandler: mocks.setRedisHandler,
     setControlHandler: mocks.setControlHandler,
+    setGatewayEventHandler: mocks.setGatewayEventHandler,
     publishControl: mocks.publishControl,
   },
 }));
@@ -201,5 +208,47 @@ describe('websocket/server singleton wiring', () => {
     expect(gateway).toBeInstanceOf(mocks.MockGatewayWsServer);
     expect(mod.getGatewayWebSocketServer()).toBe(gateway);
     expect(() => mod.initializeGatewayWebSocketServer()).toThrow('Gateway WebSocket server already initialized');
+  });
+
+  describe('gateway-only push events from other instances', () => {
+    const pushEvent = {
+      type: 'consolidation_suggestion',
+      walletId: 'wallet-1',
+      walletName: 'Treasury',
+      userIds: ['user-1'],
+      data: { feeRate: 2 },
+    };
+
+    it('forwards them to the gateway connection and never to browser clients', async () => {
+      const mod = await import('../../../src/websocket/server');
+      const server = mod.initializeWebSocketServer();
+      const gateway = mod.initializeGatewayWebSocketServer();
+      expect(mocks.setGatewayEventHandler).toHaveBeenCalledTimes(1);
+
+      mocks.emitRedisGatewayEvent(pushEvent);
+
+      expect((gateway as any).forwardPushEvent).toHaveBeenCalledWith(pushEvent);
+      expect((server as any).localBroadcast).not.toHaveBeenCalled();
+    });
+
+    it('drops them when this instance has no gateway server', async () => {
+      const mod = await import('../../../src/websocket/server');
+      const server = mod.initializeWebSocketServer();
+
+      expect(() => mocks.emitRedisGatewayEvent(pushEvent)).not.toThrow();
+      expect((server as any).localBroadcast).not.toHaveBeenCalled();
+    });
+
+    it('drops them, never to browser clients, when the gateway server has no connected gateway', async () => {
+      const mod = await import('../../../src/websocket/server');
+      const server = mod.initializeWebSocketServer();
+      const gateway = mod.initializeGatewayWebSocketServer();
+      (gateway as any).forwardPushEvent.mockReturnValueOnce(false);
+
+      expect(() => mocks.emitRedisGatewayEvent(pushEvent)).not.toThrow();
+      expect((gateway as any).forwardPushEvent).toHaveBeenCalledWith(pushEvent);
+      expect((gateway as any).sendEvent).not.toHaveBeenCalled();
+      expect((server as any).localBroadcast).not.toHaveBeenCalled();
+    });
   });
 });

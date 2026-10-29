@@ -127,7 +127,14 @@ Every exposed transaction path must preserve these invariants:
   wallet list reports `balance: 0` with `balanceHidden: true`, pending rows and
   txid matches are filtered by `viewTransactions`. The marker can only restrict
   what a caller sees. Push notifications (gateway and backend FCM/APNs) also
-  skip recipients whose `viewTransactions` cap is off.
+  skip recipients whose `viewTransactions` cap is off. Insight and
+  consolidation pushes are resolved in the worker and sent by the gateway; when
+  the backend forwards them it rebuilds the event from validated fields only,
+  re-checks each recipient's wallet access and the cap, and re-reads the wallet
+  name from the database (failing closed on a malformed event or a lookup
+  error), so a forged Redis envelope cannot widen the audience or change the
+  push text beyond its insight/fee fields. Their recipient lists travel only on
+  the gateway-only Redis channel, never to browser clients.
 - Target-environment performance evidence is not transferable to every operator
   topology without rerunning the benchmark on that topology.
 - A public responsible-disclosure or bug-bounty process must be published before

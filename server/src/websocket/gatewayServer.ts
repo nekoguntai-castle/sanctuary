@@ -29,10 +29,12 @@ import {
   GATEWAY_AUTH_TIMEOUT_MS,
   GATEWAY_EVENT_PREPARATION_TIMEOUT_MS,
   GATEWAY_WS_MAX_PAYLOAD_BYTES,
+  GatewayPushEvent,
   GatewayWebSocket,
   WebSocketEvent,
+  isGatewayPushEvent,
 } from './types';
-import { mapGatewayEvent } from './gatewayEventMapper';
+import { mapGatewayEvent, refilterPushAudience, type GatewayEvent } from './gatewayEventMapper';
 
 const log = createLogger('WS:GATEWAY');
 
@@ -229,7 +231,7 @@ export class GatewayWebSocketServer {
   /**
    * Send event to connected gateway
    */
-  public sendEvent(event: WebSocketEvent): Promise<void> {
+  public sendEvent(event: WebSocketEvent | GatewayPushEvent): Promise<void> {
     const operation = this.sendTail.then(() => this.mapAndSendEvent(event));
     this.sendTail = operation.catch((error) => {
       log.error('Failed to prepare gateway event', { error: getErrorMessage(error), type: event.type });
@@ -237,14 +239,14 @@ export class GatewayWebSocketServer {
     return operation;
   }
 
-  private async mapAndSendEvent(event: WebSocketEvent): Promise<void> {
+  private async mapAndSendEvent(event: WebSocketEvent | GatewayPushEvent): Promise<void> {
     if (!this.gateway || !this.gateway.isAuthenticated) {
       log.debug('No authenticated gateway to send event');
       return;
     }
 
-    const mappedEvent = await withTimeout(
-      mapGatewayEvent(event),
+    const mappedEvent = await withTimeout<GatewayEvent | GatewayPushEvent | null>(
+      isGatewayPushEvent(event) ? refilterPushAudience(event) : mapGatewayEvent(event),
       GATEWAY_EVENT_PREPARATION_TIMEOUT_MS,
       'Gateway event preparation timed out',
       (error) => log.error('Gateway event preparation failed after timeout', {
@@ -252,6 +254,13 @@ export class GatewayWebSocketServer {
         type: event.type,
       }),
     );
+    // A wallet-level push that is malformed or whose re-checked audience is
+    // empty has nobody to reach; skip it rather than have the gateway log a
+    // missing-recipient event.
+    if (!mappedEvent) {
+      log.debug('Gateway push event has no remaining recipients', { type: event.type });
+      return;
+    }
     const gateway = this.gateway;
     if (!gateway || !gateway.isAuthenticated || gateway.readyState !== WebSocket.OPEN) {
       log.debug('Gateway disconnected before event was ready', { type: event.type });
@@ -262,6 +271,22 @@ export class GatewayWebSocketServer {
       type: 'event',
       event: mappedEvent,
     });
+  }
+
+  /**
+   * Hand a gateway-only push event to the connected gateway. Returns false,
+   * without sending, when no authenticated gateway is connected; a later send
+   * failure is logged, not thrown.
+   */
+  public forwardPushEvent(event: GatewayPushEvent): boolean {
+    if (!this.isGatewayConnected()) return false;
+    void this.sendEvent(event).catch((error) => {
+      log.error('Failed to send gateway push event', {
+        type: event.type,
+        error: getErrorMessage(error),
+      });
+    });
+    return true;
   }
 
   /**

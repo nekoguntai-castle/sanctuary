@@ -18,6 +18,8 @@ export const PUSH_EVENT_TYPES: BackendEventType[] = [
   'psbt_signing_required',
   'draft_created',
   'draft_approved',
+  'ai_insight',
+  'consolidation_suggestion',
 ];
 
 type Notification = push.PushNotification | null;
@@ -109,6 +111,31 @@ const formatDraftApprovedEvent = (event: BackendEvent): Notification => {
   );
 };
 
+// Wallet-level pushes are deliberately minimal (decision D-4): wallet name
+// plus severity/type or fee rate, never AI summary text, amounts or UTXO counts.
+const formatAIInsightEvent = (event: BackendEvent): Notification => {
+  const { data } = event;
+  if (!data.insightId || !data.severity) return null;
+  const typeLabel = data.insightTypeLabel || data.insightType || 'wallet';
+
+  return {
+    title: 'Treasury Intelligence',
+    body: `${getWalletName(event)}: ${data.severity} ${typeLabel} insight`,
+    data: { walletId: event.walletId, insightId: data.insightId, kind: 'ai_insight' },
+  };
+};
+
+const formatConsolidationSuggestionEvent = (event: BackendEvent): Notification => {
+  const { feeRate } = event.data;
+  if (typeof feeRate !== 'number' || !Number.isFinite(feeRate)) return null;
+
+  return {
+    title: 'Consolidation opportunity',
+    body: `${getWalletName(event)}: fees are low (${feeRate} sat/vB)`,
+    data: { walletId: event.walletId, kind: 'consolidation_suggestion' },
+  };
+};
+
 /**
  * Format a push notification based on event type
  */
@@ -134,6 +161,12 @@ export function formatNotificationForEvent(event: BackendEvent): push.PushNotifi
 
     case 'draft_approved':
       return formatDraftApprovedEvent(event);
+
+    case 'ai_insight':
+      return formatAIInsightEvent(event);
+
+    case 'consolidation_suggestion':
+      return formatConsolidationSuggestionEvent(event);
 
     default:
       return null;

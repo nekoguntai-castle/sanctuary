@@ -23,7 +23,7 @@ import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
 import { safeJsonParseUntyped } from '../utils/safeJson';
 import { getRedisClient, isRedisConnected } from '../infrastructure/redis';
-import type { WebSocketEvent } from './types';
+import { parseGatewayPushEvent, type GatewayPushEvent, type WebSocketEvent } from './types';
 import type { WebSocketAuthorizationControl } from './authorizationControl';
 
 const log = createLogger('WS:REDIS_BRIDGE');
@@ -31,6 +31,11 @@ const log = createLogger('WS:REDIS_BRIDGE');
 // Channel for WebSocket broadcasts
 const WS_BROADCAST_CHANNEL = 'sanctuary:ws:broadcast';
 const WS_AUTHORIZATION_CONTROL_CHANNEL = 'sanctuary:ws:authorization-control';
+/**
+ * Gateway-only channel. Events here carry a private push audience (`userIds`)
+ * and are handed to the push gateway connection only, never to browser clients.
+ */
+const WS_GATEWAY_CHANNEL = 'sanctuary:ws:gateway';
 
 /**
  * Unique instance identifier for deduplication
@@ -43,6 +48,12 @@ const instanceId = `${process.pid}-${Date.now()}-${randomBytes(4).toString('hex'
  */
 interface WebSocketEnvelope {
   event: WebSocketEvent;
+  instanceId: string;
+  timestamp: number;
+}
+
+interface GatewayEventEnvelope {
+  event: GatewayPushEvent;
   instanceId: string;
   timestamp: number;
 }
@@ -72,6 +83,7 @@ export interface RedisWebSocketBridgeOptions {
  */
 type BroadcastHandler = (event: WebSocketEvent) => void;
 type ControlHandler = (control: WebSocketAuthorizationControl) => Promise<void> | void;
+type GatewayEventHandler = (event: GatewayPushEvent) => void;
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
@@ -85,6 +97,17 @@ function isAuthorizationControl(value: unknown): value is WebSocketAuthorization
   if (control.type === 'access-token-revoked') return isNonEmptyString(control.jti);
   if (control.type === 'user-access-revoked') return isNonEmptyString(control.userId);
   return false;
+}
+
+/** Validate the envelope and rebuild its event from validated fields only. */
+function parseGatewayEventEnvelope(value: unknown): GatewayEventEnvelope | null {
+  if (!value || typeof value !== 'object') return null;
+  const envelope = value as Record<string, unknown>;
+  const event = parseGatewayPushEvent(envelope.event);
+  if (!event || !isNonEmptyString(envelope.instanceId) || typeof envelope.timestamp !== 'number') {
+    return null;
+  }
+  return { event, instanceId: envelope.instanceId, timestamp: envelope.timestamp };
 }
 
 function isControlEnvelope(value: unknown): value is AuthorizationControlEnvelope {
@@ -105,6 +128,7 @@ class RedisWebSocketBridge {
   private publishOnly = false;
   private broadcastHandler: BroadcastHandler | null = null;
   private controlHandler: ControlHandler | null = null;
+  private gatewayEventHandler: GatewayEventHandler | null = null;
 
   // Metrics
   private metrics = {
@@ -152,7 +176,11 @@ class RedisWebSocketBridge {
 
       if (this.subscriber) {
         // Subscribe to broadcast channel
-        await this.subscriber.subscribe(WS_BROADCAST_CHANNEL, WS_AUTHORIZATION_CONTROL_CHANNEL);
+        await this.subscriber.subscribe(
+          WS_BROADCAST_CHANNEL,
+          WS_AUTHORIZATION_CONTROL_CHANNEL,
+          WS_GATEWAY_CHANNEL,
+        );
 
         // Handle incoming messages
         this.subscriber.on('message', (channel: string, message: string) => {
@@ -160,6 +188,8 @@ class RedisWebSocketBridge {
             this.handleBroadcastMessage(message);
           } else if (channel === WS_AUTHORIZATION_CONTROL_CHANNEL) {
             void this.handleControlMessage(message);
+          } else if (channel === WS_GATEWAY_CHANNEL) {
+            this.handleGatewayMessage(message);
           }
         });
 
@@ -196,6 +226,14 @@ class RedisWebSocketBridge {
 
   setControlHandler(handler: ControlHandler): void {
     this.controlHandler = handler;
+  }
+
+  /**
+   * Set the handler for gateway-only push events from other instances. It must
+   * forward to the push gateway connection only, never to browser clients.
+   */
+  setGatewayEventHandler(handler: GatewayEventHandler): void {
+    this.gatewayEventHandler = handler;
   }
 
   private waitForReady(client: Redis | null, label: string): Promise<void> {
@@ -269,6 +307,31 @@ class RedisWebSocketBridge {
     }
   }
 
+  /**
+   * Publish a gateway-only push event for the instances that hold a gateway
+   * connection. Resolves to the number of *other* instances subscribed to the
+   * channel: Redis PUBLISH's receiver count, minus this bridge's own
+   * subscriber when it has one (its own message is dropped as self), floored
+   * at 0. Resolves 0 when the bridge is not initialized; a failed publish
+   * rejects so the caller can report it.
+   */
+  async publishGatewayEvent(event: GatewayPushEvent): Promise<number> {
+    if (!this.isInitialized || !this.publisher) return 0;
+    const envelope: GatewayEventEnvelope = { event, instanceId, timestamp: Date.now() };
+    const ownSubscribers = this.subscriber ? 1 : 0;
+    try {
+      const receivers = await this.publisher.publish(WS_GATEWAY_CHANNEL, JSON.stringify(envelope));
+      this.metrics.published++;
+      return Math.max(0, receivers - ownSubscribers);
+    } catch (error) {
+      log.error('Failed to publish gateway push event', {
+        error: getErrorMessage(error), eventType: event.type,
+      });
+      this.metrics.errors++;
+      throw error;
+    }
+  }
+
   publishControl(control: WebSocketAuthorizationControl): void {
     if (!this.isInitialized || !this.publisher) return;
     const envelope: AuthorizationControlEnvelope = {
@@ -330,6 +393,31 @@ class RedisWebSocketBridge {
     }
   }
 
+  private handleGatewayMessage(message: string): void {
+    try {
+      const parsed = parseGatewayEventEnvelope(
+        safeJsonParseUntyped<unknown>(message, null, 'websocket gateway event'),
+      );
+      if (!parsed) {
+        log.warn('Rejected malformed gateway push event');
+        this.metrics.errors++;
+        return;
+      }
+      if (parsed.instanceId === instanceId) {
+        this.metrics.skippedSelf++;
+        return;
+      }
+      if (!this.gatewayEventHandler) return;
+      this.gatewayEventHandler(parsed.event);
+      this.metrics.received++;
+    } catch (error) {
+      log.error('Failed to handle gateway push event', {
+        error: getErrorMessage(error),
+      });
+      this.metrics.errors++;
+    }
+  }
+
   private async handleControlMessage(message: string): Promise<void> {
     try {
       const parsed = safeJsonParseUntyped<unknown>(message, null, 'websocket authorization control');
@@ -359,7 +447,11 @@ class RedisWebSocketBridge {
   private async cleanup(): Promise<void> {
     if (this.subscriber) {
       try {
-        await this.subscriber.unsubscribe(WS_BROADCAST_CHANNEL, WS_AUTHORIZATION_CONTROL_CHANNEL);
+        await this.subscriber.unsubscribe(
+          WS_BROADCAST_CHANNEL,
+          WS_AUTHORIZATION_CONTROL_CHANNEL,
+          WS_GATEWAY_CHANNEL,
+        );
         await this.subscriber.quit();
       } catch (error) {
         log.debug('Redis WebSocket subscriber cleanup failed', { error: getErrorMessage(error) });
@@ -396,6 +488,7 @@ class RedisWebSocketBridge {
     this.publishOnly = false;
     this.broadcastHandler = null;
     this.controlHandler = null;
+    this.gatewayEventHandler = null;
   }
 
   /**

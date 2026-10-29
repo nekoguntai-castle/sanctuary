@@ -454,10 +454,11 @@ main() {
     'scripts/ci/npm-policy.json|false|true'; do
     IFS='|' read -r path expected_source expected_dependency <<< "$entry"
     expected_classifier=false
+    expected_workflow=false
     case "$path" in
+      .github/actions/*) expected_workflow=true; expected_classifier=true ;;
       scripts/ci/*) expected_classifier=true ;;
       config/ci-toolchain-lock.json) expected_classifier=true ;;
-      .github/actions/setup-node-toolchain/action.yml) expected_classifier=true ;;
       # Gate scripts whose fail-closed suites run only in ci-classifier-tests
       # (D-11.18). The allowlist is untracked and optional: creating it runs
       # its suite, and this entry is its only assertion.
@@ -469,9 +470,25 @@ main() {
     esac
     base_sha="$head_sha"
     head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \
-      "$path" tool "classify $path" true "$expected_source" "$expected_dependency" false \
+      "$path" tool "classify $path" true "$expected_source" "$expected_dependency" "$expected_workflow" \
       "$expected_classifier")"
   done
+
+  # Drift guard (D-18.C1): every tracked file under .github/actions — composite
+  # actions and the vendored artifact bundle — runs the workflow policy guards
+  # (action runtimes, verify-vendor) and the classifier suites that pin them.
+  local action_files
+  action_files="$(git -C "$ROOT_DIR" ls-files .github/actions)"
+  [ "$(printf '%s\n' "$action_files" | grep -c .)" -ge 21 ] \
+    || fail "expected at least 21 tracked .github/actions files, got: $action_files"
+  while IFS= read -r path; do
+    base_sha="$head_sha"
+    commit_file "$repo_dir" "$path" 'action' "classify $path"
+    head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+    run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+    assert_exact_output "$output_file" "run_workflow_quality" true
+    assert_exact_output "$output_file" "run_ci_classifier_tests" true
+  done <<< "$action_files"
 
   # The backup and pre-commit scripts run their regression suites.
   for path in scripts/ops/sanctuary-backup.sh scripts/ops/install-sanctuary-backup.sh server/.husky/pre-commit; do

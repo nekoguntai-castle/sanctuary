@@ -34,7 +34,7 @@ export interface TransactionData {
   amount: bigint;
 }
 
-type WalletNotificationUser = Awaited<
+export type WalletNotificationUser = Awaited<
   ReturnType<typeof userRepository.findByWalletAccess>
 >[number];
 type NotificationWallet = NonNullable<
@@ -299,6 +299,23 @@ class PushService {
   }
 
   /**
+   * IDs of the users a wallet-level push should reach: wallet access, the
+   * mobile viewTransactions cap, at least one registered push device, and the
+   * caller's per-user preference predicate. Independent of whether this
+   * process holds push credentials, so a process without them can hand the
+   * audience to the push gateway. Lookup and predicate errors propagate.
+   */
+  async resolveWalletPushAudience(
+    walletId: string,
+    isUserEligible: (user: WalletNotificationUser) => boolean = () => true,
+  ): Promise<string[]> {
+    const users = await this.findPermittedWalletUsers(walletId);
+    return users
+      .filter((user) => user._count.pushDevices > 0 && isUserEligible(user))
+      .map((user) => user.id);
+  }
+
+  /**
    * Send one prebuilt push message to every eligible wallet user that has a
    * registered device. Used for wallet-level notifications that are not
    * per-transaction (AI insights, consolidation suggestions); callers keep
@@ -311,9 +328,9 @@ class PushService {
   ): Promise<NotifyTransactionsResult> {
     if (!(await this.isConfigured())) return { success: true, usersNotified: 0 };
 
-    let users: WalletNotificationUser[];
+    let userIds: string[];
     try {
-      users = await this.findPermittedWalletUsers(walletId);
+      userIds = await this.resolveWalletPushAudience(walletId, isUserEligible);
     } catch (err) {
       const errorMsg = getErrorMessage(err);
       log.error(`Error sending wallet push notifications: ${errorMsg}`);
@@ -322,9 +339,8 @@ class PushService {
 
     let usersNotified = 0;
     try {
-      for (const user of users) {
-        if (user._count.pushDevices === 0 || !isUserEligible(user)) continue;
-        await this.sendToUser(user.id, message);
+      for (const userId of userIds) {
+        await this.sendToUser(userId, message);
         usersNotified++;
       }
     } catch (err) {
@@ -454,6 +470,13 @@ export async function notifyNewTransactions(
   transactions: TransactionData[],
 ): Promise<NotifyTransactionsResult> {
   return getPushService().notifyNewTransactions(walletId, transactions);
+}
+
+export async function resolveWalletPushAudience(
+  walletId: string,
+  isUserEligible?: (user: WalletNotificationUser) => boolean,
+): Promise<string[]> {
+  return getPushService().resolveWalletPushAudience(walletId, isUserEligible);
 }
 
 export async function notifyWalletUsers(

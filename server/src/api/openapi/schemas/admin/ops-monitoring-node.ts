@@ -214,8 +214,8 @@ export const adminOpsMonitoringNodeSchemas = {
     properties: {
       host: { type: 'string' },
       port: nodeConfigPortInputSchema,
-      username: { type: 'string' },
-      password: { type: 'string', format: 'password' },
+      username: { type: 'string', nullable: true },
+      password: { type: 'string', format: 'password', nullable: true },
     },
     required: ['host', 'port'],
     additionalProperties: false,

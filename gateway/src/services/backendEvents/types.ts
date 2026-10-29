@@ -14,6 +14,9 @@
  * - `psbt_signing_required` - Multisig needs co-signer
  * - `draft_created` - New draft transaction for approval
  * - `draft_approved` - Draft was approved by co-signer
+ * - `ai_insight` - Treasury Intelligence insight (gateway-only server event)
+ * - `consolidation_suggestion` - Autopilot consolidation opportunity
+ *   (gateway-only server event)
  */
 export type BackendEventType =
   | 'transaction'
@@ -24,7 +27,9 @@ export type BackendEventType =
   | 'broadcast_failed'
   | 'psbt_signing_required'
   | 'draft_created'
-  | 'draft_approved';
+  | 'draft_approved'
+  | 'ai_insight'
+  | 'consolidation_suggestion';
 
 export interface BackendEvent {
   type: BackendEventType;
@@ -45,6 +50,13 @@ export interface BackendEvent {
     signerName?: string;
     requiredSignatures?: number;
     currentSignatures?: number;
+    // AI insight events (minimal: no summary text)
+    insightId?: string;
+    insightType?: string;
+    insightTypeLabel?: string;
+    severity?: string;
+    // Consolidation suggestion events
+    feeRate?: number;
   };
 }
 

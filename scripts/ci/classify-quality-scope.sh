@@ -95,7 +95,10 @@ is_repo_quality_exempt_file() {
 
 is_workflow_file() {
   case "$1" in
-    .github/workflows/*.yml|.github/workflows/*.yaml)
+    # The action-runtime guard reads every local action a workflow reaches and
+    # verifies the vendored artifact bundle, so a composite-action change runs
+    # the workflow policy guards (D-18.C1).
+    .github/workflows/*.yml|.github/workflows/*.yaml|.github/actions/*)
       return 0
       ;;
   esac
@@ -104,7 +107,7 @@ is_workflow_file() {
 
 is_ci_classifier_file() {
   case "$1" in
-    scripts/ci/*|tests/ci/*|server/tests/integration/*|scripts/ownership/*|tests/ownership/*|config/resource-ownership-contract.json|config/operator-recovery-contract.json|config/operator-recovery-incident.json|config/resource-lifecycle-callsites.json|config/application-lifecycle-authorities.json|docs/adr/0005-resource-ownership-and-cleanup-receipts.md|docs/reference/resource-ownership-cleanup.md|config/ci-toolchain-lock.json|config/hardware-emulator-source-inventory.json|.github/actions/setup-node-toolchain/action.yml|.github/workflows/test.yml|.github/workflows/install-test.yml|.github/workflows/quality.yml|.github/workflows/verify-vectors.yml)
+    scripts/ci/*|tests/ci/*|server/tests/integration/*|scripts/ownership/*|tests/ownership/*|config/resource-ownership-contract.json|config/operator-recovery-contract.json|config/operator-recovery-incident.json|config/resource-lifecycle-callsites.json|config/application-lifecycle-authorities.json|docs/adr/0005-resource-ownership-and-cleanup-receipts.md|docs/reference/resource-ownership-cleanup.md|config/ci-toolchain-lock.json|config/hardware-emulator-source-inventory.json|.github/actions/*|.github/workflows/test.yml|.github/workflows/install-test.yml|.github/workflows/quality.yml|.github/workflows/verify-vectors.yml)
       return 0
       ;;
     # Exact gate, backup and pre-commit scripts whose fail-closed regression

@@ -89,6 +89,12 @@ export const initializeWebSocketServer = (): SanctauryWebSocketServer => {
       });
     }
   });
+  // Gateway-only push events (insights, consolidation) carry a private
+  // recipient list, so they go to the gateway connection and never to
+  // localBroadcast/browser clients.
+  redisBridge.setGatewayEventHandler((event) => {
+    getGatewayWebSocketServer()?.forwardPushEvent(event);
+  });
   redisBridge.setControlHandler((control) => wsServer!.applyAuthorizationControl(control));
   registerWebSocketAuthorizationControlDispatcher(async (control) => {
     await wsServer!.applyAuthorizationControl(control);

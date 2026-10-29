@@ -6,7 +6,7 @@ import { isWalletTransactionNotificationEnabled } from '../services/push/notific
 import { mobilePermissionService } from '../services/mobilePermissions';
 import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
-import type { WebSocketEvent } from './types';
+import { parseGatewayPushEvent, type GatewayPushEvent, type WebSocketEvent } from './types';
 
 const log = createLogger('WS:GATEWAY:MAPPER');
 
@@ -31,9 +31,31 @@ function emptyAudience(event: WebSocketEvent, walletName?: string): GatewayEvent
 }
 
 /**
- * Recipients who enabled this notification and whose mobile `viewTransactions`
- * cap is on. A permission-lookup failure sends to nobody (fail closed).
+ * Keep the users whose mobile `viewTransactions` cap is on. A
+ * permission-lookup failure sends to nobody (fail closed).
  */
+async function filterByViewTransactions(
+  walletId: string,
+  userIds: string[],
+  logContext: Record<string, string> = {},
+): Promise<string[]> {
+  try {
+    return await mobilePermissionService.filterUserIdsByMobileAction(
+      walletId,
+      userIds,
+      'viewTransactions',
+    );
+  } catch (error) {
+    log.warn('Gateway push mobile permission lookup failed; sending to nobody', {
+      walletId,
+      ...logContext,
+      error: getErrorMessage(error),
+    });
+    return [];
+  }
+}
+
+/** Recipients who enabled this notification and hold the `viewTransactions` cap. */
 async function eligibleUserIds(
   audience: GatewayPushAudience,
   walletId: string,
@@ -47,19 +69,65 @@ async function eligibleUserIds(
     ))
     .map(({ userId }) => userId))];
 
+  return filterByViewTransactions(walletId, preferred);
+}
+
+interface WalletPushAccess {
+  walletName: string;
+  userIds: Set<string>;
+}
+
+/**
+ * The wallet's current name and the users with direct or group access to it.
+ * A missing wallet or a lookup failure returns null (send to nobody).
+ */
+async function findWalletPushAccess(walletId: string, type: string): Promise<WalletPushAccess | null> {
   try {
-    return await mobilePermissionService.filterUserIdsByMobileAction(
-      walletId,
-      preferred,
-      'viewTransactions',
-    );
+    // No transaction is involved, so the txid filter is one that matches nothing.
+    const audience = await findGatewayPushAudience(walletId, '');
+    if (!audience) {
+      log.warn('Gateway push wallet not found; sending to nobody', { walletId, type });
+      return null;
+    }
+    return {
+      walletName: audience.walletName,
+      userIds: new Set(audience.candidates.map(({ userId }) => userId)),
+    };
   } catch (error) {
-    log.warn('Gateway push mobile permission lookup failed; sending to nobody', {
+    log.warn('Gateway push wallet access lookup failed; sending to nobody', {
       walletId,
+      type,
       error: getErrorMessage(error),
     });
-    return [];
+    return null;
   }
+}
+
+/**
+ * Re-derive a worker-resolved push event at send time. The event crossed
+ * Redis, so only its validated fields survive; the listed recipients are
+ * re-checked against current wallet access and then the mobile
+ * `viewTransactions` cap, and the wallet name is re-read from the DB. Returns
+ * null, meaning send to nobody, for a malformed event, an empty audience or
+ * any lookup failure.
+ */
+export async function refilterPushAudience(input: GatewayPushEvent): Promise<GatewayPushEvent | null> {
+  const event = parseGatewayPushEvent(input);
+  if (!event) {
+    log.warn('Dropping malformed gateway push event');
+    return null;
+  }
+  const candidates = [...new Set(event.userIds)];
+  if (candidates.length === 0) return null;
+
+  const access = await findWalletPushAccess(event.walletId, event.type);
+  if (!access) return null;
+  const withAccess = candidates.filter((userId) => access.userIds.has(userId));
+  if (withAccess.length === 0) return null;
+
+  const userIds = await filterByViewTransactions(event.walletId, withAccess, { type: event.type });
+  if (userIds.length === 0) return null;
+  return { ...event, walletName: access.walletName, userIds };
 }
 
 /** Add the private push audience required by the external gateway. */

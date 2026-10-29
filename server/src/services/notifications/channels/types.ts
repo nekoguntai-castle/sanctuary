@@ -81,6 +81,11 @@ export interface NotificationResult {
   recorded?: boolean;
 }
 
+/** Result for a channel that had nobody to notify: a success, not a failure. */
+export function noRecipientsResult(channelId: string): NotificationResult {
+  return { success: true, channelId, usersNotified: 0, outcome: 'no_recipients', failureClass: 'none' };
+}
+
 export interface NotificationDispatchContext {
   executionPath: 'queued' | 'inline';
 }
@@ -131,6 +136,14 @@ export interface NotificationChannelHandler {
    * Check if channel is enabled/configured
    */
   isEnabled(): Promise<boolean>;
+
+  /**
+   * Check whether transaction notifications can be delivered (optional).
+   * When present, the registry's transaction fan-out uses it instead of
+   * `isEnabled()`, for a channel whose transaction path is narrower than its
+   * other notification paths.
+   */
+  isTransactionDeliveryEnabled?(): Promise<boolean>;
 
   /**
    * Send transaction notifications

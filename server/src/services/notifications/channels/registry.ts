@@ -12,14 +12,15 @@ import {
   evaluateOperationalTransactionAlerts,
   type OperationalTransactionEvaluation,
 } from '../../agentMonitoringService';
-import type {
-  NotificationChannelHandler,
-  TransactionNotification,
-  DraftNotification,
-  AIInsightNotification,
-  ConsolidationSuggestionNotification,
-  NotificationDispatchContext,
-  NotificationResult,
+import {
+  noRecipientsResult,
+  type NotificationChannelHandler,
+  type TransactionNotification,
+  type DraftNotification,
+  type AIInsightNotification,
+  type ConsolidationSuggestionNotification,
+  type NotificationDispatchContext,
+  type NotificationResult,
 } from './types';
 import { toSafeChannelOutcome } from '../outcomes';
 import { recordNotificationTelemetry } from '../telemetry';
@@ -125,15 +126,11 @@ class NotificationChannelRegistry {
     // Dispatch to all channels in parallel
     const promises = handlers.map(async (handler) => {
       try {
-        const isEnabled = await handler.isEnabled();
+        const isEnabled = handler.isTransactionDeliveryEnabled
+          ? await handler.isTransactionDeliveryEnabled()
+          : await handler.isEnabled();
         if (!isEnabled) {
-          return {
-            success: true,
-            channelId: handler.id,
-            usersNotified: 0,
-            outcome: 'no_recipients' as const,
-            failureClass: 'none' as const,
-          };
+          return noRecipientsResult(handler.id);
         }
 
         const result = await handler.notifyTransactions(walletId, enrichedTransactions);

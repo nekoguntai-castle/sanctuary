@@ -65,6 +65,11 @@ REQUIRED_FORWARDS=(
   'worker|WEBHOOK_ALLOWED_HOSTS|'
   'worker|WEBHOOK_ALLOWED_CIDRS|'
   'gateway|CORS_ALLOWED_ORIGINS|'
+  # Only the gateway holds APNs/FCM credentials. The worker hands insight and
+  # consolidation pushes to it over the gateway-only Redis channel and the
+  # backend forwards them, so both need the gateway secret.
+  'backend|GATEWAY_SECRET|'
+  'worker|GATEWAY_SECRET|'
   # mcp runs the backend image; models/prisma.ts reads this at runtime. The
   # other forwarded settings (CORS, rate limits, retention, worker health,
   # monitoring ports) are not read by its startup path.

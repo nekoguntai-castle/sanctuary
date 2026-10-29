@@ -96,7 +96,7 @@ To expose a new endpoint to mobile apps, add an entry to `GATEWAY_ROUTE_CONTRACT
 
 ## Push Notification Pipeline
 
-The gateway maintains a persistent WebSocket connection to the backend to receive transaction events. The backend never calls push providers directly.
+The gateway maintains a persistent WebSocket connection to the backend to receive transaction events. Treasury Intelligence insight and autopilot consolidation push events also arrive over it: the worker resolves their recipients and publishes them on a gateway-only Redis channel, and the API forwards them to the gateway. The backend never calls push providers directly.
 
 ```mermaid
 sequenceDiagram

@@ -20,11 +20,15 @@ const router = Router();
 const log = createLogger('ADMIN_PROXY:ROUTE');
 type SocksProxyAgentConstructor = new (proxyUrl: string) => https.Agent;
 
+// GET /admin/node-config returns null for an unset username/password, and
+// Node Config sends the stored values back unchanged.
+const OptionalProxyCredential = z.string().nullish().transform((value) => value ?? undefined);
+
 const ProxyTestBodySchema = z.object({
   host: z.string().min(1),
   port: z.union([z.string().min(1), z.number()]),
-  username: z.string().optional(),
-  password: z.string().optional(),
+  username: OptionalProxyCredential,
+  password: OptionalProxyCredential,
 }).strict();
 
 function hasProxyRequiredFields(body: unknown): boolean {

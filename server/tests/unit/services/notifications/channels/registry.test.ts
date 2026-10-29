@@ -253,6 +253,40 @@ describe('NotificationChannelRegistry', () => {
     });
   });
 
+  it('gates transactions on isTransactionDeliveryEnabled when a handler implements it', async () => {
+    const narrowed = createHandler({
+      id: 'push',
+      isEnabled: vi.fn().mockResolvedValue(true),
+      isTransactionDeliveryEnabled: vi.fn().mockResolvedValue(false),
+    });
+    const plain = createHandler({
+      id: 'plain',
+      isEnabled: vi.fn().mockResolvedValue(false),
+    });
+    registry.register(narrowed);
+    registry.register(plain);
+
+    const results = await registry.notifyTransactions('wallet-1', txNotifications, {
+      executionPath: 'queued',
+    });
+
+    for (const channelId of ['push', 'plain']) {
+      expect(results).toContainEqual({
+        success: true,
+        channelId,
+        usersNotified: 0,
+        outcome: 'no_recipients',
+        failureClass: 'none',
+      });
+    }
+    expect(narrowed.isTransactionDeliveryEnabled).toHaveBeenCalledTimes(1);
+    expect(narrowed.isEnabled).not.toHaveBeenCalled();
+    expect(narrowed.notifyTransactions).not.toHaveBeenCalled();
+    expect(plain.isEnabled).toHaveBeenCalledTimes(1);
+    expect(plain.notifyTransactions).not.toHaveBeenCalled();
+    expect(mockRecordNotificationTelemetry).not.toHaveBeenCalled();
+  });
+
   it('enriches sent transaction notifications for linked operational wallet agents', async () => {
     const enabled = createHandler({
       id: 'enabled',

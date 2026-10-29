@@ -33,6 +33,8 @@ const mocks = vi.hoisted(() => {
     websocketConnectionsDec: vi.fn(),
     websocketMessagesInc: vi.fn(),
     mapGatewayEvent: vi.fn(async (event: unknown) => event),
+    refilterPushAudience: vi.fn(async (event: unknown) => event),
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   };
 });
 
@@ -66,15 +68,11 @@ vi.mock('../../../src/observability/metrics', () => ({
 
 vi.mock('../../../src/websocket/gatewayEventMapper', () => ({
   mapGatewayEvent: mocks.mapGatewayEvent,
+  refilterPushAudience: mocks.refilterPushAudience,
 }));
 
 vi.mock('../../../src/utils/logger', () => ({
-  createLogger: () => ({
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  }),
+  createLogger: () => mocks.logger,
 }));
 
 import { GatewayWebSocketServer } from '../../../src/websocket/gatewayServer';
@@ -389,6 +387,83 @@ describe('GatewayWebSocketServer', () => {
     expect(payload).toEqual({
       type: 'event',
       event: { type: 'transaction', data: { txid: 'abc' } },
+    });
+  });
+
+  it('skips gateway push events whose re-checked audience is empty, unlike transaction events', async () => {
+    const server = new GatewayWebSocketServer();
+    const client = createClient();
+    (server as any).handleConnection(client, {} as any);
+    const challenge = JSON.parse(client.send.mock.calls[0][0]).challenge;
+    client.emit('message', Buffer.from(JSON.stringify({
+      type: 'auth_response',
+      response: createHmac('sha256', 'gateway-secret').update(challenge).digest('hex'),
+    })));
+    const pushEvent = {
+      type: 'consolidation_suggestion' as const,
+      walletId: 'w1',
+      walletName: 'Treasury',
+      userIds: ['u1'],
+      data: { feeRate: 2 },
+    };
+    mocks.refilterPushAudience
+      .mockImplementationOnce(async () => null);
+    mocks.mapGatewayEvent
+      .mockImplementationOnce(async (event) => ({ ...event as object, userIds: [] }));
+
+    await server.sendEvent(pushEvent);
+    expect(mocks.refilterPushAudience).toHaveBeenCalledWith(pushEvent);
+    expect(mocks.mapGatewayEvent).not.toHaveBeenCalled();
+    expect(client.send).toHaveBeenCalledTimes(2);
+
+    // A transaction event with an empty audience keeps its base behaviour.
+    await server.sendEvent({ type: 'transaction', walletId: 'w1', data: { txid: 'abc' } });
+    expect(JSON.parse(client.send.mock.calls[2][0]).event).toEqual({
+      type: 'transaction', walletId: 'w1', data: { txid: 'abc' }, userIds: [],
+    });
+
+    await server.sendEvent(pushEvent);
+    expect(JSON.parse(client.send.mock.calls[3][0])).toEqual({ type: 'event', event: pushEvent });
+  });
+
+  describe('forwardPushEvent', () => {
+    const pushEvent = {
+      type: 'consolidation_suggestion' as const,
+      walletId: 'w1',
+      walletName: 'Treasury',
+      userIds: ['u1'],
+      data: { feeRate: 2 },
+    };
+
+    it('does not send and reports false when no gateway is connected', () => {
+      const server = new GatewayWebSocketServer();
+      const sendEvent = vi.spyOn(server, 'sendEvent');
+
+      expect(server.forwardPushEvent(pushEvent)).toBe(false);
+      expect(sendEvent).not.toHaveBeenCalled();
+    });
+
+    it('sends to a connected gateway and reports true', () => {
+      const server = new GatewayWebSocketServer();
+      vi.spyOn(server, 'isGatewayConnected').mockReturnValue(true);
+      const sendEvent = vi.spyOn(server, 'sendEvent').mockResolvedValue(undefined);
+
+      expect(server.forwardPushEvent(pushEvent)).toBe(true);
+      expect(sendEvent).toHaveBeenCalledWith(pushEvent);
+    });
+
+    it('logs a rejected send without an unhandled rejection', async () => {
+      const server = new GatewayWebSocketServer();
+      vi.spyOn(server, 'isGatewayConnected').mockReturnValue(true);
+      vi.spyOn(server, 'sendEvent').mockRejectedValue(new Error('gateway down'));
+
+      expect(server.forwardPushEvent(pushEvent)).toBe(true);
+      await Promise.resolve();
+
+      expect(mocks.logger.error).toHaveBeenCalledWith('Failed to send gateway push event', {
+        type: 'consolidation_suggestion',
+        error: 'gateway down',
+      });
     });
   });
 

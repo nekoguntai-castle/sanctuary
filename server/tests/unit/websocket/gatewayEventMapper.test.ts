@@ -14,8 +14,8 @@ vi.mock('../../../src/services/mobilePermissions', () => ({
 }));
 vi.mock('../../../src/utils/logger', () => ({ createLogger: () => mocks.logger }));
 
-import { mapGatewayEvent } from '../../../src/websocket/gatewayEventMapper';
-import type { WebSocketEvent } from '../../../src/websocket/types';
+import { mapGatewayEvent, refilterPushAudience } from '../../../src/websocket/gatewayEventMapper';
+import type { GatewayPushEvent, WebSocketEvent } from '../../../src/websocket/types';
 
 const settings = (overrides: Record<string, boolean> = {}) => ({
   telegram: { wallets: { w1: {
@@ -106,7 +106,7 @@ describe('mapGatewayEvent', () => {
     })).resolves.toEqual(expect.objectContaining({ walletName: 'Vault', userIds: [] }));
   });
 
-  it('passes non-transaction events through without a repository read', async () => {
+  it('passes non-transaction broadcast events through without a repository read', async () => {
     const event: WebSocketEvent = { type: 'balance', walletId: 'w1', data: { balance: 10 } };
     await expect(mapGatewayEvent(event)).resolves.toBe(event);
     expect(mocks.findAudience).not.toHaveBeenCalled();
@@ -159,6 +159,132 @@ describe('mapGatewayEvent', () => {
         expect.stringContaining('sending to nobody'),
         expect.objectContaining({ walletId: 'w1', error: 'db down' }),
       );
+    });
+  });
+
+  describe('refilterPushAudience: gateway-only push events (ai_insight, consolidation_suggestion)', () => {
+    const insightEvent: GatewayPushEvent = {
+      type: 'ai_insight', walletId: 'w1', walletName: 'Vault', userIds: ['u1', 'u2', 'u1'],
+      data: { insightId: 'i1', insightType: 'fee_timing', insightTypeLabel: 'Fee Timing', severity: 'info' },
+    };
+    const consolidationEvent: GatewayPushEvent = {
+      type: 'consolidation_suggestion', walletId: 'w1', walletName: 'Vault', userIds: ['u1', 'u2'],
+      data: { feeRate: 2 },
+    };
+    const walletAudience = (userIds: string[], walletName = 'DB Vault') => ({
+      walletId: 'w1', walletName, transaction: null,
+      candidates: userIds.map((userId) => ({ userId, preferences: null })),
+    });
+    // Simulates an envelope written straight to Redis by someone other than the worker.
+    const forged = (event: object) => event as GatewayPushEvent;
+
+    beforeEach(() => {
+      mocks.findAudience.mockResolvedValue(walletAudience(['u1', 'u2']));
+    });
+
+    it('re-checks wallet access and the viewTransactions cap at send time, naming the wallet from the DB', async () => {
+      mocks.filterUserIds.mockResolvedValue(['u2']);
+
+      await expect(refilterPushAudience({ ...insightEvent, walletName: 'Forged name' })).resolves.toEqual({
+        ...insightEvent, walletName: 'DB Vault', userIds: ['u2'],
+      });
+      expect(mocks.findAudience).toHaveBeenCalledWith('w1', '');
+      expect(mocks.filterUserIds).toHaveBeenCalledWith('w1', ['u1', 'u2'], 'viewTransactions');
+      await expect(refilterPushAudience(consolidationEvent)).resolves.toEqual({
+        ...consolidationEvent, walletName: 'DB Vault', userIds: ['u2'],
+      });
+    });
+
+    it('drops recipients without wallet access before the cap lookup', async () => {
+      mocks.findAudience.mockResolvedValue(walletAudience(['u2']));
+
+      await expect(refilterPushAudience({ ...consolidationEvent, userIds: ['intruder', 'u2'] }))
+        .resolves.toEqual({ ...consolidationEvent, walletName: 'DB Vault', userIds: ['u2'] });
+      expect(mocks.filterUserIds).toHaveBeenCalledWith('w1', ['u2'], 'viewTransactions');
+    });
+
+    it('sends to nobody when no listed recipient has wallet access', async () => {
+      mocks.findAudience.mockResolvedValue(walletAudience(['someone-else']));
+
+      await expect(refilterPushAudience(insightEvent)).resolves.toBeNull();
+      expect(mocks.filterUserIds).not.toHaveBeenCalled();
+    });
+
+    it('rebuilds the event from validated fields, so forged top-level and data keys never reach the gateway', async () => {
+      const result = await refilterPushAudience(forged({
+        ...insightEvent,
+        userId: 'attacker',
+        title: 'Forged title',
+        data: { ...insightEvent.data, body: 'Forged body', userId: 'attacker' },
+      }));
+
+      expect(result).toEqual({ ...insightEvent, walletName: 'DB Vault', userIds: ['u1', 'u2'] });
+      expect(result).not.toHaveProperty('userId');
+      expect(result).not.toHaveProperty('title');
+      expect(result?.data).not.toHaveProperty('body');
+
+      const { insightTypeLabel: _label, ...unlabelled } = insightEvent.data;
+      await expect(refilterPushAudience({ ...insightEvent, data: unlabelled })).resolves.toEqual({
+        ...insightEvent, walletName: 'DB Vault', userIds: ['u1', 'u2'], data: unlabelled,
+      });
+      await expect(refilterPushAudience(forged({ ...consolidationEvent, data: { feeRate: 2, note: 'x' } })))
+        .resolves.toEqual({ ...consolidationEvent, walletName: 'DB Vault' });
+    });
+
+    it.each([
+      ['non-string severity', { ...insightEvent, data: { ...insightEvent.data, severity: 7 } }],
+      ['empty insightId', { ...insightEvent, data: { ...insightEvent.data, insightId: '' } }],
+      ['non-string insightType', { ...insightEvent, data: { ...insightEvent.data, insightType: null } }],
+      ['non-string insightTypeLabel', { ...insightEvent, data: { ...insightEvent.data, insightTypeLabel: 5 } }],
+      ['string feeRate', { ...consolidationEvent, data: { feeRate: '2' } }],
+      ['non-finite feeRate', { ...consolidationEvent, data: { feeRate: Number.POSITIVE_INFINITY } }],
+      ['insight data on a consolidation event', { ...consolidationEvent, data: insightEvent.data }],
+      ['missing data', { ...consolidationEvent, data: null }],
+      ['non-object event', 'ai_insight'],
+      ['unknown type', { ...consolidationEvent, type: 'transaction' }],
+      ['empty walletId', { ...consolidationEvent, walletId: '' }],
+      ['non-string walletName', { ...consolidationEvent, walletName: 7 }],
+      ['non-array userIds', { ...consolidationEvent, userIds: 'u1' }],
+    ])('drops a malformed event (%s) without any lookup', async (_label, event) => {
+      await expect(refilterPushAudience(forged(event as object))).resolves.toBeNull();
+      expect(mocks.findAudience).not.toHaveBeenCalled();
+      expect(mocks.filterUserIds).not.toHaveBeenCalled();
+      expect(mocks.logger.warn).toHaveBeenCalledWith('Dropping malformed gateway push event');
+    });
+
+    it('sends to nobody and warns without user ids when the wallet is gone or the access lookup fails', async () => {
+      mocks.findAudience.mockResolvedValueOnce(null);
+      await expect(refilterPushAudience(insightEvent)).resolves.toBeNull();
+      expect(mocks.logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('sending to nobody'),
+        { walletId: 'w1', type: 'ai_insight' },
+      );
+
+      mocks.findAudience.mockRejectedValueOnce(new Error('db down'));
+      await expect(refilterPushAudience(consolidationEvent)).resolves.toBeNull();
+      expect(mocks.logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('sending to nobody'),
+        { walletId: 'w1', type: 'consolidation_suggestion', error: 'db down' },
+      );
+      expect(mocks.filterUserIds).not.toHaveBeenCalled();
+    });
+
+    it('sends to nobody and warns when the permission lookup fails or removes everyone', async () => {
+      mocks.filterUserIds.mockRejectedValueOnce(new Error('db down'));
+      await expect(refilterPushAudience(consolidationEvent)).resolves.toBeNull();
+      expect(mocks.logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('sending to nobody'),
+        expect.objectContaining({ walletId: 'w1', type: 'consolidation_suggestion', error: 'db down' }),
+      );
+
+      mocks.filterUserIds.mockResolvedValueOnce([]);
+      await expect(refilterPushAudience(consolidationEvent)).resolves.toBeNull();
+    });
+
+    it('skips every lookup for an empty audience', async () => {
+      await expect(refilterPushAudience({ ...insightEvent, userIds: [] })).resolves.toBeNull();
+      expect(mocks.findAudience).not.toHaveBeenCalled();
+      expect(mocks.filterUserIds).not.toHaveBeenCalled();
     });
   });
 });

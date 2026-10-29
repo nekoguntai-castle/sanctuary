@@ -141,6 +141,101 @@ export interface WebSocketEvent {
   addressId?: string;
 }
 
+/**
+ * Wallet-level push events that only the push gateway consumes.
+ *
+ * Server-only on purpose: they carry a private recipient list (`userIds`), so
+ * they are never part of the shared, frontend-visible `BroadcastEvent` union
+ * and never reach browser clients. Payloads stay minimal (decision D-4): no AI
+ * summary text, amounts or UTXO counts.
+ */
+export const GATEWAY_PUSH_EVENT_TYPES = ['ai_insight', 'consolidation_suggestion'] as const;
+export type GatewayPushEventType = (typeof GATEWAY_PUSH_EVENT_TYPES)[number];
+
+export interface AIInsightGatewayPushEvent {
+  type: 'ai_insight';
+  walletId: string;
+  walletName: string;
+  userIds: string[];
+  data: {
+    insightId: string;
+    insightType: string;
+    /** Human label from INSIGHT_TYPE_LABELS, so the gateway needs no copy of the map. */
+    insightTypeLabel?: string;
+    severity: string;
+  };
+}
+
+export interface ConsolidationGatewayPushEvent {
+  type: 'consolidation_suggestion';
+  walletId: string;
+  walletName: string;
+  userIds: string[];
+  data: { feeRate: number };
+}
+
+export type GatewayPushEvent = AIInsightGatewayPushEvent | ConsolidationGatewayPushEvent;
+
+export function isGatewayPushEventType(type: string): type is GatewayPushEventType {
+  return (GATEWAY_PUSH_EVENT_TYPES as readonly string[]).includes(type);
+}
+
+export function isGatewayPushEvent(event: WebSocketEvent | GatewayPushEvent): event is GatewayPushEvent {
+  return isGatewayPushEventType(event.type);
+}
+
+type UnknownRecord = Record<string, unknown>;
+
+function isRecord(value: unknown): value is UnknownRecord {
+  return !!value && typeof value === 'object';
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
+function parseInsightData(data: UnknownRecord): AIInsightGatewayPushEvent['data'] | null {
+  const { insightId, insightType, insightTypeLabel, severity } = data;
+  if (!isNonEmptyString(insightId) || !isNonEmptyString(insightType) || !isNonEmptyString(severity)) {
+    return null;
+  }
+  if (insightTypeLabel === undefined) return { insightId, insightType, severity };
+  return typeof insightTypeLabel === 'string'
+    ? { insightId, insightType, insightTypeLabel, severity }
+    : null;
+}
+
+function parseConsolidationData(data: UnknownRecord): ConsolidationGatewayPushEvent['data'] | null {
+  return typeof data.feeRate === 'number' && Number.isFinite(data.feeRate)
+    ? { feeRate: data.feeRate }
+    : null;
+}
+
+/**
+ * Rebuild a gateway push event from its validated fields only. Anything else
+ * an envelope carries (a top-level `userId`, extra `data` keys) is dropped,
+ * and a wrongly typed field rejects the whole event (null). Push events cross
+ * Redis, so whoever can write there must not be able to steer the gateway.
+ */
+export function parseGatewayPushEvent(value: unknown): GatewayPushEvent | null {
+  if (!isRecord(value) || !isRecord(value.data)) return null;
+  const { type, walletId, walletName, userIds, data } = value;
+  if (!isNonEmptyString(walletId) || typeof walletName !== 'string' ||
+    !Array.isArray(userIds) || !userIds.every(isNonEmptyString)) {
+    return null;
+  }
+  const base = { walletId, walletName, userIds: [...userIds] };
+  if (type === 'ai_insight') {
+    const insight = parseInsightData(data);
+    return insight && { type, ...base, data: insight };
+  }
+  if (type === 'consolidation_suggestion') {
+    const consolidation = parseConsolidationData(data);
+    return consolidation && { type, ...base, data: consolidation };
+  }
+  return null;
+}
+
 /** Gateway WebSocket with HMAC authentication state */
 export interface GatewayWebSocket extends WebSocket {
   isAuthenticated: boolean;
