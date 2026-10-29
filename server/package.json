@@ -102,7 +102,7 @@
     "socks-proxy-agent": "^10.1.0",
     "tiny-secp256k1": "^2.2.4",
     "ws": "^8.21.3",
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@faker-js/faker": "^10.6.0",

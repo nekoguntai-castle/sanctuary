@@ -73,6 +73,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI: the upgrade E2E lane runs the target `install.sh` like an operator (no runtime secrets inherited from the harness, `SANCTUARY_ENV_FILE` only for a custom location) and compares secrets from the env file before and after, so a missing, dropped or regenerated secret now fails the lane; the `legacy-runtime-env` fixture really upgrades through the repo-root `.env` fallback.
 - CI: the supply-chain lock gate runs on every quality run in Determine Quality Scope, so a Dockerfile, compose, manifest, lockfile or lock-file change can no longer merge without it; the real checkout files read by four classifier-only contract suites now select the CI classifier tests job.
 
+### Security
+
+- zod is upgraded to 4.6.7 for GHSA-mrhx-c7xc-m3w5: an array in a request body could exhaust server memory during validation.
+- toml is upgraded to 5.0.1 for GHSA-4qx8-w7c3-pj3p (a transitive dependency of the Trezor connector).
+- body-parser is upgraded to 2.4.0 in the server, gateway and LLM egress proxy (GHSA-27r3-jxmh-p828), with qs to 6.16.2 to meet its range; systeminformation to 5.33.18 (GHSA-3f7j-7jwc-fxfj); undici to 8.12.3 (GHSA-xjj6-f33q-929c, GHSA-4w7w-5xrc-9h26, GHSA-2m5v-pch6-74hx, GHSA-qrxm-fqhp-jwvm). The docs site build moves to dompurify 3.4.17 (GHSA-cg2g-xh64-v4q7, GHSA-mrv2-3pqr-j5jr) and body-parser 1.20.9. The two braces waivers are removed because GHSA-vfj7-8cjw-p6xm was withdrawn.
+
 
 ### Known limitations
 
