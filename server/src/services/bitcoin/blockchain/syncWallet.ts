@@ -21,6 +21,8 @@ import { runWalletSyncMutation } from '../sync/mutationBoundary';
 import {
   createSyncStageRuntime,
   isSyncStageBudgetError,
+  SYNC_REMOTE_STAGE_BUDGET_MS,
+  syncHistoryWindowMs,
   type SyncAttemptRuntime,
   type SyncAttemptTelemetry,
 } from '../sync/attemptRuntime';
@@ -172,6 +174,17 @@ const scanGeneratedAddresses = async (
       [...histories.values()].flatMap(history => history.map(item => item.tx_hash)),
     )];
     await persistOwnershipRepair(input, txids);
+    if (syncHistoryWindowMs(input.attemptDeadlineAt) < SYNC_REMOTE_STAGE_BUDGET_MS) {
+      // The generated addresses and their repair targets are persisted; the
+      // next sync scans them rather than a recursive pass whose history window
+      // could not fit one stage budget. The window already leaves the rest of
+      // the attempt at least a third of the remaining time.
+      log.info('[BLOCKCHAIN] Deferring the recursive gap-limit sync to the next sync', {
+        walletId: input.walletId,
+        depth: input.depth,
+      });
+      return undefined;
+    }
     return syncWallet(
       input.walletId,
       input.depth + 1,

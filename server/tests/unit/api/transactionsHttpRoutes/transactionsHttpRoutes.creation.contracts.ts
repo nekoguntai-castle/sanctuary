@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import request from 'supertest';
+import * as bitcoin from 'bitcoinjs-lib';
 import { ForbiddenError } from '../../../../src/errors';
 
 import { mockPrismaClient } from '../../../mocks/prisma';
@@ -12,6 +13,7 @@ import {
   mockEstimateTransaction,
   mockEvaluatePolicies,
   mockFetch,
+  mockFindAddressStrings,
   mockGetCachedBlockHeight,
   mockGetPSBTInfo,
   mockRecalculateWalletBalances,
@@ -543,7 +545,9 @@ export function registerTransactionHttpCreationTests(): void {
         { intentId: 'intent-http', intentDigest: 'a'.repeat(64) },
         walletId,
       );
-      expect(mockBuildIntentPolicyInput).toHaveBeenCalledWith(walletId, 'test-user-id', mintedIntentEnvelope());
+      expect(mockBuildIntentPolicyInput).toHaveBeenCalledWith(
+        walletId, 'test-user-id', mintedIntentEnvelope(), expect.objectContaining({ externalOutputs: expect.any(Array) }),
+      );
       expect(mockEvaluatePolicies).toHaveBeenCalledTimes(2);
       expect(mockEvaluatePolicies.mock.calls[0][0].preview).toBeUndefined();
       expect(mockEvaluatePolicies.mock.calls[1][0]).toMatchObject({ amount: BigInt(50000), preview: true });
@@ -635,6 +639,49 @@ export function registerTransactionHttpCreationTests(): void {
       expect(response.status, JSON.stringify(response.body)).toBe(200);
       expect(response.body.policyEvaluation).toBeUndefined();
       expect(mockEvaluatePolicies).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('batch spend the broadcast and draft checks bind', () => {
+    const ownScript = `0014${'3'.repeat(40)}`;
+    const externalScript = `0014${'4'.repeat(40)}`;
+    const toAddress = (script: string) =>
+      bitcoin.address.fromOutputScript(Buffer.from(script, 'hex'), bitcoin.networks.testnet);
+    const batchEnvelope = (outputs: Array<[script: string, sats: string]>) => {
+      const envelope = mintedIntentEnvelope();
+      envelope.snapshot.transaction.inputs[0].prevout.amountSats = '70150';
+      envelope.snapshot.transaction.outputs = outputs.map(([scriptPubKeyHex, amountSats]) => ({ scriptPubKeyHex, amountSats }));
+      return envelope;
+    };
+    const createBatch = () => request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/batch`)
+      .send({
+        feeRate: 1,
+        outputs: [{ address: toAddress(ownScript), amount: 20000 }, { address: toAddress(externalScript), amount: 50000 }],
+      });
+
+    it('returns the external recipient and net spend when the batch also pays a wallet address first', async () => {
+      mockWalletFindById.mockResolvedValue({ id: walletId, network: 'testnet' });
+      mockFindAddressStrings.mockResolvedValue([toAddress(ownScript)]);
+      mockLoadSigningIntent.mockResolvedValue(batchEnvelope([[ownScript, '20000'], [externalScript, '50000']]));
+
+      const response = await createBatch();
+
+      expect(response.status, JSON.stringify(response.body)).toBe(200);
+      expect(response.body.effectiveAmount).toBe(50000);
+      expect(response.body.recipient).toBe(toAddress(externalScript));
+    });
+
+    it('omits both when the batch pays only the wallet', async () => {
+      mockWalletFindById.mockResolvedValue({ id: walletId, network: 'testnet' });
+      mockFindAddressStrings.mockResolvedValue([toAddress(ownScript), toAddress(externalScript)]);
+      mockLoadSigningIntent.mockResolvedValue(batchEnvelope([[ownScript, '20000'], [externalScript, '50000']]));
+
+      const response = await createBatch();
+
+      expect(response.status, JSON.stringify(response.body)).toBe(200);
+      expect(response.body).not.toHaveProperty('effectiveAmount');
+      expect(response.body).not.toHaveProperty('recipient');
     });
   });
 }

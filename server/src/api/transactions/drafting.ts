@@ -17,7 +17,9 @@ import { policyEvaluationEngine, type PolicyEvaluationResult } from '../../servi
 import { buildIntentPolicyInput } from '../../services/vaultPolicy/intentPolicyInput';
 import {
   createSigningIntent,
+  deriveIntentSpend,
   loadSigningIntent,
+  type IntentSpend,
   type SigningIntentHandle,
 } from '../../services/bitcoin/signingIntent';
 import * as txService from '../../services/bitcoin/transactionService';
@@ -71,12 +73,39 @@ async function evaluateMintedIntent(
   userId: string,
   handle: SigningIntentHandle,
 ): Promise<PolicyEvaluationResult | undefined> {
+  return (await evaluateMintedIntentSpend(walletId, userId, handle)).policyEvaluation;
+}
+
+/** evaluateMintedIntent, also returning the spend it evaluated (derived once from the stored intent). */
+async function evaluateMintedIntentSpend(
+  walletId: string,
+  userId: string,
+  handle: SigningIntentHandle,
+): Promise<{ policyEvaluation?: PolicyEvaluationResult; spend: IntentSpend }> {
   const intent = await loadSigningIntent(handle, walletId);
-  const input = await buildIntentPolicyInput(walletId, userId, intent);
-  if (!input) return undefined;
+  const spend = await deriveIntentSpend(walletId, intent.snapshot.network, intent.snapshot);
+  const input = await buildIntentPolicyInput(walletId, userId, intent, spend);
+  if (!input) return { spend };
   const result = await policyEvaluationEngine.evaluatePolicies({ ...input, preview: true });
   if (!result.allowed) throw new ForbiddenError('Transaction blocked by vault policy');
-  return result.triggered.length > 0 ? result : undefined;
+  return { policyEvaluation: result.triggered.length > 0 ? result : undefined, spend };
+}
+
+/**
+ * The recipient and net amount that broadcast (`assertOptionalMetadata`) and
+ * draft creation (`assertRecipientMatches`/`assertAmountMatches`) bind a batch
+ * to: the intent's first external output and its external spend. Outputs to
+ * the wallet's own addresses are not part of either, so the client must not
+ * derive them from its output list. Both are returned only when
+ * `spend.amount > 0`: the amount is the external outputs' total less any
+ * payjoin peer inputs (floored at 0), so a positive amount guarantees
+ * `externalOutputs[0]` exists. At amount 0 (nothing leaves the wallet, or a
+ * payjoin peer covers it) both are omitted, and neither check applies.
+ */
+function batchIntentSpendSummary(spend: IntentSpend): { recipient?: string; effectiveAmount?: number } {
+  return spend.amount > 0
+    ? { recipient: spend.externalOutputs[0].address, effectiveAmount: spend.amount }
+    : {};
 }
 
 /**
@@ -251,7 +280,11 @@ router.post('/wallets/:walletId/transactions/batch', requireWalletAccess('edit')
     feePolicy: txData.feePolicy,
     signingContext: txData.signingContext,
   });
-  const policyEvaluation = await evaluateMintedIntent(walletId, requireAuthenticatedUser(req).userId, signingIntent);
+  const { policyEvaluation, spend } = await evaluateMintedIntentSpend(
+    walletId,
+    requireAuthenticatedUser(req).userId,
+    signingIntent,
+  );
 
   res.json({
     psbtBase64: txData.psbtBase64,
@@ -263,6 +296,7 @@ router.post('/wallets/:walletId/transactions/batch', requireWalletAccess('edit')
     utxos: txData.utxos,
     inputPaths: txData.inputPaths,
     outputs: txData.outputs,
+    ...batchIntentSpendSummary(spend),
     policyEvaluation,
     ...signingIntent,
   });

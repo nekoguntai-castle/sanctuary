@@ -14,8 +14,12 @@ import { authenticateHistoryResults } from '../historyEvidenceAuthentication';
 import { recordRejectedEvidence } from '../rejectedEvidence';
 import {
   createSyncStageRuntime,
+  createSyncWindowRuntime,
   isSyncStageBudgetError,
   mapWithSyncConcurrency,
+  SYNC_REMOTE_BATCH_SIZE,
+  syncHistoryWindowMs,
+  workScaledStageBudgetMs,
   type SyncStageRuntime,
 } from '../attemptRuntime';
 import { isElectrumResponseTooLargeError } from '../../electrum/protocol';
@@ -28,8 +32,6 @@ const recordHistoryFetchFailure = (ctx: SyncContext, reason: string): void => {
   log.warn('[SYNC] Rejected incomplete address-history evidence', { reason, count: 1 });
 };
 
-/** Number of addresses to fetch per batch RPC call */
-const BATCH_SIZE = 10;
 const isAttemptCancellation = (reason: unknown): boolean => !isSyncStageBudgetError(reason);
 
 /**
@@ -45,9 +47,22 @@ export async function fetchHistoriesPhase(ctx: SyncContext): Promise<SyncContext
   walletLog(walletId, 'info', 'SYNC', `Fetching address histories (${addresses.length} addresses)...`);
   log.debug(`[SYNC] Fetching history for ${addresses.length} addresses using batch RPC...`);
 
-  const stage = ctx.attemptRuntime
-    ? createSyncStageRuntime(ctx.attemptRuntime, 'address_histories')
+  // Each stage of the history phase is budgeted from its own item count, and
+  // all of them share one window sized from the time left in the attempt.
+  const windowOpenedAt = Date.now();
+  const historyWindow = ctx.attemptRuntime
+    ? createSyncWindowRuntime(
+      ctx.attemptRuntime,
+      syncHistoryWindowMs(ctx.attemptRuntime.deadlineAt, windowOpenedAt),
+      windowOpenedAt,
+    )
     : undefined;
+  const openStage = historyWindow
+    ? (name: string, items: number) => createSyncStageRuntime(
+      historyWindow, name, workScaledStageBudgetMs(items),
+    )
+    : undefined;
+  const stage = openStage?.('address_histories', addresses.length);
   const requestOptions = stage
     ? { signal: stage.signal, deadlineAt: stage.deadlineAt }
     : undefined;
@@ -91,7 +106,7 @@ export async function fetchHistoriesPhase(ctx: SyncContext): Promise<SyncContext
       }
     }
 
-    await authenticateHistoryResults(ctx, requestOptions);
+    await authenticateHistoryResults(ctx, { openStage });
 
     ctx.stats.historiesFetched = ctx.historyResults.size;
 
@@ -115,15 +130,15 @@ async function fetchAddressHistories(
   settledAddresses: Set<string>,
 ): Promise<void> {
   const { walletId, client, addresses } = ctx;
-  const totalBatches = Math.ceil(addresses.length / BATCH_SIZE);
+  const totalBatches = Math.ceil(addresses.length / SYNC_REMOTE_BATCH_SIZE);
   const checkpoint = createCooperativeScheduler(requestOptions?.signal, {
     shouldThrowAbort: isAttemptCancellation,
   });
-  for (let i = 0; i < addresses.length; i += BATCH_SIZE) {
+  for (let i = 0; i < addresses.length; i += SYNC_REMOTE_BATCH_SIZE) {
     requestOptions?.signal?.throwIfAborted();
-    const batchAddresses = addresses.slice(i, i + BATCH_SIZE).map(a => a.address);
-    const batchNum = Math.floor(i / BATCH_SIZE) + 1;
-    if (addresses.length > BATCH_SIZE) {
+    const batchAddresses = addresses.slice(i, i + SYNC_REMOTE_BATCH_SIZE).map(a => a.address);
+    const batchNum = Math.floor(i / SYNC_REMOTE_BATCH_SIZE) + 1;
+    if (addresses.length > SYNC_REMOTE_BATCH_SIZE) {
       walletLog(walletId, 'debug', 'SYNC', `Address history batch ${batchNum}/${totalBatches}...`);
     }
 

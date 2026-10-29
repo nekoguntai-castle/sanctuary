@@ -1052,7 +1052,7 @@ describe('full-wallet receive evidence authentication', () => {
     try {
       await expect(authenticateHistoryResults(
         ctx,
-        { signal: controller.signal },
+        { requestOptions: { signal: controller.signal } },
       )).rejects.toBe(reason);
     } finally {
       now.mockRestore();

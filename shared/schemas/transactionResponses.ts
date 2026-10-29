@@ -62,6 +62,8 @@ export const CreateBatchTransactionResponseSchema = z.looseObject({
   totalOutput: satoshis,
   changeAmount: satoshis,
   effectiveAmount: positiveSafeSatoshis.optional(),
+  // The intent's first external output: the recipient broadcast and draft save must report.
+  recipient: z.string().min(1).optional(),
   utxos: z.array(z.looseObject({ txid: z.string(), vout: z.number().int() })),
   outputs: batchOutputs,
 });

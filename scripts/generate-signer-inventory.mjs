@@ -104,7 +104,6 @@ export const REQUIRED_SERVER_CAPABILITY_BOUNDARIES = Object.freeze([
   ['server/src/services/agentOperationalAddressService.ts', 'assertWalletHardwareCapabilityById', 'display', 1],
   ['server/src/services/bitcoin/signingIntent/artifactValidation.ts', 'assertWalletHardwareCapabilityById', 'finalize', 1],
   ['server/src/services/bitcoin/signingIntent/artifactValidation.ts', 'assertWalletHardwareCapabilityById', 'sign', 1],
-  ['server/src/services/bitcoin/sync/addressDiscovery.ts', 'assertWalletHardwareCapabilityById', 'display', 1],
   ['server/src/services/bitcoin/transactions/broadcasting.ts', 'assertWalletHardwareCapabilityById', 'broadcast', 1],
   ['server/src/services/deviceAccountRegistration.ts', 'assertHardwareWalletCapability', 'account_add', 1],
   ['server/src/services/deviceRegistration.ts', 'assertHardwareWalletCapability', 'import', 2],

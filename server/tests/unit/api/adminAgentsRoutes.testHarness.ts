@@ -28,9 +28,9 @@ const mockState = vi.hoisted(() => ({
   walletRepository: {
     findById: vi.fn(),
     findByIdWithSigningDevices: vi.fn(),
-    hasAccess: vi.fn(),
     findAllWithSelect: vi.fn(),
   },
+  findAgentWalletAccessProblem: vi.fn(),
   logFromRequest: vi.fn(),
 }));
 
@@ -48,6 +48,10 @@ vi.mock("../../../src/repositories", () => ({
   agentRepository: mockState.agentRepository,
   userRepository: mockState.userRepository,
   walletRepository: mockState.walletRepository,
+}));
+
+vi.mock("../../../src/services/agentWalletAccess", () => ({
+  findAgentWalletAccessProblem: mockState.findAgentWalletAccessProblem,
 }));
 
 vi.mock("../../../src/services/auditService", () => ({

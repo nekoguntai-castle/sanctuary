@@ -117,6 +117,14 @@ describe('CreateBatchTransactionResponseSchema', () => {
     }
   });
 
+  it('accepts the server-bound recipient and rejects an empty or non-string one', () => {
+    expect(CreateBatchTransactionResponseSchema.parse({ ...batchCreated, recipient: 'bc1qexternal' }))
+      .toEqual({ ...batchCreated, recipient: 'bc1qexternal' });
+    for (const recipient of ['', 42, null]) {
+      expect(CreateBatchTransactionResponseSchema.safeParse({ ...batchCreated, recipient }).success).toBe(false);
+    }
+  });
+
   it('rejects a batch output total that exceeds the safe integer boundary', () => {
     expect(CreateBatchTransactionResponseSchema.safeParse({
       ...batchCreated,

@@ -796,4 +796,28 @@ describeWithDatabase("wallet sync cross-network contract", () => {
       ready: true,
     });
   });
+
+  it("cancels a bounded read that waits past its statement timeout", async () => {
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => { release = resolve; });
+    let markLocked!: () => void;
+    const locked = new Promise<void>((resolve) => { markLocked = resolve; });
+    const holder = prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`LOCK TABLE "wallets" IN ACCESS EXCLUSIVE MODE`;
+      markLocked();
+      await Promise.race([released, new Promise((resolve) => setTimeout(resolve, 3_000))]);
+    }, { timeout: 10_000 });
+    await locked;
+
+    const startedAt = Date.now();
+    const result = await readSubscriptionCoverage({ statementTimeoutMs: 200 });
+    const elapsedMs = Date.now() - startedAt;
+    release();
+    await holder;
+
+    // Postgres counts the lock wait toward statement_timeout, so the read is
+    // cancelled server-side instead of waiting for the holder.
+    expect(result).toMatchObject({ status: "unavailable", reason: "storage_unavailable" });
+    expect(elapsedMs).toBeLessThan(2_000);
+  }, 15_000);
 });

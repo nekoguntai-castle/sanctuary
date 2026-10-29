@@ -22,6 +22,8 @@ Agent credentials cannot broadcast, approve vault policies, manage wallet settin
 
 ## Register An Agent
 
+The target user must be an owner or signer of the funding wallet (any role on the operational wallet). An agent key is refused while its user is only a viewer or approver of the funding wallet.
+
 1. Open `Admin -> Wallet Agents`.
 
    ![Admin -> Wallet Agents with one registered agent](../assets/screenshots/admin-agents.png)

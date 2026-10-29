@@ -117,6 +117,28 @@ is_ci_classifier_file() {
     scripts/ops/sanctuary-backup.sh|scripts/ops/install-sanctuary-backup.sh|server/.husky/pre-commit)
       return 0
       ;;
+    # Files the ci-classifier-tests suites execute: modules they import, and
+    # scripts or configs they source, run or copy from the checkout (D-17.C2),
+    # plus the root-layout schema its suite pins. Exact paths, not globs.
+    # tests/ci/classify-quality-scope.test.sh derives the executed set from
+    # quality.yml and fails when one of them is missing here.
+    scripts/lib/is-main-module.mjs|scripts/quality/check-root-layout.mjs|scripts/quality/root-layout-classification.schema.json|scripts/bump-funds-critical.sh|scripts/create-forge-release.sh|scripts/offline/apply-bundle.sh|scripts/offline/bundle-common.sh|config/tooling/jscpd.json|config/wallet-safety-critical-paths.json|.github/ci-performance-budget.json)
+      return 0
+      ;;
+    scripts/perf/wallet-sync-database-readiness.mjs|scripts/perf/wallet-sync-health-probe.mjs|scripts/perf/wallet-sync-high-fanout-replay.mjs|scripts/perf/wallet-sync-replay-cleanup.mjs|scripts/perf/wallet-sync-replay-creation.mjs|scripts/perf/wallet-sync-replay-ownership.mjs)
+      return 0
+      ;;
+    server/scripts/check-runtime-prisma-deps.cjs|server/scripts/project-runtime-dependencies.cjs|server/scripts/mutation/shards.mjs|server/stryker.critical.config.mjs|scripts/integration-test-defaults.sh|tests/install/run-all-tests.sh|tests/install/utils/assertion-tracking.sh|tests/install/utils/collect-upgrade-artifacts.sh|tests/install/utils/helpers.sh|tests/install/utils/upgrade-selection.sh|tests/install/utils/upgrade-source-refs.sh)
+      return 0
+      ;;
+    scripts/reset-user-2fa.sh|scripts/support-package-runner.mjs|scripts/generate-signer-inventory.mjs|scripts/check-server-cycle-baseline.mjs|scripts/check-wallet-sync-lifecycle-contract.mjs|scripts/check-wallet-sync-mutation-boundaries.mjs|scripts/architecture/generate-graphs.mjs|scripts/architecture/extract-call-graphs.mjs)
+      return 0
+      ;;
+    # The Phase 2/3 Compose smoke scripts phase-smoke-cleanup-composition.test.mjs
+    # runs through process.execPath, and their import closure (D-17.C2).
+    scripts/ops/phase2-alert-receiver-smoke.mjs|scripts/ops/phase2-gateway-audit-compose-smoke.mjs|scripts/perf/phase3-compose-benchmark-smoke.mjs|scripts/perf/phase3-benchmark-utils.mjs|scripts/perf/phase3-compose/api.mjs|scripts/perf/phase3-compose/backend-scale-out-proof.mjs|scripts/perf/phase3-compose/benchmark-harness.mjs|scripts/perf/phase3-compose/benchmark-proof.mjs|scripts/perf/phase3-compose/capacity-snapshots.mjs|scripts/perf/phase3-compose/common.mjs|scripts/perf/phase3-compose/compose-runtime.mjs|scripts/perf/phase3-compose/config.mjs|scripts/perf/phase3-compose/large-wallet-history-proof.mjs|scripts/perf/phase3-compose/postgres.mjs|scripts/perf/phase3-compose/proofs.mjs|scripts/perf/phase3-compose/report.mjs|scripts/perf/phase3-compose/sized-backup-restore-proof.mjs|scripts/perf/phase3-compose/worker-proofs.mjs|scripts/perf/phase3-compose/proof-scripts/backend-scale-out.mjs|scripts/perf/phase3-compose/proof-scripts/worker-queue.mjs|scripts/perf/phase3-compose/proof-scripts/worker-scale-out.mjs)
+      return 0
+      ;;
     # Real checkout files read by the classifier-only contract suites (D-14.C6).
     # Exact paths: other compose files and Dockerfiles are covered by the
     # always-on supply-chain lock step in determine-scope (D-14.C5).

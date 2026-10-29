@@ -1,8 +1,8 @@
 import crypto from 'node:crypto';
 import type { Request } from 'express';
 import { agentRepository, AGENT_ACTION_CREATE_FUNDING_DRAFT } from '../repositories/agentRepository';
-import { walletRepository } from '../repositories/walletRepository';
 import { ErrorCodes, ForbiddenError, UnauthorizedError } from '../errors/ApiError';
+import { findAgentWalletAccessProblem } from '../services/agentWalletAccess';
 import { getClientInfo } from '../services/auditService';
 import { hashApiKeyLookup, hashLegacyApiKeyLookup } from '../utils/apiKeyHash';
 
@@ -103,23 +103,32 @@ async function findAgentApiKeyForToken(token: string) {
 
 /**
  * Agent keys act for their user, so they stop working once that user loses
- * access to either linked wallet (share removal, ownership transfer). Agent
- * state is not mutated; restoring access restores the key.
+ * access to either linked wallet (share removal, ownership transfer), and
+ * while the user cannot edit the funding wallet: creating or signing a funding
+ * draft needs the same owner/signer role as the human draft routes
+ * (`requireWalletAccess('edit')`). The operational wallet is only read and
+ * received into, so any role keeps it. Roles resolve as the human middleware
+ * does (a direct role takes precedence over group membership). Agent state is
+ * not mutated; restoring access or the role restores the key.
  */
 async function assertAgentUserWalletAccess(agent: {
   userId: string;
   fundingWalletId: string;
   operationalWalletId: string;
 }): Promise<void> {
-  const [hasFundingAccess, hasOperationalAccess] = await Promise.all([
-    walletRepository.hasAccess(agent.fundingWalletId, agent.userId),
-    walletRepository.hasAccess(agent.operationalWalletId, agent.userId),
-  ]);
-  if (!hasFundingAccess) {
+  const problem = await findAgentWalletAccessProblem(agent);
+  if (problem === 'funding_access') {
     throw walletAccessLostError('funding');
   }
-  if (!hasOperationalAccess) {
+  if (problem === 'operational_access') {
     throw walletAccessLostError('operational');
+  }
+  if (problem === 'funding_role') {
+    throw new ForbiddenError(
+      'Agent user cannot create drafts on the funding wallet',
+      ErrorCodes.FORBIDDEN,
+      { reason: 'agent_user_wallet_role_insufficient', wallet: 'funding' },
+    );
   }
 }
 

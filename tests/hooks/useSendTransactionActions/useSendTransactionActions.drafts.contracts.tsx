@@ -32,6 +32,38 @@ export const registerUseSendTransactionActionsDraftContracts = () => {
       expect(mocks.navigate).toHaveBeenCalledWith('/wallets/wallet-1');
     });
 
+    it('saves a batch draft with the recipient and net spend the batch response binds', async () => {
+      mocks.createBatchTransaction.mockResolvedValueOnce({
+        ...baseTxData,
+        totalOutput: 70000,
+        effectiveAmount: 50000,
+        recipient: 'bc1qexternal',
+        outputs: [
+          { address: 'bc1qown', amount: 20000 },
+          { address: 'bc1qexternal', amount: 50000 },
+        ],
+      });
+      const state = createState({
+        outputs: [
+          { address: 'bc1qown', amount: '20000', sendMax: false },
+          { address: 'bc1qexternal', amount: '50000', sendMax: false },
+        ],
+      });
+
+      const { result } = renderSendTransactionActions({ state });
+
+      await act(async () => {
+        await result.current.saveDraft();
+      });
+
+      expect(mocks.createBatchTransaction).toHaveBeenCalledTimes(1);
+      expect(mocks.createDraft).toHaveBeenCalledWith('wallet-1', expect.objectContaining({
+        recipient: 'bc1qexternal',
+        amount: 50000,
+        effectiveAmount: 50000,
+      }), expect.any(AbortSignal));
+    });
+
     it('threads the provided setDraftId through to adopt a newly created draft id', async () => {
       const state = createState({
         outputs: [{ address: 'bc1qrecipient', amount: '10000', sendMax: false }],

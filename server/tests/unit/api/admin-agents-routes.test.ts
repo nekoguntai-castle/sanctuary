@@ -181,7 +181,9 @@ describe("Admin wallet agent routes", () => {
 
     expect(response.body.maxFundingAmountSats).toBe("100000");
     expect(response.body.minOperationalBalanceSats).toBeNull();
-    expect(mocks.walletRepository.hasAccess).toHaveBeenCalledTimes(2);
+    expect(mocks.findAgentWalletAccessProblem).toHaveBeenCalledWith(
+      expect.objectContaining({ userId, fundingWalletId, operationalWalletId }),
+    );
     expect(mocks.agentRepository.createAgent).toHaveBeenCalledWith(
       expect.objectContaining({
         userId,
@@ -423,9 +425,7 @@ describe("Admin wallet agent routes", () => {
       })
       .expect(400);
 
-    mocks.walletRepository.hasAccess
-      .mockResolvedValueOnce(false)
-      .mockResolvedValueOnce(true);
+    mocks.findAgentWalletAccessProblem.mockResolvedValueOnce("funding_access");
     await request(app)
       .post("/api/v1/admin/agents")
       .send({
@@ -437,9 +437,7 @@ describe("Admin wallet agent routes", () => {
       })
       .expect(400);
 
-    mocks.walletRepository.hasAccess
-      .mockResolvedValueOnce(true)
-      .mockResolvedValueOnce(false);
+    mocks.findAgentWalletAccessProblem.mockResolvedValueOnce("operational_access");
     await request(app)
       .post("/api/v1/admin/agents")
       .send({

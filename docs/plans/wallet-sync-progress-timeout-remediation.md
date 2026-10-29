@@ -45,18 +45,21 @@ Source inspection identified one execution problem and two visibility problems:
 - Aborting one attempt removes only its Electrum pending request IDs, timers, and
   listeners; it never disconnects the shared subscription socket. Late responses
   are inert and no new request/retry is scheduled after abort.
-- Budget ownership is explicit and never resets in nested helpers: one test-injected
-  five-minute deadline spans the complete address-history phase, one spans the
-  complete UTXO observation phase, one spans each missing-field remote chunk, and
-  one `candidate_batch_remote` deadline spans current fetch, parent fetch, fallback,
-  and timestamp/header work for each 25-candidate batch. Nested helpers receive and
-  may narrow an existing deadline; recursion never creates a fresh outer budget.
-  These budgets apply equally to normal
-  and Tor clients, capped by the remaining outer attempt time. The budget includes
-  initial batch calls, their retries/delays, subdivision or individual fallback,
-  and header reads. Tor keeps longer per-request timeouts, so fewer retries fit;
-  it does not receive a larger stage budget. Before a retry starts, the adapter
-  caps its timer to remaining budget or stops if no useful time remains.
+- Budget ownership is explicit and never resets in nested helpers. The
+  address-history phase runs inside one window of at most 20 minutes and at most
+  two thirds of the time left in the attempt, and each of its three stages
+  (history fetch, history transactions, their parents) is budgeted
+  `max(5 min, 3 s per ten items)` from its own item count. One test-injected
+  five-minute deadline spans the complete UTXO observation phase, one spans each
+  missing-field remote chunk, and one `candidate_batch_remote` deadline spans
+  current fetch, parent fetch, fallback, and timestamp/header work for each
+  25-candidate batch. Nested helpers receive and may narrow an existing deadline;
+  recursion never creates a fresh outer budget. These budgets apply equally to
+  normal and Tor clients, capped by the remaining outer attempt time. The budget
+  includes initial batch calls, their retries/delays, subdivision or individual
+  fallback, and header reads. Tor keeps longer per-request timeouts, so fewer
+  retries fit. Before a retry starts, the adapter caps its timer to remaining
+  budget or stops if no useful time remains.
 - Batch failure uses fixed concurrency 4, never serial unbounded fallback. Outer
   cancellation records no evidence rejection. Local budget exhaustion cancels its
   pending RPCs, records one fixed `fetch_budget_exhausted` rejection per unresolved

@@ -153,6 +153,7 @@ export function buildDraftTxData(draftData: DraftTransaction): DraftTransactionD
     changeAmount: draftData.changeAmount,
     changeAddress: draftData.changeAddress,
     effectiveAmount: draftData.effectiveAmount,
+    recipient: draftData.recipient,
     selectedUtxoIds: draftData.selectedUtxoIds,
     inputPaths: draftData.inputPaths,
     decoyOutputs: draftData.decoyOutputs,

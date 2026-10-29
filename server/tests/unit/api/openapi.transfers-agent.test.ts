@@ -27,13 +27,14 @@ describe('OpenAPI transfer keepExistingUsers contract', () => {
 type OperationMap = Record<string, { responses?: Record<string, { description?: string }> }>;
 
 describe('OpenAPI agent 403 contract', () => {
-  it('documents the lost-wallet-access refusal on every agent operation', () => {
+  it('documents the lost-wallet-access and funding-role refusals on every agent operation', () => {
     const agentRoutes = Object.entries(openApiSpec.paths as unknown as Record<string, OperationMap>)
       .filter(([path]) => path.startsWith('/agent/'));
     expect(agentRoutes.length).toBeGreaterThan(0);
     for (const [, operations] of agentRoutes) {
       for (const operation of Object.values(operations)) {
         expect(operation.responses?.['403']?.description).toMatch(/agent_user_wallet_access_lost/);
+        expect(operation.responses?.['403']?.description).toMatch(/agent_user_wallet_role_insufficient/);
       }
     }
   });

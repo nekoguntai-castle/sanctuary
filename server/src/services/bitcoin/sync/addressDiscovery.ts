@@ -10,9 +10,10 @@ import { createLogger } from "../../../utils/logger";
 import { walletLog } from "../../../websocket/notifications";
 import { ADDRESS_GAP_LIMIT } from "../../../constants";
 import type { WalletNetwork } from "../../wallet/types";
-import { assertWalletHardwareCapabilityById } from "../../hardwareWalletCapabilities";
-import { ForbiddenError } from "../../../errors";
-import { assertPersistedCanonicalPolicy } from '../../wallet/canonicalPolicy';
+import {
+  assertPersistedCanonicalPolicy,
+  hasCanonicalPolicyIdentity,
+} from '../../wallet/canonicalPolicy';
 import type {
   CanonicalBatchCounts,
   CanonicalBatchState,
@@ -85,16 +86,15 @@ export async function prepareGapLimitExpansion(
     return null;
   }
 
-  try {
-    await assertWalletHardwareCapabilityById(walletId, "display");
-  } catch (error) {
-    if (error instanceof ForbiddenError) {
-      log.warn("Skipping gap expansion while wallet address display is disabled", {
-        walletId,
-      });
-      return null;
-    }
-    throw error;
+  // Background discovery derives and watches addresses; it never hands one to a
+  // user, so it does not consult the signer's `display` capability. Every
+  // user-facing surface (address lists, receive, generate, export, labels,
+  // assistant, MCP) keeps its own display gate (#781).
+  if (!hasCanonicalPolicyIdentity(wallet)) {
+    log.debug("Skipping gap expansion for a wallet without canonical policy identity", {
+      walletId,
+    });
+    return null;
   }
 
   const policy = assertPersistedCanonicalPolicy(wallet);

@@ -26,9 +26,11 @@ const apiErrorResponse = {
 const agentForbiddenResponse = {
   ...apiErrorResponse,
   description:
-    'Forbidden: the agent is not active, the credential is not scoped for the request, or the agent ' +
+    'Forbidden: the agent is not active, the credential is not scoped for the request, the agent ' +
     'user no longer has access to the funding or operational wallet ' +
-    '(details.reason = agent_user_wallet_access_lost, details.wallet = funding | operational).',
+    '(details.reason = agent_user_wallet_access_lost, details.wallet = funding | operational), or the ' +
+    'agent user is not an owner or signer of the funding wallet ' +
+    '(details.reason = agent_user_wallet_role_insufficient, details.wallet = funding).',
 } as const;
 
 export const agentPaths = {

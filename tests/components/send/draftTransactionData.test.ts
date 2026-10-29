@@ -96,6 +96,18 @@ describe('createDraftInitialTxData', () => {
     expect(buildDraftTxData({ ...draft, signingContext: null } as any).signingContext).toBeUndefined();
   });
 
+  it('resumes a draft with the recipient draft creation bound, not the first listed output', () => {
+    const draft = {
+      ...draftTxData,
+      signingIntentId: 'intent-1',
+      signingIntentDigest: 'a'.repeat(64),
+      recipient: 'bc1qtwo',
+    };
+    const resumed = buildDraftTxData(draft as any);
+    expect(resumed.recipient).toBe('bc1qtwo');
+    expect(createDraftInitialTxData({ state, draftTxData: resumed, utxos })?.recipient).toBe('bc1qtwo');
+  });
+
   it.each([
     {
       name: 'structured',

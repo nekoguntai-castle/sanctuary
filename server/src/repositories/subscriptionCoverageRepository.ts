@@ -9,6 +9,7 @@ export {
   readSubscriptionCoverage,
   readSubscriptionCoverageWithClient,
 } from "./subscriptionCoverageReadRepository";
+export type { SubscriptionCoverageReadBounds } from "./subscriptionCoverageReadRepository";
 export type {
   NetworkSubscriptionCoverageSnapshot,
   RecordSubscriptionComparisonFailureInput,

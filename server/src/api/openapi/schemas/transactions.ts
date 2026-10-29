@@ -334,6 +334,17 @@ export const transactionSchemas = {
           additionalProperties: true,
         },
       },
+      effectiveAmount: {
+        type: 'integer',
+        minimum: 1,
+        description: 'Net sats paid outside the wallet (outputs to the wallet\'s own addresses excluded); '
+          + 'the amount broadcast and draft creation require. Omitted when the batch pays only the wallet.',
+      },
+      recipient: {
+        type: 'string',
+        description: 'First output paid outside the wallet; the recipient broadcast and draft creation require. '
+          + 'Omitted when the batch pays only the wallet.',
+      },
       policyEvaluation: { type: 'object' },
     },
     required: ['psbtBase64', 'signingContext', 'intentId', 'intentDigest', 'fee', 'totalInput', 'totalOutput', 'changeAmount', 'utxos', 'outputs'],

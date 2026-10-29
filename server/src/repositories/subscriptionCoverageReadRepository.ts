@@ -208,14 +208,63 @@ export async function readSubscriptionCoverageWithClient(
   };
 }
 
-export async function readSubscriptionCoverage(): Promise<SubscriptionCoverageReadResult> {
+/**
+ * A caller that must finish inside its own deadline (the support-package
+ * collector: 15 s plus 1 s to quiesce) bounds every statement server-side, so
+ * a slow read is cancelled by Postgres and settles as `storage_unavailable`
+ * instead of outliving the caller. Prisma's transaction timeout alone does not
+ * stop an in-flight query.
+ */
+export interface SubscriptionCoverageReadBounds {
+  /** Whole milliseconds, 1..MAX_COVERAGE_STATEMENT_TIMEOUT_MS; Postgres reads 0 as "no timeout". */
+  statementTimeoutMs: number;
+}
+
+const MAX_COVERAGE_STATEMENT_TIMEOUT_MS = 60_000;
+
+function assertValidReadBounds(bounds: SubscriptionCoverageReadBounds): void {
+  const { statementTimeoutMs } = bounds;
+  if (
+    !Number.isInteger(statementTimeoutMs)
+    || statementTimeoutMs < 1
+    || statementTimeoutMs > MAX_COVERAGE_STATEMENT_TIMEOUT_MS
+  ) {
+    throw new RangeError(
+      `statementTimeoutMs must be an integer from 1 to ${MAX_COVERAGE_STATEMENT_TIMEOUT_MS}, got ${statementTimeoutMs}`,
+    );
+  }
+}
+
+const UNBOUNDED_READ_TIMEOUTS = { maxWait: 5_000, timeout: 15_000 };
+
+/** Transaction start wait, then three statements each capped by statement_timeout. */
+function boundedReadTimeouts(bounds: SubscriptionCoverageReadBounds) {
+  return { maxWait: bounds.statementTimeoutMs, timeout: 3 * bounds.statementTimeoutMs };
+}
+
+async function readBoundedSubscriptionCoverageWithClient(
+  tx: PrismaTxClient,
+  bounds: SubscriptionCoverageReadBounds,
+): Promise<Extract<SubscriptionCoverageReadResult, { status: "available" }>> {
+  await tx.$executeRaw(
+    Prisma.sql`SELECT set_config('statement_timeout', ${String(bounds.statementTimeoutMs)}, true)`,
+  );
+  return readSubscriptionCoverageWithClient(tx);
+}
+
+export async function readSubscriptionCoverage(
+  bounds?: SubscriptionCoverageReadBounds,
+): Promise<SubscriptionCoverageReadResult> {
+  // A bad bound is a caller bug: refuse it rather than read unbounded.
+  if (bounds) assertValidReadBounds(bounds);
   const fallbackEvaluationTime = new Date();
   try {
     return await prisma.$transaction(
-      readSubscriptionCoverageWithClient,
+      (tx) => (bounds
+        ? readBoundedSubscriptionCoverageWithClient(tx, bounds)
+        : readSubscriptionCoverageWithClient(tx)),
       {
-        maxWait: 5_000,
-        timeout: 15_000,
+        ...(bounds ? boundedReadTimeouts(bounds) : UNBOUNDED_READ_TIMEOUTS),
         isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
       },
     );

@@ -263,6 +263,13 @@ export function registerOpenApiWalletTests() {
     ]);
   });
 
+  it('documents the server-bound spend fields on the batch response', () => {
+    expect(openApiSpec.components.schemas.TransactionBatchResponse.properties).toMatchObject({
+      effectiveAmount: { type: 'integer', minimum: 1 },
+      recipient: { type: 'string' },
+    });
+  });
+
   it('documents wallet delete as a 204 empty response', () => {
     const deleteResponses = openApiSpec.paths['/wallets/{walletId}'].delete.responses;
 

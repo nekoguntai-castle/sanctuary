@@ -409,6 +409,61 @@ describe("readSubscriptionCoverage", () => {
   });
 });
 
+describe("readSubscriptionCoverage deadline bounds", () => {
+  // The support-package runner gives a collector 15 s, then 1 s to settle before
+  // it fences every later package generation (runner.ts collectSection).
+  const SUPPORT_COLLECTOR_BUDGET_MS = 15_000;
+
+  it("bounds every statement server-side when the caller has a deadline", async () => {
+    runTransactionWithQueryResults([{ evaluatedAt: EVALUATED_AT }], [coverageRow()]);
+
+    await expect(readSubscriptionCoverage({ statementTimeoutMs: 2_000 })).resolves.toMatchObject({
+      status: "available",
+    });
+
+    expect(mocks.executeRaw).toHaveBeenCalledOnce();
+    const setConfig = mocks.executeRaw.mock.calls[0][0] as { values: unknown[] };
+    expect(sqlText(setConfig)).toContain("set_config('statement_timeout', 2000, true)");
+    expect(mocks.executeRaw.mock.invocationCallOrder[0]).toBeLessThan(mocks.queryRaw.mock.invocationCallOrder[0]);
+    const options = mocks.transaction.mock.calls[0][1] as { maxWait: number; timeout: number };
+    expect(options).toMatchObject({ maxWait: 2_000, timeout: 6_000, isolationLevel: "RepeatableRead" });
+    expect(options.maxWait + options.timeout).toBeLessThan(SUPPORT_COLLECTOR_BUDGET_MS);
+  });
+
+  it("keeps the worker read unbounded by statement timeout", async () => {
+    runTransactionWithQueryResults([{ evaluatedAt: EVALUATED_AT }], [coverageRow()]);
+
+    await readSubscriptionCoverage();
+
+    expect(mocks.executeRaw).not.toHaveBeenCalled();
+    expect(mocks.transaction.mock.calls[0][1]).toMatchObject({ maxWait: 5_000, timeout: 15_000 });
+  });
+
+  // statement_timeout 0 disables the bound, so a bad caller value must not reach Postgres.
+  it.each([0, -1, 1.5, Number.NaN, 60_001, Number.POSITIVE_INFINITY])(
+    "refuses a statement timeout of %s ms before opening a transaction",
+    async (statementTimeoutMs) => {
+      await expect(readSubscriptionCoverage({ statementTimeoutMs })).rejects.toThrow(RangeError);
+      expect(mocks.transaction).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([1, 60_000])("accepts a statement timeout of %s ms", async (statementTimeoutMs) => {
+    runTransactionWithQueryResults([{ evaluatedAt: EVALUATED_AT }], [coverageRow()]);
+
+    await expect(readSubscriptionCoverage({ statementTimeoutMs })).resolves.toMatchObject({ status: "available" });
+  });
+
+  it("settles a cancelled bounded read as unavailable", async () => {
+    mocks.transaction.mockRejectedValue(new Error("canceling statement due to statement timeout"));
+
+    await expect(readSubscriptionCoverage({ statementTimeoutMs: 2_000 })).resolves.toMatchObject({
+      status: "unavailable",
+      reason: "storage_unavailable",
+    });
+  });
+});
+
 describe("recordSubscriptionComparisonFailure", () => {
   const input = {
     addressId: "address-a",

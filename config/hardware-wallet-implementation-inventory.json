@@ -106,12 +106,6 @@
       "count": 1
     },
     {
-      "source": "server/src/services/bitcoin/sync/addressDiscovery.ts",
-      "assertion": "assertWalletHardwareCapabilityById",
-      "capability": "display",
-      "count": 1
-    },
-    {
       "source": "server/src/services/bitcoin/transactions/broadcasting.ts",
       "assertion": "assertWalletHardwareCapabilityById",
       "capability": "broadcast",
@@ -4218,21 +4212,6 @@
       "enforcementFunction": "assertWalletHardwareCapabilityById",
       "capabilityRowIds": [
         "generic.generic-unresolved.sign"
-      ]
-    },
-    {
-      "id": "server-capability-enforcement:server/src/services/bitcoin/sync/addressDiscovery.ts:assertWalletHardwareCapabilityById:display:1",
-      "kind": "server-capability-enforcement",
-      "identity": "server/src/services/bitcoin/sync/addressDiscovery.ts:assertWalletHardwareCapabilityById:display:1",
-      "vendor": "generic",
-      "source": "server/src/services/bitcoin/sync/addressDiscovery.ts",
-      "capabilities": [
-        "display"
-      ],
-      "enabled": false,
-      "enforcementFunction": "assertWalletHardwareCapabilityById",
-      "capabilityRowIds": [
-        "generic.generic-unresolved.display"
       ]
     },
     {

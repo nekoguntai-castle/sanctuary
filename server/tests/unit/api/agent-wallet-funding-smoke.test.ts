@@ -60,8 +60,8 @@ const smoke = vi.hoisted(() => {
       findByIdWithDevices: vi.fn(),
       findByIdWithSigningDevices: vi.fn(),
       findNetwork: vi.fn(),
-      hasAccess: vi.fn(),
     },
+    findAgentWalletAccessProblem: vi.fn(),
     utxoRepository: {
       getUnspentBalance: vi.fn(),
     },
@@ -126,6 +126,10 @@ vi.mock('../../../src/repositories', () => ({
   walletRepository: smoke.walletRepository,
   utxoRepository: smoke.utxoRepository,
   draftRepository: smoke.draftRepository,
+}));
+
+vi.mock('../../../src/services/agentWalletAccess', () => ({
+  findAgentWalletAccessProblem: smoke.findAgentWalletAccessProblem,
 }));
 
 vi.mock('../../../src/services/agentFundingDraftValidation', () => ({
@@ -331,7 +335,7 @@ describe('agent wallet funding route smoke', () => {
       id: smoke.ids.fundingWalletId,
       devices: [{ device: { type: 'coldcard', model: null } }],
     });
-    smoke.walletRepository.hasAccess.mockResolvedValue(true);
+    smoke.findAgentWalletAccessProblem.mockResolvedValue(null);
     smoke.walletRepository.findNetwork.mockResolvedValue('testnet3');
     smoke.createSigningIntent.mockResolvedValue({
       intentId: 'intent-agent',

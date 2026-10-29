@@ -6,6 +6,22 @@ import type { SyncPhaseProgress } from './phaseProgress';
 
 export const SYNC_REMOTE_STAGE_BUDGET_MS = 5 * 60_000;
 export const SYNC_REMOTE_FALLBACK_CONCURRENCY = 4;
+/** Remote evidence and history are fetched sequentially, ten items per round trip. */
+export const SYNC_REMOTE_BATCH_SIZE = 10;
+/**
+ * Allowance per sequential ten-item round trip in a work-scaled stage: a Tor
+ * round trip plus the raw-hex transfer. A stage never gets less than
+ * SYNC_REMOTE_STAGE_BUDGET_MS.
+ */
+export const SYNC_REMOTE_BATCH_ALLOWANCE_MS = 3_000;
+/**
+ * Ceiling on the whole address-history phase (history fetch plus its evidence
+ * authentication). The window actually opened is `syncHistoryWindowMs`: never
+ * more than two thirds of the time left in the attempt, so the persisting
+ * phases and the receive-evidence gate keep at least a third of it whatever
+ * the configured attempt length.
+ */
+export const SYNC_HISTORY_WINDOW_MS = 20 * 60_000;
 
 export type SyncStageOutcome = 'completed' | 'failed' | 'budget_expired' | 'aborted';
 
@@ -74,6 +90,29 @@ export function createSyncStageRuntime(
       attempt.signal.removeEventListener('abort', abortFromParent);
     },
   };
+}
+
+/** A stage budget that grows with its item count: one allowance per sequential batch. */
+export function workScaledStageBudgetMs(items: number): number {
+  const batches = Math.ceil(Math.max(0, items) / SYNC_REMOTE_BATCH_SIZE);
+  return Math.max(SYNC_REMOTE_STAGE_BUDGET_MS, batches * SYNC_REMOTE_BATCH_ALLOWANCE_MS);
+}
+
+/**
+ * The address-history window for an attempt ending at `attemptDeadlineAt`:
+ * SYNC_HISTORY_WINDOW_MS, or two thirds of the time left if that is shorter.
+ */
+export function syncHistoryWindowMs(attemptDeadlineAt: number, now = Date.now()): number {
+  return Math.min(SYNC_HISTORY_WINDOW_MS, Math.max(0, Math.floor((attemptDeadlineAt - now) * 2 / 3)));
+}
+
+/** Narrows an attempt to a window; stages created from it never outlive the window. */
+export function createSyncWindowRuntime(
+  attempt: SyncAttemptRuntime,
+  windowMs: number,
+  now = Date.now(),
+): SyncAttemptRuntime {
+  return { ...attempt, deadlineAt: Math.min(attempt.deadlineAt, now + Math.max(0, windowMs)) };
 }
 
 export function isSyncStageBudgetError(error: unknown): error is SyncRemoteStageBudgetError {

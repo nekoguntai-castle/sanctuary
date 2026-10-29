@@ -12,6 +12,7 @@ import {
   type FindWalletAgentsFilter,
   type UpdateWalletAgentInput,
 } from '../repositories';
+import { findAgentWalletAccessProblem } from './agentWalletAccess';
 
 interface WalletAccessSource {
   users: Array<{ userId: string }>;
@@ -103,20 +104,21 @@ function assertAgentWalletTypes(
   }
 }
 
+/** Same roles the agent key needs at runtime (agent/auth.ts assertAgentUserWalletAccess). */
 async function assertTargetUserWalletAccess(input: {
   userId: string;
   fundingWalletId: string;
   operationalWalletId: string;
 }): Promise<void> {
-  const [hasFundingAccess, hasOperationalAccess] = await Promise.all([
-    walletRepository.hasAccess(input.fundingWalletId, input.userId),
-    walletRepository.hasAccess(input.operationalWalletId, input.userId),
-  ]);
-  if (!hasFundingAccess) {
+  const problem = await findAgentWalletAccessProblem(input);
+  if (problem === 'funding_access') {
     throw new InvalidInputError('User does not have access to the funding wallet');
   }
-  if (!hasOperationalAccess) {
+  if (problem === 'operational_access') {
     throw new InvalidInputError('User does not have access to the operational wallet');
+  }
+  if (problem === 'funding_role') {
+    throw new InvalidInputError('User must be an owner or signer of the funding wallet');
   }
 }
 

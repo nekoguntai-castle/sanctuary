@@ -1,5 +1,6 @@
 import {
   readSubscriptionCoverage,
+  type SubscriptionCoverageReadBounds,
 } from '../../repositories/subscriptionCoverageRepository';
 import {
   projectSchedulerRetirementReadiness,
@@ -15,8 +16,8 @@ export type {
   SchedulerRetirementReadiness,
 } from '../../repositories/schedulerRetirementReadinessProjection';
 
-export async function readSchedulerRetirementReadiness(): Promise<
-  SchedulerRetirementReadiness
-> {
-  return projectSchedulerRetirementReadiness(await readSubscriptionCoverage());
+export async function readSchedulerRetirementReadiness(
+  bounds?: SubscriptionCoverageReadBounds,
+): Promise<SchedulerRetirementReadiness> {
+  return projectSchedulerRetirementReadiness(await readSubscriptionCoverage(bounds));
 }

@@ -11,6 +11,7 @@ import type { DeviceType } from '../../services/hardwareWallet/types';
 import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
 import type { TrezorConnectSignedArtifact } from '../../services/hardwareWallet/types';
 import type { PolicyEvaluationSummary } from '../../api/transactions/types';
+import { canonicalSegwitAddressCase } from '@sanctuary/shared/utils/bitcoin';
 import { createLogger } from '../../utils/logger';
 
 const log = createLogger('SendTxHelpers');
@@ -26,6 +27,12 @@ export interface TransactionData {
   changeAmount: number;
   changeAddress?: string;
   effectiveAmount?: number;
+  /**
+   * The recipient the server binds this transaction to (its first output outside
+   * the wallet), when it differs from the first entered output: a batch may pay one
+   * of the wallet's own addresses first. Absent: the first entered output.
+   */
+  recipient?: string;
   utxos: Array<{
     txid: string;
     vout: number;
@@ -36,6 +43,14 @@ export interface TransactionData {
   inputPaths?: string[];
   decoyOutputs?: Array<{ address: string; amount: number }>;
   policyEvaluation?: PolicyEvaluationSummary;
+}
+
+/**
+ * The recipient a broadcast or draft save reports: the server-bound one when the
+ * transaction data carries it, else the first entered output (canonical case).
+ */
+export function getReportedRecipient(txData: Pick<TransactionData, 'recipient'>, state: TransactionState): string {
+  return canonicalSegwitAddressCase(txData.recipient ?? state.outputs[0].address);
 }
 
 /** Why the review step offers (or withholds) the approval workflow instead of signing. */

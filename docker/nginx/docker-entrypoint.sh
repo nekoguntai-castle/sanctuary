@@ -53,8 +53,15 @@ resolve_dns_resolver() {
 NGINX_DNS_RESOLVER=$(resolve_dns_resolver)
 export NGINX_DNS_RESOLVER
 
-# Choose template based on SSL setting
-if [ "$ENABLE_SSL" = "true" ]; then
+# Choose template: an explicit NGINX_CONFIG_TEMPLATE (the Tor Payjoin ingress,
+# docker/compose/tor.yml, which has no certificates) or the SSL setting.
+if [ -n "${NGINX_CONFIG_TEMPLATE:-}" ]; then
+    if [ ! -r "$NGINX_CONFIG_TEMPLATE" ]; then
+        echo "Error: NGINX_CONFIG_TEMPLATE $NGINX_CONFIG_TEMPLATE is not readable" >&2
+        exit 1
+    fi
+    TEMPLATE="$NGINX_CONFIG_TEMPLATE"
+elif [ "$ENABLE_SSL" = "true" ]; then
     if [ ! -f /etc/nginx/ssl/fullchain.pem ] || [ ! -f /etc/nginx/ssl/privkey.pem ]; then
         echo "Error: ENABLE_SSL=true but /etc/nginx/ssl/fullchain.pem or /etc/nginx/ssl/privkey.pem is missing"
         exit 1

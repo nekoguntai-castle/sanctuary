@@ -8,9 +8,9 @@ type AdminAgentRouteMocks = {
   walletRepository: {
     findById: Mock;
     findByIdWithSigningDevices: Mock;
-    hasAccess: Mock;
     findAllWithSelect: Mock;
   };
+  findAgentWalletAccessProblem: Mock;
 };
 
 export const ADMIN_AGENT_TEST_IDS = {
@@ -51,7 +51,7 @@ export function configureDefaultAdminAgentRouteMocks(mocks: AdminAgentRouteMocks
     id: fundingWalletId,
     devices: [{ deviceId: signerDeviceId }],
   });
-  mocks.walletRepository.hasAccess.mockResolvedValue(true);
+  mocks.findAgentWalletAccessProblem.mockResolvedValue(null);
   mocks.userRepository.findAllSummary.mockResolvedValue([
     {
       id: userId,

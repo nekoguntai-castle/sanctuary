@@ -13,6 +13,8 @@ export interface DraftTransactionData {
   changeAmount: number;
   changeAddress?: string;
   effectiveAmount: number;
+  /** The draft's stored recipient, which draft creation bound to the signing intent. */
+  recipient?: string;
   selectedUtxoIds: string[];
   inputPaths?: string[];
   decoyOutputs?: Array<{ address: string; amount: number }>;

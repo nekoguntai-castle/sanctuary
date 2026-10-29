@@ -9,6 +9,10 @@ const mocks = vi.hoisted(() => ({
   getClientInfo: vi.fn(),
   walletRepository: {
     hasAccess: vi.fn(),
+    findGroupRoleByMembership: vi.fn(),
+  },
+  walletSharingRepository: {
+    findWalletUser: vi.fn(),
   },
 }));
 
@@ -17,8 +21,10 @@ vi.mock('../../../src/repositories/agentRepository', () => ({
   agentRepository: mocks.agentRepository,
 }));
 
-vi.mock('../../../src/repositories/walletRepository', () => ({
+// The real agentWalletAccess (through accessControl) resolves the roles from these repositories.
+vi.mock('../../../src/repositories', () => ({
   walletRepository: mocks.walletRepository,
+  walletSharingRepository: mocks.walletSharingRepository,
 }));
 
 vi.mock('../../../src/services/auditService', () => ({
@@ -62,8 +68,22 @@ function activeAgentKey(apiKey: string) {
   };
 }
 
-function denyWalletAccess(walletId: string) {
-  mocks.walletRepository.hasAccess.mockImplementation(async (id: string) => id !== walletId);
+/** Direct wallet roles of user-1; `null` means no access to that wallet. */
+function grantRoles(roles: { funding: string | null; operational: string | null }) {
+  const roleOf = (id: string) => (id === 'funding-wallet' ? roles.funding : roles.operational);
+  mocks.walletSharingRepository.findWalletUser.mockImplementation(async (id: string) => {
+    const role = roleOf(id);
+    return role === null ? null : { walletId: id, userId: 'user-1', role };
+  });
+  mocks.walletRepository.findGroupRoleByMembership.mockResolvedValue(null);
+  mocks.walletRepository.hasAccess.mockImplementation(async (id: string) => roleOf(id) !== null);
+}
+
+function denyWalletAccess(walletId: 'funding-wallet' | 'operational-wallet') {
+  grantRoles({
+    funding: walletId === 'funding-wallet' ? null : 'signer',
+    operational: walletId === 'operational-wallet' ? null : 'signer',
+  });
 }
 
 async function expectWalletAccessLost(apiKey: string, wallet: 'funding' | 'operational') {
@@ -86,7 +106,7 @@ describe('agent auth helpers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getClientInfo.mockReturnValue({ ipAddress: '127.0.0.1', userAgent: 'agent-runtime' });
-    mocks.walletRepository.hasAccess.mockResolvedValue(true);
+    grantRoles({ funding: 'signer', operational: 'signer' });
   });
 
   it('generates, prefixes, hashes, and validates agent API keys', () => {
@@ -286,8 +306,43 @@ describe('agent auth helpers', () => {
       keyId: 'key-access',
       userId: 'user-1',
     });
-    expect(mocks.walletRepository.hasAccess).toHaveBeenCalledWith('funding-wallet', 'user-1');
+    expect(mocks.walletSharingRepository.findWalletUser).toHaveBeenCalledWith('funding-wallet', 'user-1');
     expect(mocks.walletRepository.hasAccess).toHaveBeenCalledWith('operational-wallet', 'user-1');
     expect(mocks.agentRepository.updateApiKeyLastUsedIfStale).toHaveBeenCalledTimes(1);
+  });
+
+  describe('funding wallet role (parity with POST /wallets/:walletId/drafts requireWalletAccess(edit))', () => {
+    it.each(['viewer', 'approver'])('refuses a key whose user is only %s on the funding wallet', async role => {
+      const apiKey = 'agt_' + '3'.repeat(64);
+      mocks.agentRepository.findApiKeyByHash.mockResolvedValueOnce(activeAgentKey(apiKey));
+      grantRoles({ funding: role, operational: 'owner' });
+
+      const error = await authenticateAgentRequest(reqWithAuth(`Bearer ${apiKey}`)).catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(ForbiddenError);
+      expect(error).toMatchObject({
+        message: 'Agent user cannot create drafts on the funding wallet',
+        details: { reason: 'agent_user_wallet_role_insufficient', wallet: 'funding' },
+      });
+      expect(mocks.agentRepository.updateApiKeyLastUsedIfStale).not.toHaveBeenCalled();
+    });
+
+    it.each(['owner', 'signer'])('accepts a %s of the funding wallet who only views the operational wallet', async role => {
+      const apiKey = 'agt_' + '4'.repeat(64);
+      mocks.agentRepository.findApiKeyByHash.mockResolvedValueOnce(activeAgentKey(apiKey));
+      grantRoles({ funding: role, operational: 'viewer' });
+
+      await expect(authenticateAgentRequest(reqWithAuth(`Bearer ${apiKey}`))).resolves.toMatchObject({
+        keyId: 'key-access',
+      });
+    });
+
+    it('reports lost operational access before a read-only funding role', async () => {
+      const apiKey = 'agt_' + '5'.repeat(64);
+      mocks.agentRepository.findApiKeyByHash.mockResolvedValueOnce(activeAgentKey(apiKey));
+      grantRoles({ funding: 'viewer', operational: null });
+
+      await expectWalletAccessLost(apiKey, 'operational');
+    });
   });
 });

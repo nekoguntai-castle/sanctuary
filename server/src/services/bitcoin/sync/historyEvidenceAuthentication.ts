@@ -9,6 +9,10 @@ import {
   type EvidenceRequestOptions,
 } from './evidenceAuthentication';
 import { releaseAuthenticatedTransactionDetails } from './evidenceArchitectureReceipts';
+import type { SyncStageRuntime } from './attemptRuntime';
+
+/** Opens a remote stage budgeted for `items` work items. */
+export type HistoryEvidenceStageOpener = (stage: string, items: number) => SyncStageRuntime;
 
 const log = createLogger('BITCOIN:SVC_SYNC_EVIDENCE');
 
@@ -120,9 +124,33 @@ const rebuildAuthenticatedHistoryIndexes = (
   }
 };
 
+const runEvidenceStage = async <T>(
+  openStage: HistoryEvidenceStageOpener | undefined,
+  name: string,
+  items: number,
+  options: EvidenceRequestOptions | undefined,
+  run: (stageOptions?: EvidenceRequestOptions) => Promise<T>,
+): Promise<T> => {
+  const stage = openStage?.(name, items);
+  try {
+    return await run(stage
+      ? { ...options, signal: stage.signal, deadlineAt: stage.deadlineAt }
+      : options);
+  } finally {
+    stage?.dispose();
+  }
+};
+
+/**
+ * With `openStage`, current transactions and their parents each get a remote
+ * stage budgeted from their own count; otherwise both use `requestOptions`.
+ */
 export async function authenticateHistoryResults(
   ctx: SyncContext,
-  options?: EvidenceRequestOptions,
+  { requestOptions, openStage }: {
+    requestOptions?: EvidenceRequestOptions;
+    openStage?: HistoryEvidenceStageOpener;
+  } = {},
 ): Promise<void> {
   const evidenceSnapshot = new Map(ctx.authenticatedTransactionEvidence);
   const outpointSnapshot = new Map(ctx.authenticatedOutpointEvidence);
@@ -134,11 +162,18 @@ export async function authenticateHistoryResults(
     const currentTxids = [...new Set(
       [...ctx.historyResults.values()].flatMap(history => history.map(item => item.tx_hash)),
     )];
-    const acceptedCurrent = await fetchCompactAuthenticatedTransactions(ctx, currentTxids, options);
-    await fetchAuthenticatedOutpoints(ctx, parentOutpointRequests(ctx, acceptedCurrent), {
-      ...options,
-      evidenceRole: 'parent',
-    });
+    const acceptedCurrent = await runEvidenceStage(
+      openStage, 'history_transactions', currentTxids.length, requestOptions,
+      stageOptions => fetchCompactAuthenticatedTransactions(ctx, currentTxids, stageOptions),
+    );
+    const parentRequests = parentOutpointRequests(ctx, acceptedCurrent);
+    await runEvidenceStage(
+      openStage, 'history_parents', parentRequests.size, requestOptions,
+      stageOptions => fetchAuthenticatedOutpoints(ctx, parentRequests, {
+        ...stageOptions,
+        evidenceRole: 'parent',
+      }),
+    );
     collectAuthenticatedSpentOutpoints(ctx, acceptedCurrent);
     const scriptIndexes = new Map(
       [...ctx.walletScriptToAddress.keys()].map((script, index) => [script, index]),

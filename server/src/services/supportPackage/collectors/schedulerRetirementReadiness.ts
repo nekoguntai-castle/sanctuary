@@ -4,6 +4,15 @@ import { schedulerRetirementReadinessSchema } from './schedulerRetirementReadine
 
 const MAX_SHAREABLE_COUNT = 1_000_000;
 
+/**
+ * Like the sibling database collectors (supportWalletSyncDiagnosticsRepository,
+ * supportNotificationDiagnosticsRepository), every statement is cancelled
+ * server-side well inside the runner's collector deadline, so a slow read
+ * settles as an `unavailable` section instead of outliving the deadline and
+ * fencing all later package generation (runner.ts collectSection).
+ */
+export const SUPPORT_COVERAGE_STATEMENT_TIMEOUT_MS = 2_000;
+
 function boundedCount(value: number): number {
   return Math.min(Math.max(Math.trunc(value), 0), MAX_SHAREABLE_COUNT);
 }
@@ -31,7 +40,9 @@ export function projectShareableSchedulerRetirementReadiness(
 
 registerShareableCollector('schedulerRetirementReadiness', {
   collect: async () => {
-    const readiness = await readSchedulerRetirementReadiness();
+    const readiness = await readSchedulerRetirementReadiness({
+      statementTimeoutMs: SUPPORT_COVERAGE_STATEMENT_TIMEOUT_MS,
+    });
     return schedulerRetirementReadinessSchema.parse(
       projectShareableSchedulerRetirementReadiness(readiness),
     );

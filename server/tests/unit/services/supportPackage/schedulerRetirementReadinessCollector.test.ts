@@ -80,4 +80,15 @@ describe('scheduler retirement readiness collector', () => {
       reason: 'storage_unavailable',
     });
   });
+  it('reads readiness with a statement timeout well inside the collector deadline', async () => {
+    mockReadiness.mockResolvedValue({
+      status: 'unavailable',
+      evaluatedAt: EVALUATED_AT,
+      reason: 'storage_unavailable',
+    });
+
+    await collect();
+
+    expect(mockReadiness).toHaveBeenCalledWith({ statementTimeoutMs: 2_000 });
+  });
 });

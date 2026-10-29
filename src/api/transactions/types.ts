@@ -233,6 +233,11 @@ export interface CreateBatchTransactionResponse {
   utxos: Array<{ txid: string; vout: number }>;
   inputPaths?: string[];
   effectiveAmount?: number;
+  /**
+   * The recipient the server binds this transaction to (its first output outside
+   * the wallet). Absent when the batch pays only the wallet.
+   */
+  recipient?: string;
   outputs: Array<{ address: string; amount: number; sendMax?: boolean }>;
   policyEvaluation?: PolicyEvaluationSummary;
 }

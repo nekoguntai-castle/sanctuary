@@ -2,11 +2,17 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   abortableSyncDelay,
   createSyncStageRuntime,
+  createSyncWindowRuntime,
+  SYNC_HISTORY_WINDOW_MS,
+  SYNC_REMOTE_STAGE_BUDGET_MS,
+  syncHistoryWindowMs,
+  workScaledStageBudgetMs,
   isSyncStageBudgetError,
   mapWithSyncConcurrency,
   SyncRemoteStageBudgetError,
   throwIfAttemptAborted,
 } from '../../../../../src/services/bitcoin/sync/attemptRuntime';
+import { WALLET_SYNC_MAX_EXECUTION_MS } from '../../../../../src/constants/walletSyncActivation';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -143,5 +149,42 @@ describe('wallet sync attempt runtime', () => {
 
     expect(() => throwIfAttemptAborted(runtime)).toThrow();
     await expect(abortableSyncDelay(100, runtime)).rejects.toBe(controller.signal.reason);
+  });
+
+  it.each([
+    [0, SYNC_REMOTE_STAGE_BUDGET_MS],
+    [1_000, SYNC_REMOTE_STAGE_BUDGET_MS],
+    [1_001, 303_000],
+    [20_000, 6_000_000],
+  ])('budgets %i items at %i ms (five-minute floor, 3 s per ten-item round trip)', (items, budget) => {
+    expect(workScaledStageBudgetMs(items)).toBe(budget);
+  });
+
+  it('caps every work-scaled stage at the history window inside the attempt', () => {
+    const controller = new AbortController();
+    const window = createSyncWindowRuntime(
+      { signal: controller.signal, deadlineAt: 10_000 + WALLET_SYNC_MAX_EXECUTION_MS },
+      SYNC_HISTORY_WINDOW_MS,
+      10_000,
+    );
+    const stage = createSyncStageRuntime(window, 'history_parents', workScaledStageBudgetMs(1e9), 10_000);
+
+    expect(SYNC_HISTORY_WINDOW_MS).toBeLessThan(WALLET_SYNC_MAX_EXECUTION_MS);
+    expect(stage.deadlineAt).toBe(10_000 + SYNC_HISTORY_WINDOW_MS);
+    stage.dispose();
+    expect(createSyncWindowRuntime(window, SYNC_HISTORY_WINDOW_MS, 10_000 + 60_000).deadlineAt)
+      .toBe(10_000 + SYNC_HISTORY_WINDOW_MS);
+  });
+
+  it.each([
+    [30 * 60_000, 20 * 60_000],
+    [10 * 60_000, 400_000],
+  ])('opens a %i ms attempt\'s history window at %i ms (two thirds of the time left at most)', (attemptMs, windowMs) => {
+    const controller = new AbortController();
+    const attempt = { signal: controller.signal, deadlineAt: 10_000 + attemptMs };
+
+    expect(syncHistoryWindowMs(attempt.deadlineAt, 10_000)).toBe(windowMs);
+    expect(createSyncWindowRuntime(attempt, syncHistoryWindowMs(attempt.deadlineAt, 10_000), 10_000).deadlineAt)
+      .toBe(10_000 + windowMs);
   });
 });

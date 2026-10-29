@@ -424,7 +424,7 @@ describe('compact receive-evidence staging', () => {
     const retainedCoverage = new Set([7]);
     ctx.authenticatedOutpointCoverage.set('retained-parent', retainedCoverage);
 
-    await expect(authenticateHistoryResults(ctx, { signal: controller.signal }))
+    await expect(authenticateHistoryResults(ctx, { requestOptions: { signal: controller.signal } }))
       .rejects.toBe(cancellation);
 
     expect(ctx.authenticatedTransactionEvidence.size).toBe(0);

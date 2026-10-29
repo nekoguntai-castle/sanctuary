@@ -297,6 +297,39 @@ describe('useBroadcast', () => {
     );
   });
 
+  it('reports the server-bound recipient and net spend when a batch pays a wallet address first', async () => {
+    const deps = createDeps({
+      unsignedPsbt: null,
+      signedRawTx: 'deadbeef',
+      state: {
+        outputs: [
+          { address: 'bc1qown', amount: '20000', sendMax: false },
+          { address: 'bc1qexternal', amount: '50000', sendMax: false },
+        ],
+        draftId: null,
+      } as any,
+      txData: {
+        ...baseTxData,
+        effectiveAmount: 50000,
+        recipient: 'bc1qexternal',
+        outputs: [
+          { address: 'bc1qown', amount: 20000 },
+          { address: 'bc1qexternal', amount: 50000 },
+        ],
+      } as any,
+    });
+    const { result } = renderHook(() => useBroadcast(deps));
+
+    await act(async () => {
+      await result.current.broadcastTransaction();
+    });
+
+    expect(mocks.broadcastTransaction).toHaveBeenCalledWith('wallet-1', expect.objectContaining({
+      recipient: 'bc1qexternal',
+      amount: 50000,
+    }));
+  });
+
   it('refreshes only live canonical caches after broadcast', async () => {
     const { result } = renderHook(() => useBroadcast(createDeps()));
 

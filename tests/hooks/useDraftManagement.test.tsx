@@ -430,6 +430,37 @@ describe('useDraftManagement', () => {
     );
   });
 
+  it('saves the server-bound recipient and net spend when a batch pays a wallet address first', async () => {
+    const deps = createDeps({
+      state: createState({
+        outputs: [
+          { address: 'bc1qown', amount: '20000', sendMax: false },
+          { address: 'bc1qexternal', amount: '50000', sendMax: false },
+        ],
+      }),
+      txData: {
+        ...baseTxData,
+        effectiveAmount: 50_000,
+        recipient: 'bc1qexternal',
+        outputs: [
+          { address: 'bc1qown', amount: 20_000 },
+          { address: 'bc1qexternal', amount: 50_000 },
+        ],
+      } as any,
+    });
+    const { result } = renderHook(() => useDraftManagement(deps));
+
+    await act(async () => {
+      await result.current.saveDraft();
+    });
+
+    expect(mocks.createDraft).toHaveBeenCalledWith(
+      'wallet-1',
+      expect.objectContaining({ recipient: 'bc1qexternal', amount: 50_000, effectiveAmount: 50_000 }),
+      expect.any(AbortSignal),
+    );
+  });
+
   it('updates an existing draft without signature fields when no signing occurred', async () => {
     const deps = createDeps({
       state: createState({ draftId: 'draft-existing' }),

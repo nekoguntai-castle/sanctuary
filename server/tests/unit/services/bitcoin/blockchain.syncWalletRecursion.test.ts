@@ -28,6 +28,7 @@ import { syncWallet } from '../../../../src/services/bitcoin/blockchain';
 import { getNodeClient } from '../../../../src/services/bitcoin/nodeClient';
 import { walletLog } from '../../../../src/websocket/notifications';
 import { createSyncPhaseProgress } from '../../../../src/services/bitcoin/sync/phaseProgress';
+import { SYNC_REMOTE_STAGE_BUDGET_MS } from '../../../../src/services/bitcoin/sync/attemptRuntime';
 
 describe('Blockchain syncWallet recursion', () => {
   beforeEach(() => {
@@ -120,6 +121,65 @@ describe('Blockchain syncWallet recursion', () => {
       transactions: 3,
       utxos: 4,
     });
+  });
+
+  it('defers the recursive sync when its history window would be shorter than one stage budget', async () => {
+    const walletId = 'wallet-recursive-deferred';
+    const scanAddress = 'tb1qk2n44m4g4d8f67mz5fdtg6v9pfh2j08rj9j3xg';
+    mockExecuteSyncPipeline
+      .mockResolvedValueOnce({ addresses: 2, transactions: 1, utxos: 1, stats: { newAddressesGenerated: 1 } })
+      .mockResolvedValueOnce({ addresses: 1, transactions: 0, utxos: 0, stats: { newAddressesGenerated: 0 } });
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({ id: walletId, network: 'testnet' });
+    mockPrismaClient.address.findMany.mockResolvedValue([
+      { id: 'addr-1', address: scanAddress, used: false },
+    ]);
+    mockElectrumClient.getAddressHistoryBatch.mockResolvedValue(
+      new Map([[scanAddress, [{ tx_hash: 'b'.repeat(64), height: 100 }]]]),
+    );
+
+    const result = await syncWallet(
+      walletId,
+      0,
+      new AbortController().signal,
+      undefined,
+      // Two thirds of 7 minutes is under the 5-minute stage budget.
+      Date.now() + SYNC_REMOTE_STAGE_BUDGET_MS * 3 / 2 - 30_000,
+    );
+
+    // The repair targets are durable, so the next sync scans the generated addresses.
+    expect(mockPrismaClient.$executeRaw.mock.calls.some(([statement]) => (
+      (statement as { strings: string[] }).strings.join('').includes('transaction_ownership_repairs')
+    ))).toBe(true);
+    expect(mockExecuteSyncPipeline).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ addresses: 2, transactions: 1, utxos: 1 });
+  });
+
+  it('recurses inside a 10-minute attempt whose history window still fits a stage budget', async () => {
+    const walletId = 'wallet-recursive-short-attempt';
+    const scanAddress = 'tb1qk2n44m4g4d8f67mz5fdtg6v9pfh2j08rj9j3xg';
+    mockExecuteSyncPipeline
+      .mockResolvedValueOnce({ addresses: 2, transactions: 1, utxos: 1, stats: { newAddressesGenerated: 1 } })
+      .mockResolvedValueOnce({ addresses: 1, transactions: 2, utxos: 0, stats: { newAddressesGenerated: 0 } });
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({ id: walletId, network: 'testnet' });
+    mockPrismaClient.address.findMany.mockResolvedValue([
+      { id: 'addr-1', address: scanAddress, used: false },
+    ]);
+    mockElectrumClient.getAddressHistoryBatch.mockResolvedValue(
+      new Map([[scanAddress, [{ tx_hash: 'c'.repeat(64), height: 100 }]]]),
+    );
+
+    // The first pass was short; about 10 minutes remain, so the recursive
+    // pass's window (two thirds, about 6.7 minutes) still fits a stage budget.
+    const result = await syncWallet(
+      walletId,
+      0,
+      new AbortController().signal,
+      undefined,
+      Date.now() + 10 * 60_000,
+    );
+
+    expect(mockExecuteSyncPipeline).toHaveBeenCalledTimes(2);
+    expect(result).toEqual({ addresses: 3, transactions: 3, utxos: 1 });
   });
 
   it('fails the sync when ownership repair targets cannot be persisted', async () => {

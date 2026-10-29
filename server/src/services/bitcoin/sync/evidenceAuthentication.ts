@@ -8,7 +8,7 @@ import type {
   SyncContext,
 } from './types';
 import type { NodeRequestOptions } from '../nodeClient';
-import { isSyncStageBudgetError } from './attemptRuntime';
+import { isSyncStageBudgetError, SYNC_REMOTE_BATCH_SIZE } from './attemptRuntime';
 import { isElectrumResponseTooLargeError } from '../electrum/protocol';
 import { createCooperativeScheduler } from '../../../utils/cooperativeScheduler';
 import {
@@ -32,7 +32,6 @@ import {
 export { releaseAuthenticatedTransactionDetails } from './evidenceArchitectureReceipts';
 
 const log = createLogger('BITCOIN:SVC_SYNC_EVIDENCE');
-const FETCH_BATCH_SIZE = 10;
 const MISSING_RESULT = 'missing_result';
 export const MAX_AUTHENTICATED_RAW_HEX_CHARS_PER_ATTEMPT = 64 * 1024 * 1024;
 export const MAX_AUTHENTICATED_INPUTS_PER_ATTEMPT = 100_000;
@@ -51,6 +50,10 @@ const TRANSACTION_COMPLEXITY_EXCEEDED = 'transaction_complexity_exceeded';
 type ComplexityRefusalReason = typeof ATTEMPT_EVIDENCE_CAPACITY_EXCEEDED | typeof TRANSACTION_COMPLEXITY_EXCEEDED;
 
 const isAttemptCancellation = (reason: unknown): boolean => !isSyncStageBudgetError(reason);
+/** True once the attempt itself is cancelled; a stage budget expiry is not a cancellation. */
+const isAttemptCancelled = (signal: AbortSignal | undefined): boolean => (
+  Boolean(signal?.aborted && isAttemptCancellation(signal.reason))
+);
 
 const reasonCode = (error: unknown): string => {
   if (error instanceof RawTransactionEvidenceError) return error.reason;
@@ -220,7 +223,7 @@ const recordCompactRefusal = (
 
 const shouldRethrow = (error: unknown, signal?: AbortSignal): boolean => (
   error instanceof DetachedTransactionEvidenceError
-  || Boolean(signal?.aborted && isAttemptCancellation(signal.reason))
+  || isAttemptCancelled(signal)
 );
 
 const localProjectionSignal = (
@@ -344,8 +347,8 @@ const fetchCompactWithProjector = async (
     return accepted;
   }
 
-  for (let offset = 0; offset < pending.length; offset += FETCH_BATCH_SIZE) {
-    const batchTxids = pending.slice(offset, offset + FETCH_BATCH_SIZE);
+  for (let offset = 0; offset < pending.length; offset += SYNC_REMOTE_BATCH_SIZE) {
+    const batchTxids = pending.slice(offset, offset + SYNC_REMOTE_BATCH_SIZE);
     let oversizedFrame = false;
     recordRemoteEvidenceFetch(ctx, batchTxids, 'batch');
     const request = ctx.client.getRawTransactionEvidenceBatch
@@ -462,7 +465,9 @@ const withOutpointFetchLock = async (
   outpointFetchTails.set(ctx, tail);
   await previous;
   try {
-    signal?.throwIfAborted();
+    // A stage budget expiry is recorded per pending parent by the task; only
+    // attempt cancellation aborts the lock (plan D-17.A2b).
+    if (isAttemptCancelled(signal)) signal?.throwIfAborted();
     await task();
   } finally {
     release();

@@ -192,6 +192,76 @@ derive_real_input_subjects() {
   done | filter_tracked_subjects
 }
 
+# D-17.C2 drift guard: every file a ci-classifier-tests suite executes (an
+# imported module, or a script/config a suite sources, runs or copies from the
+# checkout) selects that job. The suites are read from quality.yml by
+# tests/ci/lib/classifier-suite-subjects.mjs, not listed here: the hand-kept
+# suite list above is how the D-11.18 fix missed six subjects.
+SUBJECT_DERIVER="$ROOT_DIR/tests/ci/lib/classifier-suite-subjects.mjs"
+# A floor, not the full set: the derivation must keep finding these, so a
+# regression that narrows it cannot pass vacuously.
+EXECUTED_SUBJECT_FLOOR=".github/ci-performance-budget.json
+config/tooling/jscpd.json
+config/wallet-safety-critical-paths.json
+scripts/architecture/extract-call-graphs.mjs
+scripts/architecture/generate-graphs.mjs
+scripts/bump-funds-critical.sh
+scripts/check-server-cycle-baseline.mjs
+scripts/check-wallet-sync-lifecycle-contract.mjs
+scripts/check-wallet-sync-mutation-boundaries.mjs
+scripts/create-forge-release.sh
+scripts/generate-signer-inventory.mjs
+scripts/integration-test-defaults.sh
+scripts/lib/is-main-module.mjs
+scripts/offline/apply-bundle.sh
+scripts/offline/bundle-common.sh
+scripts/ops/phase2-alert-receiver-smoke.mjs
+scripts/ops/phase2-gateway-audit-compose-smoke.mjs
+scripts/perf/phase3-compose-benchmark-smoke.mjs
+scripts/perf/wallet-sync-database-readiness.mjs
+scripts/perf/wallet-sync-health-probe.mjs
+scripts/perf/wallet-sync-high-fanout-replay.mjs
+scripts/perf/wallet-sync-replay-cleanup.mjs
+scripts/perf/wallet-sync-replay-creation.mjs
+scripts/perf/wallet-sync-replay-ownership.mjs
+scripts/quality/check-root-layout.mjs
+scripts/quality/jscpd-only.sh
+scripts/reset-user-2fa.sh
+scripts/support-package-runner.mjs
+server/.husky/pre-commit
+server/scripts/check-runtime-prisma-deps.cjs
+server/scripts/mutation/shards.mjs
+server/scripts/project-runtime-dependencies.cjs
+server/stryker.critical.config.mjs
+tests/install/run-all-tests.sh
+tests/install/utils/assertion-tracking.sh
+tests/install/utils/collect-upgrade-artifacts.sh
+tests/install/utils/helpers.sh
+tests/install/utils/upgrade-selection.sh
+tests/install/utils/upgrade-source-refs.sh"
+
+# Checks every derived subject against the real is_ci_classifier_file (read
+# from the classifier script, so the predicate under test is the shipped one)
+# and fails listing each floor entry the derivation lost and each subject that
+# does not select ci-classifier-tests.
+assert_executed_subjects_routed() {
+  local derived subject missing="" unrouted=""
+
+  derived="$(node "$SUBJECT_DERIVER" "$ROOT_DIR" | cut -f1)" ||
+    fail "could not derive the ci-classifier-tests subjects"
+  for subject in $EXECUTED_SUBJECT_FLOOR; do
+    grep -qxF -- "$subject" <<< "$derived" || missing="$missing $subject"
+  done
+  [ -z "$missing" ] || fail "ci-classifier-tests subject derivation lost:$missing"
+  unrouted="$(
+    eval "$(awk '/^is_ci_classifier_file\(\) \{/{f=1} f{print} f&&/^\}/{exit}' "$CLASSIFIER_SCRIPT")"
+    for subject in $derived; do
+      is_ci_classifier_file "$subject" || printf ' %s' "$subject"
+    done
+  )"
+  [ -z "$unrouted" ] || fail "files the ci-classifier-tests suites execute do not select the job:$unrouted"
+}
+
 # assert_subjects_routed <derive_fn> <expected> <label> <repo_dir> <head_sha> <output_file>
 # Checks the derived subjects against the expected list, commits each one in
 # the fixture, and fails listing every subject that does not select the
@@ -354,6 +424,17 @@ main() {
     'classifier suite' "$repo_dir" "$head_sha" "$output_file")"
   head_sha="$(assert_subjects_routed derive_real_input_subjects "$EXPECTED_REAL_INPUT_SUBJECTS" \
     'real-input suite' "$repo_dir" "$head_sha" "$output_file")"
+  assert_executed_subjects_routed
+
+  # End to end through the real script for the D-17.C2 subjects and the
+  # root-layout schema (the schema is read, not executed, so it is listed).
+  for path in $EXECUTED_SUBJECT_FLOOR scripts/quality/root-layout-classification.schema.json; do
+    base_sha="$head_sha"
+    commit_file "$repo_dir" "$path" 'subject' "classify $path"
+    head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+    run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+    assert_exact_output "$output_file" "run_ci_classifier_tests" true
+  done
 
   for entry in \
     '.github/actions/setup-node-toolchain/action.yml|true|true' \
@@ -383,6 +464,8 @@ main() {
       scripts/quality.sh|scripts/quality/lizard-only.sh|scripts/quality/jscpd-only.sh) expected_classifier=true ;;
       scripts/quality/check-lockfile-peer-resolution.sh) expected_classifier=true ;;
       scripts/quality/lockfile-peer-resolution-allowlist.txt) expected_classifier=true ;;
+      # Copied into the jscpd-only.test.sh fixture (D-17.C2).
+      config/tooling/jscpd.json) expected_classifier=true ;;
     esac
     base_sha="$head_sha"
     head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \

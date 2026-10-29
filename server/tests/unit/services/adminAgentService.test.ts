@@ -15,14 +15,31 @@ const mocks = vi.hoisted(() => ({
     findById: vi.fn(),
     findByIdWithSigningDevices: vi.fn(),
     hasAccess: vi.fn(),
+    findGroupRoleByMembership: vi.fn(),
+  },
+  walletSharingRepository: {
+    findWalletUser: vi.fn(),
   },
 }));
 
+// The real agentWalletAccess (through accessControl) resolves the linked user's roles from these repositories.
 vi.mock('../../../src/repositories', () => ({
   agentRepository: mocks.agentRepository,
   userRepository: mocks.userRepository,
   walletRepository: mocks.walletRepository,
+  walletSharingRepository: mocks.walletSharingRepository,
 }));
+
+/** Direct wallet roles of user-1; `null` means no access to that wallet. */
+function grantRoles(funding: string | null, operational: string | null) {
+  const roleOf = (id: string) => (id === 'funding-wallet' ? funding : operational);
+  mocks.walletSharingRepository.findWalletUser.mockImplementation(async (id: string) => {
+    const role = roleOf(id);
+    return role === null ? null : { walletId: id, userId: 'user-1', role };
+  });
+  mocks.walletRepository.findGroupRoleByMembership.mockResolvedValue(null);
+  mocks.walletRepository.hasAccess.mockImplementation(async (id: string) => roleOf(id) !== null);
+}
 
 import {
   createAgentApiKey,
@@ -75,7 +92,7 @@ describe('adminAgentService', () => {
       id: 'funding-wallet',
       devices: [{ deviceId: 'device-1' }],
     });
-    mocks.walletRepository.hasAccess.mockResolvedValue(true);
+    grantRoles('signer', 'signer');
   });
 
   it('creates a wallet agent with trimmed input and returns detailed metadata when available', async () => {
@@ -200,5 +217,39 @@ describe('adminAgentService', () => {
         expiresAt: null,
       })
     );
+  });
+  describe('linked user wallet roles (same rule as the agent key at runtime)', () => {
+    const linkInput = {
+      userId: 'user-1',
+      name: 'Role Agent',
+      fundingWalletId: 'funding-wallet',
+      operationalWalletId: 'operational-wallet',
+    };
+    it.each(['viewer', 'approver'])('refuses to link a user who is only %s on the funding wallet', async role => {
+      grantRoles(role, 'owner');
+
+      await expect(createWalletAgent(linkInput)).rejects.toThrow('User must be an owner or signer of the funding wallet');
+      expect(mocks.agentRepository.createAgent).not.toHaveBeenCalled();
+    });
+
+    it('links a funding-wallet signer who only views the operational wallet', async () => {
+      grantRoles('signer', 'viewer');
+
+      await createWalletAgent(linkInput);
+
+      expect(mocks.agentRepository.createAgent).toHaveBeenCalledOnce();
+      expect(mocks.walletSharingRepository.findWalletUser).toHaveBeenCalledWith('funding-wallet', 'user-1');
+      expect(mocks.walletRepository.hasAccess).toHaveBeenCalledWith('operational-wallet', 'user-1');
+    });
+
+    it.each([
+      ['funding', null, 'owner'],
+      ['operational', 'owner', null],
+    ] as const)('refuses a user with no access to the %s wallet', async (wallet, funding, operational) => {
+      grantRoles(funding, operational);
+
+      await expect(createWalletAgent(linkInput)).rejects.toThrow(`User does not have access to the ${wallet} wallet`);
+      expect(mocks.agentRepository.createAgent).not.toHaveBeenCalled();
+    });
   });
 });

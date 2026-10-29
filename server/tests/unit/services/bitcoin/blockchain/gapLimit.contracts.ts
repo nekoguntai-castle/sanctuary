@@ -143,15 +143,13 @@ export function registerBlockchainGapLimitTests(): void {
       expect(mockPrismaClient.address.findMany).not.toHaveBeenCalled();
     });
 
-    it("propagates non-capability failures while loading signer provenance", async () => {
-      mockAssertWalletHardwareCapabilityById.mockRejectedValueOnce(new TypeError("malformed signer"));
+    it("does not load signer provenance for background gap expansion", async () => {
       mockPrismaClient.wallet.findUnique.mockResolvedValue(
         mockWallet({ devices: [{ device: null }] }),
       );
 
-      await expect(getBlockchainService().ensureGapLimit(walletId))
-        .rejects.toThrow(TypeError);
-      expect(mockPrismaClient.address.findMany).not.toHaveBeenCalled();
+      await expect(getBlockchainService().ensureGapLimit(walletId)).resolves.toEqual([]);
+      expect(mockAssertWalletHardwareCapabilityById).not.toHaveBeenCalled();
     });
 
     it("should handle wallet with no addresses", async () => {

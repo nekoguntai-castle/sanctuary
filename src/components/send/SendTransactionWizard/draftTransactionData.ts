@@ -65,6 +65,7 @@ export function createDraftInitialTxData({
     changeAmount: draftTxData.changeAmount,
     changeAddress: draftTxData.changeAddress,
     effectiveAmount,
+    recipient: draftTxData.recipient,
     utxos: draftTxData.selectedUtxoIds.map(id => findDraftUtxo(id, utxos)),
     outputs,
     inputPaths: draftTxData.inputPaths,

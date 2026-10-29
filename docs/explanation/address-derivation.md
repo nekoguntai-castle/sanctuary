@@ -277,6 +277,7 @@ const { address } = deriveAddressFromDescriptor(descriptor, 0, {
 - Generate new address for each receive
 - Mark addresses as "used" after receiving
 - Gap limit: 20 unused addresses
+- Background sync derives and watches addresses past the gap limit for every wallet with a canonical policy identity, whatever the signer's display capability is; showing or handing out an unused address still requires it. A legacy wallet without a canonical policy identity skips this discovery until wallet remediation records one.
 
 ## Testing
 

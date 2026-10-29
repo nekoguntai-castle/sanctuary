@@ -73,44 +73,67 @@ function mockLockedCoordinates(
     .mockResolvedValueOnce([summarize(0), summarize(1)]);
 }
 
+/** The real default-deny capability manifest, as production evaluates it. */
+async function useProductionCapabilityGate() {
+  const actual = await vi.importActual<
+    typeof import("../../../../src/services/hardwareWalletCapabilities")
+  >("../../../../src/services/hardwareWalletCapabilities");
+  mockAssertWalletHardwareCapabilityById.mockImplementation(
+    actual.assertWalletHardwareCapabilityById,
+  );
+  return actual.assertWalletHardwareCapabilityById;
+}
+
 export function registerBlockchainAddressDiscoveryContracts(): void {
   describe("Blockchain Service - Address Discovery (Gap Limit)", () => {
     beforeEach(() => {
       vi.clearAllMocks();
+      mockAssertWalletHardwareCapabilityById.mockReset();
       mockPrisma.$queryRaw.mockResolvedValue([{ id: "wallet-1", network: "mainnet" }]);
       mockCanonicalDerivation();
     });
 
     describe("ensureGapLimit", () => {
-      it.each(["ledger", "jade", "trezor"])(
-        "skips %s gap expansion without failing wallet sync",
+      it.each(["ledger", "jade", "trezor", "no-signer"])(
+        "watches receive addresses past index 19 for a %s wallet while address display stays denied",
         async (type) => {
-          mockAssertWalletHardwareCapabilityById.mockRejectedValueOnce(
-            new ForbiddenError("blocked"),
-          );
+          const assertProductionCapability = await useProductionCapabilityGate();
           const { ensureGapLimit } =
             await import("../../../../src/services/bitcoin/sync/addressDiscovery");
-          mockPrisma.wallet.findUnique.mockResolvedValue(
-            canonicalWallet({ devices: [{ device: { type } }] }),
-          );
+          mockPrisma.wallet.findUnique.mockResolvedValue(canonicalWallet({
+            devices: type === "no-signer" ? [] : [{ device: { type, model: null } }],
+          }));
+          // Funds arrived on receive index 19, so the gap needs indexes 20..39.
+          mockLockedCoordinates([
+            ...Array.from({ length: 20 }, (_, i) => canonicalAddress(0, i, i === 19)),
+            ...Array.from({ length: 20 }, (_, i) => canonicalAddress(1, i, false)),
+          ]);
 
-          await expect(ensureGapLimit("wallet-1")).resolves.toEqual([]);
-          expect(mockPrisma.address.findMany).not.toHaveBeenCalled();
-          expect(mockPrisma.address.createManyAndReturn).not.toHaveBeenCalled();
-          expect(mockDeriveAddress).not.toHaveBeenCalled();
+          const generated = await ensureGapLimit("wallet-1");
+
+          expect(generated.map((address) => address.derivationPath)).toEqual(
+            Array.from({ length: 20 }, (_, i) => `m/84'/0'/0'/0/${20 + i}`),
+          );
+          // Background discovery never consults the signer's display row...
+          expect(mockAssertWalletHardwareCapabilityById).not.toHaveBeenCalled();
+          // ...and the user-facing display gate for this wallet is still closed (#781).
+          await expect(assertProductionCapability("wallet-1", "display"))
+            .rejects.toBeInstanceOf(ForbiddenError);
         },
       );
 
-      it("propagates unexpected capability lookup failures", async () => {
-        mockAssertWalletHardwareCapabilityById.mockRejectedValueOnce(
-          new Error("database unavailable"),
-        );
+      it("skips a legacy wallet without canonical policy identity instead of failing sync", async () => {
+        await useProductionCapabilityGate();
         const { ensureGapLimit } =
           await import("../../../../src/services/bitcoin/sync/addressDiscovery");
-        mockPrisma.wallet.findUnique.mockResolvedValueOnce(canonicalWallet());
+        mockPrisma.wallet.findUnique.mockResolvedValue(canonicalWallet({
+          canonicalPolicyId: null,
+          canonicalPolicyVersion: null,
+        }));
 
-        await expect(ensureGapLimit("wallet-1")).rejects.toThrow("database unavailable");
-        expect(mockPrisma.address.findMany).not.toHaveBeenCalled();
+        await expect(ensureGapLimit("wallet-1")).resolves.toEqual([]);
+        expect(mockDeriveAddress).not.toHaveBeenCalled();
+        expect(mockPrisma.address.createManyAndReturn).not.toHaveBeenCalled();
       });
 
       it("propagates unexpected wallet lookup failures", async () => {
