@@ -34,6 +34,7 @@ export const WalletAutopilotSettings: React.FC<Props> = ({ walletId }) => {
         success={controller.success}
         error={controller.error}
         notificationsAvailable={controller.notificationsAvailable}
+        pushLookupFailed={controller.pushLookupFailed}
         showAdvanced={controller.showAdvanced}
         onToggleAdvanced={() => controller.setShowAdvanced(!controller.showAdvanced)}
         onToggle={controller.handleToggle}

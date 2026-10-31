@@ -6,6 +6,7 @@ import { useWalletAutopilotSettingsController } from '../../../src/components/Wa
 import { useUser } from '../../../src/contexts/UserContext';
 import { ApiError } from '../../../src/api/client';
 import * as walletsApi from '../../../src/api/wallets';
+import * as pushApi from '../../../src/api/push';
 
 const { mockLogger } = vi.hoisted(() => ({
   mockLogger: {
@@ -43,6 +44,18 @@ vi.mock('../../../src/api/wallets', async (importOriginal) => {
     getWalletAutopilotStatus: vi.fn(),
   };
 });
+
+vi.mock('../../../src/api/push', () => ({
+  getPushDevices: vi.fn(),
+}));
+
+const registeredPushDevice = {
+  id: 'device-1',
+  platform: 'ios' as const,
+  deviceName: 'iPhone',
+  lastUsedAt: '2026-10-01T00:00:00.000Z',
+  createdAt: '2026-09-01T00:00:00.000Z',
+};
 
 const defaultSettings = {
   enabled: false,
@@ -125,6 +138,7 @@ describe('WalletAutopilotSettings', () => {
     vi.mocked(walletsApi.getWalletAutopilotSettings).mockResolvedValue(defaultSettings);
     vi.mocked(walletsApi.updateWalletAutopilotSettings).mockResolvedValue(undefined as never);
     vi.mocked(walletsApi.getWalletAutopilotStatus).mockResolvedValue(defaultStatus);
+    vi.mocked(pushApi.getPushDevices).mockResolvedValue([]);
   });
 
   it('shows loading skeleton initially', () => {
@@ -157,6 +171,69 @@ describe('WalletAutopilotSettings', () => {
 
     expect(await screen.findByText('Notifications required')).toBeInTheDocument();
     expect(screen.queryByText('Enable Autopilot')).not.toBeInTheDocument();
+  });
+
+  it('enables Autopilot controls for a push-only user with a registered device', async () => {
+    mockNoTelegramUser();
+    vi.mocked(pushApi.getPushDevices).mockResolvedValue([registeredPushDevice]);
+
+    render(<WalletAutopilotSettings walletId={walletId} />);
+
+    expect(await screen.findByText('Enable Autopilot')).toBeInTheDocument();
+    expect(screen.queryByText('Notifications required')).not.toBeInTheDocument();
+  });
+
+  it('keeps controls visible to disable when autopilot is already enabled without channels', async () => {
+    const user = userEvent.setup();
+    mockNoTelegramUser();
+    vi.mocked(walletsApi.getWalletAutopilotSettings).mockResolvedValue({
+      ...defaultSettings,
+      enabled: true,
+    });
+
+    render(<WalletAutopilotSettings walletId={walletId} />);
+
+    expect(await screen.findByText('Notifications required')).toBeInTheDocument();
+    expect(screen.getByText('Enable Autopilot')).toBeInTheDocument();
+    await user.click(screen.getByRole('switch'));
+
+    await waitFor(() => {
+      expect(walletsApi.updateWalletAutopilotSettings).toHaveBeenCalledWith(
+        walletId,
+        expect.objectContaining({ enabled: false })
+      );
+    });
+  });
+
+  it('fails open when the push device lookup errors', async () => {
+    mockNoTelegramUser();
+    vi.mocked(pushApi.getPushDevices).mockRejectedValue(new ApiError('Internal error', 500));
+
+    render(<WalletAutopilotSettings walletId={walletId} />);
+
+    expect(await screen.findByText('Enable Autopilot')).toBeInTheDocument();
+    expect(screen.queryByText('Notifications required')).not.toBeInTheDocument();
+    expect(screen.getByText(/could not check for registered mobile devices/i)).toBeInTheDocument();
+  });
+
+  it('hides the lookup-failed note when Telegram is ready', async () => {
+    mockTelegramUser();
+    vi.mocked(pushApi.getPushDevices).mockRejectedValue(new ApiError('Internal error', 500));
+
+    render(<WalletAutopilotSettings walletId={walletId} />);
+
+    expect(await screen.findByText('Enable Autopilot')).toBeInTheDocument();
+    expect(screen.queryByText(/could not check for registered mobile devices/i)).not.toBeInTheDocument();
+  });
+
+  it('describes the real notification setup paths when no channel is available', async () => {
+    mockNoTelegramUser();
+
+    render(<WalletAutopilotSettings walletId={walletId} />);
+
+    expect(
+      await screen.findByText(/Configure Telegram in Account Settings or sign in on the Sanctuary mobile app to receive push notifications/)
+    ).toBeInTheDocument();
   });
 
   it('renders enable toggle when telegram is configured', async () => {
@@ -662,6 +739,37 @@ describe('WalletAutopilotSettings', () => {
     });
 
     expect(result.current.status).toEqual(defaultStatus);
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('ignores a push device lookup that resolves after the wallet changed', async () => {
+    mockNoTelegramUser();
+    let resolveFirstLookup!: (value: typeof registeredPushDevice[]) => void;
+    // wallet-1's lookup stays pending; wallet-2's finds a registered device.
+    vi.mocked(pushApi.getPushDevices)
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirstLookup = resolve; }))
+      .mockResolvedValue([registeredPushDevice]);
+
+    const { result, rerender } = renderHook(
+      ({ id }: { id: string }) => useWalletAutopilotSettingsController(id),
+      { initialProps: { id: walletId } },
+    );
+
+    // Let wallet-1's settings and status settle so its load is parked on the
+    // pending push lookup when the wallet changes.
+    await waitFor(() =>
+      expect(walletsApi.getWalletAutopilotStatus).toHaveBeenCalledWith(walletId),
+    );
+    await act(async () => {});
+    rerender({ id: 'wallet-2' });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.notificationsAvailable).toBe(true);
+
+    await act(async () => {
+      resolveFirstLookup([]);
+    });
+
+    expect(result.current.notificationsAvailable).toBe(true);
     expect(result.current.loading).toBe(false);
   });
 

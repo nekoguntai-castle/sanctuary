@@ -408,6 +408,39 @@ describe('Mobile Permission Repository', () => {
 
       expect(prisma.mobilePermission.upsert).toHaveBeenCalled();
     });
+
+    // Non-regression: the schema defaults canApproveTransaction/canManagePolicies
+    // to false, so a create that omits them silently revoked both capabilities.
+    it('creates new rows with approve/manage-policies enabled like a reset', async () => {
+      (prisma.mobilePermission.upsert as Mock).mockResolvedValue(mockPermission);
+
+      await mobilePermissionRepository.upsert('wallet-456', 'user-789', {
+        canBroadcast: false,
+        lastModifiedBy: 'user-789',
+      });
+
+      const args = (prisma.mobilePermission.upsert as Mock).mock.calls[0][0];
+      expect(args.create).toMatchObject({
+        canApproveTransaction: true,
+        canManagePolicies: true,
+        canBroadcast: false,
+      });
+      expect(args.update).not.toHaveProperty('canApproveTransaction');
+      expect(args.update).not.toHaveProperty('canManagePolicies');
+    });
+
+    it('keeps explicit false approve/manage-policies on create', async () => {
+      (prisma.mobilePermission.upsert as Mock).mockResolvedValue(mockPermission);
+
+      await mobilePermissionRepository.upsert('wallet-456', 'user-789', {
+        canApproveTransaction: false,
+        canManagePolicies: false,
+      });
+
+      const args = (prisma.mobilePermission.upsert as Mock).mock.calls[0][0];
+      expect(args.create).toMatchObject({ canApproveTransaction: false, canManagePolicies: false });
+      expect(args.update).toMatchObject({ canApproveTransaction: false, canManagePolicies: false });
+    });
   });
 
   describe('updateById', () => {

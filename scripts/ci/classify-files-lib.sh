@@ -265,16 +265,28 @@ is_e2e_file() {
   return 1
 }
 
+# Every browser spec boots src/main.tsx -> App.tsx and drives flows through hash
+# routes, so the whole frontend runtime tree (and the shared/ modules and
+# package.json the bundle imports) selects Full Browser E2E. Kept in sync by
+# tests/ci/browserSmokeInputsClassified.test.ts.
 is_browser_smoke_file() {
   case "$1" in
-    src/App.tsx|src/main.tsx|src/index.html|config/tooling/playwright.config.ts)
+    src/App.tsx|src/main.tsx|src/index.html|package.json|package-lock.json|config/tooling/playwright.config.ts)
       return 0
       ;;
-    src/app/*|src/api/*|src/components/Layout/*|src/components/Login/*|src/components/DraftList/*|src/components/AuditLogs/*|src/components/Monitoring/*|src/components/WalletDetail/*)
+    src/app/*|src/api/*|src/components/*|src/hooks/*|src/contexts/*|src/providers/*|src/themes/*|src/utils/*|src/services/*|src/public/*|src/types/*)
+      return 0
+      ;;
+    shared/*)
       return 0
       ;;
     tests/e2e/*)
       case "$1" in
+        # network-sync-toggle-dark.spec.ts imports this render harness file, so
+        # it is a browser input despite the render-regression exclusion below.
+        tests/e2e/render-regression/renderRegressionHarness.ts)
+          return 0
+          ;;
         tests/e2e/render-regression.spec.ts|tests/e2e/render-regression/*|tests/e2e/render-regression.spec.ts-snapshots/*)
           return 1
           ;;

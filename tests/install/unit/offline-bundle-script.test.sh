@@ -185,6 +185,28 @@ setup_fake_docker() {
   cat > "$FAKE_BIN/docker" <<'EOF'
 #!/bin/bash
 printf '%s\n' "$*" >> "$SANCTUARY_FAKE_DOCKER_LOG"
+default_image_id="${SANCTUARY_FAKE_IMAGE_ID:-sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb}"
+
+# Succeeds when an earlier call (not this one, which is the log's last line)
+# contained $1 and named ref $2 as its last argument.
+earlier_call_for() {
+  awk -v needle="$1" -v ref=" $2" '
+    NR > 1 && index(prev, needle) && substr(prev, length(prev) - length(ref) + 1) == ref { found = 1 }
+    { prev = $0 }
+    END { exit !found }
+  ' "$SANCTUARY_FAKE_DOCKER_LOG"
+}
+
+# ID the sanctuary-* ref $1 resolves to now. SANCTUARY_FAKE_RETAG_AFTER models
+# a host re-pointing the mutable :local tag at SANCTUARY_FAKE_RETAGGED_IMAGE_ID
+# once that ref's revision check (revision-check) or save (save) has happened.
+sanctuary_image_id() {
+  case "${SANCTUARY_FAKE_RETAG_AFTER:-}" in
+    revision-check) earlier_call_for image.revision "$1" && { printf '%s\n' "$SANCTUARY_FAKE_RETAGGED_IMAGE_ID"; return; } ;;
+    save) earlier_call_for "save -o " "$1" && { printf '%s\n' "$SANCTUARY_FAKE_RETAGGED_IMAGE_ID"; return; } ;;
+  esac
+  printf '%s\n' "$default_image_id"
+}
 
 case "$1" in
   compose)
@@ -204,6 +226,19 @@ case "$1" in
     [ -z "${SANCTUARY_EXPECTED_LOCK:-}" ] || [ "$SANCTUARY_IMAGE_LOCK_SHA256" = "$SANCTUARY_EXPECTED_LOCK" ] || exit 1
     [ -z "${SANCTUARY_EXPECTED_VERSION:-}" ] || [ "$SANCTUARY_VERSION" = "$SANCTUARY_EXPECTED_VERSION" ] || exit 1
     [ -z "${SANCTUARY_EXPECTED_BUILD_ID:-}" ] || [ "$SANCTUARY_BUILD_ID" = "$SANCTUARY_EXPECTED_BUILD_ID" ] || exit 1
+    # SANCTUARY_FAKE_IMAGE_STORE models the daemon's tag namespace: a build
+    # creates sanctuary-<image>:${SANCTUARY_IMAGE_TAG:-local} exactly as the
+    # Compose `image:` interpolation does, and nothing else.
+    if [ -n "${SANCTUARY_FAKE_IMAGE_STORE:-}" ] && [[ " $* " == *" build "* ]]; then
+      for service in "$@"; do
+        case "$service" in
+          backend|migrate|frontend|gateway|llm-egress-proxy) built="sanctuary-$service" ;;
+          grafana-password-migration) built="sanctuary-grafana-migration" ;;
+          *) continue ;;
+        esac
+        printf '%s:%s\n' "$built" "${SANCTUARY_IMAGE_TAG:-local}" >> "$SANCTUARY_FAKE_IMAGE_STORE"
+      done
+    fi
     exit 0
     ;;
   pull)
@@ -229,11 +264,27 @@ case "$1" in
     ;;
   image)
     if [ "${2:-}" = "tag" ]; then
+      if [ -n "${SANCTUARY_FAKE_IMAGE_STORE:-}" ]; then
+        case "${3:-}" in
+          sanctuary-*) grep -Fxq -- "$3" "$SANCTUARY_FAKE_IMAGE_STORE" || exit 1 ;;
+        esac
+        printf '%s\n' "${4:-}" >> "$SANCTUARY_FAKE_IMAGE_STORE"
+      fi
       exit "${SANCTUARY_FAKE_TAG_STATUS:-0}"
     fi
     if [ "${2:-}" = "inspect" ]; then
       image="${@: -1}"
-      image_id="${SANCTUARY_FAKE_IMAGE_ID:-sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb}"
+      if [ -n "${SANCTUARY_FAKE_IMAGE_STORE:-}" ]; then
+        case "$image" in
+          sanctuary-*)
+            grep -Fxq -- "$image" "$SANCTUARY_FAKE_IMAGE_STORE" || {
+              echo "Error: No such image: $image" >&2
+              exit 1
+            }
+            ;;
+        esac
+      fi
+      image_id="$default_image_id"
       image_os="${SANCTUARY_FAKE_IMAGE_OS:-linux}"
       image_arch="${SANCTUARY_FAKE_IMAGE_ARCH:-amd64}"
       case "$image" in
@@ -241,6 +292,7 @@ case "$1" in
         postgres:*|redis:*|tecnativa/*|jaegertracing/*|grafana/*|prom/*|dperson/*)
           image_id="${SANCTUARY_FAKE_RUNTIME_IMAGE_ID:-$image_id}"
           ;;
+        sanctuary-*) image_id="$(sanctuary_image_id "$image")" ;;
       esac
       case "$image" in
         *@sha256:*)
@@ -255,6 +307,7 @@ case "$1" in
         *) repo_digests='["example.invalid/test@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]' ;;
       esac
       case "$*" in
+        *'{{.Id}} {{ index'*'image.revision'*) printf '%s %s\n' "$image_id" "${SANCTUARY_FAKE_IMAGE_REVISION:-}" ;;
         *'image.revision'*) printf '%s\n' "${SANCTUARY_FAKE_IMAGE_REVISION:-}" ;;
         *'{{.Id}} {{.Os}} {{.Architecture}}'*) printf '%s %s %s\n' "$image_id" "$image_os" "$image_arch" ;;
         *'{{.Id}}'*) printf '%s\n' "$image_id" ;;
@@ -299,11 +352,30 @@ case "$1" in
     done
     [ -n "$output" ] || exit 1
     repo_tag="${SANCTUARY_FAKE_SAVED_REPO_TAG:-$saved_image}"
+    # A real archive names its config by the image's config digest:
+    # <hex>.json (classic Docker before 25, Podman docker-archive) or
+    # blobs/sha256/<hex> (Docker 25+). SANCTUARY_FAKE_SAVED_CONFIG overrides it.
+    saved_id="$default_image_id"
+    case "$saved_image" in
+      postgres:*|redis:*|tecnativa/*|jaegertracing/*|grafana/*|prom/*|dperson/*)
+        saved_id="${SANCTUARY_FAKE_RUNTIME_IMAGE_ID:-$saved_id}"
+        ;;
+      sanctuary-*) saved_id="$(sanctuary_image_id "$saved_image")" ;;
+    esac
+    config_name="${SANCTUARY_FAKE_SAVED_CONFIG:-${saved_id#sha256:}.json}"
     tar_dir="$(mktemp -d)"
-    printf '[{"Config":"config.json","RepoTags":["%s"],"Layers":[]}]\n' "$repo_tag" \
-      > "$tar_dir/manifest.json"
-    printf '{}\n' > "$tar_dir/config.json"
-    tar -cf "$output" -C "$tar_dir" manifest.json config.json
+    # SANCTUARY_FAKE_SAVED_MANIFEST replaces manifest.json; @REF@ and @CONFIG@
+    # expand to the saved RepoTag and config name. Set but empty writes an empty file.
+    if [ -n "${SANCTUARY_FAKE_SAVED_MANIFEST+x}" ]; then
+      manifest="${SANCTUARY_FAKE_SAVED_MANIFEST//@REF@/$repo_tag}"
+      printf '%s' "${manifest//@CONFIG@/$config_name}" > "$tar_dir/manifest.json"
+    else
+      printf '[{"Config":"%s","RepoTags":["%s"],"Layers":[]}]\n' "$config_name" "$repo_tag" \
+        > "$tar_dir/manifest.json"
+    fi
+    mkdir -p "$tar_dir/$(dirname "$config_name")"
+    printf '{}\n' > "$tar_dir/$config_name"
+    tar -cf "$output" -C "$tar_dir" manifest.json "$config_name"
     find "$tar_dir" -type f -delete
     find "$tar_dir" -depth -type d -empty -delete
     exit 0
@@ -870,20 +942,24 @@ test_create_full_bundle_builds_and_saves_migration_without_pull() {
   return "$failures"
 }
 
-test_create_bundle_signs_outer_archive() {
-  TEST_TMP_DIR="$(mktemp -d)"
-  setup_fake_docker
+# Writes an RSA signing keypair to $1/private.pem and $1/public.pem.
+make_signing_keypair() {
+  openssl genrsa -out "$1/private.pem" 2048 >/dev/null 2>&1 \
+    && openssl rsa -in "$1/private.pem" -pubout -out "$1/public.pem" >/dev/null 2>&1
+}
 
-  local tag output private_key public_key release_repo failures=0
-  tag="v9.9.9"
-  release_repo="$TEST_TMP_DIR/release-repo"
-  mkdir -p "$release_repo/scripts/offline"
+# A tagged, clean release checkout so signed build-mode runs do not depend on
+# the host checkout carrying release tags. Prints the tag commit.
+make_release_repo() {
+  local release_repo="$1" tag="$2"
+  mkdir -p "$release_repo/scripts/offline" "$release_repo/scripts/ci" "$release_repo/config"
   cp "$PROJECT_ROOT/package.json" "$release_repo/package.json"
+  cp "$PROJECT_ROOT/config/container-image-lock.json" "$release_repo/config/container-image-lock.json"
   cp "$PROJECT_ROOT/scripts/create-upgrade-backup.sh" "$release_repo/scripts/create-upgrade-backup.sh"
-  cp "$PROJECT_ROOT/scripts/offline/create-bundle.sh" "$release_repo/scripts/offline/create-bundle.sh"
-  cp "$PROJECT_ROOT/scripts/offline/apply-bundle.sh" "$release_repo/scripts/offline/apply-bundle.sh"
-  cp "$PROJECT_ROOT/scripts/offline/bundle-common.sh" "$release_repo/scripts/offline/bundle-common.sh"
-  mkdir -p "$release_repo/scripts/ci"
+  cp "$PROJECT_ROOT/scripts/offline/create-bundle.sh" \
+    "$PROJECT_ROOT/scripts/offline/apply-bundle.sh" \
+    "$PROJECT_ROOT/scripts/offline/bundle-common.sh" \
+    "$release_repo/scripts/offline/"
   cp "$PROJECT_ROOT/scripts/ci/create-registered-staging.sh" \
     "$PROJECT_ROOT/scripts/ci/cleanup-ci-callsite.sh" \
     "$PROJECT_ROOT/scripts/ci/provider-context.sh" \
@@ -898,12 +974,22 @@ test_create_bundle_signs_outer_archive() {
   git -C "$release_repo" add .
   git -C "$release_repo" commit -qm "test release checkout"
   git -C "$release_repo" tag "$tag"
+  git -C "$release_repo" rev-parse "$tag^{commit}"
+}
+
+test_create_bundle_signs_outer_archive() {
+  TEST_TMP_DIR="$(mktemp -d)"
+  setup_fake_docker
+
+  local tag output private_key public_key release_repo failures=0
+  tag="v9.9.9"
+  release_repo="$TEST_TMP_DIR/release-repo"
+  make_release_repo "$release_repo" "$tag" >/dev/null || failures=1
 
   output="$TEST_TMP_DIR/sanctuary-offline-test.tar.gz"
   private_key="$TEST_TMP_DIR/private.pem"
   public_key="$TEST_TMP_DIR/public.pem"
-  openssl genrsa -out "$private_key" 2048 >/dev/null 2>&1 || failures=1
-  openssl rsa -in "$private_key" -pubout -out "$public_key" >/dev/null 2>&1 || failures=1
+  make_signing_keypair "$TEST_TMP_DIR" || failures=1
 
   if [ "$failures" -eq 0 ]; then
     PATH="$FAKE_BIN:$PATH" \
@@ -933,33 +1019,11 @@ test_create_bundle_skip_build_rejects_stale_revision() {
   local tag release_repo private_key public_key output tag_commit status failures=0
   tag="v9.9.9"
   release_repo="$TEST_TMP_DIR/release-repo"
-  mkdir -p "$release_repo/scripts/offline" "$release_repo/scripts/ci"
-  cp "$PROJECT_ROOT/package.json" "$release_repo/package.json"
-  cp "$PROJECT_ROOT/scripts/create-upgrade-backup.sh" "$release_repo/scripts/create-upgrade-backup.sh"
-  cp "$PROJECT_ROOT/scripts/offline/create-bundle.sh" \
-    "$PROJECT_ROOT/scripts/offline/apply-bundle.sh" \
-    "$PROJECT_ROOT/scripts/offline/bundle-common.sh" \
-    "$release_repo/scripts/offline/"
-  cp "$PROJECT_ROOT/scripts/ci/create-registered-staging.sh" \
-    "$PROJECT_ROOT/scripts/ci/cleanup-ci-callsite.sh" \
-    "$PROJECT_ROOT/scripts/ci/provider-context.sh" \
-    "$PROJECT_ROOT/scripts/ci/provider-context.mjs" \
-    "$PROJECT_ROOT/scripts/ci/forward-live-annotations.mjs" \
-    "$release_repo/scripts/ci/"
-  cp -R "$PROJECT_ROOT/scripts/ownership" "$release_repo/scripts/ownership"
-  cp -R "$PROJECT_ROOT/scripts/lib" "$release_repo/scripts/lib"
-  git -C "$release_repo" init -q
-  git -C "$release_repo" config user.name "Sanctuary Tests"
-  git -C "$release_repo" config user.email "tests@sanctuary.local"
-  git -C "$release_repo" add .
-  git -C "$release_repo" commit -qm "test release checkout"
-  git -C "$release_repo" tag "$tag"
-  tag_commit="$(git -C "$release_repo" rev-parse "$tag^{commit}")"
+  tag_commit="$(make_release_repo "$release_repo" "$tag")" || failures=1
 
   private_key="$TEST_TMP_DIR/private.pem"
   public_key="$TEST_TMP_DIR/public.pem"
-  openssl genrsa -out "$private_key" 2048 >/dev/null 2>&1 || failures=1
-  openssl rsa -in "$private_key" -pubout -out "$public_key" >/dev/null 2>&1 || failures=1
+  make_signing_keypair "$TEST_TMP_DIR" || failures=1
 
   if [ "$failures" -eq 0 ]; then
     # A stale image (built from another commit) must stop a signed bundle.
@@ -988,6 +1052,213 @@ test_create_bundle_skip_build_rejects_stale_revision() {
 
   teardown_bundle_workspace
   return "$failures"
+}
+
+# The cleanup coordinator exports SANCTUARY_IMAGE_TAG=<lane project> to the
+# re-executed subject, so a build-mode run tags sanctuary-*:<lane>. The bundle
+# must still package (and restore) the install-time sanctuary-*:local names,
+# without requiring pre-existing :local images on the build host.
+test_create_bundle_build_under_lane_tag_bundles_local_refs() {
+  TEST_TMP_DIR="$(mktemp -d)"
+  setup_fake_docker
+
+  local tag release_repo tag_commit private_key public_key output store lane
+  local inventory saved_tags image bucket release_images failures=0
+  tag="v9.9.9"
+  lane="sanctuary-ci-1234-1-offline-create"
+  release_repo="$TEST_TMP_DIR/release-repo"
+  tag_commit="$(make_release_repo "$release_repo" "$tag")" || failures=1
+  private_key="$TEST_TMP_DIR/private.pem"
+  public_key="$TEST_TMP_DIR/public.pem"
+  make_signing_keypair "$TEST_TMP_DIR" || failures=1
+  store="$TEST_TMP_DIR/image-store"
+  : > "$store"
+
+  if [ "$failures" -eq 0 ]; then
+    output="$TEST_TMP_DIR/lane-build.tar.gz"
+    PATH="$FAKE_BIN:$PATH" \
+      SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
+      SANCTUARY_FAKE_IMAGE_STORE="$store" \
+      SANCTUARY_FAKE_IMAGE_REVISION="$tag_commit" \
+      SANCTUARY_IMAGE_TAG="$lane" \
+      run_create_bundle "$release_repo/scripts/offline/create-bundle.sh" --tag "$tag" --output "$output" \
+        --signing-key "$private_key" --public-key "$public_key" >"$TEST_TMP_DIR/lane.out" 2>&1 \
+      || { cat "$TEST_TMP_DIR/lane.out" >&2; failures=1; }
+  fi
+
+  if [ "$failures" -eq 0 ]; then
+    release_images="$(bash -c 'source "$1"; offline_all_release_images' _ "$PROJECT_ROOT/scripts/offline/bundle-common.sh" \
+      | LC_ALL=C sort)" || failures=1
+    # The build stays in the coordinator's lane namespace (the fake build only
+    # ever writes ${SANCTUARY_IMAGE_TAG:-local}), and each image is aliased.
+    for image in $(sed -n 's/^\(sanctuary-.*\):local$/\1/p' <<<"$release_images"); do
+      grep -Fxq "$image:$lane" "$store" \
+        || { echo "build did not produce lane-tagged $image:$lane" >&2; failures=1; }
+      grep -Fq "image tag $image:$lane $image:local" "$DOCKER_LOG" \
+        || { echo "lane image $image:$lane was not aliased to $image:local" >&2; failures=1; }
+      bucket="core"
+      [ "$image" != sanctuary-grafana-migration ] || bucket="monitoring"
+      saved_tags="$(tar -xOzf "$output" "./images/$bucket/$image-local.tar" \
+        | tar -xO manifest.json | jq -c '[.[].RepoTags[]?]')" || failures=1
+      [ "$saved_tags" = "[\"$image:local\"]" ] \
+        || { echo "$image archive restores $saved_tags, not $image:local" >&2; failures=1; }
+    done
+    # Inventory keeps the install-time names a release verifier expects.
+    inventory="$(tar -xOzf "$output" ./image-inventory.json)" || failures=1
+    [ "$(printf '%s' "$inventory" | jq -r '.images[].image' | LC_ALL=C sort)" \
+      = "$release_images" ] \
+      || { echo "inventory images differ from offline_all_release_images" >&2; failures=1; }
+    printf '%s' "$inventory" | jq -e '[.images[] | select(.image | startswith("sanctuary-"))
+      | select(.archiveRef != .image or (.image | endswith(":local") | not))] | length == 0' >/dev/null \
+      || { echo "inventory does not bind sanctuary images to :local archive refs" >&2; failures=1; }
+  fi
+
+  # --skip-build under the coordinator still packages pre-existing :local images.
+  if [ "$failures" -eq 0 ]; then
+    printf 'sanctuary-%s:local\n' backend migrate frontend gateway llm-egress-proxy > "$store"
+    : > "$DOCKER_LOG"
+    output="$TEST_TMP_DIR/skip-build.tar.gz"
+    PATH="$FAKE_BIN:$PATH" \
+      SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
+      SANCTUARY_FAKE_IMAGE_STORE="$store" \
+      SANCTUARY_FAKE_IMAGE_REVISION="$tag_commit" \
+      SANCTUARY_IMAGE_TAG="$lane" \
+      run_create_bundle "$release_repo/scripts/offline/create-bundle.sh" --tag "$tag" --output "$output" \
+        --unsigned-for-dev --core-only --skip-build >"$TEST_TMP_DIR/skip.out" 2>&1 \
+      || { cat "$TEST_TMP_DIR/skip.out" >&2; failures=1; }
+    if grep -Eq "^(compose|image tag sanctuary-)" "$DOCKER_LOG"; then
+      echo "--skip-build built or re-tagged Sanctuary images" >&2
+      failures=1
+    fi
+  fi
+
+  teardown_bundle_workspace
+  return "$failures"
+}
+
+# Runs a --skip-build core bundle from a tagged release checkout, writing
+# $TEST_TMP_DIR/skip-build.tar.gz; the caller's SANCTUARY_FAKE_* settings
+# reach the fake docker. Prints the run output; returns its status.
+run_skip_build_core_bundle() {
+  local tag="v9.9.9" release_repo tag_commit
+  release_repo="$TEST_TMP_DIR/release-repo"
+  tag_commit="$(make_release_repo "$release_repo" "$tag")" || return 99
+  PATH="$FAKE_BIN:$PATH" \
+    SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
+    SANCTUARY_FAKE_IMAGE_REVISION="$tag_commit" \
+    run_create_bundle "$release_repo/scripts/offline/create-bundle.sh" --tag "$tag" \
+      --output "$TEST_TMP_DIR/skip-build.tar.gz" --unsigned-for-dev --core-only --skip-build 2>&1
+}
+
+# As run_skip_build_core_bundle, with the saved archive's manifest Config set to $1.
+run_skip_build_with_saved_config() {
+  SANCTUARY_FAKE_SAVED_CONFIG="$1" run_skip_build_core_bundle
+}
+
+# Fails unless a skip-build core bundle run under the caller's SANCTUARY_FAKE_*
+# settings fails with output containing $1; $2 describes the case.
+expect_skip_build_failure_naming() {
+  local expected="$1" description="$2" output status=0
+  output="$(run_skip_build_core_bundle)" || status=$?
+  if [ "$status" -eq 0 ]; then
+    echo "bundle creation accepted $description" >&2
+    return 1
+  fi
+  if ! grep -Fq -- "$expected" <<<"$output"; then
+    echo "$description failure does not say '$expected':" >&2
+    printf '%s\n' "$output" >&2
+    return 1
+  fi
+}
+
+# The :local tag can be re-pointed between the revision check and `docker
+# save`; the image saved must be the one whose revision was checked.
+test_create_bundle_rejects_retag_after_revision_check() {
+  TEST_TMP_DIR="$(mktemp -d)"
+  setup_fake_docker
+  local failures=0
+  SANCTUARY_FAKE_RETAG_AFTER=revision-check \
+    SANCTUARY_FAKE_RETAGGED_IMAGE_ID="sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" \
+    expect_skip_build_failure_naming "changed after its revision check" \
+      "an image re-tagged after its revision check" || failures=1
+  teardown_bundle_workspace
+  return "$failures"
+}
+
+test_create_bundle_rejects_multi_entry_saved_manifest() {
+  TEST_TMP_DIR="$(mktemp -d)"
+  setup_fake_docker
+  local failures=0
+  SANCTUARY_FAKE_SAVED_MANIFEST='[{"Config":"@CONFIG@","RepoTags":["@REF@"],"Layers":[]},{"Config":"@CONFIG@","RepoTags":[],"Layers":[]}]' \
+    expect_skip_build_failure_naming "does not restore exactly" \
+      "a saved archive manifest with two entries" || failures=1
+  teardown_bundle_workspace
+  return "$failures"
+}
+
+test_create_bundle_rejects_empty_saved_manifest() {
+  TEST_TMP_DIR="$(mktemp -d)"
+  setup_fake_docker
+  local failures=0
+  SANCTUARY_FAKE_SAVED_MANIFEST='' \
+    expect_skip_build_failure_naming "manifest is empty" \
+      "an empty saved archive manifest" || failures=1
+  teardown_bundle_workspace
+  return "$failures"
+}
+
+# The inventory records the ID verified and saved, not whatever the mutable
+# :local tag points at after the save.
+test_create_bundle_inventory_records_saved_image_id() {
+  TEST_TMP_DIR="$(mktemp -d)"
+  setup_fake_docker
+  local output status=0 failures=0 ids
+  output="$(SANCTUARY_FAKE_RETAG_AFTER=save \
+    SANCTUARY_FAKE_RETAGGED_IMAGE_ID="sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" \
+    run_skip_build_core_bundle)" || status=$?
+  if [ "$status" -ne 0 ]; then
+    printf '%s\n' "$output" >&2
+    failures=1
+  else
+    ids="$(tar -xOzf "$TEST_TMP_DIR/skip-build.tar.gz" ./image-inventory.json \
+      | jq -r '[.images[] | select(.image | startswith("sanctuary-")) | .id] | unique | join(",")')" || failures=1
+    [ "$ids" = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" ] \
+      || { echo "inventory records sanctuary image IDs $ids, not the saved ID" >&2; failures=1; }
+  fi
+  teardown_bundle_workspace
+  return "$failures"
+}
+
+# `:local` is a mutable host-wide tag, so the ID verified before `docker save`
+# may not be the image saved. The saved archive's config must name that ID.
+test_create_bundle_rejects_saved_config_for_different_image_id() {
+  TEST_TMP_DIR="$(mktemp -d)"
+  setup_fake_docker
+  local output status=0 failures=0
+  output="$(run_skip_build_with_saved_config \
+    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.json")" || status=$?
+  if [ "$status" -eq 0 ]; then
+    echo "bundle creation accepted an archive whose config names a different image ID" >&2
+    failures=1
+  elif ! grep -Fq 'containerd image store' <<<"$output"; then
+    echo "saved-config mismatch failure does not name the containerd image store:" >&2
+    printf '%s\n' "$output" >&2
+    failures=1
+  fi
+  teardown_bundle_workspace
+  return "$failures"
+}
+
+# Docker 25+ archives name the config blobs/sha256/<hex>.
+test_create_bundle_accepts_saved_config_blob_layout() {
+  TEST_TMP_DIR="$(mktemp -d)"
+  setup_fake_docker
+  local output status=0
+  output="$(run_skip_build_with_saved_config \
+    "blobs/sha256/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")" || status=$?
+  [ "$status" -eq 0 ] || printf '%s\n' "$output" >&2
+  teardown_bundle_workspace
+  return "$status"
 }
 
 test_fresh_bootstrap_ignores_unrelated_database_volume() {
@@ -1356,6 +1627,13 @@ main() {
   run_test "full bundle builds and saves local Grafana migration image" test_create_full_bundle_builds_and_saves_migration_without_pull
   run_test "create bundle signs outer archive" test_create_bundle_signs_outer_archive
   run_test "create bundle --skip-build rejects a stale image revision" test_create_bundle_skip_build_rejects_stale_revision
+  run_test "create bundle built under a lane tag bundles :local refs" test_create_bundle_build_under_lane_tag_bundles_local_refs
+  run_test "create bundle rejects a saved config for a different image ID" test_create_bundle_rejects_saved_config_for_different_image_id
+  run_test "create bundle accepts the blobs/sha256 saved config layout" test_create_bundle_accepts_saved_config_blob_layout
+  run_test "create bundle rejects a retag after the revision check" test_create_bundle_rejects_retag_after_revision_check
+  run_test "create bundle rejects a multi-entry saved manifest" test_create_bundle_rejects_multi_entry_saved_manifest
+  run_test "create bundle rejects an empty saved manifest" test_create_bundle_rejects_empty_saved_manifest
+  run_test "create bundle inventory records the saved image ID" test_create_bundle_inventory_records_saved_image_id
   run_test "fresh bootstrap ignores unrelated database volume" test_fresh_bootstrap_ignores_unrelated_database_volume
   run_test "upgrade bootstrap resolves current and legacy project names" test_upgrade_bootstrap_resolves_current_and_legacy_project_names
   run_test "extracted bundle apply runs from the bundle layout" test_extracted_bundle_apply_runs_from_bundle_layout

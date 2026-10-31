@@ -155,4 +155,29 @@ describeIfDatabase('mobile permission effective wallet access', () => {
       if (userIds.length) await db.user.deleteMany({ where: { id: { in: userIds } } });
     }
   });
+
+  it('creates first rows without revoking approve or policy capabilities', async () => {
+    const db = await getTestPrisma();
+    const userIds: string[] = [];
+    let walletId: string | undefined;
+    try {
+      const owner = await createTestUser(db, { username: 'mobile-create-owner', email: 'mobile-create-owner@example.com' });
+      const approver = await createTestUser(db, { username: 'mobile-create-approver', email: 'mobile-create-approver@example.com' });
+      userIds.push(owner.id, approver.id);
+      const wallet = await createTestWallet(db, owner.id);
+      walletId = wallet.id;
+      await db.walletUser.create({ data: { walletId, userId: approver.id, role: 'approver' } });
+
+      const capped = await mobilePermissionService.setMaxPermissions(walletId, approver.id, owner.id, { broadcast: false });
+      expect(capped.permissions.approveTransaction).toBe(true);
+      const ownChange = await mobilePermissionService.updateOwnPermissions(walletId, owner.id, { broadcast: false });
+      expect(ownChange.permissions).toMatchObject({ approveTransaction: true, managePolicies: true });
+      expect(await db.mobilePermission.findUnique({
+        where: { walletId_userId: { walletId, userId: owner.id } },
+      })).toMatchObject({ canApproveTransaction: true, canManagePolicies: true, canBroadcast: false });
+    } finally {
+      if (walletId) await db.wallet.deleteMany({ where: { id: walletId } });
+      if (userIds.length) await db.user.deleteMany({ where: { id: { in: userIds } } });
+    }
+  });
 });

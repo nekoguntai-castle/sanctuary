@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { WalletAutopilotSettings as AutopilotSettingsType, AutopilotStatus } from '../../../types';
 import { useUser } from '../../../contexts/UserContext';
 import * as walletsApi from '../../../api/wallets';
+import * as pushApi from '../../../api/push';
 import { ApiError } from '../../../api/client';
 import { isNotFoundOrForbiddenError } from '../../../utils/errorHandler';
 import { createLogger } from '../../../utils/logger';
@@ -24,12 +25,26 @@ const DEFAULT_SETTINGS: AutopilotSettingsType = {
 
 type ToggleField = 'enabled' | 'notifyTelegram' | 'notifyPush';
 
-function getNotificationsAvailable(user: ReturnType<typeof useUser>['user']) {
-  const telegramConfigured = Boolean(
-    user?.preferences?.telegram?.botToken && user?.preferences?.telegram?.chatId
-  );
-  const telegramEnabled = user?.preferences?.telegram?.enabled;
-  return telegramConfigured && Boolean(telegramEnabled);
+// Push device lookup result. 'unknown' means the lookup failed; it fails open so
+// a lookup error never locks a user out.
+type PushDeviceAvailability = 'none' | 'registered' | 'unknown';
+
+function isTelegramReady(user: ReturnType<typeof useUser>['user']) {
+  const telegram = user?.preferences?.telegram;
+  return Boolean(telegram?.botToken && telegram?.chatId && telegram?.enabled);
+}
+
+function getNotificationsAvailable(telegramReady: boolean, pushDevices: PushDeviceAvailability) {
+  return telegramReady || pushDevices !== 'none';
+}
+
+async function loadPushDeviceAvailability(): Promise<PushDeviceAvailability> {
+  try {
+    return (await pushApi.getPushDevices()).length > 0 ? 'registered' : 'none';
+  } catch (error) {
+    log.warn('Push device lookup failed; not gating Autopilot on it', { error });
+    return 'unknown';
+  }
 }
 
 export function useWalletAutopilotSettingsController(walletId: string) {
@@ -42,6 +57,7 @@ export function useWalletAutopilotSettingsController(walletId: string) {
   const [success, setSuccess] = useState(false);
   const [featureUnavailable, setFeatureUnavailable] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [pushDevices, setPushDevices] = useState<PushDeviceAvailability>('none');
   const prevSettingsRef = useRef<AutopilotSettingsType>(DEFAULT_SETTINGS);
   // Whether the wallet's real settings are known: true only after a load for the
   // *current* walletId has resolved (success, or a definitive 404/403 meaning
@@ -56,6 +72,7 @@ export function useWalletAutopilotSettingsController(walletId: string) {
     settingsLoadedRef.current = false;
 
     const fetchData = async () => {
+      const pushDevicesPromise = loadPushDeviceAvailability();
       try {
         const data = await walletsApi.getWalletAutopilotSettings(walletId);
         if (cancelled) return;
@@ -80,7 +97,10 @@ export function useWalletAutopilotSettingsController(walletId: string) {
         log.debug('Optional autopilot status fetch failed', { error });
       }
 
-      if (!cancelled) setLoading(false);
+      const pushDeviceAvailability = await pushDevicesPromise;
+      if (cancelled) return;
+      setPushDevices(pushDeviceAvailability);
+      setLoading(false);
     };
     fetchData();
 
@@ -131,6 +151,8 @@ export function useWalletAutopilotSettingsController(walletId: string) {
     }
   }, [settings, saveSettings]);
 
+  const telegramReady = isTelegramReady(user);
+
   return {
     settings,
     status,
@@ -140,7 +162,8 @@ export function useWalletAutopilotSettingsController(walletId: string) {
     success,
     featureUnavailable,
     showAdvanced,
-    notificationsAvailable: getNotificationsAvailable(user),
+    notificationsAvailable: getNotificationsAvailable(telegramReady, pushDevices),
+    pushLookupFailed: !telegramReady && pushDevices === 'unknown',
     setShowAdvanced,
     handleToggle,
     handleNumberChange,

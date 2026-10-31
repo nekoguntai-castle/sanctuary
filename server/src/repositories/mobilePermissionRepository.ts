@@ -263,6 +263,11 @@ export async function upsert(
     create: {
       walletId,
       userId,
+      // The schema defaults these two to false while every other capability
+      // defaults to true; match resetCapabilitiesByWalletAndUser so creating a
+      // row never revokes what the role grants. Explicit input still wins.
+      canApproveTransaction: true,
+      canManagePolicies: true,
       ...input,
       ownerMaxPermissions: input.ownerMaxPermissions as Prisma.InputJsonValue,
     },

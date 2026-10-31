@@ -122,6 +122,37 @@ const networkClients = new Map<NetworkType, NodeClientInterface>();
 const networkResetPromises = new Map<NetworkType, Promise<void>>();
 let allNetworksResetPromise: Promise<void> | null = null;
 
+/**
+ * How long a singleton fallback cached after a pool failure is reused before
+ * the pool is tried again. Without it the fallback stays pinned until its
+ * socket drops, even after the pool recovers.
+ */
+export const POOL_FALLBACK_RETRY_MS = 30_000;
+// Present only while the network's cached client is a pool-mode singleton fallback.
+const poolFallbackRetryAt = new Map<NetworkType, number>();
+
+/**
+ * Overall bound for a background pool retry. The probe never uses a caller's
+ * signal or deadline, so it needs its own.
+ */
+const POOL_RETRY_PROBE_TIMEOUT_MS = 15_000;
+// The most recent background pool retry per network, kept so tests can await its exit.
+const lastPoolRetryProbe = new Map<NetworkType, Promise<void>>();
+
+/** Test hook: settles once the network's most recent background pool retry has exited. */
+export async function waitForPoolRetryProbeForTests(network: NetworkType): Promise<void> {
+  await lastPoolRetryProbe.get(network);
+}
+
+// Bumped by every reset, so an attempt that was in flight across one does not
+// cache a client built against the pool that reset tore down.
+let allNetworksResetGeneration = 0;
+const networkResetGenerations = new Map<NetworkType, number>();
+
+function resetGenerationOf(network: NetworkType): string {
+  return `${allNetworksResetGeneration}:${networkResetGenerations.get(network) ?? 0}`;
+}
+
 function disconnectQuietly(client: Pick<NodeClientInterface, 'disconnect'>, context: string): void {
   try {
     client.disconnect();
@@ -190,11 +221,12 @@ export async function getNodeClient(
   options?: NodeRequestOptions,
 ): Promise<NodeClientInterface> {
   options?.signal?.throwIfAborted();
-  // Check if we have a cached client for this network
   const cachedClient = networkClients.get(network);
-  if (cachedClient && cachedClient.isConnected()) {
+  if (cachedClient?.isConnected()) {
+    if (claimPoolRetry(network)) startPoolRetryProbe(network, cachedClient);
     return cachedClient;
   }
+  const generation = resetGenerationOf(network);
 
   // Get the network-specific mode configuration
   const networkConfig = await awaitSharedConnection(
@@ -206,6 +238,7 @@ export async function getNodeClient(
 
   let client: NodeClientInterface;
   let identityVerified = false;
+  let usedPoolFallback = false;
 
   if (networkConfig.mode === 'pool') {
     // Pool mode uses a stable request facade over short-lived pool borrows.
@@ -224,26 +257,15 @@ export async function getNodeClient(
       log.info(`Using Electrum connection pool for ${network}`);
     } catch (error) {
       options?.signal?.throwIfAborted();
-      // Fall back to singleton if pool fails
+      // Fall back to singleton if pool fails; the pool is retried after POOL_FALLBACK_RETRY_MS.
       log.warn(`Pool initialization failed for ${network}, falling back to singleton`, { error: getErrorMessage(error) });
-      const electrumClient = getElectrumClientForNetwork(network);
-
-      if (!electrumClient.isConnected()) {
-        await awaitSharedConnection(electrumClient.connect(), options?.signal);
-      }
-
-      client = electrumClient;
+      client = await connectSingleton(network, options);
+      usedPoolFallback = true;
       log.info(`Using Electrum singleton fallback for ${network}`);
     }
   } else {
     // Singleton mode - use direct connection to configured host
-    const electrumClient = getElectrumClientForNetwork(network);
-
-    if (!electrumClient.isConnected()) {
-      await awaitSharedConnection(electrumClient.connect(), options?.signal);
-    }
-
-    client = electrumClient;
+    client = await connectSingleton(network, options);
     const host = networkConfig.singletonHost || 'default';
     const port = networkConfig.singletonPort || 50002;
     log.info(`Using Electrum singleton for ${network} at ${host}:${port}`);
@@ -259,15 +281,106 @@ export async function getNodeClient(
     }
   }
 
-  // Cache the client
+  if (resetGenerationOf(network) === generation) {
+    cacheNetworkClient(network, client, usedPoolFallback);
+  } else {
+    log.debug(`Not caching ${network} client: the node client was reset while it was being created`);
+  }
+  return client;
+}
+
+/**
+ * Claim the pool retry for a cached pool fallback whose retry window has
+ * elapsed. Moving the deadline forward first means one caller claims each
+ * retry; the fallback stays cached either way.
+ */
+function claimPoolRetry(network: NetworkType): boolean {
+  const retryAt = poolFallbackRetryAt.get(network);
+  if (retryAt === undefined) return false;
+  const now = Date.now();
+  if (now < retryAt) return false;
+
+  poolFallbackRetryAt.set(network, now + POOL_FALLBACK_RETRY_MS);
+  log.info(`Retrying Electrum pool for ${network} after singleton fallback window`);
+  return true;
+}
+
+/**
+ * Retry the pool behind the cached, verified fallback, so the claiming caller
+ * is not held up by it or failed by its own signal or deadline. A failed probe
+ * keeps the fallback (whose deadline the claim already moved). The fallback
+ * singleton is never disconnected: it is process-shared.
+ */
+function startPoolRetryProbe(network: NetworkType, fallback: NodeClientInterface): void {
+  const generation = resetGenerationOf(network);
+  const probe = probePoolRecovery(network, fallback, generation).catch((error: unknown) => {
+    log.warn(`Background Electrum pool retry failed for ${network}; keeping singleton fallback`, {
+      error: getErrorMessage(error),
+    });
+  });
+  lastPoolRetryProbe.set(network, probe);
+}
+
+async function probePoolRecovery(
+  network: NetworkType,
+  fallback: NodeClientInterface,
+  generation: string,
+): Promise<void> {
+  // A reset, or a caller that replaced a dropped fallback, wins over the probe.
+  const isStale = (): boolean =>
+    resetGenerationOf(network) !== generation || networkClients.get(network) !== fallback;
+  const signal = AbortSignal.timeout(POOL_RETRY_PROBE_TIMEOUT_MS);
+  const networkConfig = await awaitSharedConnection(getNetworkModeConfig(network), signal);
+  // Checked before the pool getter so a probe never creates a pool after a reset tore it down.
+  if (isStale()) {
+    log.debug(`Discarding stale Electrum pool retry for ${network}`);
+    return;
+  }
+  if (networkConfig.mode !== 'pool') {
+    // The fallback is now the configured singleton; stop retrying the pool.
+    poolFallbackRetryAt.delete(network);
+    return;
+  }
+
+  const pool = await awaitSharedConnection(getElectrumPoolForNetwork(network), signal);
+  const client = new PooledNodeClient(pool, network);
+  await verifyNodeClientNetwork(client, network, { signal });
+
+  if (isStale()) {
+    log.debug(`Discarding stale Electrum pool retry for ${network}`);
+    return;
+  }
+  cacheNetworkClient(network, client, false);
+  log.info(`Electrum pool recovered for ${network}; replacing singleton fallback`);
+}
+
+async function connectSingleton(
+  network: NetworkType,
+  options?: NodeRequestOptions,
+): Promise<ElectrumClient> {
+  const electrumClient = getElectrumClientForNetwork(network);
+  if (!electrumClient.isConnected()) {
+    await awaitSharedConnection(electrumClient.connect(), options?.signal);
+  }
+  return electrumClient;
+}
+
+function cacheNetworkClient(
+  network: NetworkType,
+  client: NodeClientInterface,
+  usedPoolFallback: boolean,
+): void {
   networkClients.set(network, client);
+  if (usedPoolFallback) {
+    poolFallbackRetryAt.set(network, Date.now() + POOL_FALLBACK_RETRY_MS);
+  } else {
+    poolFallbackRetryAt.delete(network);
+  }
 
   // Also set as the legacy active client if this is mainnet
   if (network === 'mainnet') {
     activeClient = client;
   }
-
-  return client;
 }
 
 /**
@@ -285,11 +398,13 @@ export async function getActiveNodeConfig(): Promise<NodeConfig> {
  * @param network Optional network to reset. If not specified, resets all networks.
  */
 async function resetOneNetwork(network: NetworkType): Promise<void> {
+  networkResetGenerations.set(network, (networkResetGenerations.get(network) ?? 0) + 1);
   const client = networkClients.get(network);
   if (client) {
     client.disconnect();
     networkClients.delete(network);
   }
+  poolFallbackRetryAt.delete(network);
   await resetElectrumPoolForNetwork(network);
 
   if (network === 'mainnet' && activeClient === client) {
@@ -314,6 +429,7 @@ function resetNodeClientForNetwork(network: NetworkType): Promise<void> {
 function resetAllNodeClients(): Promise<void> {
   if (allNetworksResetPromise) return allNetworksResetPromise;
 
+  allNetworksResetGeneration += 1;
   const reset = (async () => {
     await Promise.all(networkResetPromises.values());
     await Promise.all(
@@ -322,6 +438,7 @@ function resetAllNodeClients(): Promise<void> {
 
     activeClient = null;
     activeConfig = null;
+    poolFallbackRetryAt.clear();
     resetElectrumClient();
     await resetElectrumPool();
 

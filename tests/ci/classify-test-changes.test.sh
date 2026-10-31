@@ -607,7 +607,7 @@ EOF_DOC
 
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_exact_output "$output_file" "frontend_changed" "true"
-  assert_exact_output "$output_file" "browser_smoke_changed" "false"
+  assert_exact_output "$output_file" "browser_smoke_changed" "true"
   assert_exact_output "$output_file" "render_changed" "false"
   assert_exact_output "$output_file" "build_changed" "false"
 
@@ -645,9 +645,26 @@ EOF_DOC
 
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_exact_output "$output_file" "frontend_changed" "true"
-  assert_exact_output "$output_file" "browser_smoke_changed" "false"
+  assert_exact_output "$output_file" "browser_smoke_changed" "true"
   assert_exact_output "$output_file" "render_changed" "true"
   assert_exact_output "$output_file" "build_changed" "false"
+
+  # Every browser spec boots src/main.tsx -> App.tsx and drives flows through
+  # hash routes, so any runtime frontend tree selects Full Browser E2E.
+  # src/types holds runtime code (enums, wallet-type labels, quorum helpers).
+  local flow_file
+  for flow_file in src/components/send/x.tsx src/components/Settings/x.tsx src/hooks/x.ts src/types/index.ts; do
+    base_sha="$head_sha"
+    mkdir -p "$repo_dir/$(dirname "$flow_file")"
+    printf 'export const flow = true;\n' > "$repo_dir/$flow_file"
+    git -C "$repo_dir" add "$flow_file"
+    git -C "$repo_dir" commit -qm "flow input $flow_file"
+    head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+    run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+    assert_exact_output "$output_file" "frontend_changed" "true"
+    assert_exact_output "$output_file" "browser_smoke_changed" "true"
+  done
 
   base_sha="$head_sha"
   mkdir -p "$repo_dir/config/tooling"
@@ -662,10 +679,11 @@ EOF_DOC
   assert_exact_output "$output_file" "render_changed" "false"
   assert_exact_output "$output_file" "build_changed" "true"
 
+  # A render-regression file no browser spec imports stays render-lane only.
   base_sha="$head_sha"
   mkdir -p "$repo_dir/tests/e2e/render-regression"
-  printf 'export const fixture = true;\n' > "$repo_dir/tests/e2e/render-regression/renderRegressionHarness.ts"
-  git -C "$repo_dir" add tests/e2e/render-regression/renderRegressionHarness.ts
+  printf 'export const fixture = true;\n' > "$repo_dir/tests/e2e/render-regression/renderRegressionCore.contracts.ts"
+  git -C "$repo_dir" add tests/e2e/render-regression/renderRegressionCore.contracts.ts
   git -C "$repo_dir" commit -qm "render e2e"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
 
@@ -676,6 +694,19 @@ EOF_DOC
   assert_exact_output "$output_file" "browser_smoke_changed" "false"
   assert_exact_output "$output_file" "render_changed" "true"
   assert_exact_output "$output_file" "build_changed" "false"
+
+  # network-sync-toggle-dark.spec.ts (browser lane) imports the render harness,
+  # so the harness selects both lanes (D-19.C1a).
+  base_sha="$head_sha"
+  printf 'export const harness = true;\n' > "$repo_dir/tests/e2e/render-regression/renderRegressionHarness.ts"
+  git -C "$repo_dir" add tests/e2e/render-regression/renderRegressionHarness.ts
+  git -C "$repo_dir" commit -qm "shared render harness"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "e2e_changed" "true"
+  assert_exact_output "$output_file" "browser_smoke_changed" "true"
+  assert_exact_output "$output_file" "render_changed" "true"
 
   base_sha="$head_sha"
   mkdir -p "$repo_dir/config/tooling"
@@ -777,7 +808,7 @@ EOF_DOC
   done
 
   # shared/ is consumed by every workspace through shared/dist, so a shared-only
-  # diff must select the backend, gateway, render and build lanes without
+  # diff must select the backend, gateway, render, browser and build lanes without
   # appending to any related-file list (vitest related would no-op on them).
   base_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   mkdir -p "$repo_dir/shared/schemas"
@@ -787,7 +818,7 @@ EOF_DOC
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
 
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
-  for shared_output in backend_changed backend_integration_changed gateway_changed render_changed build_changed frontend_changed shared_changed; do
+  for shared_output in backend_changed backend_integration_changed gateway_changed render_changed browser_smoke_changed build_changed frontend_changed shared_changed; do
     assert_exact_output "$output_file" "$shared_output" "true"
   done
   assert_exact_output "$output_file" "llm_egress_proxy_changed" "false"

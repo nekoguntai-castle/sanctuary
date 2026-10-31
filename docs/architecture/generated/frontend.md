@@ -89,6 +89,7 @@ n_src_api_intelligence_ts["intelligence.ts"]
 n_src_api_labels_ts["labels.ts"]
 n_src_api_payjoin_ts["payjoin.ts"]
 n_src_api_price_ts["price.ts"]
+n_src_api_push_ts["push.ts"]
 n_src_api_refresh_ts["refresh.ts"]
 n_src_api_retryPolicy_ts["retryPolicy.ts"]
 n_src_api_sync_ts["sync.ts"]
@@ -522,6 +523,7 @@ n_src_api_payjoin_ts-->n_shared_schemas_bitcoinResponses_ts
 n_src_api_payjoin_ts-->n_src_api_client_ts
 n_src_api_price_ts-->n_shared_schemas_priceResponses_ts
 n_src_api_price_ts-->n_src_api_client_ts
+n_src_api_push_ts-->n_src_api_client_ts
 n_src_api_refresh_ts-->n_src_api_authCoordination_ts
 n_src_api_refresh_ts-->n_src_api_authPolicy_ts
 n_src_api_refresh_ts-->n_src_api_baseUrl_ts
@@ -969,6 +971,7 @@ n_src_components_WalletDetail__collapsed-->n_src_api_devices_ts
 n_src_components_WalletDetail__collapsed-->n_src_api_drafts_ts
 n_src_components_WalletDetail__collapsed-->n_src_api_labels_ts
 n_src_components_WalletDetail__collapsed-->n_src_api_payjoin_ts
+n_src_components_WalletDetail__collapsed-->n_src_api_push_ts
 n_src_components_WalletDetail__collapsed-->n_src_api_sync_ts
 n_src_components_WalletDetail__collapsed-->n_src_api_transactions__collapsed
 n_src_components_WalletDetail__collapsed-->n_src_api_wallets_ts

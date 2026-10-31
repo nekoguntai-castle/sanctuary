@@ -29,6 +29,7 @@ interface AutopilotSettingsCardProps extends SettingsControlsProps {
   success: boolean;
   error: string | null;
   notificationsAvailable: boolean;
+  pushLookupFailed: boolean;
 }
 
 function AutopilotHeader({ success }: { success: boolean }) {
@@ -55,12 +56,21 @@ function NotificationsRequiredNotice() {
         <div>
           <p className="text-sm font-medium text-warning-700">Notifications required</p>
           <p className="text-xs text-warning-600 mt-1">
-            Configure Telegram or push notifications in Account Settings to use Autopilot.
+            Configure Telegram in Account Settings or sign in on the Sanctuary mobile app to receive push notifications.
             Autopilot sends consolidation suggestions via notification channels.
           </p>
         </div>
       </div>
     </div>
+  );
+}
+
+function PushLookupFailedNote() {
+  return (
+    <p className="text-xs text-sanctuary-500">
+      Could not check for registered mobile devices. Autopilot suggestions are only delivered
+      if Telegram is configured or the Sanctuary mobile app is signed in.
+    </p>
   );
 }
 
@@ -288,19 +298,24 @@ export function AutopilotSettingsCard({
   success,
   error,
   notificationsAvailable,
+  pushLookupFailed,
   showAdvanced,
   onToggleAdvanced,
   onToggle,
   onNumberChange,
   onNumberBlur,
 }: AutopilotSettingsCardProps) {
+  // An already-enabled Autopilot stays controllable even without a delivery
+  // channel, so the user can always turn it off.
+  const showControls = notificationsAvailable || settings.enabled;
+
   return (
     <div className="surface-elevated rounded-xl border border-sanctuary-200 dark:border-sanctuary-800 overflow-hidden">
       <AutopilotHeader success={success} />
-      <div className="p-6">
-        {!notificationsAvailable ? (
-          <NotificationsRequiredNotice />
-        ) : (
+      <div className="p-6 space-y-4">
+        {!notificationsAvailable && <NotificationsRequiredNotice />}
+        {pushLookupFailed && <PushLookupFailedNote />}
+        {showControls && (
           <AutopilotSettingsControls
             settings={settings}
             saving={saving}

@@ -19,6 +19,13 @@ UNSIGNED_FOR_DEV=false
 CORE_ONLY=false
 SKIP_BUILD=false
 CREATE_TMP_ROOT=""
+# Tag of the Sanctuary images this run packages. bundle-common.sh names them
+# by their install-time sanctuary-*:local refs; a build tags them with the
+# cleanup coordinator's lane tag instead (see build_sanctuary_images).
+SOURCE_IMAGE_TAG="local"
+# "<source ref> <image ID>" lines recorded by verify_sanctuary_image_revisions;
+# save_images requires each Sanctuary image it saves to still have that ID.
+REVISION_VERIFIED_IMAGE_IDS=""
 
 usage() {
   cat <<'EOF'
@@ -154,6 +161,10 @@ build_sanctuary_images() {
   fi
 
   initialize_bundle_build_identity "$commit"
+  # The coordinator exports SANCTUARY_IMAGE_TAG=<lane project> so lane-built
+  # images never overwrite the host's install-time :local tags; save_images
+  # aliases each one to the :local name the bundle restores.
+  SOURCE_IMAGE_TAG="${SANCTUARY_IMAGE_TAG:-local}"
 
   offline_log "Building Sanctuary images for $PLATFORM..."
   # Compose interpolates required runtime secrets before it selects the build
@@ -168,6 +179,7 @@ build_sanctuary_images() {
     ENCRYPTION_SALT="offline-build-encryption-salt" \
     WORKER_DIAGNOSTICS_SECRET="0000000000000000000000000000000000000000000000000000000000000000" \
     LLM_EGRESS_PROXY_SECRET="0000000000000000000000000000000000000000000000000000000000000000" \
+    SANCTUARY_IMAGE_TAG="$SOURCE_IMAGE_TAG" \
     docker compose -f "$OFFLINE_REPO_ROOT/docker-compose.yml" build \
       backend migrate frontend gateway llm-egress-proxy
 
@@ -181,6 +193,7 @@ build_sanctuary_images() {
       GRAFANA_PASSWORD="offline-build-grafana-password" \
       WORKER_DIAGNOSTICS_SECRET="0000000000000000000000000000000000000000000000000000000000000000" \
       LLM_EGRESS_PROXY_SECRET="0000000000000000000000000000000000000000000000000000000000000000" \
+      SANCTUARY_IMAGE_TAG="$SOURCE_IMAGE_TAG" \
       docker compose -f "$OFFLINE_REPO_ROOT/docker-compose.yml" \
         -f "$OFFLINE_REPO_ROOT/docker/compose/monitoring.yml" build \
         grafana-password-migration
@@ -223,6 +236,14 @@ external_images() {
   fi
 }
 
+# Local ref holding the image packaged under the install-time name $1.
+bundle_source_image() {
+  case "$1" in
+    sanctuary-*:local) printf '%s:%s\n' "${1%:local}" "$SOURCE_IMAGE_TAG" ;;
+    *) printf '%s\n' "$1" ;;
+  esac
+}
+
 bundle_images() {
   if [ "$CORE_ONLY" = "true" ]; then
     offline_core_images
@@ -234,16 +255,22 @@ bundle_images() {
 # Every Sanctuary Dockerfile stamps org.opencontainers.image.revision from the
 # build's source commit. --skip-build reuses whatever images are local, so a
 # stale image would otherwise ship inside a bundle signed for $TAG. Dev bundles
-# are not release artifacts and only warn.
+# are not release artifacts and only warn. The ID and label are read in one
+# inspect, and the ID is recorded so save_images can prove it saved this image.
 verify_sanctuary_image_revisions() {
-  local commit="$1" image rev message
+  local commit="$1" image identity id rev message
+  REVISION_VERIFIED_IMAGE_IDS=""
   while IFS= read -r image; do
     case "$image" in
       sanctuary-*) ;;
       *) continue ;;
     esac
-    rev="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image")" \
+    image="$(bundle_source_image "$image")"
+    identity="$(docker image inspect --format '{{.Id}} {{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image")" \
       || offline_fail "image not available locally: $image"
+    read -r id rev <<<"$identity"
+    [[ "$id" =~ ^sha256:[0-9a-f]{64}$ ]] || offline_fail "could not resolve image ID for revision check: $image"
+    REVISION_VERIFIED_IMAGE_IDS+="$image $id"$'\n'
     [ "$rev" != "$commit" ] || continue
     message="image $image was built from ${rev:-<unlabelled>}, not $TAG ($commit); rebuild or drop --skip-build"
     if [ "$UNSIGNED_FOR_DEV" = "true" ]; then
@@ -280,28 +307,57 @@ verify_archive_alias() {
     ' >/dev/null
 }
 
+# Prints the image ID verify_sanctuary_image_revisions recorded for ref $1, if any.
+revision_verified_image_id() {
+  awk -v ref="$1" '$1 == ref { print $2; exit }' <<<"$REVISION_VERIFIED_IMAGE_IDS"
+}
+
+# Succeeds when the saved archive's manifest ($1) names its config by the
+# digest of image ID $2. The archive names its config by the config digest:
+# <hex>.json (Docker before 25, Podman) or blobs/sha256/<hex>.
+archive_config_matches_image_id() {
+  printf '%s' "$1" \
+    | jq -e --arg id "$2" \
+      '(.[0].Config|sub("^blobs/sha256/";"")|sub("\\.json$";"")) == ($id|ltrimstr("sha256:"))' >/dev/null
+}
+
+# Writes "<image>\t<compact inspect JSON>" lines for every saved image to
+# $CREATE_TMP_ROOT/saved-images.tsv; write_image_inventory reads them so the
+# inventory records the IDs verified here rather than re-inspecting mutable tags.
 save_images() {
   local stage_dir="$1"
-  local image archive_ref image_id archive_id file_name bucket image_tar tag_status alias_status
+  local image source_ref archive_ref inspection image_id verified_id archive_id file_name bucket image_tar tag_status alias_status saved_manifest
+  local saved_images="$CREATE_TMP_ROOT/saved-images.tsv"
 
   mkdir -p "$stage_dir/images/core" "$stage_dir/images/monitoring" "$stage_dir/images/tor"
+  : > "$saved_images"
 
   while IFS= read -r image; do
     [ -n "$image" ] || continue
-    docker image inspect "$image" >/dev/null 2>&1 || offline_fail "image not available locally: $image"
+    source_ref="$(bundle_source_image "$image")"
+    docker image inspect "$source_ref" >/dev/null 2>&1 || offline_fail "image not available locally: $source_ref"
     archive_ref="$(offline_archive_image_ref "$image")"
 
-    if [ "$archive_ref" != "$image" ]; then
+    if [ "$archive_ref" != "$source_ref" ]; then
       tag_status=0
-      docker image tag "$image" "$archive_ref" || tag_status=$?
+      docker image tag "$source_ref" "$archive_ref" || tag_status=$?
       alias_status=0
-      verify_archive_alias "$image" "$archive_ref" || alias_status=$?
+      verify_archive_alias "$source_ref" "$archive_ref" || alias_status=$?
       [ "$tag_status" -eq 0 ] || return "$tag_status"
       [ "$alias_status" -eq 0 ] \
-        || offline_fail "could not prove bundled image alias $image as $archive_ref"
+        || offline_fail "could not prove bundled image alias $source_ref as $archive_ref"
     fi
-    image_id="$(docker image inspect --format '{{.Id}}' "$image")" \
-      || offline_fail "could not resolve bundled image ID: $image"
+    inspection="$(docker image inspect "$source_ref" | jq -c 'select(length == 1)')" \
+      || offline_fail "could not resolve bundled image ID: $source_ref"
+    image_id="$(jq -r '.[0].Id // empty' <<<"$inspection")"
+    [ -n "$image_id" ] || offline_fail "could not resolve bundled image ID: $source_ref"
+    case "$image" in
+      sanctuary-*)
+        verified_id="$(revision_verified_image_id "$source_ref")"
+        [ "$image_id" = "$verified_id" ] \
+          || offline_fail "image $source_ref changed after its revision check (checked ${verified_id:-<none>}, now $image_id); rebuild and retry"
+        ;;
+    esac
     archive_id="$(docker image inspect --format '{{.Id}}' "$archive_ref")" \
       || offline_fail "could not resolve archive image ID: $archive_ref"
     [ "$archive_id" = "$image_id" ] \
@@ -324,16 +380,28 @@ save_images() {
     image_tar="$stage_dir/images/$bucket/$file_name"
     offline_log "Saving $image as $archive_ref..."
     docker save -o "$image_tar" "$archive_ref"
-    tar -xOf "$image_tar" manifest.json \
+    saved_manifest="$(tar -xOf "$image_tar" manifest.json)" \
+      || offline_fail "could not read saved image archive manifest: $image"
+    # jq -e accepts empty input on jq 1.6, so an empty manifest is refused first.
+    [ -n "$saved_manifest" ] || offline_fail "saved image archive manifest is empty: $image"
+    printf '%s' "$saved_manifest" \
       | jq -e --arg archive_ref "$archive_ref" \
-        '[.[].RepoTags[]?] == [$archive_ref]' >/dev/null \
+        'length == 1 and [.[].RepoTags[]?] == [$archive_ref]' >/dev/null \
       || offline_fail "saved image archive does not restore exactly $archive_ref: $image"
+    # The :local tag is mutable host-wide, so the ID verified above may not be
+    # the image `docker save` wrote. A daemon on the containerd image store
+    # reports the manifest digest as the image ID, so it never matches the
+    # config digest; package on a daemon with the classic overlay2 image store.
+    archive_config_matches_image_id "$saved_manifest" "$image_id" \
+      || offline_fail "saved image archive config does not match verified image ID $image_id: $image; the daemon may use the containerd image store"
+    printf '%s\t%s\n' "$image" "$inspection" >> "$saved_images"
   done < <(bundle_images)
 }
 
 write_image_inventory() {
   local stage_dir="$1"
-  local expected_arch image archive_ref inspection archive_inspection actual_platform expected_repo_digest repo_digest source_identity archive_identity
+  local expected_arch image archive_ref inspection actual_platform expected_repo_digest repo_digest
+  local saved_images="$CREATE_TMP_ROOT/saved-images.tsv"
   local inventory_lines="$CREATE_TMP_ROOT/image-inventory.jsonl"
   local inventory_tsv="$stage_dir/image-inventory.tsv"
 
@@ -348,19 +416,14 @@ write_image_inventory() {
     "$PLATFORM" > "$inventory_tsv"
   while IFS= read -r image; do
     [ -n "$image" ] || continue
-    inspection="$(docker image inspect "$image")" \
-      || offline_fail "could not inspect bundled image: $image"
+    # The inspection save_images verified the archive against; re-inspecting the
+    # mutable tag here could record an image that was never saved.
+    inspection="$(awk -F '\t' -v image="$image" '$1 == image { print $2; exit }' "$saved_images")"
+    [ -n "$inspection" ] || offline_fail "bundled image was not saved by this run: $image"
     archive_ref="$(offline_archive_image_ref "$image")"
-    archive_inspection="$(docker image inspect "$archive_ref")" \
-      || offline_fail "could not inspect named archive image: $archive_ref"
     actual_platform="$(printf '%s' "$inspection" | jq -r '.[0] | "\(.Os)/\(.Architecture)"')"
     [ "$actual_platform" = "linux/$expected_arch" ] \
       || offline_fail "bundled image $image has platform $actual_platform, expected $PLATFORM"
-
-    source_identity="$(printf '%s' "$inspection" | jq -r '.[0] | [.Id, .Os, .Architecture] | @tsv')"
-    archive_identity="$(printf '%s' "$archive_inspection" | jq -r '.[0] | [.Id, .Os, .Architecture] | @tsv')"
-    [ "$source_identity" = "$archive_identity" ] \
-      || offline_fail "named archive image does not match immutable source: $image"
 
     repo_digest="-"
     if [[ "$image" == *@sha256:* ]]; then
