@@ -301,6 +301,16 @@ const payjoinIntentNotDraftable = (): ConflictError =>
     reason: 'payjoin_intent_not_draftable',
   });
 
+/**
+ * A draft cannot bind an intent whose broadcast was already claimed: the
+ * broadcast's metadata names no draft, so its acceptance would leave the draft
+ * actionable for a spend that is already on chain.
+ */
+const intentBroadcastInFlight = (): ConflictError =>
+  new ConflictError('This transaction is already being broadcast and cannot be saved as a draft', undefined, {
+    reason: 'intent_broadcast_in_flight',
+  });
+
 const persistDraftWithLocks = async (
   walletId: string,
   userId: string,
@@ -316,6 +326,9 @@ const persistDraftWithLocks = async (
     // The lock waited out the superseding transaction, so its successor is
     // committed and visible; only a payjoin replacement is a C-D9 refusal.
     if (await hasPayjoinReplacement(walletId, data.intentId)) throw payjoinIntentNotDraftable();
+    if (await transactionSigningIntentRepository.hasStartedBroadcast(data.intentId, walletId, client)) {
+      throw intentBroadcastInFlight();
+    }
     throw new InvalidInputError('Signing intent has been superseded', 'intentId', { reason: 'stale_intent' });
   }
   const draft = await createDraftRecord(

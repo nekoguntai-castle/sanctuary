@@ -36,6 +36,7 @@ graph TD
     Worker --> Telegram
     Backend --> Telegram
     Backend --> AiProxy
+    Worker -- "Intelligence analysis" --> AiProxy
 
     Gateway --> FCM
     Gateway --> APNs
@@ -62,5 +63,6 @@ graph TD
 | Gateway ↔ Backend (WS) | HMAC challenge-response with `GATEWAY_SECRET` | Long-lived; auto-reconnects every 5s |
 | Backend → Telegram | Per-user bot token (Telegram API) | **Two distinct call paths exist** — see [`notification-pipeline.md`](notification-pipeline.md) |
 | Worker → Redis | Redis password | Worker is the consumer of every BullMQ queue |
+| Backend, Worker → LLM egress proxy | `LLM_EGRESS_PROXY_SECRET` header | Both callers share `llm-egress-network` with the proxy, which never joins `sanctuary-network`; the worker calls it for scheduled Treasury Intelligence analysis |
 
 The cross-package boundary rules enforced statically by `scripts/check-architecture-boundaries.mjs` correspond to the edges *missing* from this diagram (e.g. browser code may not import server internals; gateway may not import server internals).

@@ -36,6 +36,7 @@ vi.mock('../../../src/repositories', () => ({
   },
   transactionSigningIntentRepository: {
     lockDraftableIntent: vi.fn().mockResolvedValue(true),
+    hasStartedBroadcast: vi.fn().mockResolvedValue(false),
   },
   walletRepository: {
     findByIdWithSigningDevices: vi.fn(),
@@ -862,5 +863,22 @@ describe('createDraft refuses payjoin intents (C-D9)', () => {
       details: { reason: 'stale_intent' },
     });
     expect(draftRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses to bind a draft to an intent whose broadcast is claimed, uncertain or accepted', async () => {
+    (loadSigningIntent as Mock).mockResolvedValueOnce(storedIntent);
+    (transactionSigningIntentRepository.lockDraftableIntent as Mock).mockResolvedValueOnce(false);
+    (hasPayjoinReplacement as Mock).mockResolvedValue(false);
+    (transactionSigningIntentRepository.hasStartedBroadcast as Mock).mockResolvedValueOnce(true);
+
+    await expect(createDraft(walletId, userId, boundDraftInput)).rejects.toMatchObject({
+      statusCode: 409,
+      details: { reason: 'intent_broadcast_in_flight' },
+    });
+    expect(transactionSigningIntentRepository.hasStartedBroadcast).toHaveBeenCalledWith(
+      'intent-1', walletId, expect.anything(),
+    );
+    expect(draftRepository.create).not.toHaveBeenCalled();
+    expect(lockUtxosForDraft).not.toHaveBeenCalled();
   });
 });

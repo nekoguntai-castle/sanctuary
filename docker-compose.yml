@@ -490,6 +490,12 @@ services:
       ENCRYPTION_SALT: ${ENCRYPTION_SALT:?ENCRYPTION_SALT is required}
       GATEWAY_SECRET: ${GATEWAY_SECRET:-}
 
+      # Treasury Intelligence analysis (intelligence:analyze) runs only here and
+      # calls the LLM egress proxy directly, so the worker needs the same URL and
+      # service secret as the backend.
+      LLM_EGRESS_PROXY_URL: ${LLM_EGRESS_PROXY_URL:-http://llm-egress-proxy:3100}
+      LLM_EGRESS_PROXY_SECRET: "${LLM_EGRESS_PROXY_SECRET:?LLM_EGRESS_PROXY_SECRET is required - generate with openssl rand -hex 32}"
+
     # Override the default command to start the worker
     command: ["node", "dist/server/src/worker.js"]
     volumes:
@@ -511,6 +517,8 @@ services:
       start_period: 30s
     networks:
       - sanctuary-network
+      # Reaches the LLM egress proxy for scheduled Intelligence analysis.
+      - llm-egress-network
     logging:
       driver: "json-file"
       options:
@@ -840,6 +848,7 @@ services:
   # ISOLATION GUARANTEES:
   # - Cannot access database directly
   # - Does not join the main app network with Postgres or Redis service DNS
+  #   (llm-egress-network holds only the proxy and its callers: backend, worker)
   # - Cannot access private keys or signing
   # - Only receives sanitized transaction metadata
   # - Backend never makes external LLM provider calls directly

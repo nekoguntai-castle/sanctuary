@@ -91,8 +91,9 @@ function approvalKey(endpoint: string): string | null {
   return `${address}|${port}`;
 }
 
-// Proxy routes are reachable only by the backend (shared secret), which
-// forwards a provider endpoint only from admin settings or admin detection.
+// Proxy routes are reachable only by secret-holding callers (backend, worker);
+// only the backend forwards a provider endpoint, and only from admin settings
+// or admin detection.
 // Approval follows that choice rather than a static allowlist, so changing the
 // endpoint in the UI is enough — and the previous one stops being admitted.
 let configuredApproval: string | null = null;

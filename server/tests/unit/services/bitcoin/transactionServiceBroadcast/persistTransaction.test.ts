@@ -378,4 +378,25 @@ describe('persistTransaction — marks only the wallet\'s own inputs spent (payj
       where: expect.objectContaining({ address: { in: [walletInput.address] } }),
     }));
   });
+
+  it('archives drafts bound to the accepted signing intent even when the metadata names no draft', async () => {
+    mockPrismaClient.draftTransaction.updateMany.mockResolvedValue({ count: 1 });
+
+    await persistTransaction(walletId, newTxid, rawTxHex, baseMetadata, { signingIntentId: 'intent-1' });
+
+    expect(mockPrismaClient.draftUtxoLock.deleteMany).toHaveBeenCalledWith({
+      where: { draft: { walletId, signingIntentId: 'intent-1' } },
+    });
+    expect(mockPrismaClient.draftTransaction.updateMany).toHaveBeenCalledWith({
+      where: { walletId, signingIntentId: 'intent-1', status: { in: ['unsigned', 'partial', 'signed'] } },
+      data: { status: 'broadcasted', updatedAt: expect.any(Date) },
+    });
+  });
+
+  it('touches no draft when neither a draft nor a signing intent is named', async () => {
+    await persistTransaction(walletId, newTxid, rawTxHex, baseMetadata);
+
+    expect(mockPrismaClient.draftUtxoLock.deleteMany).not.toHaveBeenCalled();
+    expect(mockPrismaClient.draftTransaction.updateMany).not.toHaveBeenCalled();
+  });
 });

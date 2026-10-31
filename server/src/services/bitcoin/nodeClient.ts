@@ -23,6 +23,7 @@ import {
   type ElectrumCapabilityProfile,
 } from './electrum/capabilities';
 import { PooledNodeClient } from './pooledNodeClient';
+import { invalidateNetworkStatusCache } from './networkStatus/statusProbeCache';
 import { resolveConfiguredElectrumProxy } from './electrum/connectionConfigResolver';
 import type { ProxyConfig } from './electrum/types';
 
@@ -399,6 +400,7 @@ export async function getActiveNodeConfig(): Promise<NodeConfig> {
  */
 async function resetOneNetwork(network: NetworkType): Promise<void> {
   networkResetGenerations.set(network, (networkResetGenerations.get(network) ?? 0) + 1);
+  invalidateNetworkStatusCache(network);
   const client = networkClients.get(network);
   if (client) {
     client.disconnect();
@@ -412,6 +414,9 @@ async function resetOneNetwork(network: NetworkType): Promise<void> {
     activeConfig = null;
   }
 
+  // Again after the reset: a status probe that ran against the old pool
+  // while it was being torn down must not be served from the cache.
+  invalidateNetworkStatusCache(network);
   log.debug(`Client reset for ${network}`);
 }
 
@@ -430,6 +435,7 @@ function resetAllNodeClients(): Promise<void> {
   if (allNetworksResetPromise) return allNetworksResetPromise;
 
   allNetworksResetGeneration += 1;
+  invalidateNetworkStatusCache();
   const reset = (async () => {
     await Promise.all(networkResetPromises.values());
     await Promise.all(
@@ -441,6 +447,7 @@ function resetAllNodeClients(): Promise<void> {
     poolFallbackRetryAt.clear();
     resetElectrumClient();
     await resetElectrumPool();
+    invalidateNetworkStatusCache();
 
     log.debug('All clients reset');
   })().finally(() => {

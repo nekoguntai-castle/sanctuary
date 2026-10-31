@@ -148,7 +148,7 @@ This makes the proxy compatible with Ollama, LM Studio, llama.cpp with an OpenAI
 
 **No database access.** The proxy fetches only what each request needs from `BACKEND_URL/internal/ai/*`. There is no persistent storage, no Prisma, no Redis. This is a deliberate security boundary: compromise of the LLM egress proxy yields sanitized metadata only.
 
-**Dedicated Compose network.** The proxy does not join the main `sanctuary-network`; it shares a separate `llm-egress-network` only with the backend. That keeps Postgres and Redis service DNS out of the proxy network while preserving provider egress.
+**Dedicated Compose network.** The proxy does not join the main `sanctuary-network`; it shares a separate `llm-egress-network` only with its two callers, the backend and the worker (which runs scheduled Treasury Intelligence analysis). That keeps Postgres and Redis service DNS out of the proxy network while preserving provider egress.
 
 **In-process config.** `aiConfig` (enabled, endpoint, model) is held in memory and reset on container restart. The backend re-pushes config after each restart via `POST /config`. This avoids a shared config store and keeps the container stateless.
 

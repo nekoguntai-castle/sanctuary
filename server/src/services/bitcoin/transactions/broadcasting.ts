@@ -17,7 +17,7 @@ import { createLogger } from '../../../utils/logger';
 import { getErrorMessage, isPrismaError } from '../../../utils/errors';
 import { eventService } from '../../eventService';
 import { transactionBroadcastsTotal } from '../../../observability/metrics';
-import { persistTransaction } from './persistTransaction';
+import { persistTransaction, type PersistTransactionOptions } from './persistTransaction';
 import { assertReplacementLink, selectCandidateOutpoints } from './replacementLink';
 import type { TransactionInputMetadata, TransactionOutputMetadata, BroadcastResult } from './types';
 import type { ValidatedBroadcastArtifact } from '../signingIntent/artifactValidation';
@@ -32,6 +32,7 @@ import {
 } from '../signingIntent/broadcastLifecycle';
 import { assertWalletHardwareCapabilityById } from '../../hardwareWalletCapabilities';
 import type { BroadcastPriorState } from '../../../repositories/transactionSigningIntentRepository';
+import { archiveDraftsForSigningIntent } from '../../../repositories/draftSigningIntentRepository';
 
 // Re-exported so callers (the broadcast route) can distinguish a definite
 // rejection from an unknown-outcome failure without importing the blockchain
@@ -129,10 +130,11 @@ const persistAcceptedTransaction = async (
   txid: string,
   rawTx: string,
   metadata: Parameters<typeof persistTransaction>[3],
+  options: PersistTransactionOptions,
 ): Promise<Awaited<ReturnType<typeof persistTransaction>> | null> => {
   for (let attempt = 1; attempt <= MAX_PERSISTENCE_ATTEMPTS; attempt += 1) {
     try {
-      return await persistTransaction(walletId, txid, rawTx, metadata);
+      return await persistTransaction(walletId, txid, rawTx, metadata, options);
     } catch (error) {
       if (isRetryablePersistenceConflict(error) && attempt < MAX_PERSISTENCE_ATTEMPTS) {
         log.warn('Retrying accepted transaction persistence after write conflict', {
@@ -270,6 +272,20 @@ const recordReplacementLinkFailure = async (
 };
 
 /**
+ * A replay of a complete broadcast never reaches persistTransaction, so a draft
+ * of the intent that its persistence did not archive (saved while the first
+ * attempt was in flight) is archived here. Best effort: the spend is already
+ * persisted, and an unarchived draft still expires.
+ */
+const archiveReplayedIntentDrafts = async (walletId: string, intentId: string): Promise<void> => {
+  try {
+    await archiveDraftsForSigningIntent(walletId, intentId);
+  } catch (error) {
+    log.warn('Could not archive drafts of a replayed broadcast', { walletId, intentId, error: getErrorMessage(error) });
+  }
+};
+
+/**
  * Broadcast a signed transaction and save to database.
  *
  * Supports two modes:
@@ -317,6 +333,7 @@ export async function broadcastAndSave(
     throw asUnclaimedRejection(error);
   }
   if (claim.status === 'complete') {
+    await archiveReplayedIntentDrafts(walletId, artifact.intent.intentId);
     return { txid, broadcasted: true, persistenceStatus: 'complete' };
   }
   if (claim.status === 'accepted') {
@@ -393,7 +410,7 @@ export async function broadcastAndSave(
   transactionBroadcastsTotal.inc({ status: 'success' });
   const intentConsumed = await recordAcceptedIntent(artifact, claim.leaseToken);
 
-  const persisted = await persistAcceptedTransaction(walletId, txid, rawTx, metadata);
+  const persisted = await persistAcceptedTransaction(walletId, txid, rawTx, metadata, { signingIntentId: artifact.intent.intentId });
   if (!persisted || !intentConsumed) {
     return {
       txid,

@@ -2543,7 +2543,7 @@ test_upgrade_harness_covers_backend_address_replacement() {
     "coordinated holder must be signed before later mutation" || return 1
   assert_contains "$assertions" 'remove_coordinated_container "$FRONTEND_PROXY_HOLDER_ID"' \
     "coordinated holder teardown should prove exact-ID absence" || return 1
-  assert_contains "$assertions" 'resolve_frontend_backend_network' \
+  assert_contains "$assertions" 'resolve_shared_container_network "$frontend_container" "$backend_container"' \
     "regression should select the one network shared with the frontend" || return 1
   assert_contains "$assertions" 'assert_authenticated_websocket_handshake' \
     "regression should verify WebSocket recovery" || return 1
@@ -2802,11 +2802,67 @@ test_backend_replacement_selects_shared_frontend_network() {
         *) return 1 ;;
       esac
     }
-    resolve_frontend_backend_network frontend backend
+    resolve_shared_container_network frontend backend
   })" || return 1
 
   assert_equals "sanctuary-network" "$selected" \
     "backend replacement should use the exact network shared with frontend"
+}
+
+test_rollback_floor_worker_network_is_shared_with_postgres() {
+  local selected
+
+  # The worker also joins the LLM egress network, which sorts first; the
+  # rollback worker must land on the network that reaches Postgres and Redis.
+  selected="$({
+    get_container_name() { printf 'proj-%s-1\n' "$1"; }
+    docker() {
+      case "${*: -1}" in
+        proj-worker-1) printf 'proj_llm-egress-network\nproj_sanctuary-network\n' ;;
+        proj-postgres-1) printf 'proj_sanctuary-network\n' ;;
+        *) return 1 ;;
+      esac
+    }
+    resolve_rollback_worker_network proj-worker-1
+  })" || return 1
+
+  assert_equals "proj_sanctuary-network" "$selected" \
+    "rollback worker must join the network the target worker shares with postgres"
+}
+
+test_rollback_floor_fails_closed_without_a_postgres_network() {
+  local call_log="$TEST_TMP_DIR/rollback-floor-no-shared-network.log"
+  local output exit_code
+
+  : > "$call_log"
+  set +e
+  output="$(
+    export SANCTUARY_CLEANUP_COORDINATED=1
+    WALLET_SYNC_RETIREMENT_SOURCE_WORKER_IMAGE=example/worker:0.8.66
+    TEST_RUNTIME_DIR="$TEST_TMP_DIR"
+    get_container_name() { printf 'proj-%s-1\n' "$1"; }
+    docker() {
+      printf 'docker:%s\n' "$*" >> "$call_log"
+      case "${*: -1}" in
+        proj-worker-1) printf 'proj_llm-egress-network\n' ;;
+        proj-postgres-1) printf 'proj_sanctuary-network\n' ;;
+        *) return 0 ;;
+      esac
+    }
+    run_project_compose() { printf 'compose:%s\n' "$*" >> "$call_log"; }
+    prove_below_floor_rollback_is_unsupported 2>&1
+  )"
+  exit_code=$?
+  set -e
+
+  assert_equals "1" "$exit_code" "rollback-floor proof must fail without a network shared with postgres" || return 1
+  assert_contains "$output" "could not resolve the target network" \
+    "rollback-floor proof should report the unresolved network" || return 1
+  if grep -q 'docker:create' "$call_log" || grep -q '^compose:' "$call_log"; then
+    echo -e "${RED}ASSERTION FAILED:${NC} rollback-floor proof mutated containers without a resolved network"
+    cat "$call_log"
+    return 1
+  fi
 }
 
 # --- D-14.C1-C4: the upgrade lane runs the target installer like an operator ---
@@ -3169,6 +3225,8 @@ main() {
   run_test "rollback-floor proof rejects uncoordinated mutation" test_rollback_floor_proof_rejects_uncoordinated_mutation
   run_test "rollback worker start rejects uncoordinated mutation" test_rollback_worker_start_rejects_uncoordinated_mutation
   run_test "backend replacement selects shared frontend network" test_backend_replacement_selects_shared_frontend_network
+  run_test "rollback-floor worker network is shared with postgres" test_rollback_floor_worker_network_is_shared_with_postgres
+  run_test "rollback-floor fails closed without a postgres network" test_rollback_floor_fails_closed_without_a_postgres_network
   run_test "browser refresh smoke sends csrf header" test_browser_refresh_smoke_sends_csrf_header
   run_test "support package smoke confirms shareable aggregate" test_support_package_smoke_confirms_shareable_aggregate
   run_test "no undispatched upgrade fixture hooks" test_no_undispatched_fixture_hooks

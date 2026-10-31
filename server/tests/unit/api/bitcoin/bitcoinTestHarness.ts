@@ -155,6 +155,7 @@ vi.mock('../../../../src/utils/requestContext', () => ({
 }));
 
 import bitcoinRouter from '../../../../src/api/bitcoin';
+import { invalidateNetworkStatusCache } from '../../../../src/services/bitcoin/networkStatus/statusProbeCache';
 import { errorHandler } from '../../../../src/errors/errorHandler';
 
 const bitcoinRouteHandler = express();
@@ -266,6 +267,8 @@ export const setupBitcoinApiApp = () => {
 };
 
 export const setupBitcoinApiMocks = () => {
+  // Each status contract starts from a cold probe cache.
+  invalidateNetworkStatusCache();
   resetPrismaMocks();
   resetElectrumMocks();
   resetElectrumPoolMocks();

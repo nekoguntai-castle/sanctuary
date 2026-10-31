@@ -15,7 +15,8 @@ import {
   createInternalReceivingTransactions,
   type InternalReceivingOutcome,
 } from './internalReceiving';
-import { BROADCAST_DRAFT_RETENTION_POLICY } from './broadcastContracts';
+import { BROADCASTED_DRAFT_STATUS } from '@sanctuary/shared/constants/drafts';
+import { archiveDraftsForSigningIntent } from '../../../repositories/draftSigningIntentRepository';
 import type { PrismaTxClient, TransactionInputMetadata, TransactionOutputMetadata } from './types';
 
 const log = createLogger('BITCOIN:SVC_TX_PERSIST');
@@ -49,9 +50,16 @@ async function selectWalletOwnedOutpoints(
   return metadata.utxos.filter(utxo => !foreign.has(outpointKey(utxo)));
 }
 
+/** `signingIntentId` names the accepted intent whose bound drafts are archived too. */
+export interface PersistTransactionOptions {
+  signingIntentId?: string;
+}
+
 /**
  * Persist a broadcast transaction to the database within a Prisma transaction.
  * Handles UTXO marking, RBF tracking, I/O storage, and internal wallet detection.
+ * `signingIntentId` names the accepted intent, so every draft bound to it is
+ * archived too, including one saved after the broadcast's metadata was frozen.
  */
 export async function persistTransaction(
   walletId: string,
@@ -68,7 +76,8 @@ export async function persistTransaction(
     draftId?: string;
     inputs?: TransactionInputMetadata[];
     outputs?: TransactionOutputMetadata[];
-  }
+  },
+  options: PersistTransactionOptions = {}
 ): Promise<{
   txType: 'sent' | 'consolidation';
   mainTransactionCreated: boolean;
@@ -107,11 +116,14 @@ export async function persistTransaction(
       const archiveResult = await tx.draftTransaction.updateMany({
         where: { id: metadata.draftId },
         data: {
-          status: BROADCAST_DRAFT_RETENTION_POLICY.terminalStatus,
+          status: BROADCASTED_DRAFT_STATUS,
           updatedAt: new Date(),
         },
       });
       draftArchived = archiveResult.count > 0;
+    }
+    if (options.signingIntentId) {
+      await archiveDraftsForSigningIntent(walletId, options.signingIntentId, tx);
     }
 
     // Check if recipient is a wallet address (consolidation) or external (sent)

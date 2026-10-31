@@ -99,7 +99,9 @@ export const draftPaths = {
           ...apiErrorResponse,
           description:
             'details.reason payjoin_intent_not_draftable: a payjoin replacement intent, or an original a payjoin '
-            + 'proposal was minted from, cannot be saved as a draft',
+            + 'proposal was minted from, cannot be saved as a draft; intent_broadcast_in_flight: the signing '
+            + 'intent\'s broadcast has already been claimed (in flight, uncertain or accepted), so it cannot be '
+            + 'saved as a draft',
         },
       },
     },

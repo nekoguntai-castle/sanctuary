@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { getElectrumPoolForNetwork, type NetworkType } from './electrumPool';
 import type { PoolStats as ElectrumPoolStats } from './electrumPool/types';
 import { DEFAULT_CONFIRMATION_THRESHOLD, DEFAULT_DEEP_CONFIRMATION_THRESHOLD } from '../../constants';
@@ -11,6 +12,11 @@ import type { NetworkModeConfig } from './nodeClient';
 import { dbConnectionConfig, envConnectionConfig, type ResolvedConnectionConfig } from './electrum/connectionConfigResolver';
 import { probePool, NETWORK_STATUS_PROBE_TIMEOUT_MS } from './networkStatus/poolProbe';
 import { probeDirectSingleton } from './networkStatus/directClient';
+import {
+  getCachedNetworkStatusProbe,
+  NETWORK_STATUS_FAILURE_TTL_MS,
+  NETWORK_STATUS_SUCCESS_TTL_MS,
+} from './networkStatus/statusProbeCache';
 import { eligibleServersFor, toOperationalServerInputs, failoverRolesFor, type ConfiguredServerRow } from './networkStatus/topology';
 import {
   projectNodeOperationalStatus,
@@ -366,6 +372,87 @@ async function runNoConfigAttempt(network: NetworkType, attemptedAt: string): Pr
   };
 }
 
+interface StatusProbeOutcome {
+  attemptedAt: string;
+  attempt: AttemptRoute;
+  healthCheckIntervalMs: number;
+  strategy: NodePoolLoadBalancing | null;
+}
+
+/** The live part of a status read: one pool, direct-singleton, or env-default probe. */
+async function runStatusProbe(
+  nodeConfig: StatusNodeConfig | null,
+  network: NetworkType,
+  modeConfig: NetworkModeConfig,
+  usePool: boolean,
+  eligibleServers: ConfiguredServerRow[],
+): Promise<StatusProbeOutcome> {
+  const attemptedAt = new Date().toISOString();
+  if (usePool && nodeConfig) {
+    const outcome = await runPoolAttempt(nodeConfig, network, attemptedAt, modeConfig, eligibleServers);
+    return { attemptedAt, ...outcome };
+  }
+  const attempt = nodeConfig
+    ? await attemptSingleton(nodeConfig, network, attemptedAt)
+    : await runNoConfigAttempt(network, attemptedAt);
+  return { attemptedAt, attempt, healthCheckIntervalMs: DEFAULT_HEALTH_CHECK_INTERVAL_MS, strategy: null };
+}
+
+/**
+ * Hash of every configuration input that changes the probe: the network's
+ * resolved mode, singleton connection and pool sizing (`modeConfig`), the
+ * node_config connection, TLS and proxy fields, its updatedAt, and the
+ * eligible servers' identity/routing fields. Server health columns are
+ * excluded so health-check writes do not churn the key. Hashed so no proxy
+ * credential is held in a cache key.
+ */
+function statusProbeFingerprint(
+  nodeConfig: StatusNodeConfig | null,
+  modeConfig: NetworkModeConfig,
+  eligibleServers: ConfiguredServerRow[],
+): string {
+  if (!nodeConfig) return 'env-default';
+  const nodeConfigFields = [
+    nodeConfig.id,
+    nodeConfig.type,
+    nodeConfig.host,
+    nodeConfig.port,
+    nodeConfig.useSsl,
+    nodeConfig.allowSelfSignedCert,
+    nodeConfig.proxyEnabled,
+    nodeConfig.proxyHost,
+    nodeConfig.proxyPort,
+    nodeConfig.proxyUsername,
+    nodeConfig.proxyPassword,
+    nodeConfig.updatedAt,
+  ];
+  const servers = eligibleServers.map((server) => [
+    server.id,
+    server.host,
+    server.port,
+    serverUseSsl(server),
+    server.priority,
+    server.serverUsage,
+  ]);
+  return createHash('sha256').update(JSON.stringify({ modeConfig, nodeConfigFields, servers })).digest('hex');
+}
+
+/** ConfiguredServerRow omits useSsl, but the persisted rows the status read loads carry it. */
+function serverUseSsl(server: ConfiguredServerRow): boolean | undefined {
+  return (server as ConfiguredServerRow & { useSsl?: boolean }).useSsl;
+}
+
+function isProbeConnected(outcome: StatusProbeOutcome): boolean {
+  return Boolean(outcome.attempt.route && outcome.attempt.version);
+}
+
+/** Connected probes live at most one pool health-check interval; failed ones are re-dialled sooner. */
+function statusProbeTtlMs(outcome: StatusProbeOutcome): number {
+  return isProbeConnected(outcome)
+    ? Math.min(NETWORK_STATUS_SUCCESS_TTL_MS, outcome.healthCheckIntervalMs)
+    : NETWORK_STATUS_FAILURE_TTL_MS;
+}
+
 export async function getBitcoinNetworkStatus(network: NetworkType = 'mainnet'): Promise<BitcoinNetworkStatusResult> {
   // One immutable configuration snapshot for this attempt: a single
   // repository read feeds mode/strategy, display connection, and the direct
@@ -377,24 +464,18 @@ export async function getBitcoinNetworkStatus(network: NetworkType = 'mainnet'):
   const modeConfig = nodeConfig ? buildNetworkModeConfig(network, nodeConfig) : getDefaultNetworkModeConfig(network);
   const usePool = shouldUsePool(nodeConfig, modeConfig);
   const displayConnection = getDisplayConnection(nodeConfig, network, modeConfig);
-  const attemptedAt = new Date().toISOString();
-  const now = Date.now();
   const eligibleServers = eligibleServersFor(nodeConfig?.servers, network);
 
-  let attempt: AttemptRoute;
-  let healthCheckIntervalMs = DEFAULT_HEALTH_CHECK_INTERVAL_MS;
-  let strategy: NodePoolLoadBalancing | null = null;
-
-  if (usePool && nodeConfig) {
-    const outcome = await runPoolAttempt(nodeConfig, network, attemptedAt, modeConfig, eligibleServers);
-    attempt = outcome.attempt;
-    healthCheckIntervalMs = outcome.healthCheckIntervalMs;
-    strategy = outcome.strategy;
-  } else if (nodeConfig) {
-    attempt = await attemptSingleton(nodeConfig, network, attemptedAt);
-  } else {
-    attempt = await runNoConfigAttempt(network, attemptedAt);
-  }
+  // The probe outcome (not the response) is cached and single-flighted so
+  // public status traffic cannot open a node connection per request or feed
+  // the pool breaker; thresholds and the freshness projection stay per call.
+  const { attemptedAt, attempt, healthCheckIntervalMs, strategy } = await getCachedNetworkStatusProbe(
+    network,
+    statusProbeFingerprint(nodeConfig, modeConfig, eligibleServers),
+    () => runStatusProbe(nodeConfig, network, modeConfig, usePool, eligibleServers),
+    statusProbeTtlMs,
+  );
+  const now = Date.now();
 
   const configuredMode: 'singleton' | 'pool' = usePool ? 'pool' : 'singleton';
   const operational = buildOperationalStatus({

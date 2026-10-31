@@ -89,25 +89,26 @@ assert_authenticated_me_response() {
     fi
 }
 
-resolve_frontend_backend_network() {
-    local frontend_container="$1"
-    local backend_container="$2"
-    local frontend_networks backend_networks shared_networks
+# Prints the one network two containers share; fails unless there is exactly one.
+resolve_shared_container_network() {
+    local first_container="$1"
+    local second_container="$2"
+    local first_networks second_networks shared_networks
 
-    frontend_networks="$(docker inspect -f '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{"\n"}}{{end}}' \
-        "$frontend_container" 2>/dev/null)" || return 1
-    backend_networks="$(docker inspect -f '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{"\n"}}{{end}}' \
-        "$backend_container" 2>/dev/null)" || return 1
+    first_networks="$(docker inspect -f '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{"\n"}}{{end}}' \
+        "$first_container" 2>/dev/null)" || return 1
+    second_networks="$(docker inspect -f '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{"\n"}}{{end}}' \
+        "$second_container" 2>/dev/null)" || return 1
     shared_networks="$(
         while IFS= read -r network; do
-            if [ -n "$network" ] && printf '%s\n' "$backend_networks" | grep -Fxq -- "$network"; then
+            if [ -n "$network" ] && printf '%s\n' "$second_networks" | grep -Fxq -- "$network"; then
                 printf '%s\n' "$network"
             fi
-        done <<< "$frontend_networks"
+        done <<< "$first_networks"
     )"
 
     if [ "$(printf '%s\n' "$shared_networks" | grep -c .)" -ne 1 ]; then
-        log_error "Expected exactly one shared frontend/backend network"
+        log_error "Expected exactly one network shared by $first_container and $second_container" >&2
         return 1
     fi
 
@@ -167,7 +168,7 @@ assert_frontend_proxy_recovers_after_backend_recreate_inner() {
     frontend_id="$(docker inspect -f '{{.Id}}' "$frontend_container" 2>/dev/null)" || return 1
     backend_id="$(docker inspect -f '{{.Id}}' "$backend_container" 2>/dev/null)" || return 1
     backend_image="$(docker inspect -f '{{.Config.Image}}' "$backend_container" 2>/dev/null)" || return 1
-    network="$(resolve_frontend_backend_network "$frontend_container" "$backend_container")" || return 1
+    network="$(resolve_shared_container_network "$frontend_container" "$backend_container")" || return 1
     old_ip="$(docker inspect -f "{{with index .NetworkSettings.Networks \"$network\"}}{{.IPAddress}}{{end}}" "$backend_container" 2>/dev/null)" || return 1
 
     if [ -z "$frontend_id" ] || [ -z "$backend_id" ] || [ -z "$backend_image" ] || [ -z "$network" ] || [ -z "$old_ip" ]; then

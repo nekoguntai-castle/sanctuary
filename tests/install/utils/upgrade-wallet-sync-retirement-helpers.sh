@@ -542,6 +542,13 @@ finish_below_floor_rollback_worker() {
     rm -f "$rollback_env"
 }
 
+# The worker is on both the app and the LLM egress network; the rollback worker
+# needs the one it shares with Postgres (and Redis), not whichever sorts first.
+# resolve_shared_container_network comes from upgrade-assertions.sh.
+resolve_rollback_worker_network() {
+    resolve_shared_container_network "$1" "$(get_container_name postgres)"
+}
+
 prove_below_floor_rollback_is_unsupported() {
     local target_worker_container target_network rollback_env rollback_container rollback_container_id=""
     local observed=false started=false setup_failed=false
@@ -551,9 +558,7 @@ prove_below_floor_rollback_is_unsupported() {
         return 1
     fi
     target_worker_container=$(get_container_name worker)
-    target_network=$(docker inspect --format \
-        '{{range $name, $_ := .NetworkSettings.Networks}}{{println $name}}{{end}}' \
-        "$target_worker_container" 2>/dev/null | head -n 1)
+    target_network=$(resolve_rollback_worker_network "$target_worker_container") || target_network=""
     if [ -z "$target_network" ] || [ -z "$WALLET_SYNC_RETIREMENT_SOURCE_WORKER_IMAGE" ]; then
         log_error "Rollback-floor proof could not resolve the target network or source image"
         return 1

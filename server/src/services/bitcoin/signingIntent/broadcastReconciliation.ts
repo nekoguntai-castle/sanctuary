@@ -38,7 +38,9 @@ const reconcileAccepted = async (record: {
 }): Promise<boolean> => {
   const metadata = parseMetadata(record.broadcastMetadata);
   if (!record.broadcastTxid || !record.broadcastRawTx || !metadata) return false;
-  await persistTransaction(record.walletId, record.broadcastTxid, record.broadcastRawTx, metadata);
+  await persistTransaction(record.walletId, record.broadcastTxid, record.broadcastRawTx, metadata, {
+    signingIntentId: record.id,
+  });
   return transactionSigningIntentRepository.markBroadcastComplete(record.id, record.broadcastTxid);
 };
 

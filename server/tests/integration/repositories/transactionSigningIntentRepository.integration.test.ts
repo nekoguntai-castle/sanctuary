@@ -5,6 +5,7 @@ import {
   claimStalledBroadcastLookup,
   create,
   listBroadcastsForReconciliation,
+  lockDraftableIntent,
   listStalledBroadcastsForLookup,
   markBroadcastStalled,
   markBroadcastUnknown,
@@ -192,14 +193,15 @@ function claimReplacement(replacementId: string) {
 }
 
 /**
- * Wait until two backends are blocked behind the lock holder. The contenders run in
- * the repository's own interactive transactions (Prisma's 5 s default), so the
- * deadline stays well under it.
+ * Wait until `count` backends are blocked behind the lock holder, else fail with
+ * `${what} within 3 seconds`. The contenders run in the repository's own
+ * interactive transactions (Prisma's 5 s default), so the deadline stays well
+ * under it.
  */
-async function waitForTwoLockWaiters(holderPid: number): Promise<void> {
+async function waitForLockWaiters(holderPid: number, count: number, what: string): Promise<void> {
   const deadline = Date.now() + 3_000;
   while (Date.now() < deadline) {
-    // The second waiter queues behind the first one's tuple lock, so it counts
+    // A later waiter queues behind the first one's tuple lock, so it counts
     // when it is blocked by the holder or by a backend the holder blocks.
     const rows = await prisma.$queryRaw<Array<{ waiting: bigint }>>`
       WITH direct AS (
@@ -211,10 +213,10 @@ async function waitForTwoLockWaiters(holderPid: number): Promise<void> {
         AND (${holderPid}::int = ANY(pg_blocking_pids(pid))
           OR pg_blocking_pids(pid) && ARRAY(SELECT pid FROM direct))
     `;
-    if (Number(rows[0].waiting) >= 2) return;
+    if (Number(rows[0].waiting) >= count) return;
     await new Promise(resolve => setTimeout(resolve, 20));
   }
-  throw new Error('Claim and restore did not both block on the replacement row lock within 3 seconds');
+  throw new Error(`${what} within 3 seconds`);
 }
 
 /** Hold the replacement's row lock until `release` resolves; reports the holder pid. */
@@ -226,6 +228,61 @@ function holdReplacementLock(replacementId: string, release: Promise<void>, onLo
     await release;
   }, { maxWait: 5_000, timeout: 15_000 });
 }
+
+describeWithDatabase('draftable intent lock integration', () => {
+  const DRAFT_WALLET = 'integration-draft-lock-wallet';
+  const intent = (id: string) => ({ ...baseIntent(id), walletId: DRAFT_WALLET, source: 'standard' });
+  const claimFields = () => ({
+    broadcastState: 'claimed', broadcastTxid: txid, broadcastRawTx: '00', broadcastMetadata: { amount: 1 },
+    broadcastLeaseToken: 'draft-lock-lease', broadcastLeaseExpiresAt: new Date(Date.now() + 60_000),
+  });
+
+  afterEach(async () => {
+    await prisma.transactionSigningIntent.deleteMany({ where: { walletId: DRAFT_WALLET } });
+  });
+
+  it('refuses to bind a draft to an intent whose broadcast has started', async () => {
+    await prisma.transactionSigningIntent.create({ data: intent('draft-lock-ready') });
+    await prisma.transactionSigningIntent.create({ data: { ...intent('draft-lock-claimed'), ...claimFields() } });
+    await prisma.transactionSigningIntent.create({
+      data: {
+        ...intent('draft-lock-unknown'), ...claimFields(),
+        broadcastState: 'unknown', broadcastLeaseToken: null, broadcastLeaseExpiresAt: null,
+      },
+    });
+
+    await expect(lockDraftableIntent('draft-lock-ready', DRAFT_WALLET, prisma)).resolves.toBe(true);
+    for (const id of ['draft-lock-claimed', 'draft-lock-unknown']) {
+      await expect(lockDraftableIntent(id, DRAFT_WALLET, prisma)).resolves.toBe(false);
+    }
+  });
+
+  it('a draft lock waiting behind a claim matches nothing once the claim commits', async () => {
+    await prisma.transactionSigningIntent.create({ data: intent('draft-lock-race') });
+    let releaseLock!: () => void;
+    const release = new Promise<void>(resolve => { releaseLock = resolve; });
+    let holderPid = 0;
+    let locked!: () => void;
+    const lockTaken = new Promise<void>(resolve => { locked = resolve; });
+    const holder = prisma.$transaction(async tx => {
+      const [{ pid }] = await tx.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid() AS pid`;
+      await tx.transactionSigningIntent.update({ where: { id: 'draft-lock-race' }, data: claimFields() });
+      holderPid = pid;
+      locked();
+      await release;
+    }, { maxWait: 5_000, timeout: 15_000 });
+    await lockTaken;
+
+    const draftLock = prisma.$transaction(tx => lockDraftableIntent('draft-lock-race', DRAFT_WALLET, tx));
+    try {
+      await waitForLockWaiters(holderPid, 1, 'The draft lock did not block on the claimed row');
+    } finally {
+      releaseLock();
+    }
+    const [lockResult] = await Promise.all([draftLock, holder]);
+    expect(lockResult).toBe(false);
+  });
+});
 
 describeWithDatabase('payjoin original restoration integration', () => {
   afterEach(async () => {
@@ -267,7 +324,7 @@ describeWithDatabase('payjoin original restoration integration', () => {
     const claim = claimReplacement(replacementId);
     const restore = restorePayjoinOriginal(originalId, RESTORE_WALLET, digest);
     try {
-      await waitForTwoLockWaiters(holderPid);
+      await waitForLockWaiters(holderPid, 2, 'Claim and restore did not both block on the replacement row lock');
     } finally {
       releaseLock();
     }

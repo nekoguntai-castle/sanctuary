@@ -42,6 +42,7 @@ import {
   deferAcceptedReconciliation,
   findPayjoinReplacementFor,
   lockDraftableIntent,
+  hasStartedBroadcast,
   restorePayjoinOriginal,
   PAYJOIN_ORIGINAL_RESTORE_CONFLICT,
   SIGNING_INTENT_SUPERSESSION_CONFLICT,
@@ -474,10 +475,34 @@ describe('payjoin original restoration', () => {
 
     await expect(lockDraftableIntent('original-1', 'wallet-1', tx as never)).resolves.toBe(true);
     expect(tx.transactionSigningIntent.updateMany).toHaveBeenCalledWith({
-      where: { id: 'original-1', walletId: 'wallet-1', supersededById: null, source: { not: 'payjoin' } },
+      where: {
+        id: 'original-1',
+        walletId: 'wallet-1',
+        supersededById: null,
+        source: { not: 'payjoin' },
+        consumedAt: null,
+        broadcastState: 'ready',
+      },
       data: { supersededById: null },
     });
     expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('reports whether a current intent has a broadcast claimed, uncertain or accepted', async () => {
+    const findFirst = vi.fn().mockResolvedValueOnce({ id: 'original-1' }).mockResolvedValueOnce(null);
+    const tx = { transactionSigningIntent: { findFirst } };
+
+    await expect(hasStartedBroadcast('original-1', 'wallet-1', tx as never)).resolves.toBe(true);
+    await expect(hasStartedBroadcast('original-1', 'wallet-1', tx as never)).resolves.toBe(false);
+    expect(findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'original-1',
+        walletId: 'wallet-1',
+        supersededById: null,
+        NOT: { consumedAt: null, broadcastState: 'ready' },
+      },
+      select: { id: true },
+    });
   });
 
   it('reports an intent that is superseded, payjoin, or missing as not lockable', async () => {

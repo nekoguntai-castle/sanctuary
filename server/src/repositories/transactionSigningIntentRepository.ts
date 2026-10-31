@@ -127,12 +127,19 @@ export const findPayjoinReplacementFor = (walletId: string, intentId: string) =>
 /** The transaction client lockDraftableIntent locks through (the draft insert's own). */
 export type SigningIntentDraftLockDbClient = Pick<typeof prisma, 'transactionSigningIntent'>;
 
+/** An intent nobody has claimed for broadcast or consumed yet. */
+const BROADCAST_NOT_STARTED = { consumedAt: null, broadcastState: 'ready' } as const;
+
 /**
  * Row-lock an intent a draft is about to bind, inside the transaction that
  * inserts the draft. Matches only a current (not superseded), non-payjoin
- * intent of the wallet; the self-assignment of supersededById is a no-op write
- * that takes the row lock `create` takes when it supersedes the intent, so the
- * two writers serialize (C-D9). Returns false when nothing matched.
+ * intent of the wallet whose broadcast has not started; the self-assignment of
+ * supersededById is a no-op write that takes the row lock `create` takes when
+ * it supersedes the intent and claimBroadcast takes when it claims it, so the
+ * writers serialize (C-D9). A claim that committed first leaves the intent
+ * non-`ready`, so no draft binds a broadcast in flight; a draft that committed
+ * first is archived by the accepted broadcast's persistence, which looks drafts
+ * up by intent. Returns false when nothing matched.
  */
 export const lockDraftableIntent = async (
   intentId: string,
@@ -140,10 +147,34 @@ export const lockDraftableIntent = async (
   client: SigningIntentDraftLockDbClient,
 ): Promise<boolean> => {
   const locked = await client.transactionSigningIntent.updateMany({
-    where: { id: intentId, walletId, supersededById: null, source: { not: 'payjoin' } },
+    where: {
+      id: intentId,
+      walletId,
+      supersededById: null,
+      source: { not: 'payjoin' },
+      ...BROADCAST_NOT_STARTED,
+    },
     data: { supersededById: null },
   });
   return locked.count === 1;
+};
+
+/** Whether a current intent's broadcast is claimed, uncertain, accepted or complete (why a draft lock failed). */
+export const hasStartedBroadcast = async (
+  intentId: string,
+  walletId: string,
+  client: SigningIntentDraftLockDbClient,
+): Promise<boolean> => {
+  const started = await client.transactionSigningIntent.findFirst({
+    where: {
+      id: intentId,
+      walletId,
+      supersededById: null,
+      NOT: BROADCAST_NOT_STARTED,
+    },
+    select: { id: true },
+  });
+  return started !== null;
 };
 
 export type PayjoinOriginalRestoreResult =
@@ -466,6 +497,7 @@ export const transactionSigningIntentRepository = {
   findById,
   findPayjoinReplacementFor,
   lockDraftableIntent,
+  hasStartedBroadcast,
   restorePayjoinOriginal,
   claimBroadcast,
   markBroadcastUnknown,

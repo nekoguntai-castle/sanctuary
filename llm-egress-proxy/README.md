@@ -72,7 +72,7 @@ The proxy is the only Sanctuary process that contacts configured LLM providers. 
 This gives the sidecar a concrete security job even when all models are external:
 
 - The backend keeps database, signing, and key access out of the provider-facing process.
-- Compose keeps the proxy off the main app network; it shares only a dedicated egress bridge with the backend.
+- Compose keeps the proxy off the main app network; it shares only a dedicated egress bridge with its callers, the backend and the worker.
 - Provider credentials are copied only into proxy memory and are never returned by proxy config routes.
 - Endpoint policy rejects embedded URL credentials, unsupported protocols, and unapproved provider endpoints before any provider request is sent.
 - Sanitized prompt context is fetched through backend-owned read-only internal routes.

@@ -109,7 +109,9 @@ describe('signing intent broadcast reconciliation', () => {
     mocks.list.mockResolvedValue([record('accepted')]);
     await expect(reconcileSigningIntentBroadcasts()).resolves.toEqual({ examined: 1, completed: 1 });
     expect(mocks.broadcast).not.toHaveBeenCalled();
-    expect(mocks.persist).toHaveBeenCalledWith('wallet-1', TXID, '00', metadata);
+    // The intent id lets persistence archive a draft saved while the broadcast
+    // was in flight: the frozen metadata carries no draftId for it.
+    expect(mocks.persist).toHaveBeenCalledWith('wallet-1', TXID, '00', metadata, { signingIntentId: 'intent-1' });
   });
 
   it('leases and idempotently rebroadcasts an unknown outcome before persistence', async () => {
@@ -316,7 +318,7 @@ describe('signing intent broadcast reconciliation', () => {
       expect(mocks.claimLookup).toHaveBeenCalledWith('intent-1', now);
       expect(mocks.lookup).toHaveBeenCalledWith(TXID, 'testnet3');
       expect(mocks.stalledAccepted).toHaveBeenCalledWith('intent-1', TXID, now);
-      expect(mocks.persist).toHaveBeenCalledWith('wallet-1', TXID, '00', metadata);
+      expect(mocks.persist).toHaveBeenCalledWith('wallet-1', TXID, '00', metadata, { signingIntentId: 'intent-1' });
       expect(mocks.complete).toHaveBeenCalledWith('intent-1', TXID);
       expect(mocks.broadcast).not.toHaveBeenCalled();
       expect(mocks.claim).not.toHaveBeenCalled();

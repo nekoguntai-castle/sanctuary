@@ -10,6 +10,7 @@ vi.mock('../../../src/models/prisma', () => ({
 }));
 
 import {
+  archiveDraftsForSigningIntent,
   findDraftByWalletAndSigningIntent,
   hasLiveDraftForSigningIntent,
 } from '../../../src/repositories/draftSigningIntentRepository';
@@ -44,5 +45,25 @@ describe('draftSigningIntentRepository', () => {
 
     findFirst.mockResolvedValueOnce(null);
     await expect(hasLiveDraftForSigningIntent('wallet-1', 'intent-1', now)).resolves.toBe(false);
+  });
+
+  it('archives every actionable draft bound to an accepted intent and releases their UTXO locks', async () => {
+    const client = {
+      draftUtxoLock: { deleteMany: vi.fn().mockResolvedValue({ count: 2 }) },
+      draftTransaction: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    };
+
+    await expect(archiveDraftsForSigningIntent('wallet-1', 'intent-1', client as never)).resolves.toBe(1);
+    expect(client.draftUtxoLock.deleteMany).toHaveBeenCalledWith({
+      where: { draft: { walletId: 'wallet-1', signingIntentId: 'intent-1' } },
+    });
+    expect(client.draftTransaction.updateMany).toHaveBeenCalledWith({
+      where: {
+        walletId: 'wallet-1',
+        signingIntentId: 'intent-1',
+        status: { in: [...ACTIONABLE_DRAFT_STATUS_VALUES] },
+      },
+      data: { status: 'broadcasted', updatedAt: expect.any(Date) },
+    });
   });
 });

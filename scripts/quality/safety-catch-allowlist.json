@@ -398,6 +398,15 @@
       "targetRemovalSlice": "intentional-post-acceptance-boundary"
     },
     {
+      "file": "server/src/services/bitcoin/transactions/broadcasting.ts",
+      "functionName": "archiveReplayedIntentDrafts",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Replay of an already complete broadcast; draft archiving is best effort after the spend is persisted, failure is logged and the draft still expires.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "intentional-post-acceptance-boundary"
+    },
+    {
       "file": "server/src/services/bitcoin/transactions/storeTransactionIO.ts",
       "functionName": "storeTransactionOutputs",
       "issue": "non-terminal-catch",

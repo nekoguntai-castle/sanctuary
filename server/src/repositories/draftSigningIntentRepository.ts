@@ -7,7 +7,7 @@
  * caller's responsibility.
  */
 
-import { ACTIONABLE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/constants/drafts';
+import { ACTIONABLE_DRAFT_STATUS_VALUES, BROADCASTED_DRAFT_STATUS } from '@sanctuary/shared/constants/drafts';
 import prisma from '../models/prisma';
 import { RESOLVED_APPROVAL_STATUSES } from './approvalStatuses';
 import type { DraftTransaction } from '../generated/prisma/client';
@@ -51,9 +51,36 @@ export async function hasLiveDraftForSigningIntent(
   return draft !== null;
 }
 
+/** The transaction client archiveDraftsForSigningIntent writes through. */
+export type DraftArchiveDbClient = Pick<typeof prisma, 'draftTransaction' | 'draftUtxoLock'>;
+
+/**
+ * Archive every actionable draft bound to a signing intent whose broadcast the
+ * node accepted, and release their UTXO locks. Looked up by intent, not by the
+ * broadcast's draftId: a draft saved while the broadcast was in flight is not
+ * named in the broadcast's metadata. Without a client the two writes run in
+ * their own transaction. Returns the number of drafts archived.
+ */
+export async function archiveDraftsForSigningIntent(
+  walletId: string,
+  signingIntentId: string,
+  client?: DraftArchiveDbClient
+): Promise<number> {
+  if (!client) {
+    return prisma.$transaction(tx => archiveDraftsForSigningIntent(walletId, signingIntentId, tx));
+  }
+  await client.draftUtxoLock.deleteMany({ where: { draft: { walletId, signingIntentId } } });
+  const archived = await client.draftTransaction.updateMany({
+    where: { walletId, signingIntentId, status: { in: [...ACTIONABLE_DRAFT_STATUS_VALUES] } },
+    data: { status: BROADCASTED_DRAFT_STATUS, updatedAt: new Date() },
+  });
+  return archived.count;
+}
+
 export const draftSigningIntentRepository = {
   findDraftByWalletAndSigningIntent,
   hasLiveDraftForSigningIntent,
+  archiveDraftsForSigningIntent,
 };
 
 export default draftSigningIntentRepository;

@@ -158,4 +158,35 @@ export const registerBroadcastAndSaveClaimStateContracts = () => {
       expect(broadcastTransaction).not.toHaveBeenCalled();
     });
   });
+
+  describe('drafts bound to the signing intent', () => {
+    const boundDraftWhere = {
+      where: { walletId, signingIntentId: INTENT, status: { in: ['unsigned', 'partial', 'signed'] } },
+      data: { status: 'broadcasted', updatedAt: expect.any(Date) },
+    };
+
+    it('archives a draft saved while the broadcast was in flight when the broadcast is accepted', async () => {
+      claimAs('ready');
+      await broadcastAndSave(walletId, undefined, metadata());
+      expect(mockPrismaClient.draftTransaction.updateMany).toHaveBeenCalledWith(boundDraftWhere);
+    });
+
+    it('archives the draft on an idempotent replay of an already-complete broadcast', async () => {
+      mockClaimSigningIntentBroadcast.mockResolvedValueOnce({ status: 'complete' });
+      await expect(broadcastAndSave(walletId, undefined, { ...metadata(), draftId: 'draft-1' }))
+        .resolves.toMatchObject({ persistenceStatus: 'complete' });
+      expect(mockPrismaClient.draftUtxoLock.deleteMany).toHaveBeenCalledWith({
+        where: { draft: { walletId, signingIntentId: INTENT } },
+      });
+      expect(mockPrismaClient.draftTransaction.updateMany).toHaveBeenCalledWith(boundDraftWhere);
+      expect(mockPrismaClient.transaction.createMany).not.toHaveBeenCalled();
+    });
+
+    it('still reports a complete replay when archiving its draft fails', async () => {
+      mockClaimSigningIntentBroadcast.mockResolvedValueOnce({ status: 'complete' });
+      mockPrismaClient.draftTransaction.updateMany.mockRejectedValueOnce(new Error('db down'));
+      await expect(broadcastAndSave(walletId, undefined, { ...metadata(), draftId: 'draft-1' }))
+        .resolves.toMatchObject({ persistenceStatus: 'complete' });
+    });
+  });
 };
