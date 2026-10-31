@@ -7,11 +7,16 @@ import {
 } from '../../../../../src/services/bitcoin/signingIntent/feePolicy';
 import { MAX_FEE_RATE, MIN_FEE_RATE } from '../../../../../src/constants';
 import {
+  SIGNING_INTENT_MAX_CPFP_CHILD_FEE_RATE,
   SIGNING_INTENT_MAX_FEE_RATE,
   SIGNING_INTENT_MIN_FEE_RATE,
 } from '../../../../../src/services/bitcoin/signingIntent/types';
 import { GENERATED_SIGNED_PSBT_VECTORS } from '../../../../fixtures/generated-signed-psbt-vectors';
-import { estimateTransactionWeight, feeForRate } from '../../../../../src/services/bitcoin/transactionWeight';
+import {
+  estimateTransactionWeight,
+  exactFeeRateNotAbove,
+  feeForRate,
+} from '../../../../../src/services/bitcoin/transactionWeight';
 
 const script = Buffer.from(`0014${'11'.repeat(20)}`, 'hex');
 
@@ -203,6 +208,41 @@ describe('signing intent fee policy construction', () => {
     (feeRate) => {
       expect(() => buildSigningIntentFeePolicy(witnessPsbt().toBase64(), feeRate, 1_000))
         .toThrow('Fee rate must be between');
+    },
+  );
+
+  it('admits a rate above the per-transaction cap only up to a caller-supplied CPFP bound', () => {
+    const psbt = witnessPsbt(1_000_000n, 800_000n);
+    const rate = exactFeeRateNotAbove(200_000, estimatePsbtMaximumSignedVsize(psbt));
+    expect(rate).toBeGreaterThan(SIGNING_INTENT_MAX_FEE_RATE);
+
+    expect(() => buildSigningIntentFeePolicy(psbt.toBase64(), rate, 200_000))
+      .toThrow('Fee rate must be between 0.1 and 1000 sat/vB');
+    expect(() => buildSigningIntentFeePolicy(psbt.toBase64(), rate, 200_000, 0, 1_500))
+      .toThrow('Fee rate must be between 0.1 and 1500 sat/vB');
+    expect(buildSigningIntentFeePolicy(psbt.toBase64(), rate, 200_000, 0, 2_000)).toMatchObject({
+      expectedFeeSats: 200_000,
+      requestedFeeRateSatsPerVbyte: rate,
+    });
+  });
+
+  it('admits a fee-rate bound of exactly the CPFP child ceiling (5000 sat/vB)', () => {
+    const psbt = witnessPsbt(1_000_000n, 800_000n);
+    const rate = exactFeeRateNotAbove(200_000, estimatePsbtMaximumSignedVsize(psbt));
+    expect(rate).toBeGreaterThan(SIGNING_INTENT_MAX_FEE_RATE);
+
+    expect(buildSigningIntentFeePolicy(
+      psbt.toBase64(), rate, 200_000, 0, SIGNING_INTENT_MAX_CPFP_CHILD_FEE_RATE,
+    )).toMatchObject({ expectedFeeSats: 200_000, requestedFeeRateSatsPerVbyte: rate });
+  });
+
+  it.each([SIGNING_INTENT_MAX_FEE_RATE - 1, SIGNING_INTENT_MAX_CPFP_CHILD_FEE_RATE + 1, Number.NaN])(
+    'rejects a fee-rate bound outside the admitted range: %s',
+    (maximumFeeRate) => {
+      const psbt = witnessPsbt();
+      const requestedRate = 999.5 / estimatePsbtMaximumSignedVsize(psbt);
+      expect(() => buildSigningIntentFeePolicy(psbt.toBase64(), requestedRate, 1_000, 0, maximumFeeRate))
+        .toThrow('Fee-rate bound is outside the supported range');
     },
   );
 

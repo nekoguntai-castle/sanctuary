@@ -934,14 +934,15 @@
         { "path": "src/services/bitcoin/transactions/createBatchTransaction.ts", "minScore": 70 },
         { "path": "src/services/bitcoin/advancedTx/batch.ts", "minScore": 75 },
         { "path": "src/services/bitcoin/advancedTx/cpfp.ts", "minScore": 75 },
+        { "path": "src/services/bitcoin/advancedTx/cpfpParent.ts", "minScore": 75 },
         { "path": "src/services/bitcoin/advancedTx/rbf.ts", "minScore": 75 }
       ],
       "invariants": [
         {
           "id": "fee-surplus-is-independently-bounded",
           "productionFile": "src/services/bitcoin/signingIntent/feePolicy.ts",
-          "lineStart": 136,
-          "lineEnd": 159,
+          "lineStart": 143,
+          "lineEnd": 166,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/signingIntent/feePolicy.test.ts",
             "name": "signing intent fee policy construction does not let a missing change output widen its own authorization"
@@ -949,8 +950,8 @@
           "canaries": [{
             "id": "missing-change-fee-is-rejected",
             "location": {
-              "start": { "line": 150, "column": 72 },
-              "end": { "line": 157, "column": 4 }
+              "start": { "line": 157, "column": 72 },
+              "end": { "line": 164, "column": 4 }
             },
             "mutatorName": "BlockStatement",
             "replacement": "{}",
@@ -1293,6 +1294,52 @@
             "requiredKillingTest": {
               "file": "tests/unit/services/bitcoin/advancedTx.test.ts",
               "name": "Advanced Transaction Features CPFP Fee Calculation should calculate correct child fee for target package rate"
+            }
+          }]
+        },
+        {
+          "id": "cpfp-parent-vsize-is-capped-by-its-authenticated-bound",
+          "productionFile": "src/services/bitcoin/advancedTx/cpfpParent.ts",
+          "lineStart": 121,
+          "lineEnd": 125,
+          "requiredTests": [{
+            "file": "tests/unit/services/bitcoin/advancedTx/cpfpParent.test.ts",
+            "name": "CPFP parent measurement caps a padded witness on a non-witness input at the stripped size"
+          }],
+          "canaries": [{
+            "id": "padded-parent-is-priced-at-its-bound",
+            "location": {
+              "start": { "line": 123, "column": 53 },
+              "end": { "line": 123, "column": 86 }
+            },
+            "mutatorName": "MethodExpression",
+            "replacement": "Math.max(servedVsize, vsizeBound)",
+            "requiredKillingTest": {
+              "file": "tests/unit/services/bitcoin/advancedTx/cpfpParent.test.ts",
+              "name": "CPFP parent measurement caps a padded witness on a non-witness input at the stripped size"
+            }
+          }]
+        },
+        {
+          "id": "cpfp-child-rate-above-cap-requires-a-bounded-parent",
+          "productionFile": "src/services/bitcoin/advancedTx/cpfpParent.ts",
+          "lineStart": 134,
+          "lineEnd": 177,
+          "requiredTests": [{
+            "file": "tests/unit/services/bitcoin/advancedTx/cpfpParent.test.ts",
+            "name": "CPFP child fee-rate authorization keeps the per-transaction cap for an unbounded parent"
+          }],
+          "canaries": [{
+            "id": "unbounded-parent-keeps-the-per-transaction-cap",
+            "location": {
+              "start": { "line": 146, "column": 7 },
+              "end": { "line": 146, "column": 38 }
+            },
+            "mutatorName": "ConditionalExpression",
+            "replacement": "false",
+            "requiredKillingTest": {
+              "file": "tests/unit/services/bitcoin/advancedTx/cpfpParent.test.ts",
+              "name": "CPFP child fee-rate authorization keeps the per-transaction cap for an unbounded parent"
             }
           }]
         },

@@ -579,6 +579,8 @@ Full browser-flow E2E uses deterministic spec groups in `scripts/ci/browser-e2e-
 bash scripts/ci/browser-e2e-groups.sh --check
 ```
 
+`Full Browser E2E` runs the same check in `scripts/ci/run-browser-e2e-subject.sh` before it starts the backend, so an unassigned spec fails the lane instead of being skipped. Every top-level spec change selects that lane; a spec-only change does not select `CI classifier tests`.
+
 Playwright runs also emit per-spec timing files under the existing `test-results/` artifact directory: `playwright-timing.json` for machine-readable history and `playwright-timing.md` for quick review. The quick and full E2E jobs also wrap dependency install, Playwright browser install, frontend build, backend setup/build, and the Playwright command itself with `scripts/ci/time-command.sh`. Use those notices to separate setup cost from spec runtime before changing group membership, browser count, retries, or shared setup.
 
 As of the 2026-04-30 review, recent `main` Test Suite push runs show browser-flow jobs as the recurring wall-time tail when full browser E2E runs. A sampled wallet-experience job spent about 79 seconds in timed dependency/build/backend setup notices and 67 seconds in Playwright runtime, with the remaining time in hosted-runner service startup, checkout, cache, server readiness, and artifact overhead. That means setup reuse is worth continuing to measure, but a shared build artifact or prebuilt test image is not yet justified without proving upload/download or image-build overhead is lower than the duplicated setup it replaces.

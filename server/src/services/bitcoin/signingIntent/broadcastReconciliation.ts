@@ -12,7 +12,8 @@ import {
   isNodeAnsweredBroadcastFailure,
 } from '../blockchain';
 import { authenticateNodeTransaction } from '../nodeTransactionAuthentication';
-import { isBitcoinNetwork } from '../networks';
+import { isBitcoinNetwork, type BitcoinNetwork } from '../networks';
+import { isCpfpChildParentConfirmed } from '../parentConfirmation';
 import { persistTransaction } from '../transactions/persistTransaction';
 import {
   DurableBroadcastMetadataSchema,
@@ -20,9 +21,10 @@ import {
 } from './broadcastLifecycle';
 import { toPrismaInputJson } from './json';
 import { SigningIntentSnapshotSchema } from './schema';
+import { BROADCAST_LEASE_MS, parseSigningIntentSource } from './types';
 
 const log = createLogger('BITCOIN:SIGNING_INTENT_RECONCILIATION');
-const LEASE_MS = 60_000;
+const CPFP_PARENT_CONFIRMED_ERROR = 'CPFP parent confirmed; child withheld';
 
 const parseMetadata = (value: Prisma.JsonValue | null): DurableBroadcastMetadata | null => {
   const parsed = DurableBroadcastMetadataSchema.safeParse(value);
@@ -71,10 +73,36 @@ const recordUncertainFailure = async (
   });
 };
 
+/**
+ * The child txid is unknown to the node here. If its parent is mined, a
+ * re-submission can only add a confirmable child that pays the package
+ * deficit for nothing, so it is withheld and the intent becomes lookup-only
+ * (a later lookup still accepts the child if it surfaces). A failed parent
+ * lookup throws to the caller's catch: the intent stays uncertain, uncounted.
+ */
+const withholdConfirmedCpfpChild = async (
+  record: { id: string; walletId: string; source: string; broadcastTxid: string | null },
+  network: BitcoinNetwork,
+  inputs: ReadonlyArray<{ txid: string }>,
+  leaseToken: string,
+): Promise<boolean> => {
+  if (parseSigningIntentSource(record.source) !== 'cpfp'
+    || !await isCpfpChildParentConfirmed(inputs, network, record.walletId)) {
+    return false;
+  }
+  log.warn('CPFP parent is confirmed; withholding the child re-submission', {
+    intentId: record.id,
+    txid: record.broadcastTxid,
+  });
+  await transactionSigningIntentRepository.markBroadcastWithheld(record.id, leaseToken, CPFP_PARENT_CONFIRMED_ERROR);
+  return true;
+};
+
 const reconcileUncertain = async (record: {
   id: string;
   walletId: string;
   network: string;
+  source: string;
   snapshotDigest: string;
   snapshot: Prisma.JsonValue;
   broadcastTxid: string | null;
@@ -94,7 +122,8 @@ const reconcileUncertain = async (record: {
     metadata: toPrismaInputJson(metadata),
     leaseToken,
     now,
-    leaseExpiresAt: new Date(now.getTime() + LEASE_MS),
+    // From the clock when this row is claimed: a slow earlier row must not shorten this lease.
+    leaseExpiresAt: new Date(Date.now() + BROADCAST_LEASE_MS),
     allowStalled: false,
   });
   if (claim.status !== 'claimed') return claim.status === 'complete';
@@ -117,6 +146,7 @@ const reconcileUncertain = async (record: {
     }
     const snapshot = SigningIntentSnapshotSchema.safeParse(record.snapshot);
     if (!snapshot.success) return false;
+    if (await withholdConfirmedCpfpChild(record, record.network, snapshot.data.transaction.inputs, leaseToken)) return false;
     await broadcastAuthenticatedRawTransaction({
       rawTx: record.broadcastRawTx,
       expectedTxid: record.broadcastTxid,

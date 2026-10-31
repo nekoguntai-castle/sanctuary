@@ -29,7 +29,11 @@ import type {
   SigningIntentSnapshotV2,
 } from '../../../../../src/services/bitcoin/signingIntent';
 import { GENERATED_SIGNED_PSBT_VECTORS } from '../../../../fixtures/generated-signed-psbt-vectors';
-import { feeForRate } from '../../../../../src/services/bitcoin/transactionWeight';
+import { exactFeeRateNotAbove, feeForRate } from '../../../../../src/services/bitcoin/transactionWeight';
+import {
+  buildSigningIntentFeePolicy,
+  estimatePsbtMaximumSignedVsize,
+} from '../../../../../src/services/bitcoin/signingIntent/feePolicy';
 
 const inputHash = (hex: string): Uint8Array => Buffer.from(hex, 'hex').reverse();
 
@@ -431,6 +435,21 @@ describe('signed artifact authentication boundary', () => {
     envelope.snapshot.feePolicy = {
       ...permissiveFeePolicy,
       requestedFeeRateSatsPerVbyte: 1_000,
+      roundingToleranceSats: 1_000_000,
+    };
+
+    await expect(validateSignedArtifact({
+      ...signingInput,
+      signedPsbtBase64: signed.toBase64(),
+    })).resolves.toMatchObject({ actualFeeSats: 1_000 });
+  });
+
+  it('admits a CPFP child policy rate above the per-transaction cap', async () => {
+    const signed = signPsbt(original);
+    envelope.source = 'cpfp';
+    envelope.snapshot.feePolicy = {
+      ...permissiveFeePolicy,
+      requestedFeeRateSatsPerVbyte: 1_500,
       roundingToleranceSats: 1_000_000,
     };
 
@@ -1475,5 +1494,94 @@ describe('signed artifact sighash boundary', () => {
     const artifact = await validateSignedArtifact({ ...signingInput, signedPsbtBase64: sign().toBase64() });
 
     expect(artifact.txid).toMatch(/^[0-9a-f]{64}$/);
+  });
+});
+
+describe('a CPFP child at the PSBT finalizer fee-rate limit', () => {
+  // A 1-in-1-out P2WPKH child: 110 vB at its maximum signed size, 94 vB at its smallest
+  // (`minimumSignedVsize`, pinned in cpfpParent.test.ts). bitcoinjs-lib's extractTransaction(),
+  // called by finalizePsbt, refuses floor(fee / signed vsize) >= 5000 (its default maximumFeeRate).
+  const CHILD_INPUT_SATS = 2_000_000;
+  const bounded = { fee: 0, vsize: 50_000, vsizeBound: 50_000 };
+  const p2wpkhChild = { vsize: 110, minimumSignedVsize: 94 };
+
+  const childPsbt = (feeSats: number): bitcoin.Psbt => {
+    const psbt = new bitcoin.Psbt({ network: bitcoin.networks.testnet });
+    psbt.setVersion(2);
+    psbt.addInput({
+      hash: 'bb'.repeat(32),
+      index: 0,
+      sequence: 0xfffffffd,
+      witnessUtxo: { script: witnessScript, value: BigInt(CHILD_INPUT_SATS) },
+    });
+    psbt.addOutput({ script: destinationScript, value: BigInt(CHILD_INPUT_SATS - feeSats) });
+    return psbt;
+  };
+
+  const loadCpfpIntent = (psbt: bitcoin.Psbt, feePolicy: SigningIntentSnapshotV2['feePolicy']): void => {
+    const envelope = envelopeFor(psbt);
+    envelope.source = 'cpfp';
+    envelope.snapshot.feePolicy = feePolicy;
+    mocks.loadSigningIntent.mockResolvedValue(envelope);
+    mocks.authenticateIntentPrevouts.mockResolvedValue(
+      envelope.snapshot.transaction.inputs.map(input => input.prevout),
+    );
+  };
+
+  /** The signed child's vsize, extracted without bitcoinjs's fee check. */
+  const signedVsizeUnchecked = (signed: bitcoin.Psbt): number => {
+    const finalized = bitcoin.Psbt.fromBase64(signed.toBase64());
+    finalized.finalizeAllInputs();
+    return finalized.extractTransaction(true).virtualSize();
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.assertWalletHardwareCapabilityById.mockResolvedValue(undefined);
+  });
+
+  it('builds, signs and finalizes a CPFP child at the top of the authorized range', async () => {
+    const fee = 5_000 * 94 - 1;
+    const psbt = childPsbt(fee);
+    expect(estimatePsbtMaximumSignedVsize(psbt)).toBe(110);
+    loadCpfpIntent(psbt, buildSigningIntentFeePolicy(psbt.toBase64(), exactFeeRateNotAbove(fee, 110), fee, 0, 5_000));
+    const signed = signPsbt(psbt);
+
+    await expect(validateSignedArtifact({
+      ...signingInput,
+      signedPsbtBase64: signed.toBase64(),
+    })).resolves.toMatchObject({ actualFeeSats: fee, vsize: signedVsizeUnchecked(signed) });
+  });
+
+  it('never authorizes a child that finalization refuses', async () => {
+    const refusedFee = 5_000 * 110;
+    const psbt = childPsbt(refusedFee);
+    const signed = signPsbt(psbt);
+    expect(signedVsizeUnchecked(signed)).toBe(110);
+    // The policy the pass-4 builder issued for this child (its rate is under 10,000 sat/vB).
+    loadCpfpIntent(psbt, {
+      ...permissiveFeePolicy,
+      expectedFeeSats: refusedFee,
+      requestedFeeRateSatsPerVbyte: exactFeeRateNotAbove(refusedFee, 110),
+      roundingToleranceSats: 0,
+    });
+
+    await expect(validateSignedArtifact({
+      ...signingInput,
+      signedPsbtBase64: signed.toBase64(),
+    })).rejects.toMatchObject({ message: 'Signed PSBT is not finalizable', details: { reason: 'not_finalizable' } });
+    // bitcoinjs's check is strict: one sat less finalizes at the same signed size.
+    const below = signPsbt(childPsbt(refusedFee - 1));
+    expect(signedVsizeUnchecked(below)).toBe(110);
+    expect(() => {
+      const finalized = bitcoin.Psbt.fromBase64(below.toBase64());
+      finalized.finalizeAllInputs();
+      finalized.extractTransaction();
+    }).not.toThrow();
+
+    // The builder refuses it, and every fee from 5000 sat/vB of the smallest signed size up.
+    const { authorizeCpfpChildFeeRate } = await import('../../../../../src/services/bitcoin/advancedTx/cpfpParent');
+    expect(() => authorizeCpfpChildFeeRate(bounded, p2wpkhChild, 1_000, refusedFee)).toThrow(/the PSBT finalizer limit/);
+    expect(() => authorizeCpfpChildFeeRate(bounded, p2wpkhChild, 1_000, 5_000 * 94)).toThrow(/the PSBT finalizer limit/);
   });
 });

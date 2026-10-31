@@ -56,8 +56,21 @@ list_group_specs() {
   esac
 }
 
+readonly PLAYWRIGHT_CONFIG='config/tooling/playwright.config.ts'
+
+# Mirrors Playwright's discovery for PLAYWRIGHT_CONFIG: testDir tests/e2e, walked
+# recursively with node_modules skipped, and no testMatch/testIgnore override in the
+# config or any project, so the default '**/*.@(spec|test).?(c|m)[jt]s?(x)' applies.
+assert_default_playwright_discovery() {
+  if [ -f "$PLAYWRIGHT_CONFIG" ] && grep -Eq '\b(testMatch|testIgnore)\b' "$PLAYWRIGHT_CONFIG"; then
+    echo "$PLAYWRIGHT_CONFIG overrides testMatch/testIgnore; mirror it in list_repo_browser_specs" >&2
+    return 1
+  fi
+}
+
 list_repo_browser_specs() {
-  find tests/e2e -maxdepth 1 -name '*.spec.ts' ! -name "$(basename "$RENDER_SPEC")" | sort
+  find tests/e2e -type d -name node_modules -prune -o -type f -regextype posix-extended \
+    -regex '.*\.(spec|test)\.(c|m)?[jt]sx?' ! -path "$RENDER_SPEC" -print | sort
 }
 
 list_assigned_specs() {
@@ -83,6 +96,7 @@ check_groups() {
   local assigned_specs duplicate_specs missing_specs extra_specs
   local failed=false
 
+  assert_default_playwright_discovery || return 1
   assigned_specs="$(list_assigned_specs | sort)"
   duplicate_specs="$(printf '%s\n' "$assigned_specs" | uniq -d)"
   missing_specs="$(comm -23 <(list_repo_browser_specs) <(printf '%s\n' "$assigned_specs"))"

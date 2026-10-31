@@ -149,6 +149,23 @@ describe('transaction signing intent lifecycle', () => {
     }));
   });
 
+  it('admits a stored fee rate above the per-transaction cap only for a CPFP child', async () => {
+    mocks.create.mockImplementation(async data => ({ id: 'intent-1', ...data }));
+    const request = {
+      walletId: 'wallet-1',
+      createdByUserId: 'user-1',
+      network: 'testnet3' as const,
+      unsignedPsbtBase64: psbtBase64(),
+      signingContext,
+      feePolicy: { ...feePolicy, requestedFeeRateSatsPerVbyte: 1_500 },
+    };
+
+    await expect(createSigningIntentWithContext({ ...request, source: 'standard' }))
+      .rejects.toThrow('Fee rate must be between 0.1 and 1000 sat/vB');
+    await expect(createSigningIntentWithContext({ ...request, source: 'cpfp' }))
+      .resolves.toMatchObject({ intentId: 'intent-1' });
+  });
+
   it('issues the handle together with the exact snapshot it persisted', async () => {
     mocks.create.mockImplementation(async data => ({ id: 'intent-1', ...data }));
     const issued = await persistSigningIntent(await prepareSigningIntent({

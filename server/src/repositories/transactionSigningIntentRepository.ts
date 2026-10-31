@@ -353,16 +353,21 @@ const transitionClaim = async (
   return result.count === 1;
 };
 
+/** Releases a claim to `unknown` (lease dropped, error recorded): the base of every uncertain outcome. */
+const releaseToUnknown = (error: string): Prisma.TransactionSigningIntentUpdateManyMutationInput => ({
+  broadcastState: 'unknown',
+  broadcastLeaseToken: null,
+  broadcastLeaseExpiresAt: null,
+  broadcastLastError: error,
+});
+
 export const markBroadcastUnknown = (
   id: string,
   leaseToken: string,
   error: string,
   options: { countAttempt?: boolean } = {},
 ): Promise<boolean> => transitionClaim(id, leaseToken, {
-  broadcastState: 'unknown',
-  broadcastLeaseToken: null,
-  broadcastLeaseExpiresAt: null,
-  broadcastLastError: error,
+  ...releaseToUnknown(error),
   // Give back the claim's increment when the node never answered, so an outage cannot advance the cap.
   ...(options.countAttempt === false ? { broadcastAttemptCount: { decrement: 1 } } : {}),
 });
@@ -377,12 +382,25 @@ export const markBroadcastStalled = (
   id: string,
   leaseToken: string,
   error: string,
+): Promise<boolean> => transitionClaim(
+  id, leaseToken, releaseToUnknown(error), { broadcastAttemptCount: { gte: MAX_RECONCILE_ATTEMPTS } },
+);
+
+/**
+ * Stop rebroadcasting below the attempt cap: the intent joins the stalled
+ * (lookup-only) set by moving its attempt count to the cap. For a
+ * re-submission that must not happen at all (a CPFP child whose parent is
+ * mined). A lookup that later finds the txid still accepts it, and a
+ * user-initiated retry re-runs the broadcast route's pre-network checks.
+ */
+export const markBroadcastWithheld = (
+  id: string,
+  leaseToken: string,
+  error: string,
 ): Promise<boolean> => transitionClaim(id, leaseToken, {
-  broadcastState: 'unknown',
-  broadcastLeaseToken: null,
-  broadcastLeaseExpiresAt: null,
-  broadcastLastError: error,
-}, { broadcastAttemptCount: { gte: MAX_RECONCILE_ATTEMPTS } });
+  ...releaseToUnknown(error),
+  broadcastAttemptCount: MAX_RECONCILE_ATTEMPTS,
+});
 
 export const releaseRejectedBroadcast = (
   id: string,
@@ -502,6 +520,7 @@ export const transactionSigningIntentRepository = {
   claimBroadcast,
   markBroadcastUnknown,
   markBroadcastStalled,
+  markBroadcastWithheld,
   releaseRejectedBroadcast,
   markBroadcastAccepted,
   markBroadcastComplete,

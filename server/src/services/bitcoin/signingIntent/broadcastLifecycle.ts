@@ -7,8 +7,7 @@ import {
 } from '../../../repositories/transactionSigningIntentRepository';
 import type { ValidatedBroadcastArtifact } from './artifactValidation';
 import { toPrismaInputJson } from './json';
-
-const BROADCAST_LEASE_MS = 60_000;
+import { BROADCAST_LEASE_MS, parseSigningIntentSource, type SigningIntentSource } from './types';
 
 const SafeSatsSchema = z.number().int().nonnegative().safe();
 const DecimalSatsSchema = z.string().regex(/^(0|[1-9]\d*)$/);
@@ -59,7 +58,7 @@ export const DurableBroadcastMetadataSchema = z.object({
 export type DurableBroadcastMetadata = z.infer<typeof DurableBroadcastMetadataSchema>;
 
 export type BroadcastClaim =
-  | { status: 'claimed'; leaseToken: string; priorState: BroadcastPriorState }
+  | { status: 'claimed'; leaseToken: string; priorState: BroadcastPriorState; source: SigningIntentSource | undefined }
   | { status: 'accepted' }
   | { status: 'complete' };
 
@@ -94,7 +93,10 @@ export const claimSigningIntentBroadcast = async (
     resumeOnly: options.resumeOnly === true,
     keepHeldReservations: options.resumeOnly !== true,
   });
-  if (result.status === 'claimed') return { status: 'claimed', leaseToken, priorState: result.priorState };
+  if (result.status === 'claimed') {
+    // The source of the claimed row, so a source-specific pre-network check reads the locked intent.
+    return { status: 'claimed', leaseToken, priorState: result.priorState, source: parseSigningIntentSource(result.record.source) };
+  }
   if (result.status === 'accepted') return { status: 'accepted' };
   if (result.status === 'complete') return { status: 'complete' };
   if (result.status === 'busy') {

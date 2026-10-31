@@ -12,7 +12,7 @@ import {
   isNodeAnsweredBroadcastFailure,
   recalculateWalletBalances,
 } from '../blockchain';
-import { ApiError, ConflictError } from '../../../errors/ApiError';
+import { ApiError, ConflictError, ServiceUnavailableError } from '../../../errors/ApiError';
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage, isPrismaError } from '../../../utils/errors';
 import { eventService } from '../../eventService';
@@ -29,10 +29,17 @@ import {
   markSigningIntentBroadcastUnknown,
   releaseRejectedSigningIntentBroadcast,
   type BroadcastClaimOptions,
+  type DurableBroadcastMetadata,
 } from '../signingIntent/broadcastLifecycle';
 import { assertWalletHardwareCapabilityById } from '../../hardwareWalletCapabilities';
 import type { BroadcastPriorState } from '../../../repositories/transactionSigningIntentRepository';
 import { archiveDraftsForSigningIntent } from '../../../repositories/draftSigningIntentRepository';
+import {
+  CPFP_PARENT_CONFIRMED_MESSAGE,
+  cpfpParentTxids,
+  assertTransactionKnownToNode,
+  isCpfpChildParentConfirmed,
+} from '../parentConfirmation';
 
 // Re-exported so callers (the broadcast route) can distinguish a definite
 // rejection from an unknown-outcome failure without importing the blockchain
@@ -223,6 +230,25 @@ const STALLED_BROADCAST_MESSAGE = "This transaction's broadcast outcome could no
 type FailureTransition = { releasedToReady: boolean };
 
 /**
+ * Persist a failed claim's outcome without masking the original failure: if the
+ * write itself fails it is logged, and the live claim is left for lease-expiry
+ * reconciliation (the caller still rethrows its original error).
+ */
+const persistFailureTransition = async (
+  intentId: string,
+  txid: string,
+  persist: () => Promise<FailureTransition>,
+  failureMessage: string,
+): Promise<FailureTransition> => {
+  try {
+    return await persist();
+  } catch (persistError) {
+    log.error(failureMessage, { intentId, txid, error: getErrorMessage(persistError) });
+    return { releasedToReady: false };
+  }
+};
+
+/**
  * Persist the outcome of a failed claim. Only a first (`ready`) claim may be
  * rolled back; a resumed claim may already have crossed the node boundary, so
  * it stays unknown, and a claim resumed from `stalled` returns to `stalled`.
@@ -254,8 +280,8 @@ const broadcastFailureToThrow = (claim: BroadcastClaimed, error: unknown): unkno
     : error
 );
 
-/** Failed replacement-link check before any network call: release only a first claim. */
-const recordReplacementLinkFailure = async (
+/** Failed pre-network check (replacement link, CPFP parent): release only a first claim. */
+const recordPreNetworkCheckFailure = async (
   intentId: string,
   claim: BroadcastClaimed,
   error: unknown,
@@ -269,6 +295,71 @@ const recordReplacementLinkFailure = async (
     // Nothing reached a node, so this must not spend the stall-cap budget.
     : markSigningIntentBroadcastUnknown(intentId, claim.leaseToken, message, { countAttempt: false }));
   return { releasedToReady: false };
+};
+
+/**
+ * A CPFP child only pays for its parent, so once the parent is mined the
+ * broadcast would spend the package deficit for nothing. The parent is the
+ * child's input (the CPFP builder binds exactly one). A lookup that cannot
+ * settle it, or does not settle it within its deadline (well inside the lease),
+ * fails closed with a retryable 503.
+ */
+const assertCpfpParentUnconfirmed = async (artifact: ValidatedBroadcastArtifact): Promise<void> => {
+  const { inputs } = artifact.snapshot.transaction;
+  const parentTxid = cpfpParentTxids(inputs).join(',');
+  let confirmed: boolean;
+  try {
+    confirmed = await isCpfpChildParentConfirmed(inputs, artifact.network, artifact.walletId);
+  } catch (error) {
+    log.warn('CPFP parent confirmation lookup failed; refusing the broadcast', {
+      intentId: artifact.intent.intentId, parentTxid, error: getErrorMessage(error),
+    });
+    throw new ServiceUnavailableError(
+      'Could not verify that the CPFP parent is still unconfirmed; retry the broadcast',
+      undefined,
+      { reason: 'cpfp_parent_status_unavailable', parentTxid },
+    );
+  }
+  if (confirmed) {
+    throw new ConflictError(CPFP_PARENT_CONFIRMED_MESSAGE, undefined, {
+      reason: 'cpfp_parent_confirmed', parentTxid,
+    });
+  }
+};
+
+/**
+ * A CPFP retry (any claim not taken from `ready`) may follow a submission whose
+ * response was lost, and the child may since have been mined beside its parent.
+ * A child the node already serves is settled as accepted, never refused because
+ * its parent confirmed. A miss or a failed lookup falls through to the checks.
+ */
+const isRetriedCpfpChildKnown = async (artifact: ValidatedBroadcastArtifact, claim: BroadcastClaimed): Promise<boolean> => {
+  if (claim.source !== 'cpfp' || claim.priorState === 'ready') return false;
+  try {
+    await assertTransactionKnownToNode(artifact.txid, artifact.network);
+    return true;
+  } catch (error) {
+    log.debug('Retried CPFP child is not known to the node; checking its parent', {
+      intentId: artifact.intent.intentId, txid: artifact.txid, error: getErrorMessage(error),
+    });
+    return false;
+  }
+};
+
+/** The checks a claimed first attempt must pass before anything reaches the network. */
+const assertPreNetworkChecks = async (
+  artifact: ValidatedBroadcastArtifact,
+  metadata: Pick<DurableBroadcastMetadata, 'replacesTxid' | 'inputs' | 'utxos'>,
+  claim: BroadcastClaimed,
+): Promise<void> => {
+  if (metadata.replacesTxid) {
+    await assertReplacementLink(
+      artifact.walletId,
+      metadata.replacesTxid,
+      selectCandidateOutpoints(metadata.inputs, metadata.utxos)
+    );
+  }
+  if (claim.source === 'cpfp') await assertCpfpParentUnconfirmed(artifact);
 };
 
 /**
@@ -346,52 +437,42 @@ export async function broadcastAndSave(
   }
 
   // A claimed RBF replacement must verify (same wallet, unconfirmed, shares
-  // an input) BEFORE the transaction reaches the network. This only runs on
-  // a genuine first attempt: an idempotent replay of an already
-  // complete/accepted broadcast returns above without re-validating, so a
-  // `replacesTxid` that confirmed in the meantime cannot turn a harmless
-  // replay into a 400. If it does reject here, release the just-claimed
-  // lease the same way a definite broadcast rejection would, so the signing
-  // intent is not left stuck in 'claimed'.
-  if (metadata.replacesTxid) {
-    try {
-      await assertReplacementLink(
-        walletId,
-        metadata.replacesTxid,
-        selectCandidateOutpoints(metadata.inputs, metadata.utxos)
-      );
-    } catch (error) {
-      let transition: FailureTransition = { releasedToReady: false };
-      try {
-        transition = await recordReplacementLinkFailure(artifact.intent.intentId, claim, error);
-      } catch (releaseError) {
-        log.error('Failed to release claimed lease after replacesTxid rejection; lease expiry will reconcile it', {
-          intentId: artifact.intent.intentId,
-          txid,
-          error: getErrorMessage(releaseError),
-        });
-      }
-      throw tagBroadcastFailure(asPreNetworkRejection(error), {
-        claimed: true, priorState: claim.priorState, releasedToReady: transition.releasedToReady,
-      });
-    }
+  // an input) and a claimed CPFP child's parent must still be unconfirmed
+  // BEFORE the transaction reaches the network. This only runs on a genuine
+  // first attempt: an idempotent replay of an already complete/accepted
+  // broadcast returns above without re-validating, so a `replacesTxid` or a
+  // CPFP parent that confirmed in the meantime cannot turn a harmless replay
+  // into an error. If a check rejects here, release the just-claimed lease the
+  // same way a definite broadcast rejection would, so the signing intent is
+  // not left stuck in 'claimed'.
+  const childKnown = await isRetriedCpfpChildKnown(artifact, claim);
+  try {
+    if (!childKnown) await assertPreNetworkChecks(artifact, metadata, claim);
+  } catch (error) {
+    const transition = await persistFailureTransition(
+      artifact.intent.intentId,
+      txid,
+      () => recordPreNetworkCheckFailure(artifact.intent.intentId, claim, error),
+      'Failed to release claimed lease after a pre-network check rejection; lease expiry will reconcile it',
+    );
+    throw tagBroadcastFailure(asPreNetworkRejection(error), {
+      claimed: true, priorState: claim.priorState, releasedToReady: transition.releasedToReady,
+    });
   }
 
   // Broadcast to network
   let broadcastResult;
   try {
-    broadcastResult = await broadcastTransaction(artifact, claim.priorState === 'ready');
+    broadcastResult = childKnown
+      ? { txid, broadcasted: true }
+      : await broadcastTransaction(artifact, claim.priorState === 'ready');
   } catch (error) {
-    let transition: FailureTransition = { releasedToReady: false };
-    try {
-      transition = await recordClaimFailure(artifact.intent.intentId, claim, error);
-    } catch (transitionError) {
-      log.error('Failed to persist broadcast failure outcome; lease expiry will reconcile it', {
-        intentId: artifact.intent.intentId,
-        txid,
-        error: getErrorMessage(transitionError),
-      });
-    }
+    const transition = await persistFailureTransition(
+      artifact.intent.intentId,
+      txid,
+      () => recordClaimFailure(artifact.intent.intentId, claim, error),
+      'Failed to persist broadcast failure outcome; lease expiry will reconcile it',
+    );
     throw tagBroadcastFailure(broadcastFailureToThrow(claim, error), {
       claimed: true, priorState: claim.priorState, releasedToReady: transition.releasedToReady,
     });

@@ -1,5 +1,6 @@
 import { beforeEach, describe } from 'vitest';
 import { registerBroadcastAndSaveClaimStateContracts } from './transactionServiceBroadcast.broadcastAndSave.claim-states.contracts';
+import { registerBroadcastAndSaveCpfpParentContracts } from './transactionServiceBroadcast.broadcastAndSave.cpfp-parent.contracts';
 import { registerBroadcastAndSaveCoreContracts } from './transactionServiceBroadcast.broadcastAndSave.core.contracts';
 import { registerBroadcastAndSaveFailureTagContracts } from './transactionServiceBroadcast.broadcastAndSave.failure-tags.contracts';
 import { registerBroadcastAndSaveFailureAndRbfContracts } from './transactionServiceBroadcast.broadcastAndSave.failures-rbf.contracts';
@@ -15,5 +16,6 @@ export const registerBroadcastAndSaveTests = () => {
     registerBroadcastAndSaveNotificationContracts();
     registerBroadcastAndSaveFailureAndRbfContracts();
     registerBroadcastAndSaveFailureTagContracts();
+    registerBroadcastAndSaveCpfpParentContracts();
   });
 };

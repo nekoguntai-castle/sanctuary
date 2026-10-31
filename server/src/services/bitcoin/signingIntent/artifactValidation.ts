@@ -8,7 +8,7 @@ import { loadSigningIntent } from './service';
 import { assertWalletHardwareCapabilityById } from '../../hardwareWalletCapabilities';
 import { feeForRate } from '../transactionWeight';
 import {
-  SIGNING_INTENT_MAX_FEE_RATE,
+  maximumSigningIntentFeeRate,
   type SigningIntentEnvelope,
   type SigningIntentHandle,
   type SigningIntentSnapshot,
@@ -223,7 +223,7 @@ const feePolicyFailure = (
 
 const validateFinalizedFeePolicy = (
   transaction: bitcoin.Transaction,
-  snapshot: SigningIntentSnapshot,
+  { snapshot, source }: Pick<SigningIntentEnvelope, 'snapshot' | 'source'>,
 ): FinalizedFeeMetrics => {
   const fee = calculateAuthenticatedFee(snapshot);
 
@@ -236,7 +236,7 @@ const validateFinalizedFeePolicy = (
 
   const policy = requireFeePolicy(snapshot);
   const requestedRate = policy.requestedFeeRateSatsPerVbyte;
-  if (!(requestedRate > 0 && requestedRate <= SIGNING_INTENT_MAX_FEE_RATE)) {
+  if (!(requestedRate > 0 && requestedRate <= maximumSigningIntentFeeRate(source))) {
     throw new InvalidInputError('Authorized fee policy is outside the supported range', 'feePolicy', {
       reason: 'fee_too_high',
     });
@@ -615,7 +615,7 @@ export const validateSignedArtifact = async (
   }
   const feeMetrics = envelope.snapshot.version === 1 && envelope.broadcastReplay
     ? legacyReplayFeeMetrics(transaction, envelope.snapshot)
-    : validateFinalizedFeePolicy(transaction, envelope.snapshot);
+    : validateFinalizedFeePolicy(transaction, envelope);
 
   return sealValidatedBroadcastArtifact({
     rawTx: transaction.toHex(),

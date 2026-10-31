@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
 import {
   LEGACY_SIGNING_INTENT_SNAPSHOT_VERSION,
-  SIGNING_INTENT_MAX_FEE_RATE,
+  SIGNING_INTENT_MAX_CPFP_CHILD_FEE_RATE,
   SIGNING_INTENT_MIN_FEE_RATE,
   SIGNING_INTENT_SNAPSHOT_VERSION,
 } from './types';
@@ -33,9 +33,11 @@ const TransactionSnapshotSchema = z.object({
 export const SigningIntentFeePolicySchema = z.object({
   version: z.literal(1),
   expectedFeeSats: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  // Structural ceiling only; the per-source cap (maximumSigningIntentFeeRate)
+  // is enforced where the intent's source is known.
   requestedFeeRateSatsPerVbyte: z.number().finite()
     .min(SIGNING_INTENT_MIN_FEE_RATE)
-    .max(SIGNING_INTENT_MAX_FEE_RATE),
+    .max(SIGNING_INTENT_MAX_CPFP_CHILD_FEE_RATE),
   roundingMode: z.literal('ceil'),
   roundingToleranceSats: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
 }).strict();

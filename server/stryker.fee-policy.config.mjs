@@ -13,6 +13,7 @@ export default {
     'src/services/bitcoin/advancedTx/batch.ts:120-178',
     'src/services/bitcoin/advancedTx/batch.ts:259-279',
     'src/services/bitcoin/advancedTx/cpfp.ts:38-70',
+    'src/services/bitcoin/advancedTx/cpfpParent.ts',
     'src/services/bitcoin/advancedTx/rbf.ts:232-242',
   ],
   testFiles: [
@@ -23,6 +24,7 @@ export default {
     'tests/unit/services/bitcoin/canonicalChangeOutput.test.ts',
     'tests/unit/services/bitcoin/transactionService.batch.test.ts',
     'tests/unit/services/bitcoin/advancedTx.test.ts',
+    'tests/unit/services/bitcoin/advancedTx/cpfpParent.test.ts',
   ],
   reporters: ['clear-text', 'progress', 'json'],
   jsonReporter: { fileName: 'reports/mutation/fee-policy.json' },

@@ -14,6 +14,18 @@ import { MOBILE_API_REQUEST_LIMITS } from '@sanctuary/shared/schemas/mobileApiRe
 // ============================================================================
 
 /**
+ * The entry cap applies to a fee rate the user chooses. A resumed draft's fee
+ * is fixed by the server-built PSBT and its signing intent, and a CPFP child's
+ * own rate may exceed the cap because it pays its parent's deficit; the server
+ * re-checks the exact fee at broadcast. The skip relies on drafts being locked
+ * (no fee edit, no rebuild): a change that unlocks draft editing must revisit it.
+ */
+function isFeeRateInRange(state: TransactionState): boolean {
+  return state.feeRate >= MOBILE_API_REQUEST_LIMITS.minFeeRate
+    && (state.isDraftMode || state.feeRate <= MOBILE_API_REQUEST_LIMITS.maxFeeRate);
+}
+
+/**
  * Validate the type selection step
  */
 export function validateTypeStep(state: TransactionState): boolean {
@@ -49,8 +61,7 @@ export function validateOutputsStep(state: TransactionState): boolean {
   // Selecting UTXOs means user wants manual control, so they must cover the transaction
 
   // Fee validation (now part of outputs step)
-  if (state.feeRate < MOBILE_API_REQUEST_LIMITS.minFeeRate
-    || state.feeRate > MOBILE_API_REQUEST_LIMITS.maxFeeRate) {
+  if (!isFeeRateInRange(state)) {
     return false;
   }
 
@@ -120,8 +131,7 @@ export function getStepErrors(step: WizardStep, state: TransactionState): string
       });
       // Coin control is now auto by default - no error if no UTXOs selected
       // Fee validation (now part of outputs step)
-      if (state.feeRate < MOBILE_API_REQUEST_LIMITS.minFeeRate
-        || state.feeRate > MOBILE_API_REQUEST_LIMITS.maxFeeRate) {
+      if (!isFeeRateInRange(state)) {
         errors.push(
           `Fee rate must be between ${MOBILE_API_REQUEST_LIMITS.minFeeRate} and ${MOBILE_API_REQUEST_LIMITS.maxFeeRate} sat/vB`,
         );

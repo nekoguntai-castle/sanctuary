@@ -10,6 +10,10 @@ cd "$PROJECT_ROOT"
   exit 1
 }
 
+# The group loop below runs only assigned specs, so an unassigned spec would
+# be skipped silently. Refuse before starting the backend.
+"$SCRIPT_DIR/browser-e2e-groups.sh" --check
+
 readonly api_port="${BROWSER_E2E_API_PORT:?}"
 readonly backend_script="$PROJECT_ROOT/server/dist/server/src/index.js"
 readonly backend_log="$PROJECT_ROOT/.tmp/browser-e2e-backend.log"

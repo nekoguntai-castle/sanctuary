@@ -1,6 +1,7 @@
 import * as bitcoin from 'bitcoinjs-lib';
 import { InvalidInputError } from '../../../errors/ApiError';
 import {
+  SIGNING_INTENT_MAX_CPFP_CHILD_FEE_RATE,
   SIGNING_INTENT_MAX_FEE_RATE,
   SIGNING_INTENT_MIN_FEE_RATE,
   type SigningIntentFeePolicyV1,
@@ -12,6 +13,18 @@ import { estimateTransactionWeight, feeForRate, type TransactionWeightInput } fr
 // omitted standard output (43 vbytes), plus the largest CompactSize count
 // transition (2 bytes), at the maximum admitted 1,000 sat/vB.
 export const MAX_SIGNING_INTENT_DUST_ABSORPTION_SATS = 54_999;
+
+export function assertRequestedFeeRate(requested: number, maximum: number): void {
+  if (!(maximum >= SIGNING_INTENT_MAX_FEE_RATE && maximum <= SIGNING_INTENT_MAX_CPFP_CHILD_FEE_RATE)) {
+    throw new InvalidInputError('Fee-rate bound is outside the supported range', 'feeRate');
+  }
+  if (!Number.isFinite(requested) || requested < SIGNING_INTENT_MIN_FEE_RATE || requested > maximum) {
+    throw new InvalidInputError(
+      `Fee rate must be between ${SIGNING_INTENT_MIN_FEE_RATE} and ${maximum} sat/vB`,
+      'feeRate',
+    );
+  }
+}
 
 const previousOutput = (psbt: bitcoin.Psbt, index: number): { value: bigint; script: Uint8Array } => {
   const data = psbt.data.inputs[index];
@@ -103,23 +116,17 @@ export const calculatePsbtFee = (psbt: bitcoin.Psbt): number => {
  * signed size. `expectedFeeSats` cross-checks the builder's accounting, while
  * `maximumDustAbsorptionSats` is the only allowed excess over the requested-rate
  * ceiling and must come from an independently bounded no-change decision.
+ * `maximumFeeRateSatsPerVbyte` raises the per-transaction cap only for a CPFP
+ * child, whose builder derives it from a bounded package.
  */
 export const buildSigningIntentFeePolicy = (
   psbtBase64: string,
   requestedFeeRateSatsPerVbyte: number,
   expectedFeeSats?: number,
   maximumDustAbsorptionSats = 0,
+  maximumFeeRateSatsPerVbyte = SIGNING_INTENT_MAX_FEE_RATE,
 ): SigningIntentFeePolicyV1 => {
-  if (
-    !Number.isFinite(requestedFeeRateSatsPerVbyte) ||
-    requestedFeeRateSatsPerVbyte < SIGNING_INTENT_MIN_FEE_RATE ||
-    requestedFeeRateSatsPerVbyte > SIGNING_INTENT_MAX_FEE_RATE
-  ) {
-    throw new InvalidInputError(
-      `Fee rate must be between ${SIGNING_INTENT_MIN_FEE_RATE} and ${SIGNING_INTENT_MAX_FEE_RATE} sat/vB`,
-      'feeRate',
-    );
-  }
+  assertRequestedFeeRate(requestedFeeRateSatsPerVbyte, maximumFeeRateSatsPerVbyte);
   const psbt = bitcoin.Psbt.fromBase64(psbtBase64);
   const authenticatedFee = calculatePsbtFee(psbt);
   if (expectedFeeSats !== undefined && expectedFeeSats !== authenticatedFee) {

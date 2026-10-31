@@ -1,9 +1,8 @@
 /**
  * CPFP (Child-Pays-For-Parent) Transaction Support
  *
- * Implements Child-Pays-For-Parent functionality for accelerating
- * stuck unconfirmed transactions by spending their outputs with
- * a higher fee rate.
+ * Accelerates a stuck unconfirmed transaction by spending one of its outputs
+ * in a child that pays the package's fee deficit.
  */
 
 import * as bitcoin from 'bitcoinjs-lib';
@@ -15,7 +14,8 @@ import { getNodeClient } from '../nodeClient';
 import type { BitcoinNetwork } from '../networks';
 import { normalizeLegacyBitcoinNetwork } from '../networks';
 import { draftLockRepository, utxoRepository, walletRepository } from '../../../repositories';
-import { getDustThreshold, fetchAuthenticatedPrevout, fetchAuthenticatedTransaction } from './shared';
+import { CPFP_PARENT_CONFIRMED_MESSAGE, getDustThreshold, fetchAuthenticatedTransaction, isTransactionConfirmed } from './shared';
+import { authorizeCpfpChildFeeRate, measureCpfpParent, minimumSignedVsize } from './cpfpParent';
 import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
 import { bindPsbtAccount } from '../psbtAccountBinding';
 import {
@@ -26,7 +26,7 @@ import {
 } from '../transactions/psbtConstruction';
 import { resolveTransactionSpendPolicy } from '../transactions/feePolicy';
 import { prepareChangeOutputs } from '../transactions/outputBuilder';
-import { estimateTransactionWeight, exactFeeRateNotAbove, feeForRate } from '../transactionWeight';
+import { estimateTransactionWeight, feeForRate } from '../transactionWeight';
 import { buildSigningIntentFeePolicy } from '../signingIntent/feePolicy';
 import type { SigningIntentFeePolicyV1 } from '../signingIntent/types';
 import { InvalidInputError, NotFoundError } from '../../../errors/ApiError';
@@ -106,7 +106,10 @@ export async function createCPFPTransaction(
   // Get parent transaction
   // Outputs and values are txid-authenticated; vsize also counts witness bytes, which the txid does not commit to.
   const parentTx = await fetchAuthenticatedTransaction(client, parentTxid);
-  const parentVsize = parentTx.transaction.virtualSize();
+  // A mined parent needs no child; a CPFP on it would pay the package deficit for nothing.
+  if (await isTransactionConfirmed(client, parentTxid, parentTx.canonicalHex, network, walletId)) {
+    throw new InvalidInputError(CPFP_PARENT_CONFIRMED_MESSAGE, 'parentTxid');
+  }
 
   // Get the UTXO from parent transaction. When the caller omits an explicit
   // vout, resolve it to the wallet's largest spendable, unspent, unlocked,
@@ -161,37 +164,27 @@ export async function createCPFPTransaction(
     networkObj,
   );
 
-  // Calculate parent fee rate
-  let parentInputValue = 0;
-  const tx = parentTx.transaction;
+  const parent = await measureCpfpParent(client, parentTx.transaction);
+  const parentFeeRate = parent.fee / parent.vsize;
 
-  for (const input of tx.ins) {
-    const inputTxid = Buffer.from(input.hash).reverse().toString('hex');
-    // Authenticated by txid so a forged prevout cannot skew the parent fee.
-    const prevOut = await fetchAuthenticatedPrevout(client, inputTxid, input.index);
-    parentInputValue += prevOut.valueSats;
-  }
-
-  const parentOutputValue = tx.outs.reduce((sum, out) => sum + Number(out.value), 0);
-  const parentFee = parentInputValue - parentOutputValue;
-  const parentFeeRate = parentFee / parentVsize;
-
-  const childTxSize = estimateTransactionWeight({
+  const { weight: childWeight, vsize: childTxSize } = estimateTransactionWeight({
     inputs: [{ ...evidence, prevoutScript: Buffer.from(utxo.scriptPubKey, 'hex') }],
     outputs: [{ scriptPubKey: recipientScript }],
-  }).vsize;
+  });
 
   // Calculate CPFP fees
   const cpfpCalc = calculateCPFPFee(
-    parentVsize,
+    parent.vsize,
     parentFeeRate,
     childTxSize,
     targetFeeRate,
-    parentFee,
+    parent.fee,
   );
   if (cpfpCalc.childFee <= 0) {
     throw new InvalidInputError('Target fee rate does not require a positive CPFP child fee', 'targetFeeRate');
   }
+  const childSize = { vsize: childTxSize, minimumSignedVsize: minimumSignedVsize(evidence.spendPolicy, childWeight) };
+  const childRate = authorizeCpfpChildFeeRate(parent, childSize, targetFeeRate, cpfpCalc.childFee);
 
   // Ensure we have enough value to create the transaction
   const utxoValue = Number(utxo.amount);
@@ -251,8 +244,10 @@ export async function createCPFPTransaction(
     signingContext,
     feePolicy: buildSigningIntentFeePolicy(
       psbt.toBase64(),
-      exactFeeRateNotAbove(cpfpCalc.childFee, childTxSize),
+      childRate.feeRate,
       cpfpCalc.childFee,
+      0,
+      childRate.maximumFeeRate,
     ),
     inputs: [{ txid: parentTxid, vout: resolvedVout, value: utxoValue }],
     outputs: [{ address: resolvedRecipientAddress, value: outputValue, isChange: false }],

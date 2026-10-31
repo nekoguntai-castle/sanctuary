@@ -12,12 +12,15 @@ import {
 import { authenticateIntentPrevouts } from './prevoutValidation';
 import { toPrismaInputJson } from './json';
 import { SigningIntentFeePolicySchema, SigningIntentSnapshotSchema } from './schema';
+import { assertRequestedFeeRate } from './feePolicy';
 import { PsbtSigningContextSchema } from '@sanctuary/shared/schemas/psbtSigningContext';
 import { assertPsbtMatchesSigningContext } from '../psbtSigningContextValidation';
 import {
   SIGNING_INTENT_SNAPSHOT_VERSION,
-  SIGNING_INTENT_SOURCE_VALUES,
+  maximumSigningIntentFeeRate,
+  parseSigningIntentSource,
   type CreateSigningIntentInput,
+  type SigningIntentFeePolicyV1,
   type SigningIntentEnvelope,
   type SigningIntentHandle,
   type IssuedSigningIntent,
@@ -37,12 +40,18 @@ const parsePsbt = (value: string, field: string): bitcoin.Psbt => {
 };
 
 const parseSource = (value: string): SigningIntentSource => {
-  if (SIGNING_INTENT_SOURCE_VALUES.includes(value as SigningIntentSource)) {
-    return value as SigningIntentSource;
-  }
+  const source = parseSigningIntentSource(value);
+  if (source) return source;
   throw new InvalidInputError('Stored signing intent has an unsupported source', 'intentId', {
     reason: 'missing_intent',
   });
+};
+
+/** Parses the builder's fee policy and applies the per-transaction cap of the intent's source. */
+const parseFeePolicy = (input: CreateSigningIntentInput): SigningIntentFeePolicyV1 => {
+  const feePolicy = SigningIntentFeePolicySchema.parse(input.feePolicy);
+  assertRequestedFeeRate(feePolicy.requestedFeeRateSatsPerVbyte, maximumSigningIntentFeeRate(input.source));
+  return feePolicy;
 };
 
 /**
@@ -56,7 +65,7 @@ export const prepareSigningIntent = async (
 ): Promise<PreparedSigningIntent> => {
   const psbt = parsePsbt(input.unsignedPsbtBase64, 'psbtBase64');
   const signingContext = PsbtSigningContextSchema.parse(input.signingContext);
-  const feePolicy = SigningIntentFeePolicySchema.parse(input.feePolicy);
+  const feePolicy = parseFeePolicy(input);
   if (signingContext.walletId !== input.walletId || signingContext.network !== input.network) {
     throw new InvalidInputError('Signing context does not match signing intent scope');
   }

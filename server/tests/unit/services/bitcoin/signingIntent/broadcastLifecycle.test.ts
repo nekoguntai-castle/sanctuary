@@ -42,6 +42,13 @@ const metadata = {
 describe('signing intent broadcast lifecycle', () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it('returns the claimed row source so a source-specific pre-network check reads the locked intent', async () => {
+    mocks.claim.mockResolvedValue({ status: 'claimed', record: { source: 'cpfp' }, priorState: 'ready' });
+
+    await expect(claimSigningIntentBroadcast(artifact, metadata))
+      .resolves.toEqual({ status: 'claimed', leaseToken: expect.any(String), priorState: 'ready', source: 'cpfp' });
+  });
+
   it('stores the exact artifact and metadata in the atomic pre-broadcast claim', async () => {
     mocks.claim.mockResolvedValue({ status: 'claimed', record: {}, priorState: 'ready' });
     const now = new Date('2030-01-01T00:00:00Z');

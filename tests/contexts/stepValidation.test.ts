@@ -468,5 +468,30 @@ describe('stepValidation', () => {
       });
       expect(isReadyToSign(state)).toBe(false);
     });
+
+    // A CPFP child pays its parent's deficit, so the server can authorize a
+    // child rate above 1000 sat/vB; its draft must stay signable.
+    it('accepts a resumed draft whose server-authorized fee rate exceeds the entry cap', () => {
+      const state = createMockState({
+        transactionType: 'standard',
+        outputs: [{ address: 'bc1q...', amount: '100000' }],
+        outputsValid: [true],
+        feeRate: 1_030.5,
+        isDraftMode: true,
+      });
+      expect(isReadyToSign(state)).toBe(true);
+      expect(getStepErrors('outputs', state)).toEqual([]);
+    });
+
+    it('keeps the entry cap for a fee rate the user typed', () => {
+      const state = createMockState({
+        transactionType: 'standard',
+        outputs: [{ address: 'bc1q...', amount: '100000' }],
+        outputsValid: [true],
+        feeRate: 1_030.5,
+      });
+      expect(isReadyToSign(state)).toBe(false);
+      expect(getStepErrors('outputs', state)).toContain('Fee rate must be between 0.1 and 1000 sat/vB');
+    });
   });
 });

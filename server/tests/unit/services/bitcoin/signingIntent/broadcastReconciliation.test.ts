@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({
   list: vi.fn(), claim: vi.fn(), accepted: vi.fn(), complete: vi.fn(), unknown: vi.fn(),
   rejected: vi.fn(), broadcast: vi.fn(), persist: vi.fn(),
   lookup: vi.fn(), stalled: vi.fn(), listStalled: vi.fn(), claimLookup: vi.fn(), stalledAccepted: vi.fn(),
-  defer: vi.fn(), log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  defer: vi.fn(), withheld: vi.fn(), parentConfirmed: vi.fn(), log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 vi.mock('../../../../../src/utils/logger', () => ({ createLogger: () => mocks.log }));
 vi.mock('../../../../../src/repositories/transactionSigningIntentRepository', () => ({
@@ -17,6 +17,7 @@ vi.mock('../../../../../src/repositories/transactionSigningIntentRepository', ()
     markBroadcastUnknown: mocks.unknown,
     releaseRejectedBroadcast: mocks.rejected,
     markBroadcastStalled: mocks.stalled,
+    markBroadcastWithheld: mocks.withheld,
     listStalledBroadcastsForLookup: mocks.listStalled,
     claimStalledBroadcastLookup: mocks.claimLookup,
     markStalledBroadcastAccepted: mocks.stalledAccepted,
@@ -34,6 +35,9 @@ vi.mock('../../../../../src/services/bitcoin/blockchain', async () => {
     isNodeAnsweredBroadcastFailure: actual.isNodeAnsweredBroadcastFailure,
   };
 });
+vi.mock('../../../../../src/services/bitcoin/parentConfirmation', () => ({
+  isCpfpChildParentConfirmed: mocks.parentConfirmed,
+}));
 vi.mock('../../../../../src/services/bitcoin/transactions/persistTransaction', () => ({
   persistTransaction: mocks.persist,
 }));
@@ -103,6 +107,52 @@ describe('signing intent broadcast reconciliation', () => {
     mocks.lookup.mockRejectedValue(new Error('not found'));
     mocks.persist.mockResolvedValue({});
     mocks.defer.mockResolvedValue({ count: 1 });
+    mocks.withheld.mockResolvedValue(true);
+    mocks.parentConfirmed.mockResolvedValue(false);
+  });
+
+  describe('a CPFP child whose re-submission would follow a lookup miss', () => {
+    const cpfpRecord = (state: 'unknown' | 'claimed') => ({ ...record(state), source: 'cpfp' });
+
+    it('withholds an expired claim whose parent is mined instead of re-submitting it', async () => {
+      mocks.list.mockResolvedValue([cpfpRecord('claimed')]);
+      mocks.parentConfirmed.mockResolvedValue(true);
+
+      await expect(reconcileSigningIntentBroadcasts()).resolves.toEqual({ examined: 1, completed: 0 });
+
+      expect(mocks.parentConfirmed).toHaveBeenCalledWith(snapshot().transaction.inputs, 'testnet3', 'wallet-1');
+      expect(mocks.broadcast).not.toHaveBeenCalled();
+      expect(mocks.withheld).toHaveBeenCalledWith('intent-1', expect.any(String), 'CPFP parent confirmed; child withheld');
+      expect(mocks.unknown).not.toHaveBeenCalled();
+    });
+
+    it('re-submits a child whose parent is still in the mempool', async () => {
+      mocks.list.mockResolvedValue([cpfpRecord('unknown')]);
+
+      await expect(reconcileSigningIntentBroadcasts()).resolves.toEqual({ examined: 1, completed: 1 });
+      expect(mocks.broadcast).toHaveBeenCalledTimes(1);
+      expect(mocks.withheld).not.toHaveBeenCalled();
+    });
+
+    it('keeps the intent uncertain without counting an attempt when the parent lookup fails', async () => {
+      mocks.list.mockResolvedValue([cpfpRecord('unknown')]);
+      mocks.parentConfirmed.mockRejectedValue(new Error('electrum unavailable'));
+
+      await expect(reconcileSigningIntentBroadcasts()).resolves.toEqual({ examined: 1, completed: 0 });
+      expect(mocks.broadcast).not.toHaveBeenCalled();
+      expect(mocks.withheld).not.toHaveBeenCalled();
+      expect(mocks.unknown).toHaveBeenCalledWith('intent-1', expect.any(String), 'electrum unavailable', { countAttempt: false });
+    });
+
+    it('does not look a parent up for a non-CPFP intent or a child the node already knows', async () => {
+      mocks.list.mockResolvedValue([{ ...record('unknown'), source: 'standard' }]);
+      await expect(reconcileSigningIntentBroadcasts()).resolves.toEqual({ examined: 1, completed: 1 });
+      mocks.list.mockResolvedValue([cpfpRecord('unknown')]);
+      mocks.lookup.mockResolvedValue({ txid: TXID, hex: TX_HEX });
+      await expect(reconcileSigningIntentBroadcasts()).resolves.toEqual({ examined: 1, completed: 1 });
+
+      expect(mocks.parentConfirmed).not.toHaveBeenCalled();
+    });
   });
 
   it('finishes durable persistence without rebroadcasting an accepted transaction', async () => {
@@ -116,9 +166,15 @@ describe('signing intent broadcast reconciliation', () => {
 
   it('leases and idempotently rebroadcasts an unknown outcome before persistence', async () => {
     const now = new Date('2030-01-01T00:00:00Z');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(now);
     mocks.list.mockResolvedValue([record('unknown')]);
-    await expect(reconcileSigningIntentBroadcasts(now))
-      .resolves.toEqual({ examined: 1, completed: 1 });
+    try {
+      await expect(reconcileSigningIntentBroadcasts(now))
+        .resolves.toEqual({ examined: 1, completed: 1 });
+    } finally {
+      vi.useRealTimers();
+    }
     expect(mocks.claim).toHaveBeenCalledWith(expect.objectContaining({
       id: 'intent-1', txid: TXID, leaseToken: expect.any(String), now,
       leaseExpiresAt: new Date('2030-01-01T00:01:00Z'),
@@ -129,6 +185,30 @@ describe('signing intent broadcast reconciliation', () => {
       allowDefiniteRejection: false,
     }));
     expect(mocks.accepted).toHaveBeenCalled();
+  });
+
+  it('leases each row from the clock when it is claimed, not from the batch start', async () => {
+    const now = new Date('2030-01-01T00:00:00Z');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(now);
+    mocks.list.mockResolvedValue([record('unknown'), { ...record('unknown'), id: 'intent-2' }]);
+    // The first row's rebroadcast takes 45 s of the batch.
+    mocks.broadcast.mockImplementationOnce(async () => {
+      vi.setSystemTime(now.getTime() + 45_000);
+      return { txid: TXID, broadcasted: true };
+    });
+    try {
+      await reconcileSigningIntentBroadcasts(now);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(mocks.claim).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      id: 'intent-1', leaseExpiresAt: new Date('2030-01-01T00:01:00Z'),
+    }));
+    // A batch-start lease would leave the second row only 15 s.
+    expect(mocks.claim).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      id: 'intent-2', leaseExpiresAt: new Date('2030-01-01T00:01:45Z'),
+    }));
   });
 
   it('settles an unknown outcome from node lookup without another submission', async () => {

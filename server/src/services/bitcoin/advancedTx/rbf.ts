@@ -8,16 +8,16 @@
  */
 
 import * as bitcoin from 'bitcoinjs-lib';
-import { getNetwork, parseTransaction } from '../utils';
+import { getNetwork } from '../utils';
 import { getNodeClient, type NodeClientInterface } from '../nodeClient';
 import type { BitcoinNetwork } from '../networks';
 import { normalizeLegacyBitcoinNetwork } from '../networks';
-import { walletRepository, addressRepository, transactionRepository } from '../../../repositories';
+import { walletRepository, addressRepository } from '../../../repositories';
 import { InvalidInputError } from '../../../errors/ApiError';
 import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
 import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import { getErrorMessage } from '../../../utils/errors';
-import { log, RBF_SEQUENCE, MIN_RBF_FEE_BUMP, getDustThreshold, authenticateNodeTransaction, fetchAuthenticatedPrevout, fetchAuthenticatedTransaction } from './shared';
+import { log, RBF_SEQUENCE, MIN_RBF_FEE_BUMP, getDustThreshold, authenticateNodeTransaction, fetchAuthenticatedPrevout, fetchAuthenticatedTransaction, isTransactionConfirmed } from './shared';
 import {
   addInputsWithBip32,
   fetchAddressDerivationPaths,
@@ -79,7 +79,7 @@ export async function canReplaceTransaction(
     const txDetails = await client.getTransaction(txid);
 
     // Electrum's decoded tx has no confirmations; use the DB row and address history
-    if (await isOriginalConfirmed(client, txid, txDetails.hex, network, walletId)) {
+    if (await isTransactionConfirmed(client, txid, txDetails.hex, network, walletId)) {
       return {
         replaceable: false,
         reason: 'Transaction is already confirmed',
@@ -411,46 +411,4 @@ function addRbfOutputs(psbt: bitcoin.Psbt, outputs: RbfOutput[]): void {
       value: BigInt(output.value),
     });
   }
-}
-
-function decodeOutputAddresses(txHex: string, network: BitcoinNetwork): string[] {
-  try {
-    return parseTransaction(txHex, network).outputs
-      .map(output => output.address)
-      .filter((address): address is string => address !== undefined);
-  } catch {
-    return []; // unparseable hex is reported by the caller's RBF-signal check
-  }
-}
-
-/**
- * Whether the original is already mined. The DB row settles it when it can;
- * otherwise Electrum address history for a wallet-owned output (falling back to
- * any decodable output) is consulted. A lookup error propagates so the caller
- * fails closed.
- */
-async function isOriginalConfirmed(
-  client: NodeClientInterface,
-  txid: string,
-  txHex: string | undefined,
-  network: BitcoinNetwork,
-  walletId?: string
-): Promise<boolean> {
-  if (walletId) {
-    const row = await transactionRepository.findByTxid(txid, walletId);
-    if (row && (row.confirmations > 0 || (row.blockHeight ?? 0) > 0)) return true;
-  }
-  const addresses = txHex ? decodeOutputAddresses(txHex, network) : [];
-  if (addresses.length === 0) return false;
-  let probe = addresses[0];
-  if (walletId) {
-    for (const address of addresses) {
-      if (await addressRepository.findByWalletIdAndAddressWithWallet(walletId, address)) {
-        probe = address;
-        break;
-      }
-    }
-  }
-  const history = await client.getAddressHistory(probe);
-  return history.some(entry => entry.tx_hash === txid && entry.height > 0);
 }

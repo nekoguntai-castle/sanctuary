@@ -35,6 +35,7 @@ import {
   markBroadcastUnknown,
   releaseRejectedBroadcast,
   markBroadcastStalled,
+  markBroadcastWithheld,
   listBroadcastsForReconciliation,
   listStalledBroadcastsForLookup,
   claimStalledBroadcastLookup,
@@ -365,6 +366,22 @@ describe('transactionSigningIntentRepository', () => {
     });
     mocks.updateMany.mockResolvedValueOnce({ count: 0 });
     await expect(markBroadcastStalled('intent-1', 'wrong', 'x')).resolves.toBe(false);
+  });
+
+  it('withholds a claimed intent below the cap by moving it to the stalled (lookup-only) set', async () => {
+    await expect(markBroadcastWithheld('intent-1', 'lease', 'CPFP parent confirmed; child withheld')).resolves.toBe(true);
+    expect(mocks.updateMany).toHaveBeenLastCalledWith({
+      where: { id: 'intent-1', broadcastState: 'claimed', broadcastLeaseToken: 'lease' },
+      data: {
+        broadcastState: 'unknown',
+        broadcastLeaseToken: null,
+        broadcastLeaseExpiresAt: null,
+        broadcastLastError: 'CPFP parent confirmed; child withheld',
+        broadcastAttemptCount: 60,
+      },
+    });
+    mocks.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(markBroadcastWithheld('intent-1', 'wrong', 'x')).resolves.toBe(false);
   });
 
   it('excludes capped unknown intents from the reconciliation list', async () => {

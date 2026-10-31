@@ -28,3 +28,6 @@ export {
   fetchAuthenticatedPrevout,
   fetchAuthenticatedTransaction,
 } from '../nodeTransactionAuthentication';
+
+// Neutral home (no advancedTx/transactions imports) so the broadcast path can share it.
+export { CPFP_PARENT_CONFIRMED_MESSAGE, isTransactionConfirmed } from '../parentConfirmation';

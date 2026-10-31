@@ -5,6 +5,27 @@ export const LEGACY_SIGNING_INTENT_SNAPSHOT_VERSION = 1 as const;
 export const SIGNING_INTENT_SNAPSHOT_VERSION = 2 as const;
 export const SIGNING_INTENT_MIN_FEE_RATE = 0.1;
 export const SIGNING_INTENT_MAX_FEE_RATE = 1000;
+/**
+ * bitcoinjs-lib's default Psbt maximumFeeRate. Psbt.extractTransaction(), which
+ * finalizePsbt (artifactValidation.ts) and the Trezor adapter call without
+ * disableFeeCheck, throws when floor(fee / signed vsize) >= this, so a CPFP
+ * child is authorized only while its fee is below this times its smallest
+ * signed vsize. Bitcoin Core's default broadcast maxfeerate (10,000 sat/vB) is
+ * further away and never the binding limit.
+ */
+export const CPFP_CHILD_FINALIZER_FEE_RATE_LIMIT = 5000;
+/**
+ * A CPFP child pays its parent's fee deficit, so its own rate may exceed
+ * SIGNING_INTENT_MAX_FEE_RATE. It is still at most this, the stored-policy
+ * ceiling for a `cpfp` intent: an authorized child's fee is below
+ * CPFP_CHILD_FINALIZER_FEE_RATE_LIMIT times a vsize no larger than its
+ * estimate, so its policy rate is below this too. The CPFP builder enforces
+ * the per-package bound, which is at most this.
+ */
+export const SIGNING_INTENT_MAX_CPFP_CHILD_FEE_RATE = CPFP_CHILD_FINALIZER_FEE_RATE_LIMIT;
+
+/** How long a broadcast claim (route or reconciliation) holds its lease. */
+export const BROADCAST_LEASE_MS = 60_000;
 
 export const SIGNING_INTENT_SOURCE_VALUES = [
   'standard',
@@ -18,6 +39,16 @@ export const SIGNING_INTENT_SOURCE_VALUES = [
 ] as const;
 
 export type SigningIntentSource = typeof SIGNING_INTENT_SOURCE_VALUES[number];
+
+/** A stored source string as a known source, or undefined for an unrecognized value. */
+export const parseSigningIntentSource = (value: string): SigningIntentSource | undefined => (
+  SIGNING_INTENT_SOURCE_VALUES.find(source => source === value)
+);
+
+/** The largest per-transaction fee rate an intent of `source` may authorize. */
+export const maximumSigningIntentFeeRate = (source: SigningIntentSource): number => (
+  source === 'cpfp' ? SIGNING_INTENT_MAX_CPFP_CHILD_FEE_RATE : SIGNING_INTENT_MAX_FEE_RATE
+);
 export type SigningIntentInputRole = 'wallet' | 'payjoin_peer';
 
 export interface SigningIntentPrevout {
