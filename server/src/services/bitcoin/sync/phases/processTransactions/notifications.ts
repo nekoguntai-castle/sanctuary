@@ -6,7 +6,8 @@
  */
 
 import { createLogger } from '../../../../../utils/logger';
-import type { TransactionCreateData } from '../../types';
+import type { SyncContext, TransactionCreateData } from '../../types';
+import { hasRepairableIncompleteInput } from './classification';
 
 const log = createLogger('BITCOIN:SVC_SYNC_TX');
 
@@ -20,6 +21,26 @@ export function filterNotifiableTransactions(
 ): TransactionCreateData[] {
   if (!isBaselineSync) return transactions;
   return transactions.filter(tx => (tx.confirmations ?? 0) === 0);
+}
+
+/**
+ * An incomplete 'received' classification that a later sync could repair may
+ * be the change of the wallet's own spend (its parent could not be fetched).
+ * It is persisted as an incomplete, repairable row but announced only once a
+ * repair proves its authoritative classification. Rows announced at creation
+ * can never be repaired, so they are never announced twice.
+ */
+export function selectAnnounceableTransactions(
+  ctx: SyncContext,
+  created: TransactionCreateData[],
+  repaired: TransactionCreateData[],
+): TransactionCreateData[] {
+  return [
+    ...created.filter(transaction => transaction.type !== 'received'
+      || transaction.classificationInputsComplete
+      || !hasRepairableIncompleteInput(ctx, transaction.txid)),
+    ...repaired.filter(transaction => ctx.incompleteReceiveTxids.has(transaction.txid)),
+  ];
 }
 
 /**

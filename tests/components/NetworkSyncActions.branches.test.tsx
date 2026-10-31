@@ -634,4 +634,90 @@ describe('NetworkSyncActions branch coverage', () => {
     expect(screen.getAllByTestId('icon-alert').some(icon => icon.className.includes('animate-pulse'))).toBe(true);
     expect(screen.getByTitle('Sync all Mainnet wallets')).toBeDisabled();
   });
+
+  describe('compact result reporting', () => {
+    const DISMISS = { name: 'Dismiss sync result' };
+
+    it('renders no result, no dismiss button and an empty status region while idle', () => {
+      renderActions({ compact: true });
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', DISMISS)).not.toBeInTheDocument();
+      expect(screen.queryAllByRole('status').every(el => el.textContent === '')).toBe(true);
+    });
+
+    it('shows a failed Sync all as an alert and lets the user dismiss it', async () => {
+      vi.mocked(syncApi.syncNetworkWallets).mockRejectedValueOnce(new Error('Sync service offline'));
+      const { onSyncStarted } = renderActions({ compact: true });
+
+      await act(async () => {
+        fireEvent.click(screen.getByTitle('Sync all Mainnet wallets'));
+      });
+
+      expect(onSyncStarted).not.toHaveBeenCalled();
+      expect(screen.getByRole('alert')).toHaveTextContent('Sync service offline');
+
+      fireEvent.click(screen.getByRole('button', DISMISS));
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(screen.queryByText('Sync service offline')).not.toBeInTheDocument();
+    });
+
+    it('keeps a partial Full resync all visible until dismissed', async () => {
+      vi.useFakeTimers();
+      vi.mocked(syncApi.resyncNetworkWallets).mockResolvedValueOnce({
+        success: true,
+        queued: 1,
+        walletIds: ['w1'],
+        acceptedWalletIds: ['w1'],
+        deduplicatedWalletIds: [],
+        rejectedWallets: [{ walletId: 'w2', reason: 'queue_unavailable' }],
+        indeterminateWallets: [],
+        excludedWallets: [],
+      });
+      renderActions({ compact: true });
+
+      fireEvent.click(screen.getByTitle('Full resync all Mainnet wallets'));
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Resync All Wallets' }));
+      });
+
+      // A rejected wallet makes the batch an error, so it interrupts as an alert.
+      const message = 'Queued 1 wallet for resync; 1 rejected: Beta (queue unavailable).';
+      expect(screen.getByRole('alert')).toHaveTextContent(message);
+
+      act(() => {
+        vi.advanceTimersByTime(30_000);
+      });
+      expect(screen.getByRole('alert')).toHaveTextContent(message);
+
+      fireEvent.click(screen.getByRole('button', DISMISS));
+      expect(screen.queryByText(message)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', DISMISS)).not.toBeInTheDocument();
+    });
+
+    it('announces a deferred Sync all outcome through the status region and shows the panel', async () => {
+      vi.mocked(syncApi.syncNetworkWallets).mockResolvedValueOnce({
+        success: true,
+        requested: 1,
+        merged: 0,
+        rejected: 0,
+        indeterminate: 0,
+        walletIds: ['w1', 'w2'],
+        outcomes: [
+          { walletId: 'w1', status: 'requested', generation: 1, wakeup: 'enqueued' },
+          { walletId: 'w2', status: 'requested', generation: 1, wakeup: 'deferred_retry' },
+        ],
+      });
+      renderActions({ compact: true });
+
+      await act(async () => {
+        fireEvent.click(screen.getByTitle('Sync all Mainnet wallets'));
+      });
+
+      const message = 'Requested sync for 1 new wallet; Beta (waiting for retry).';
+      expect(screen.getByRole('status')).toHaveTextContent(message);
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', DISMISS)).toBeInTheDocument();
+    });
+  });
 });

@@ -303,12 +303,21 @@ is_browser_smoke_file() {
   return 1
 }
 
+# The render spec drives the same built app (vite preview in CI) against a
+# mocked API, so it covers the same frontend runtime trees as the browser lane
+# (src/api and src/services run against the mocked fetch; src/types holds
+# runtime exports). Kept in sync by tests/ci/renderHarnessInputsClassified.test.ts.
 is_render_file() {
   case "$1" in
     src/App.tsx|src/main.tsx|src/index.html|package.json|package-lock.json|config/tooling/playwright.config.ts)
       return 0
       ;;
-    src/app/*|src/components/*|src/hooks/*|src/contexts/*|src/providers/*|src/themes/*|src/utils/*)
+    src/app/*|src/api/*|src/components/*|src/hooks/*|src/contexts/*|src/providers/*|src/themes/*|src/utils/*|src/services/*|src/public/*|src/types/*)
+      return 0
+      ;;
+    # shared/ already selects render through is_shared_workspace_file in
+    # classify-test-changes.sh; matched here for symmetry with is_browser_smoke_file.
+    shared/*)
       return 0
       ;;
     tests/e2e/render-regression.spec.ts|tests/e2e/render-regression/*|tests/e2e/render-regression.spec.ts-snapshots/*)

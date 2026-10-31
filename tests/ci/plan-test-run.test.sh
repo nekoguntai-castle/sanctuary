@@ -351,6 +351,20 @@ main() {
   plan="$(EVENT_NAME=pull_request run_planner "$repo" "$base" "$head")"
   assert_eq "render harness helper -> render_regression" "true" "$(json_query "$plan" lanes.render_regression.run)"
 
+  # ---- Frontend API client selects both Playwright lanes -------------------
+  # The render spec drives the built app against a mocked API, so src/api runs
+  # in it as it does in the browser specs (iteration 20).
+  base="$head"
+  mkdir -p "$repo/src/api"
+  printf 'export const login = true\n' > "$repo/src/api/auth.ts"
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm 'frontend api client change'
+  head="$(git -C "$repo" rev-parse HEAD)"
+
+  plan="$(EVENT_NAME=pull_request run_planner "$repo" "$base" "$head")"
+  assert_eq "api -> render" "true" "$(json_query "$plan" lanes.render_regression.run)"
+  assert_eq "api -> browser_smoke" "true" "$(json_query "$plan" lanes.browser_smoke.run)"
+
   # ---- test.yml change forces full scan ------------------------------------
   # Only test.yml defines the lanes this plan drives, so only test.yml triggers
   # a full scan. Any other workflow must not (see the install-test.yml case below).

@@ -33,6 +33,7 @@ list_group_specs() {
         tests/integration/flows/admin.integration.test.ts \
         tests/integration/flows/adminSettingsConcurrency.integration.test.ts \
         tests/integration/flows/approvalAnyNEligibility.integration.test.ts \
+        tests/integration/flows/approvalSpecificEligibility.integration.test.ts \
         tests/integration/flows/approvalExpirySweep.integration.test.ts \
         tests/integration/flows/authIntentConcurrency.integration.test.ts \
         tests/integration/flows/emailVerification.integration.test.ts \

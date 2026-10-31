@@ -15,6 +15,7 @@ import { registerProcessTransactionNotificationsRbfTests } from './phasesProcess
 import { registerProcessTransactionStoreIoEdgeTests } from './phasesProcessTransactions/store-io-edge.contracts';
 import { registerProcessTransactionStoreIoPrimaryTests } from './phasesProcessTransactions/store-io-primary.contracts';
 import { registerProcessTransactionProgressTimestampTests } from './phasesProcessTransactions/progress-timestamps.contracts';
+import { registerProcessTransactionIncompleteReceiveNotificationTests } from './phasesProcessTransactions/incomplete-receive-notifications.contracts';
 import { getBlockTimestamp } from '../../../../../src/services/bitcoin/utils/blockHeight';
 
 describe('Sync Phases', () => {
@@ -43,5 +44,6 @@ describe('Sync Phases', () => {
     registerProcessTransactionStoreIoEdgeTests(walletId);
     registerProcessTransactionLabelsDedupeEdgeTests(walletId);
     registerProcessTransactionProgressTimestampTests(walletId);
+    registerProcessTransactionIncompleteReceiveNotificationTests(walletId);
   });
 });

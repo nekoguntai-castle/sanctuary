@@ -274,21 +274,58 @@ const combineInputEvidence = (
   };
 };
 
+const getLocalInputEvidence = (
+  ctx: SyncContext,
+  input: TransactionInput,
+): InputEvidence => {
+  const inlineEvidence = getInlineInputEvidence(input);
+  if (inlineEvidence.address !== undefined && inlineEvidence.value !== undefined) return inlineEvidence;
+  if (!input.txid || input.vout === undefined) return inlineEvidence;
+  const previousEvidence = getOutputEvidence(
+    getCachedPreviousOutput(ctx, input.txid, input.vout),
+    ctx.network,
+  );
+  return combineInputEvidence(inlineEvidence, previousEvidence);
+};
+
 const hasCompleteLocalInputEvidence = (
   ctx: SyncContext,
   input: TransactionInput,
 ): boolean => {
   if (input.coinbase) return true;
-  const inlineEvidence = getInlineInputEvidence(input);
-  if (inlineEvidence.address !== undefined && inlineEvidence.value !== undefined) return true;
-  if (!input.txid || input.vout === undefined) return false;
-  const previousEvidence = getOutputEvidence(
-    getCachedPreviousOutput(ctx, input.txid, input.vout),
-    ctx.network,
-  );
-  const combined = combineInputEvidence(inlineEvidence, previousEvidence);
-  return combined.address !== undefined && combined.value !== undefined;
+  const evidence = getLocalInputEvidence(ctx, input);
+  return evidence.address !== undefined && evidence.value !== undefined;
 };
+
+/**
+ * A non-standard input (a script that decodes to no address) can never give
+ * the address evidence a complete classification needs. The synthetic output's
+ * value is ignored: only its script is decoded.
+ */
+const isNonStandardInput = (ctx: SyncContext, evidence: InputEvidence): boolean => (
+  evidence.scriptPubKey !== undefined
+  && transactionOutputAddressForNetwork({ value: 0, scriptHex: evidence.scriptPubKey }, ctx.network) === undefined
+);
+
+/**
+ * True when a later sync could complete this transaction's classification:
+ * some non-coinbase input lacks the address or value a repair needs, and is
+ * not non-standard (which can never complete). Such a 'received' row may also
+ * be the change of the wallet's own spend, so its announcement is held until
+ * the repair. The invariant: a row announced at creation can never be
+ * repaired, so it is never announced twice. Reads only evidence already
+ * accepted into the sync context; missing details fail closed.
+ */
+export function hasRepairableIncompleteInput(ctx: SyncContext, txid: string): boolean {
+  const txDetails = ctx.txDetailsCache.get(txid);
+  if (!txDetails) return true;
+  return (txDetails.vin || []).some(input => {
+    if (input.coinbase) return false;
+    const evidence = getLocalInputEvidence(ctx, input);
+    if (evidence.address !== undefined) return evidence.value === undefined;
+    return !isNonStandardInput(ctx, evidence);
+  });
+}
 
 const getInlineInputEvidence = (input: TransactionInput): InputEvidence => ({
   address: input.prevout?.scriptPubKey

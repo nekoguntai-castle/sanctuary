@@ -285,5 +285,9 @@ export const useNetworkSyncActions = ({
     handleResyncAll,
     openResyncDialog: () => setShowResyncDialog(true),
     closeResyncDialog: () => setShowResyncDialog(false),
+    dismissResult: () => {
+      clearResultTimer();
+      setResult(null);
+    },
   };
 };

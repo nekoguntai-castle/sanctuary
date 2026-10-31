@@ -6,15 +6,25 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ConsoleResults } from "../../src/components/ConsoleResults";
 import {
   dedupeConsoleTransactions,
+  selectConsoleWalletTransactions,
   sortConsoleTransactions,
   summarizeConsoleTransactionFilters,
 } from "../../src/components/ConsoleResults/transactionResults";
 import { useWallets } from "../../src/hooks/queries/useWallets";
 import { getTransactions } from "../../src/api/transactions";
 import type { Transaction, Wallet } from "../../src/types";
+import type { AppliedConsoleTransactionFilter } from "../../src/app/consoleTransactionNavigation";
 
 vi.mock("../../src/hooks/queries/useWallets", () => ({
   useWallets: vi.fn(),
+}));
+
+const { formatAmount } = vi.hoisted(() => ({
+  formatAmount: (sats: number) => `${sats.toLocaleString("en-US")} sats`,
+}));
+
+vi.mock("../../src/contexts/CurrencyContext", () => ({
+  usePriceFreeFormatter: () => ({ format: formatAmount, unit: "sats" }),
 }));
 
 vi.mock("../../src/api/transactions", () => ({
@@ -184,6 +194,66 @@ describe("ConsoleResults", () => {
     );
   });
 
+  it("applies the Console amount filter and limit to aggregate results", async () => {
+    vi.mocked(getTransactions).mockImplementation(async (walletId) => [
+      { ...transaction(walletId, `small-${walletId}`, "2020-03-03T00:00:00.000Z"), amount: 1_000 },
+      { ...transaction(walletId, `big-${walletId}`, "2020-03-02T00:00:00.000Z"), amount: -75_000 },
+      { ...transaction(walletId, `big2-${walletId}`, "2020-03-01T00:00:00.000Z"), amount: 80_000 },
+      { ...transaction(walletId, `huge-${walletId}`, "2020-02-28T00:00:00.000Z"), amount: 5_000_000 },
+    ]);
+
+    renderResults(
+      transactionQueryState([
+        { walletId: "wallet-1", minAmount: 50_000, maxAmount: 100_000, limit: 1 },
+        { walletId: "wallet-2", minAmount: 50_000, maxAmount: 100_000, limit: 1 },
+      ]),
+    );
+
+    expect(await screen.findByText("wallet-1:big-wallet-1")).toBeInTheDocument();
+    expect(screen.getByText("wallet-2:big-wallet-2")).toBeInTheDocument();
+    expect(screen.queryByText("wallet-1:small-wallet-1")).not.toBeInTheDocument();
+    expect(screen.queryByText("wallet-1:huge-wallet-1")).not.toBeInTheDocument();
+    expect(screen.queryByText("wallet-1:big2-wallet-1")).not.toBeInTheDocument();
+    expect(screen.getByText("50,000 sats - 100,000 sats")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("console-results-truncated-notice"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows a notice when a wallet result hits the per-wallet cap", async () => {
+    vi.mocked(getTransactions).mockImplementation(async (walletId) =>
+      Array.from({ length: 100 }, (_, index) =>
+        transaction(walletId, `tx-${walletId}-${index}`, "2020-03-01T00:00:00.000Z"),
+      ),
+    );
+
+    renderResults(
+      transactionQueryState([{ walletId: "wallet-1" }, { walletId: "wallet-2" }]),
+    );
+
+    expect(
+      await screen.findByTestId("console-results-truncated-notice"),
+    ).toHaveTextContent("2 wallets may have more matching transactions");
+  });
+
+  it("shows a notice when an amount scan may have missed older matches", async () => {
+    vi.mocked(getTransactions).mockImplementation(async (walletId, params) =>
+      Array.from({ length: Number(params?.limit) }, (_, index) => ({
+        ...transaction(walletId, `tx-${walletId}-${index}`, "2020-03-01T00:00:00.000Z"),
+        amount: index === 0 ? 90_000 : 1,
+      })),
+    );
+
+    renderResults(
+      transactionQueryState([{ walletId: "wallet-1", minAmount: 50_000, limit: 5 }]),
+    );
+
+    expect(await screen.findByText("wallet-1:tx-wallet-1-0")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("console-results-truncated-notice"),
+    ).toBeInTheDocument();
+  });
+
   it("does not fetch transactions without Console result state", () => {
     renderResults();
 
@@ -312,49 +382,81 @@ describe("ConsoleResults", () => {
 });
 
 describe("Console transaction result helpers", () => {
+  const appliedFilter = (
+    overrides: Partial<AppliedConsoleTransactionFilter> = {},
+  ): AppliedConsoleTransactionFilter => ({
+    walletId: "wallet-1",
+    dateFrom: null,
+    dateTo: null,
+    type: null,
+    limit: null,
+    minAmount: null,
+    maxAmount: null,
+    ...overrides,
+  });
+
   it("summarizes date and type filters across single and mixed result sets", () => {
     expect(
-      summarizeConsoleTransactionFilters([
-        {
-          walletId: "wallet-1",
-          dateFrom: new Date(2020, 1, 1).getTime(),
-          dateTo: null,
-          type: null,
-          limit: null,
-        },
-      ]),
+      summarizeConsoleTransactionFilters(
+        [appliedFilter({ dateFrom: new Date(2020, 1, 1).getTime() })],
+        formatAmount,
+      ),
     ).toContain("From Feb 1, 2020");
 
     expect(
-      summarizeConsoleTransactionFilters([
-        {
-          walletId: "wallet-1",
-          dateFrom: null,
-          dateTo: new Date(2020, 5, 30).getTime(),
-          type: null,
-          limit: null,
-        },
-      ]),
+      summarizeConsoleTransactionFilters(
+        [appliedFilter({ dateTo: new Date(2020, 5, 30).getTime() })],
+        formatAmount,
+      ),
     ).toContain("Through Jun 30, 2020");
 
     expect(
       summarizeConsoleTransactionFilters([
-        {
-          walletId: "wallet-1",
-          dateFrom: new Date(2020, 1, 1).getTime(),
-          dateTo: null,
-          type: "sent",
-          limit: null,
-        },
-        {
+        appliedFilter({ dateFrom: new Date(2020, 1, 1).getTime(), type: "sent" }),
+        appliedFilter({
           walletId: "wallet-2",
           dateFrom: new Date(2020, 2, 1).getTime(),
-          dateTo: null,
           type: "received",
-          limit: null,
-        },
-      ]),
+        }),
+      ], formatAmount),
     ).toEqual(["2 wallets", "Mixed dates", "Mixed types"]);
+  });
+
+  it("summarizes one-sided and mixed amount filters", () => {
+    const base = appliedFilter();
+
+    expect(
+      summarizeConsoleTransactionFilters([{ ...base, minAmount: 1_000 }], formatAmount),
+    ).toContain("\u2265 1,000 sats");
+    expect(
+      summarizeConsoleTransactionFilters([{ ...base, maxAmount: 2_000 }], formatAmount),
+    ).toContain("\u2264 2,000 sats");
+    expect(
+      summarizeConsoleTransactionFilters([
+        { ...base, minAmount: 1_000 },
+        { ...base, walletId: "wallet-2" },
+      ], formatAmount),
+    ).toEqual(["2 wallets", "Mixed amounts"]);
+    expect(
+      summarizeConsoleTransactionFilters(
+        [{ ...base, minAmount: 1_000, maxAmount: 2_000 }],
+        (sats) => `${sats / 100_000_000} BTC`,
+      ),
+    ).toContain("0.00001 BTC - 0.00002 BTC");
+  });
+
+  it("flags truncation when amount matches exceed the default per-wallet cap", () => {
+    const filter = appliedFilter({ minAmount: 1 });
+    const fetched = Array.from({ length: 150 }, (_, index) =>
+      transaction("wallet-1", `tx-${index}`, "2020-03-01T00:00:00.000Z"),
+    );
+
+    const selected = selectConsoleWalletTransactions(filter, fetched);
+    expect(selected.transactions).toHaveLength(100);
+    expect(selected.truncated).toBe(true);
+    expect(
+      selectConsoleWalletTransactions(filter, fetched.slice(0, 10)).truncated,
+    ).toBe(false);
   });
 
   it("dedupes and sorts transactions with timestamp and block-time fallbacks", () => {

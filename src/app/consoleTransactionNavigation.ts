@@ -1,4 +1,5 @@
 import type { ConsoleTurnResult } from "../api/console";
+import type { NaturalQueryResult } from "../api/ai";
 import {
   PERSISTED_TRANSACTION_TYPES,
   type TransactionFilterType,
@@ -12,6 +13,9 @@ export interface ConsoleTransactionFilterState {
   dateTo?: string;
   type?: ConsoleTransactionType;
   limit?: number;
+  /** Absolute sats, inclusive, as query_transactions applies them. */
+  minAmount?: number;
+  maxAmount?: number;
 }
 
 export interface ConsoleTransactionQueryState {
@@ -25,12 +29,17 @@ export interface AppliedConsoleTransactionFilter {
   dateTo: number | null;
   type: ConsoleTransactionType | null;
   limit: number | null;
+  minAmount: number | null;
+  maxAmount: number | null;
 }
 
 export interface AppliedConsoleTransactionQuery {
   walletFilters: AppliedConsoleTransactionFilter[];
   prompt?: string;
 }
+
+/** The most rows a Console transaction query may ask for. */
+export const CONSOLE_TRANSACTION_LIMIT_CAP = 500;
 
 const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 const TX_TYPES = new Set<ConsoleTransactionType>(PERSISTED_TRANSACTION_TYPES);
@@ -55,7 +64,17 @@ function parseLimit(value: unknown): number | null {
     typeof value === "number" ? value : Number(getString(value) ?? Number.NaN);
   if (!Number.isSafeInteger(parsed) || parsed <= 0) return null;
 
-  return Math.min(parsed, 500);
+  return Math.min(parsed, CONSOLE_TRANSACTION_LIMIT_CAP);
+}
+
+/** Whole non-negative sats, the only amount form query_transactions accepts. */
+function parseSatsAmount(value: unknown): number | null {
+  const text =
+    typeof value === "number" ? String(value) : getString(value);
+  if (!text || !/^\d+$/.test(text)) return null;
+
+  const parsed = Number(text);
+  return Number.isSafeInteger(parsed) ? parsed : null;
 }
 
 function plannedToolCalls(
@@ -76,6 +95,8 @@ function transactionFilterKey(filter: ConsoleTransactionFilterState): string {
     filter.dateTo ?? "",
     filter.type ?? "",
     filter.limit ?? "",
+    filter.minAmount ?? "",
+    filter.maxAmount ?? "",
   ].join("\u0000");
 }
 
@@ -100,12 +121,16 @@ function collectConsoleTransactionFilters(
     const dateTo = getString(call.input.dateTo);
     const type = parseTransactionType(call.input.type);
     const limit = parseLimit(call.input.limit);
+    const minAmount = parseSatsAmount(call.input.minAmount);
+    const maxAmount = parseSatsAmount(call.input.maxAmount);
     const filter = {
       walletId,
       ...(dateFrom ? { dateFrom } : {}),
       ...(dateTo ? { dateTo } : {}),
       ...(type ? { type } : {}),
       ...(limit ? { limit } : {}),
+      ...(minAmount !== null ? { minAmount } : {}),
+      ...(maxAmount !== null ? { maxAmount } : {}),
     };
     const key = transactionFilterKey(filter);
     if (seen.has(key)) {
@@ -184,6 +209,37 @@ export function parseConsoleTransactionFilterState(
     dateTo: parseTransactionDateMillis(value.dateTo, true),
     type: parseTransactionType(value.type),
     limit: parseLimit(value.limit),
+    minAmount: parseSatsAmount(value.minAmount),
+    maxAmount: parseSatsAmount(value.maxAmount),
+  };
+}
+
+export function hasAmountFilter(filter: AppliedConsoleTransactionFilter): boolean {
+  return filter.minAmount !== null || filter.maxAmount !== null;
+}
+
+/**
+ * The wallet transactions table has no amount or row-limit controls, so the
+ * Console's amount bounds and limit ride on the AI filter, which applies both
+ * (absolute sats, inclusive) and shows a clearable summary over the list.
+ */
+export function consoleFilterAsAiQuery(
+  filter: AppliedConsoleTransactionFilter,
+): NaturalQueryResult | null {
+  const hasAmount = hasAmountFilter(filter);
+  if (!hasAmount && filter.limit === null) return null;
+
+  return {
+    type: "transactions",
+    ...(hasAmount
+      ? {
+          filter: {
+            ...(filter.minAmount !== null ? { minAmount: filter.minAmount } : {}),
+            ...(filter.maxAmount !== null ? { maxAmount: filter.maxAmount } : {}),
+          },
+        }
+      : {}),
+    ...(filter.limit !== null ? { limit: filter.limit } : {}),
   };
 }
 

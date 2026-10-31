@@ -1,5 +1,6 @@
 import React from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { CompactNetworkSyncResult } from './NetworkSyncResult';
 import { ResyncConfirmationDialog } from './ResyncConfirmationDialog';
 import {
   getCompactResyncButtonClassName,
@@ -21,11 +22,13 @@ export const CompactNetworkSyncActions: React.FC<CompactNetworkSyncActionsProps>
   syncing,
   resyncing,
   showResyncDialog,
+  result,
   isDisabled,
   handleSyncAll,
   handleResyncAll,
   openResyncDialog,
   closeResyncDialog,
+  dismissResult,
 }) => (
   <div className={`flex items-center gap-1 ${className}`}>
     <button
@@ -46,6 +49,8 @@ export const CompactNetworkSyncActions: React.FC<CompactNetworkSyncActionsProps>
     >
       <AlertTriangle className={getResyncIconClassName(resyncing)} />
     </button>
+
+    <CompactNetworkSyncResult result={result} onDismiss={dismissResult} />
 
     {showResyncDialog && (
       <ResyncConfirmationDialog

@@ -23,7 +23,11 @@ import {
 } from './classification';
 import { repairTransactionIO, storeTransactionIO } from './transactionIO';
 import { applyAddressLabels } from './addressLabels';
-import { filterNotifiableTransactions, sendNotifications } from './notifications';
+import {
+  filterNotifiableTransactions,
+  selectAnnounceableTransactions,
+  sendNotifications,
+} from './notifications';
 import {
   fetchAuthenticatedOutpoints,
   fetchAuthenticatedTransactions,
@@ -409,9 +413,12 @@ async function persistTransactionBatch(
     deferPostCommit,
   );
 
-  const notifiable = filterNotifiableTransactions(
-    created,
-    ctx.wallet.lastSyncedAt === null,
+  // Apply the cheap baseline filter first so evidence checks skip dropped rows.
+  const isBaselineSync = ctx.wallet.lastSyncedAt === null;
+  const notifiable = selectAnnounceableTransactions(
+    ctx,
+    filterNotifiableTransactions(created, isBaselineSync),
+    filterNotifiableTransactions(repaired, isBaselineSync),
   );
   if (notifiable.length > 0) {
     deferPostCommit(() => sendNotifications(ctx.walletId, notifiable));

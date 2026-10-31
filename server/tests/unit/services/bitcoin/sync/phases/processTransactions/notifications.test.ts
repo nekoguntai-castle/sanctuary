@@ -27,8 +27,13 @@ vi.mock('../../../../../../../src/utils/logger', () => ({
   }),
 }));
 
-import { filterNotifiableTransactions, sendNotifications } from '../../../../../../../src/services/bitcoin/sync/phases/processTransactions/notifications';
-import type { TransactionCreateData } from '../../../../../../../src/services/bitcoin/sync/types';
+import {
+  filterNotifiableTransactions,
+  selectAnnounceableTransactions,
+  sendNotifications,
+} from '../../../../../../../src/services/bitcoin/sync/phases/processTransactions/notifications';
+import { createTestContext } from '../../../../../../../src/services/bitcoin/sync/context';
+import type { RawTransaction, TransactionCreateData } from '../../../../../../../src/services/bitcoin/sync/types';
 
 const makeTx = (overrides: Partial<TransactionCreateData> = {}): TransactionCreateData => ({
   txid: 'tx1',
@@ -127,5 +132,42 @@ describe('filterNotifiableTransactions', () => {
 
   it('returns an empty list for empty input', () => {
     expect(filterNotifiableTransactions([], true)).toEqual([]);
+  });
+});
+
+describe('selectAnnounceableTransactions', () => {
+  const incompleteReceive = makeTx({ txid: 'held', classificationInputsComplete: false });
+  const contextWithDetails = (vin: unknown) => createTestContext({
+    txDetailsCache: new Map([['held', { txid: 'held', vin } as unknown as RawTransaction]]),
+  });
+
+  it('holds an incomplete receive whose transaction details are missing', () => {
+    expect(selectAnnounceableTransactions(createTestContext({}), [incompleteReceive], [])).toEqual([]);
+  });
+
+  it('announces an incomplete receive whose details carry no inputs', () => {
+    expect(selectAnnounceableTransactions(contextWithDetails(undefined), [incompleteReceive], []))
+      .toEqual([incompleteReceive]);
+  });
+
+  it('skips coinbase inputs when looking for repairable incomplete inputs', () => {
+    expect(selectAnnounceableTransactions(contextWithDetails([{ coinbase: 'ff' }]), [incompleteReceive], []))
+      .toEqual([incompleteReceive]);
+  });
+
+  it('holds an incomplete receive whose input has an address but no value yet', () => {
+    const vin = [{ txid: 'parent', vout: 0, prevout: { scriptPubKey: { address: 'bc1q_payer' } } }];
+    expect(selectAnnounceableTransactions(contextWithDetails(vin), [incompleteReceive], [])).toEqual([]);
+  });
+
+  it('holds an incomplete receive whose standard input script has not been decoded yet', () => {
+    const vin = [{ txid: 'parent', vout: 0, prevout: { value: 0.001, scriptPubKey: { hex: `0014${'a'.repeat(40)}` } } }];
+    expect(selectAnnounceableTransactions(contextWithDetails(vin), [incompleteReceive], [])).toEqual([]);
+  });
+
+  it('announces an incomplete receive whose only gap is a non-standard input', () => {
+    const vin = [{ txid: 'parent', vout: 0, prevout: { value: 0.001, scriptPubKey: { hex: '51' } } }];
+    expect(selectAnnounceableTransactions(contextWithDetails(vin), [incompleteReceive], []))
+      .toEqual([incompleteReceive]);
   });
 });

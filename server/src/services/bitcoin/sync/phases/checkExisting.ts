@@ -20,10 +20,43 @@ type ExistingTransaction = {
   classificationLastAttemptAt: Date | null;
   ioComplete: boolean;
   ioLastAttemptAt: Date | null;
+  blockHeight: number | null;
+  blockTime: Date | null;
+  createdAt: Date;
 };
 
 export const CLASSIFICATION_REPAIR_CANDIDATE_LIMIT = 100;
 export const IO_REPAIR_CANDIDATE_LIMIT = 100;
+/** Bitcoin block timestamps may be up to two hours off the wall clock. */
+export const HELD_RECEIVE_CONFIRMATION_TOLERANCE_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * A repaired incomplete 'received' row is announced only if a sync that would
+ * otherwise have announced it withheld that announcement when it stored the
+ * row. Only rows a sync classifier wrote (address count > 0) can have been
+ * held: broadcast-created internal receives and legacy rows keep the default
+ * 0 and were already announced.
+ *
+ * Whether the storing sync would have announced the row is not stored, so it
+ * is approximated from the row itself. A baseline sync (first sync after an
+ * import, or after a full resync) announces only unconfirmed transactions, and
+ * the history it stores was confirmed long before the row was created. A
+ * normal sync stores a transaction while it is unconfirmed (no block height
+ * or block time) or within one sync interval of its confirmation. So a row is
+ * treated as held when it is unconfirmed, or its block time is no earlier than
+ * its creation minus the block-timestamp tolerance. A confirmed row without a
+ * block time (its block-header timestamp could not be fetched) is treated as
+ * history: failing silent is the safe side. A wallet that went unsynced for
+ * longer than the tolerance stores its missed history silently as well.
+ */
+const isHeldIncompleteReceive = (transaction: ExistingTransaction): boolean =>
+  transaction.type === 'received'
+  && !transaction.classificationInputsComplete
+  && transaction.classificationAddressCount > 0
+  && (transaction.blockTime === null
+    ? transaction.blockHeight === null
+    : transaction.blockTime.getTime()
+      >= transaction.createdAt.getTime() - HELD_RECEIVE_CONFIRMATION_TOLERANCE_MS);
 
 const needsClassificationRecheck = (
   transaction: ExistingTransaction,
@@ -102,6 +135,9 @@ export async function checkExistingPhase(ctx: SyncContext): Promise<SyncContext>
       classificationLastAttemptAt: true,
       ioComplete: true,
       ioLastAttemptAt: true,
+      blockHeight: true,
+      blockTime: true,
+      createdAt: true,
     }
   );
   const ownershipRepairTargets = await transactionRepository.findOwnershipRepairTargets(
@@ -123,6 +159,9 @@ export async function checkExistingPhase(ctx: SyncContext): Promise<SyncContext>
     ownershipRepairTxids
   );
   ctx.ioRepairTxids = getIoRepairTxids(existingTxs);
+  ctx.incompleteReceiveTxids = new Set(existingTxs
+    .filter(isHeldIncompleteReceive)
+    .map(transaction => transaction.txid));
   ctx.newTxids = Array.from(allTxids).filter(
     txid => !ctx.existingTxidSet.has(txid)
       || ctx.classificationRepairTxids.has(txid)

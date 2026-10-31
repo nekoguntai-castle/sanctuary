@@ -89,6 +89,8 @@ export function registerQuorumMembershipContracts() {
       config: { specificApprovers: [userId] },
     });
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
+    // Listed voters are also current effective wallet approvers.
+    mockWalletSharingRepo.findEffectiveApproverIds.mockResolvedValue([userId]);
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v1', decision: 'approve' });
     mockPolicyRepo.findApprovalRequestsByDraftId.mockResolvedValue([
       { id: requestId, status: 'approved' },
@@ -388,6 +390,8 @@ export function registerQuorumMembershipContracts() {
       config: { specificApprovers: [userId, thirdApproverId] },
     });
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
+    // Listed voters are also current effective wallet approvers.
+    mockWalletSharingRepo.findEffectiveApproverIds.mockResolvedValue([userId, thirdApproverId]);
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v-c', decision: 'approve' });
     mockPolicyRepo.findApprovalRequestsByDraftId.mockResolvedValue([
       { id: requestId, status: 'approved' },
@@ -429,6 +433,8 @@ export function registerQuorumMembershipContracts() {
       config: { specificApprovers: [userId, otherUserId], requiredApprovals: 2 },
     });
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
+    // Listed voters are also current effective wallet approvers.
+    mockWalletSharingRepo.findEffectiveApproverIds.mockResolvedValue([userId, otherUserId]);
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v-b', decision: 'approve' });
     mockPolicyRepo.findApprovalRequestsByDraftId.mockResolvedValue([
       { id: requestId, status: 'approved' },
@@ -630,6 +636,8 @@ export function registerQuorumMembershipContracts() {
       config: { specificApprovers: [userId, otherUserId], requiredApprovals: 2.5 },
     });
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
+    // Listed voters are also current effective wallet approvers.
+    mockWalletSharingRepo.findEffectiveApproverIds.mockResolvedValue([userId, otherUserId]);
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v-b', decision: 'approve' });
     mockPolicyRepo.findApprovalRequestsByDraftId.mockResolvedValue([
       { id: requestId, status: 'approved' },
@@ -668,6 +676,8 @@ export function registerQuorumMembershipContracts() {
       config: { specificApprovers: [userId, otherUserId], requiredApprovals: 5 },
     });
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
+    // Listed voters are also current effective wallet approvers.
+    mockWalletSharingRepo.findEffectiveApproverIds.mockResolvedValue([userId, otherUserId]);
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v-b', decision: 'approve' });
     mockPolicyRepo.findApprovalRequestsByDraftId.mockResolvedValue([
       { id: requestId, status: 'approved' },

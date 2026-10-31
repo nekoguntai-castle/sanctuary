@@ -32,4 +32,6 @@ export interface NetworkSyncActionState {
   handleResyncAll: () => Promise<void>;
   openResyncDialog: () => void;
   closeResyncDialog: () => void;
+  /** Clears the current result, including a partial outcome that never auto-clears. */
+  dismissResult: () => void;
 }

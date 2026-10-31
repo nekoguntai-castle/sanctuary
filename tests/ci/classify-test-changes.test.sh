@@ -605,10 +605,11 @@ EOF_DOC
   git -C "$repo_dir" commit -qm "frontend service helper"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
 
+  # src/services runs inside the app the render spec drives (iteration 20).
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_exact_output "$output_file" "frontend_changed" "true"
   assert_exact_output "$output_file" "browser_smoke_changed" "true"
-  assert_exact_output "$output_file" "render_changed" "false"
+  assert_exact_output "$output_file" "render_changed" "true"
   assert_exact_output "$output_file" "build_changed" "false"
 
   base_sha="$head_sha"
@@ -630,10 +631,11 @@ EOF_DOC
   git -C "$repo_dir" commit -qm "auth api client"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
 
+  # src/api clients run against the render spec's mocked fetch (iteration 20).
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_exact_output "$output_file" "frontend_changed" "true"
   assert_exact_output "$output_file" "browser_smoke_changed" "true"
-  assert_exact_output "$output_file" "render_changed" "false"
+  assert_exact_output "$output_file" "render_changed" "true"
   assert_exact_output "$output_file" "build_changed" "false"
 
   base_sha="$head_sha"
@@ -650,10 +652,13 @@ EOF_DOC
   assert_exact_output "$output_file" "build_changed" "false"
 
   # Every browser spec boots src/main.tsx -> App.tsx and drives flows through
-  # hash routes, so any runtime frontend tree selects Full Browser E2E.
-  # src/types holds runtime code (enums, wallet-type labels, quorum helpers).
+  # hash routes, and the render spec drives the same built app against a
+  # mocked API, so any runtime frontend tree selects both Full Browser E2E and
+  # Full Render E2E. src/types holds runtime code (enums, wallet-type labels,
+  # quorum helpers); src/api and src/services run against the mocked fetch.
   local flow_file
-  for flow_file in src/components/send/x.tsx src/components/Settings/x.tsx src/hooks/x.ts src/types/index.ts; do
+  for flow_file in src/components/send/x.tsx src/components/Settings/x.tsx src/hooks/x.ts src/types/index.ts \
+    src/api/client.ts src/services/x.ts src/public/manifest.webmanifest shared/x.ts; do
     base_sha="$head_sha"
     mkdir -p "$repo_dir/$(dirname "$flow_file")"
     printf 'export const flow = true;\n' > "$repo_dir/$flow_file"
@@ -664,6 +669,7 @@ EOF_DOC
     run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
     assert_exact_output "$output_file" "frontend_changed" "true"
     assert_exact_output "$output_file" "browser_smoke_changed" "true"
+    assert_exact_output "$output_file" "render_changed" "true"
   done
 
   base_sha="$head_sha"

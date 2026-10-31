@@ -568,6 +568,10 @@ describe('Sync Phases', () => {
   describe('checkExistingPhase', () => {
     it('revisits stale or incomplete classifications across every type', async () => {
       const incompleteReceivedTxid = 'incomplete'.padEnd(64, 'a');
+      const toleranceReceivedTxid = 'tolerance'.padEnd(64, 'a');
+      const historicalReceivedTxid = 'historical'.padEnd(64, 'a');
+      const confirmedWithoutTimeTxid = 'confirmed-without-time'.padEnd(64, 'a');
+      const unclassifiedReceivedTxid = 'unclassified'.padEnd(64, 'f');
       const completeReceivedTxid = 'complete'.padEnd(64, 'e');
       const consolidationTxid = 'consolidation'.padEnd(64, 'c');
       const sentTxid = 'sent'.padEnd(64, 'd');
@@ -579,8 +583,69 @@ describe('Sync Phases', () => {
           type: 'received',
           classificationInputsComplete: false,
           classificationVersion: 2,
-          classificationAddressCount: 0,
+          classificationAddressCount: 1,
           classificationLastAttemptAt: new Date('2026-01-03T00:00:00.000Z'),
+          ioComplete: true,
+          ioLastAttemptAt: null,
+          // Stored while unconfirmed: a held announcement.
+          blockHeight: null,
+          blockTime: null,
+          createdAt: new Date('2026-01-02T00:00:00.000Z'),
+        },
+        {
+          // Mined exactly at the clock-skew tolerance before it was stored:
+          // still a held announcement.
+          txid: toleranceReceivedTxid,
+          type: 'received',
+          classificationInputsComplete: false,
+          classificationVersion: 2,
+          classificationAddressCount: 1,
+          classificationLastAttemptAt: new Date('2026-01-04T00:00:00.000Z'),
+          ioComplete: true,
+          ioLastAttemptAt: null,
+          blockHeight: 800000,
+          blockTime: new Date('2026-01-01T22:00:00.000Z'),
+          createdAt: new Date('2026-01-02T00:00:00.000Z'),
+        },
+        {
+          // Confirmed long before it was stored (baseline or full-resync
+          // history): never due an announcement, so a repair stays silent.
+          txid: historicalReceivedTxid,
+          type: 'received',
+          classificationInputsComplete: false,
+          classificationVersion: 2,
+          classificationAddressCount: 1,
+          classificationLastAttemptAt: new Date('2026-01-05T00:00:00.000Z'),
+          ioComplete: true,
+          ioLastAttemptAt: null,
+          blockHeight: 800000,
+          blockTime: new Date('2026-01-01T21:59:59.999Z'),
+          createdAt: new Date('2026-01-02T00:00:00.000Z'),
+        },
+        {
+          // Confirmed, but its block-header timestamp could not be fetched:
+          // treated as history, since staying silent is the safe side.
+          txid: confirmedWithoutTimeTxid,
+          type: 'received',
+          classificationInputsComplete: false,
+          classificationVersion: 2,
+          classificationAddressCount: 1,
+          classificationLastAttemptAt: new Date('2026-01-06T00:00:00.000Z'),
+          ioComplete: true,
+          ioLastAttemptAt: null,
+          blockHeight: 800000,
+          blockTime: null,
+          createdAt: new Date('2026-01-02T00:00:00.000Z'),
+        },
+        {
+          // Broadcast-created internal receives and legacy rows keep the
+          // schema default count; no sync classifier wrote them.
+          txid: unclassifiedReceivedTxid,
+          type: 'received',
+          classificationInputsComplete: false,
+          classificationVersion: 2,
+          classificationAddressCount: 0,
+          classificationLastAttemptAt: null,
           ioComplete: true,
           ioLastAttemptAt: null,
         },
@@ -619,6 +684,10 @@ describe('Sync Phases', () => {
       const ctx = createTestContext({
         allTxids: new Set([
           incompleteReceivedTxid,
+          toleranceReceivedTxid,
+          historicalReceivedTxid,
+          confirmedWithoutTimeTxid,
+          unclassifiedReceivedTxid,
           completeReceivedTxid,
           consolidationTxid,
           sentTxid,
@@ -634,6 +703,12 @@ describe('Sync Phases', () => {
       expect(result.newTxids).not.toContain(completeReceivedTxid);
       expect(result.newTxids).toContain(sentTxid);
       expect(result.existingTxidSet.has(incompleteReceivedTxid)).toBe(true);
+      expect([...result.incompleteReceiveTxids]).toEqual([
+        incompleteReceivedTxid,
+        toleranceReceivedTxid,
+      ]);
+      expect(result.classificationRepairTxids.has(historicalReceivedTxid)).toBe(true);
+      expect(result.classificationRepairTxids.has(confirmedWithoutTimeTxid)).toBe(true);
       expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           select: {
@@ -645,6 +720,9 @@ describe('Sync Phases', () => {
             classificationLastAttemptAt: true,
             ioComplete: true,
             ioLastAttemptAt: true,
+            blockHeight: true,
+            blockTime: true,
+            createdAt: true,
           },
         })
       );

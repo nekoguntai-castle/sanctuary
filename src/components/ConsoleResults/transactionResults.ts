@@ -1,14 +1,64 @@
 import type { Transaction } from "../../types";
 import type { GetTransactionsParams } from "../../api/transactions";
-import type { AppliedConsoleTransactionFilter } from "../../app/consoleTransactionNavigation";
+import type { usePriceFreeFormatter } from "../../contexts/CurrencyContext";
+import {
+  hasAmountFilter,
+  type AppliedConsoleTransactionFilter,
+} from "../../app/consoleTransactionNavigation";
 
 export const CONSOLE_TRANSACTION_RESULT_LIMIT = 100;
+/**
+ * The wallet transactions endpoint has no amount filter, so an amount-bounded
+ * query scans this many of the wallet's newest rows in range and filters here.
+ * It is a per-wallet fetch size, independent of CONSOLE_TRANSACTION_LIMIT_CAP
+ * (the cap on a query's requested row limit) even though both are 500.
+ */
+export const CONSOLE_AMOUNT_SCAN_LIMIT = 500;
+
+function displayLimit(filter: AppliedConsoleTransactionFilter): number {
+  return filter.limit ?? CONSOLE_TRANSACTION_RESULT_LIMIT;
+}
+
+function fetchLimit(filter: AppliedConsoleTransactionFilter): number {
+  return hasAmountFilter(filter) ? CONSOLE_AMOUNT_SCAN_LIMIT : displayLimit(filter);
+}
+
+/** Absolute sats, inclusive, matching the Console's query_transactions. */
+function matchesAmountFilter(
+  transaction: Transaction,
+  filter: AppliedConsoleTransactionFilter,
+): boolean {
+  const magnitude = Math.abs(transaction.amount);
+  if (filter.minAmount !== null && magnitude < filter.minAmount) return false;
+  return filter.maxAmount === null || magnitude <= filter.maxAmount;
+}
+
+/**
+ * Applies the amount filter and row limit to one wallet's fetched page.
+ * `truncated` means the wallet may hold more matches than are shown: the
+ * fetched page was full (or the default cap cut matches off) and the
+ * Console's own explicit limit was not what stopped the list.
+ */
+export function selectConsoleWalletTransactions(
+  filter: AppliedConsoleTransactionFilter,
+  fetched: Transaction[],
+): { transactions: Transaction[]; truncated: boolean } {
+  const matched = fetched.filter((tx) => matchesAmountFilter(tx, filter));
+  const limit = displayLimit(filter);
+  const satisfiedExplicitLimit =
+    filter.limit !== null && matched.length >= filter.limit;
+  const truncated =
+    !satisfiedExplicitLimit &&
+    (fetched.length >= fetchLimit(filter) || matched.length > limit);
+
+  return { transactions: matched.slice(0, limit), truncated };
+}
 
 export function getConsoleTransactionParams(
   filter: AppliedConsoleTransactionFilter,
 ): GetTransactionsParams {
   return {
-    limit: filter.limit ?? CONSOLE_TRANSACTION_RESULT_LIMIT,
+    limit: fetchLimit(filter),
     offset: 0,
     ...(filter.dateFrom !== null
       ? { dateFrom: new Date(filter.dateFrom).toISOString() }
@@ -59,6 +109,27 @@ function summarizeTypes(
   return types[0]!;
 }
 
+export type ConsoleAmountFormatter = ReturnType<typeof usePriceFreeFormatter>["format"];
+
+function summarizeAmounts(
+  filters: AppliedConsoleTransactionFilter[],
+  format: ConsoleAmountFormatter,
+): string | null {
+  const keys = new Set(
+    filters.map((filter) => `${filter.minAmount ?? ""}:${filter.maxAmount ?? ""}`),
+  );
+  if (keys.size > 1) return "Mixed amounts";
+
+  const { minAmount, maxAmount } = filters[0]!;
+  if (minAmount !== null && maxAmount !== null) {
+    return `${format(minAmount)} - ${format(maxAmount)}`;
+  }
+  if (minAmount !== null) return `\u2265 ${format(minAmount)}`;
+  if (maxAmount !== null) return `\u2264 ${format(maxAmount)}`;
+
+  return null;
+}
+
 function uniqueNumbers(values: Array<number | null>): number[] {
   return Array.from(
     new Set(values.filter((value): value is number => value !== null)),
@@ -85,15 +156,18 @@ function getTransactionMillis(transaction: Transaction): number {
 
 export function summarizeConsoleTransactionFilters(
   filters: AppliedConsoleTransactionFilter[],
+  format: ConsoleAmountFormatter,
 ): string[] {
   const summary = [
     `${filters.length} wallet${filters.length === 1 ? "" : "s"}`,
   ];
   const dateSummary = summarizeDateRange(filters);
   const typeSummary = summarizeTypes(filters);
+  const amountSummary = summarizeAmounts(filters, format);
 
   if (dateSummary) summary.push(dateSummary);
   if (typeSummary) summary.push(typeSummary);
+  if (amountSummary) summary.push(amountSummary);
 
   return summary;
 }

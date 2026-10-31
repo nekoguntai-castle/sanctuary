@@ -9,7 +9,10 @@ import { useWalletSyncLifecycleClock } from '../../hooks/useWalletSyncLifecycleC
 import { useAIStatus } from '../../hooks/useAIStatus';
 import { useErrorHandler } from '../../hooks/useErrorHandler';
 import { useWalletLogs } from '../../hooks/websocket';
-import { parseConsoleTransactionFilterState } from '../../app/consoleTransactionNavigation';
+import {
+  consoleFilterAsAiQuery,
+  parseConsoleTransactionFilterState,
+} from '../../app/consoleTransactionNavigation';
 import { toTabNetwork } from '../../app/networks';
 import { useAddressLabels } from './hooks/useAddressLabels';
 import { useAITransactionFilter } from './hooks/useAITransactionFilter';
@@ -170,7 +173,7 @@ export const useWalletDetailController = () => {
     appliedConsoleFilterRef.current = filterKey;
 
     clearAllFilters();
-    setAiQueryFilter(null);
+    setAiQueryFilter(consoleFilterAsAiQuery(consoleTransactionFilter));
     if (consoleTransactionFilter.type) {
       setTypeFilter(consoleTransactionFilter.type);
     }

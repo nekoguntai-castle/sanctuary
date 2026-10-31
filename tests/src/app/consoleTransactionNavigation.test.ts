@@ -1,13 +1,30 @@
 import { describe, expect, it } from "vitest";
 import {
+  consoleFilterAsAiQuery,
   extractConsoleTransactionFilter,
   extractConsoleTransactionQuery,
   parseTransactionDateMillis,
   parseConsoleTransactionFilterState,
   parseConsoleTransactionQueryState,
   walletIdFromWalletRoute,
+  type AppliedConsoleTransactionFilter,
 } from "../../../src/app/consoleTransactionNavigation";
 import type { ConsoleTurnResult } from "../../../src/api/console";
+
+function appliedFilter(
+  overrides: Partial<AppliedConsoleTransactionFilter> = {},
+): AppliedConsoleTransactionFilter {
+  return {
+    walletId: "wallet-1",
+    dateFrom: null,
+    dateTo: null,
+    type: null,
+    limit: null,
+    minAmount: null,
+    maxAmount: null,
+    ...overrides,
+  };
+}
 
 function turnResult(plannedTools: unknown): ConsoleTurnResult {
   return {
@@ -150,26 +167,20 @@ describe("console transaction navigation", () => {
         dateTo: "2020-06-30",
         type: "sent",
       }),
-    ).toEqual({
-      walletId: "wallet-1",
-      dateFrom: Date.UTC(2020, 1, 1, 0, 0, 0, 0),
-      dateTo: Date.UTC(2020, 5, 30, 23, 59, 59, 999),
-      type: "sent",
-      limit: null,
-    });
+    ).toEqual(
+      appliedFilter({
+        dateFrom: Date.UTC(2020, 1, 1, 0, 0, 0, 0),
+        dateTo: Date.UTC(2020, 5, 30, 23, 59, 59, 999),
+        type: "sent",
+      }),
+    );
 
     expect(
       parseConsoleTransactionFilterState({
         walletId: "wallet-1",
         type: "receive",
       }),
-    ).toEqual({
-      walletId: "wallet-1",
-      dateFrom: null,
-      dateTo: null,
-      type: null,
-      limit: null,
-    });
+    ).toEqual(appliedFilter());
 
     expect(parseConsoleTransactionFilterState({ walletId: "" })).toBeNull();
   });
@@ -188,15 +199,7 @@ describe("console transaction navigation", () => {
       ),
     ).toEqual({
       prompt: "show all wallets transactions",
-      walletFilters: [
-        {
-          walletId: "wallet-1",
-          dateFrom: null,
-          dateTo: null,
-          type: null,
-          limit: 15,
-        },
-      ],
+      walletFilters: [appliedFilter({ limit: 15 })],
     });
 
     expect(
@@ -218,6 +221,100 @@ describe("console transaction navigation", () => {
       Date.parse("2020-02-01T12:34:56.000Z"),
     );
     expect(parseTransactionDateMillis("not-a-date", true)).toBeNull();
+  });
+
+  it("carries the Console amount filter (absolute sats) into navigation state", () => {
+    const result = turnResult({
+      toolCalls: [
+        {
+          name: "query_transactions",
+          input: {
+            walletId: "wallet-1",
+            minAmount: "50000",
+            maxAmount: 1_000_000,
+            limit: 10,
+          },
+        },
+      ],
+    });
+
+    expect(
+      extractConsoleTransactionFilter(result, new Set(["wallet-1"])),
+    ).toEqual({
+      walletId: "wallet-1",
+      minAmount: 50_000,
+      maxAmount: 1_000_000,
+      limit: 10,
+    });
+  });
+
+  it("keeps calls that differ only by amount as distinct wallet filters", () => {
+    const result = turnResult({
+      toolCalls: [
+        { name: "query_transactions", input: { walletId: "wallet-1" } },
+        {
+          name: "query_transactions",
+          input: { walletId: "wallet-1", minAmount: 0 },
+        },
+      ],
+    });
+
+    expect(
+      extractConsoleTransactionQuery(result, new Set(["wallet-1"]))
+        ?.walletFilters,
+    ).toEqual([{ walletId: "wallet-1" }, { walletId: "wallet-1", minAmount: 0 }]);
+  });
+
+  it("drops amount bounds that are not whole non-negative sats", () => {
+    const result = turnResult({
+      toolCalls: [
+        {
+          name: "query_transactions",
+          input: { walletId: "wallet-1", minAmount: -5, maxAmount: "0.5" },
+        },
+      ],
+    });
+
+    expect(
+      extractConsoleTransactionFilter(result, new Set(["wallet-1"])),
+    ).toEqual({ walletId: "wallet-1" });
+  });
+
+  it("parses amount bounds from route state", () => {
+    expect(
+      parseConsoleTransactionFilterState({
+        walletId: "wallet-1",
+        minAmount: "1000",
+        maxAmount: 2000,
+      }),
+    ).toEqual(appliedFilter({ minAmount: 1000, maxAmount: 2000 }));
+  });
+
+  it("drops a route-state amount above the safe integer range", () => {
+    expect(
+      parseConsoleTransactionFilterState({
+        walletId: "wallet-1",
+        maxAmount: "9007199254740993",
+      }),
+    ).toEqual(appliedFilter());
+  });
+
+  it("maps amount bounds and limit onto the wallet AI filter", () => {
+    const base = appliedFilter();
+
+    expect(consoleFilterAsAiQuery(base)).toBeNull();
+    expect(consoleFilterAsAiQuery({ ...base, limit: 3 })).toEqual({
+      type: "transactions",
+      limit: 3,
+    });
+    expect(consoleFilterAsAiQuery({ ...base, maxAmount: 0 })).toEqual({
+      type: "transactions",
+      filter: { maxAmount: 0 },
+    });
+    expect(consoleFilterAsAiQuery({ ...base, minAmount: 5000 })).toEqual({
+      type: "transactions",
+      filter: { minAmount: 5000 },
+    });
   });
 
   it("reads known wallet ids from wallet detail routes only", () => {

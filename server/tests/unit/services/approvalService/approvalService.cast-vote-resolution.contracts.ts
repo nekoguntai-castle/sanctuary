@@ -134,6 +134,8 @@ export function registerCastVoteResolutionContracts() {
     );
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
     mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
+    // Listed voters are also current effective wallet approvers.
+    mockWalletSharingRepo.findEffectiveApproverIds.mockResolvedValue([otherUserId]);
     mockPolicyRepo.findPolicyById.mockResolvedValue({
       config: { specificApprovers: [otherUserId] },
     });

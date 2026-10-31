@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useWallets } from "../../hooks/queries/useWallets";
+import { usePriceFreeFormatter } from "../../contexts/CurrencyContext";
 import { getTransactions } from "../../api/transactions";
 import {
   parseConsoleTransactionQueryState,
@@ -13,6 +14,7 @@ import type { Transaction, Wallet } from "../../types";
 import {
   dedupeConsoleTransactions,
   getConsoleTransactionParams,
+  selectConsoleWalletTransactions,
   sortConsoleTransactions,
   summarizeConsoleTransactionFilters,
 } from "./transactionResults";
@@ -24,6 +26,8 @@ export interface ConsoleResultsRouteState {
 export interface LoadedConsoleTransactions {
   transactions: Transaction[];
   failedWalletIds: string[];
+  /** Wallets that may hold more matching transactions than are shown. */
+  truncatedWalletIds: string[];
 }
 
 export interface ConsoleResultsViewModel {
@@ -45,6 +49,7 @@ const EMPTY_TRANSACTIONS: Transaction[] = [];
 export function useConsoleResultsViewModel(): ConsoleResultsViewModel {
   const location = useLocation();
   const navigate = useNavigate();
+  const { format } = usePriceFreeFormatter();
   const { data: wallets = [], isLoading: walletsLoading } = useWallets();
   const routeState = location.state as ConsoleResultsRouteState | null;
   const rawConsoleQuery = routeState?.consoleTransactionQuery;
@@ -70,7 +75,7 @@ export function useConsoleResultsViewModel(): ConsoleResultsViewModel {
   const transactions = result?.transactions ?? EMPTY_TRANSACTIONS;
   const loadingResults = walletsLoading || transactionQuery.isLoading;
   const summary = parsedQuery
-    ? summarizeConsoleTransactionFilters(parsedQuery.walletFilters)
+    ? summarizeConsoleTransactionFilters(parsedQuery.walletFilters, format)
     : [];
   const onWalletClick = useCallback(
     (walletId: string) => navigate(`/wallets/${walletId}`),
@@ -108,6 +113,11 @@ async function loadConsoleTransactions(
   const transactions = settled.flatMap((result) =>
     result.status === "fulfilled" ? result.value.transactions : [],
   );
+  const truncatedWalletIds = settled.flatMap((result) =>
+    result.status === "fulfilled" && result.value.truncated
+      ? [result.value.walletId]
+      : [],
+  );
   const failedWalletIds = settled.flatMap((result, index) =>
     result.status === "rejected" ? [query.walletFilters[index]!.walletId] : [],
   );
@@ -121,21 +131,25 @@ async function loadConsoleTransactions(
       dedupeConsoleTransactions(transactions),
     ),
     failedWalletIds,
+    truncatedWalletIds,
   };
 }
 
 async function loadWalletTransactions(
   filter: AppliedConsoleTransactionFilter,
-): Promise<{ walletId: string; transactions: Transaction[] }> {
-  const transactions = await getTransactions(
+): Promise<{ walletId: string; transactions: Transaction[]; truncated: boolean }> {
+  const fetched = await getTransactions(
     filter.walletId,
     getConsoleTransactionParams(filter),
   );
 
   return {
     walletId: filter.walletId,
-    transactions: transactions.map((transaction) =>
-      formatApiTransaction(transaction, filter.walletId),
+    ...selectConsoleWalletTransactions(
+      filter,
+      fetched.map((transaction) =>
+        formatApiTransaction(transaction, filter.walletId),
+      ),
     ),
   };
 }

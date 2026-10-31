@@ -576,6 +576,21 @@ async function checkAllQuorumMet(
 }
 
 /**
+ * Counts the approve votes cast by users who are currently effective wallet
+ * approvers (the live set 'all' uses, including the self-approval rule).
+ */
+async function countEligibleApproveVotes(
+  request: ApprovalRequest,
+  draft: NonNullable<ApprovalDraft>,
+  votes: ApprovalVote[]
+): Promise<number> {
+  const eligibleIds = new Set(
+    await getEligibleApproverIds(draft.walletId, draft.userId, request.allowSelfApproval)
+  );
+  return votes.filter(v => eligibleIds.has(v.userId)).length;
+}
+
+/**
  * 'any_n' quorum is met only by approve votes from currently eligible
  * approvers (the same live set 'all' uses). The threshold is the request's
  * creation-time `requiredApprovals` snapshot, never clamped to the eligible
@@ -594,18 +609,18 @@ async function checkAnyNQuorumMet(
     return false;
   }
 
-  const eligibleIds = new Set(
-    await getEligibleApproverIds(draft.walletId, draft.userId, request.allowSelfApproval)
-  );
-  const eligibleApproveVotes = approveVotes.filter(v => eligibleIds.has(v.userId));
-  return eligibleApproveVotes.length >= request.requiredApprovals;
+  return (await countEligibleApproveVotes(request, draft, approveVotes)) >= request.requiredApprovals;
 }
 
 /**
  * 'specific' quorum is met only by approve votes from users currently on the
  * policy's specificApprovers list — a vote from anyone else (cast before the
  * castVote-time eligibility check existed, or before a policy edit dropped
- * them from the list) must not count toward the threshold.
+ * them from the list) must not count toward the threshold — AND who are still
+ * effective wallet approvers (the same live set 'all'/'any_n' use, including
+ * the self-approval rule). Revoking or downgrading a user's wallet access
+ * does not edit specificApprovers, so without this intersection a listed
+ * user's approve vote would keep counting after they lost access.
  *
  * The threshold itself is always the *live* policy's
  * `min(requiredApprovals, specificApprovers.length)`, never the request's
@@ -627,9 +642,15 @@ async function checkAnyNQuorumMet(
  *   its required count from live state rather than trusting a
  *   creation-time snapshot.
  *
+ * The threshold is NOT capped by the size of specificApprovers ∩ eligible:
+ * like 'any_n', an access removal must not quietly weaken the policy. A
+ * request whose listed approvers lost access stays pending until the roster
+ * is edited or the request expires.
+ *
  * Fails closed, mirroring `checkAllQuorumMet`'s empty-eligible-set guard:
- * an empty live `specificApprovers` list never resolves on its own (there is
- * no one to demand a vote from), and a missing/invalid live
+ * a missing draft never resolves, an empty live `specificApprovers` list
+ * never resolves on its own (there is no one to demand a vote from), and a
+ * missing/invalid live
  * `requiredApprovals` falls back to the request's snapshot rather than a
  * `0`/`NaN` default — a threshold that quietly floors at 0 would let the
  * request resolve on zero votes, which is worse than the deadlock this
@@ -638,8 +659,13 @@ async function checkAnyNQuorumMet(
  */
 async function checkSpecificQuorumMet(
   request: ApprovalRequest,
-  approveVotes: ApprovalVote[]
+  approveVotes: ApprovalVote[],
+  draft: ApprovalDraft
 ): Promise<boolean> {
+  if (!draft) {
+    return false;
+  }
+
   const { specificApprovers, requiredApprovals: liveRequiredApprovals } =
     await loadSpecificApprovers(request.policyId);
 
@@ -658,8 +684,12 @@ async function checkSpecificQuorumMet(
   }
 
   const liveThreshold = Math.min(validRequiredApprovals, specificApprovers.length);
-  const eligibleApproveVotes = approveVotes.filter(v => specificApprovers.includes(v.userId));
-  return eligibleApproveVotes.length >= liveThreshold;
+  const listedApproveVotes = approveVotes.filter(v => specificApprovers.includes(v.userId));
+  if (listedApproveVotes.length < liveThreshold) {
+    return false;
+  }
+
+  return (await countEligibleApproveVotes(request, draft, listedApproveVotes)) >= liveThreshold;
 }
 
 async function checkAndResolveRequest(
@@ -711,8 +741,9 @@ async function checkAndResolveRequest(
       // trusting `approveVotes` outright: ensureEligibleToVote only guards
       // votes cast after this fix shipped, and a policy edit can remove a
       // voter from the list after they already approved. Only a vote from a
-      // currently-listed approver counts toward requiredApprovals.
-      quorumMet = await checkSpecificQuorumMet(request, approveVotes);
+      // currently-listed approver who is still an effective wallet approver
+      // counts toward requiredApprovals.
+      quorumMet = await checkSpecificQuorumMet(request, approveVotes, draft);
       break;
   }
 

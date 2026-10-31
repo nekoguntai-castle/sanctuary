@@ -202,6 +202,14 @@ export interface SyncContext {
   existingTxidSet: Set<string>;
   classificationRepairTxids: Set<string>;
   ioRepairTxids: Set<string>;
+  /**
+   * Existing sync-classified rows (address count > 0) stored as 'received'
+   * on incomplete input evidence while unconfirmed or near their
+   * confirmation. Their announcement may have been withheld, so a repair to
+   * a complete classification is announced instead; history stored long after
+   * it confirmed is excluded (see checkExisting.ts).
+   */
+  incompleteReceiveTxids: Set<string>;
   newTxids: string[];
   txDetailsCache: Map<string, RawTransaction>;
   /** Compact canonical evidence is never interchangeable with a full projection. */

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Brain, AlertTriangle } from "lucide-react";
 import { TransactionList } from "../TransactionList";
 import type { Transaction, Wallet } from "../../types";
@@ -70,6 +71,7 @@ function TransactionResultsPanel({
         summary={summary}
       />
       <PartialFailureNotice result={result} />
+      <TruncatedResultsNotice result={result} />
       <TransactionResultsContent
         loadingResults={loadingResults}
         isError={isError}
@@ -126,6 +128,24 @@ function ResultCount({ loading, count }: { loading: boolean; count: number }) {
   return `${count} result${count === 1 ? "" : "s"}`;
 }
 
+function WarningNotice({
+  children,
+  testId,
+}: {
+  children: ReactNode;
+  testId?: string;
+}) {
+  return (
+    <div
+      data-testid={testId}
+      className="mb-4 flex items-center gap-2 rounded-md border border-warning-200 bg-warning-50 px-3 py-2 text-sm text-warning-800 dark:border-warning-900 dark:bg-warning-950 dark:text-warning-200"
+    >
+      <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+      {children}
+    </div>
+  );
+}
+
 function PartialFailureNotice({
   result,
 }: {
@@ -133,11 +153,23 @@ function PartialFailureNotice({
 }) {
   if (!result || result.failedWalletIds.length === 0) return null;
 
+  return <WarningNotice>Some wallet results could not be loaded.</WarningNotice>;
+}
+
+function TruncatedResultsNotice({
+  result,
+}: {
+  result?: LoadedConsoleTransactions;
+}) {
+  if (!result || result.truncatedWalletIds.length === 0) return null;
+
+  const count = result.truncatedWalletIds.length;
   return (
-    <div className="mb-4 flex items-center gap-2 rounded-md border border-warning-200 bg-warning-50 px-3 py-2 text-sm text-warning-800 dark:border-warning-900 dark:bg-warning-950 dark:text-warning-200">
-      <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-      Some wallet results could not be loaded.
-    </div>
+    <WarningNotice testId="console-results-truncated-notice">
+      Results are capped per wallet: {count} wallet{count === 1 ? "" : "s"}{" "}
+      may have more matching transactions than shown. Open the wallet to see
+      the rest.
+    </WarningNotice>
   );
 }
 

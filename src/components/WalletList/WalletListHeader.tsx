@@ -56,7 +56,8 @@ export function WalletListHeader({
         </h2>
         <p className="text-sanctuary-500">Manage your {selectedNetwork} wallets and spending accounts</p>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
+      {/* `relative` anchors the compact sync result panel under this row. */}
+      <div className="relative flex flex-wrap items-center gap-2">
         <GridSortControl
           viewMode={viewMode}
           sortBy={sortBy}

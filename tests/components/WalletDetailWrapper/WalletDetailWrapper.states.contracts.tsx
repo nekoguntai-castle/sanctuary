@@ -124,6 +124,29 @@ export const registerWalletDetailWrapperStateContracts = () => {
       });
     });
 
+    it('carries the Console amount filter and limit onto the wallet transactions tab', async () => {
+      const setAiQueryFilter = mocks.aiFilterState.setAiQueryFilter;
+      mocks.locationState = {
+        consoleTransactionFilter: {
+          walletId: 'wallet-1',
+          type: 'sent',
+          minAmount: '50000',
+          maxAmount: 100000,
+          limit: 5,
+        },
+      };
+
+      render(<WalletDetail />);
+
+      await waitFor(() => {
+        expect(setAiQueryFilter).toHaveBeenLastCalledWith({
+          type: 'transactions',
+          filter: { minAmount: 50000, maxAmount: 100000 },
+          limit: 5,
+        });
+      });
+    });
+
     it('wires the full refresh to sync and the monotonic share refresh to sharing', async () => {
       render(<WalletDetail />);
 
