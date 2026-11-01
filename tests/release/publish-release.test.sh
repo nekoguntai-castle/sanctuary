@@ -3,6 +3,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCRIPT_UNDER_TEST="$REPO_ROOT/scripts/release/publish-release.sh"
+COORDINATOR="$REPO_ROOT/scripts/ci/cleanup-ci-callsite.sh"
 TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/sanctuary-publish-release-test.XXXXXX")"
 trap 'status=$?; if (( status != 0 )); then find "$TEST_ROOT" -name output.log -type f -exec sh -c '\''echo "--- $1" >&2; cat "$1" >&2'\'' _ {} \;; fi; find "$TEST_ROOT" -type f -delete; find "$TEST_ROOT" -depth -type d -empty -delete' EXIT
 
@@ -540,6 +541,41 @@ test_non_main_release_commit_fails_before_publication_apis() {
   [[ ! -f "$fixture/trace.log" ]] || fail "non-main release reached publication APIs"
 }
 
+# release:publish exited 5 after creating both releases (v0.8.73 through v0.8.78):
+# the outcome passed as a second reference made registration coalesce each
+# provider object to `retain`, which provider_publication does not allow
+# (policy_mismatch), and without that the unobservable provider object was
+# classified ambiguous (exit 4). Drive the real registration through the real
+# cleanup coordinator; the run fixture above bypasses it.
+test_provider_registration_leaves_cleanup_clean() {
+  local fixture="$TEST_ROOT/coordinated-registration"
+  mkdir -p "$fixture/provider-temp"
+  chmod 700 "$fixture/provider-temp"
+  jq -n '{schemaVersion:"sanctuary.publication-result.v1",tag:"v1.2.3",
+    providers:{forgejo:{id:"370",outcome:"created"},github:{id:"430663765",outcome:"existing"}}}' \
+    > "$fixture/publication-result.json"
+  local status=0
+  SANCTUARY_LOCAL_CLEANUP_AUTHORITY=1 \
+  SANCTUARY_LOCAL_CLEANUP_RUN_ID=publish-registration-test \
+  SANCTUARY_CI_TEMP_DIR_OVERRIDE="$fixture/provider-temp" \
+  bash "$COORDINATOR" run --engine host \
+    --lane publish-registration-test --runtime "$fixture/provider-temp/runtime" \
+    --artifact-dir "$fixture/artifacts" --checkout-root "$REPO_ROOT" -- \
+    bash -euo pipefail -c '
+      . "$1"
+      TEMP_DIR="$("$REGISTERED_STAGING" publish-release)"
+      TAG=v1.2.3
+      RELEASE_COMMIT="$(git -C "$ROOT_DIR" rev-parse HEAD)"
+      register_provider_publications "$2"
+    ' _ "$SCRIPT_UNDER_TEST" "$fixture/publication-result.json" \
+    > "$fixture/output.log" 2>&1 || status=$?
+  [[ "$status" -eq 0 ]] || fail "coordinated provider registration exited $status"
+  assert_not_contains "$fixture/output.log" "policy_mismatch"
+  assert_not_contains "$fixture/output.log" "refusedResources"
+  jq -e '.state == "cleaned"' "$fixture/artifacts/final-upload.json" >/dev/null \
+    || fail "provider registration did not leave a clean cleanup receipt"
+}
+
 test_operator_script_has_no_verifier_override_seam() {
   assert_not_contains "$SCRIPT_UNDER_TEST" "SANCTUARY_CANARY_VERIFIER"
   assert_not_contains "$SCRIPT_UNDER_TEST" "SANCTUARY_REHEARSAL_VERIFIER"
@@ -563,4 +599,5 @@ test_subject_failure_is_preserved_without_local_cleanup
 test_similar_but_nonmatching_candidate_is_rejected
 test_non_main_release_commit_fails_before_publication_apis
 test_operator_script_has_no_verifier_override_seam
+test_provider_registration_leaves_cleanup_clean
 echo "publish-release operator tests passed"

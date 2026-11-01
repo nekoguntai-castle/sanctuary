@@ -133,3 +133,16 @@ test('smokes the Prisma migration image through its CLI, seed, schema, and clien
   assert.match(calls, /prisma\/schema\.prisma/);
   assert.match(calls, /node_modules\/@prisma\/client/);
 });
+
+test('smokes the Tor image offline through its config and onion-key owner', () => {
+  const fx = fixture();
+  const result = run(fx, { role: 'tor' });
+  assert.equal(result.status, 0, result.stderr);
+  const smoke = readFileSync(fx.dockerLog, 'utf8').split('\n')
+    .find(line => line.startsWith('run --rm ') && line.includes('--verify-config'));
+  assert.ok(smoke, 'Tor smoke container was not run');
+  assert.match(smoke, /--network none/);
+  assert.match(smoke, /tor --verify-config -f \/etc\/tor\/torrc/);
+  assert.match(smoke, /test "\$\(id -u\)" = 101/);
+  assert.match(smoke, /test -O \/var\/lib\/tor\/hidden_service/);
+});

@@ -67,6 +67,7 @@ assert_images() {
   local gateway="${5:-false}"
   local llm_egress_proxy="${6:-false}"
   local prisma_migration="${7:-false}"
+  local tor="${8:-false}"
 
   assert_exact_output "$output_file" "frontend_image" "$frontend"
   assert_exact_output "$output_file" "backend_image" "$backend"
@@ -74,6 +75,7 @@ assert_images() {
   assert_exact_output "$output_file" "llm_egress_proxy_image" "$llm_egress_proxy"
   assert_exact_output "$output_file" "grafana_migration_image" "$grafana_migration"
   assert_exact_output "$output_file" "prisma_migration_image" "$prisma_migration"
+  assert_exact_output "$output_file" "tor_image" "$tor"
 }
 
 main() {
@@ -114,6 +116,24 @@ main() {
   assert_images "$output_file" "false" "false" "true"
 
   base_sha="$head_sha"
+  commit_file "$repo_dir" "docker/tor/Dockerfile" "FROM alpine:3.24" "Tor dockerfile"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_images "$output_file" "false" "false" "false" "false" "false" "false" "true"
+
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "docker/tor/torrc" "SocksPort 9050" "Tor config"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_images "$output_file" "false" "false" "false" "false" "false" "false" "true"
+
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "docker/compose/tor.yml" "services: {}" "Tor compose"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_images "$output_file" "true" "true" "false" "true" "true" "true" "true"
+
+  base_sha="$head_sha"
   commit_file "$repo_dir" "scripts/ops/grafana-quiescence-records.sh" "#!/bin/bash" "Grafana control records"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
@@ -123,13 +143,13 @@ main() {
   commit_file "$repo_dir" "config/container-image-lock.json" '{"schemaVersion":1}' "Runtime image lock"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_images "$output_file" "true" "true" "true" "true" "true" "true"
+  assert_images "$output_file" "true" "true" "true" "true" "true" "true" "true"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "scripts/ci/validate-docker-build-results.sh" "#!/bin/bash" "Docker result validator"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_images "$output_file" "true" "true" "true" "false" "false" "true"
+  assert_images "$output_file" "true" "true" "true" "false" "false" "true" "true"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "scripts/ops/migrate-grafana-password.sh" "#!/bin/sh" "Grafana migration payload"
@@ -243,7 +263,7 @@ main() {
   commit_file "$repo_dir" ".dockerignore" "node_modules" "dockerignore"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_images "$output_file" "true" "true" "true" "true" "false" "true"
+  assert_images "$output_file" "true" "true" "true" "true" "false" "true" "true"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "docker/monitoring/prometheus.yml" "global: {}" "monitoring config"
@@ -277,7 +297,7 @@ main() {
     export WORKFLOW_SHA="$head_sha"
     bash "$CLASSIFIER_SCRIPT"
   )
-  assert_images "$output_file" "true" "true" "true" "true" "true" "true"
+  assert_images "$output_file" "true" "true" "true" "true" "true" "true" "true"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "server/src/renamed.ts" "export const renamed = true;" "backend source before rename"

@@ -1177,11 +1177,14 @@ run_grafana_credential_migration() {
     fi
 }
 
+# Compose up reads stdin from /dev/null: each new generation relabels the
+# existing volumes, and on a terminal Compose would ask "Recreate (data will be
+# lost)? [y/N]". Without a terminal it keeps the volume and carries on.
 start_postgres_service() {
     if [ "$OPT_OFFLINE" = true ]; then
-        docker compose "${COMPOSE_FILE_ARGS[@]}" up $(compose_up_no_build_args) postgres
+        docker compose "${COMPOSE_FILE_ARGS[@]}" up $(compose_up_no_build_args) postgres < /dev/null
     else
-        docker compose "${COMPOSE_FILE_ARGS[@]}" up $(compose_up_after_build_args) postgres
+        docker compose "${COMPOSE_FILE_ARGS[@]}" up $(compose_up_after_build_args) postgres < /dev/null
     fi
 }
 
@@ -1232,6 +1235,11 @@ start_services() {
     if deployment_stage_before postgres_started; then
         deployment_verify_legacy_preconditions
         run_grafana_credential_migration
+        # Every profile and orphaned overlay service goes, never a volume.
+        if deployment_previous_generation_running; then
+            echo "Stopping the previous deployment generation (volumes are kept)..."
+            docker compose "${COMPOSE_FILE_ARGS[@]}" --profile '*' down --remove-orphans
+        fi
         start_postgres_service
         deployment_transition postgres_started
     fi
@@ -1264,7 +1272,7 @@ start_compose_services() {
 
     # A failed up leaves the pending stage retryable. Never infer success from
     # other running containers or advance the checkpoint after a partial start.
-    if docker compose "${COMPOSE_FILE_ARGS[@]}" up $up_args; then
+    if docker compose "${COMPOSE_FILE_ARGS[@]}" up $up_args < /dev/null; then
         if [ "$USED_WAIT_FLAG" = true ]; then
             FRONTEND_RUNNING=true
             WORKER_RUNNING=true

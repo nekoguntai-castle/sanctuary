@@ -421,11 +421,14 @@ ensure_tor_image() {
     docker compose "${COMPOSE_FILE_ARGS[@]}" build tor
 }
 
+# Compose up reads stdin from /dev/null: each new generation relabels the
+# existing volumes, and on a terminal Compose would ask "Recreate (data will be
+# lost)? [y/N]". Without a terminal it keeps the volume and carries on.
 # Idempotent: re-running it leaves an already-running postgres untouched.
 start_postgres_service() {
     local profiles="$1"
     local postgres_up_flags="$2"
-    docker compose "${COMPOSE_FILE_ARGS[@]}" $profiles up $postgres_up_flags postgres
+    docker compose "${COMPOSE_FILE_ARGS[@]}" $profiles up $postgres_up_flags postgres < /dev/null
 }
 
 start_compose_stack() {
@@ -462,6 +465,11 @@ start_compose_stack() {
             bash "$SCRIPT_DIR/scripts/ops/run-grafana-password-migration.sh" \
                 "$SCRIPT_DIR" "${COMPOSE_FILE_ARGS[@]}"
         fi
+        # Every profile and orphaned overlay service goes, never a volume.
+        if deployment_previous_generation_running; then
+            echo "Stopping the previous deployment generation (volumes are kept)..."
+            docker compose "${COMPOSE_FILE_ARGS[@]}" --profile '*' down --remove-orphans
+        fi
         start_postgres_service "$profiles" "$postgres_up_flags"
         deployment_transition postgres_started
     fi
@@ -471,7 +479,7 @@ start_compose_stack() {
         deployment_transition password_reconciled
     fi
     if deployment_stage_before stack_started; then
-        docker compose "${COMPOSE_FILE_ARGS[@]}" $profiles up $up_flags
+        docker compose "${COMPOSE_FILE_ARGS[@]}" $profiles up $up_flags < /dev/null
         deployment_transition stack_started
     fi
     if deployment_stage_before health_verified; then

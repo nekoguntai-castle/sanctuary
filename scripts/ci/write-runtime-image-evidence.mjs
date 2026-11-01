@@ -12,6 +12,7 @@ const ROLE_LOCKFILES = {
   'llm-egress-proxy': ['llm-egress-proxy/package-lock.json'],
   'grafana-migration': [],
   'prisma-migration': ['package-lock.json'],
+  tor: [],
 };
 
 const OWNERSHIP_ENV = {
@@ -115,13 +116,17 @@ function smokeImage(options) {
     gateway: ['sh', '-c', 'node --version && test -f dist/gateway/src/index.js'],
     'llm-egress-proxy': ['sh', '-c', 'node --version && test -f dist/index.js'],
     'grafana-migration': ['sh', '-c', 'test -x /opt/sanctuary/migrate-grafana-password.sh'],
+    // The build already refuses Tor older than 0.4.8; prove the shipped torrc
+    // parses and the onion-key owner is the uid existing volumes were written by.
+    tor: ['sh', '-c', 'tor --version && tor --verify-config -f /etc/tor/torrc && test "$(id -u)" = 101 && test -O /var/lib/tor/hidden_service'],
     'prisma-migration': [
       'sh', '-c',
       'test -x node_modules/.bin/prisma && node_modules/.bin/prisma --version && test -f dist/prisma/prisma/seed.js && test -f dist/server/src/generated/prisma/client.js && test -f prisma/schema.prisma && test -d node_modules/@prisma/client && node -e "require.resolve(\'@prisma/client\')"',
     ],
   };
-  // The migration CLI must already carry its engines, even on offline installs.
-  const networkArgs = options.role === 'prisma-migration' ? ['--network', 'none'] : [];
+  // The migration CLI must already carry its engines, even on offline installs,
+  // and the Tor smoke must never reach the Tor network.
+  const networkArgs = ['prisma-migration', 'tor'].includes(options.role) ? ['--network', 'none'] : [];
   runTransientContainer([...networkArgs, '--entrypoint', checks[options.role][0], options.image, ...checks[options.role].slice(1)]);
 }
 

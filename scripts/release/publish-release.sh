@@ -188,6 +188,14 @@ create_release_objects() {
     SANCTUARY_PUBLICATION_RESULT="$publication_result" \
     bash "$CREATE_RELEASE_SCRIPT" "$TAG"
 
+  register_provider_publications "$publication_result"
+}
+
+# Each provider object is referenced by this run alone: registration treats a
+# second reference as a shared resource and rewrites its policy to `retain`,
+# which provider_publication rejects.
+register_provider_publications() {
+  local publication_result="$1"
   if ! declare -F register_owned_resource >/dev/null; then
     return 0
   fi
@@ -198,13 +206,12 @@ create_release_objects() {
   SANCTUARY_COMMIT="$RELEASE_COMMIT"
   SANCTUARY_OPERATION_RUN_ID="${SANCTUARY_OPERATION_RUN_ID:-publish-${TAG#v}}"
   ownership_initialize
-  local provider provider_id outcome identity
+  local provider provider_id identity
   for provider in forgejo github; do
     provider_id="$(jq -r ".providers.${provider}.id" "$publication_result")"
-    outcome="$(jq -r ".providers.${provider}.outcome" "$publication_result")"
     identity="${provider}-${provider_id}"
     register_owned_resource provider_publication retained retain_reconcile provider_id \
-      "$provider_id" "$identity" "$SANCTUARY_OPERATION_RUN_ID" "$outcome"
+      "$provider_id" "$identity" "$SANCTUARY_OPERATION_RUN_ID"
   done
 }
 
@@ -256,4 +263,7 @@ main() {
   echo "Release $TAG published to Forgejo and GitHub."
 }
 
-main "$@"
+# Sourcing exposes the functions to tests without publishing anything.
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

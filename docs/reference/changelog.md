@@ -9,9 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- CI: pull requests that change the Tor image (`docker/tor/`, `docker/compose/tor.yml`) now build it, check its configuration offline with `tor --verify-config`, confirm it runs as uid 101, and attach its SBOM and provenance in "Validate Docker Images", as the other shipped images already were.
+
 ### Changed
 
 ### Fixed
+
+- Upgrades and rebuilds: `./start.sh --rebuild`, `./start.sh` after an update, and `install.sh` upgrades could fail on a running install whose Docker network carries Sanctuary's ownership labels (installs created on v0.8.70 or later) with "network ... has active endpoints". Each new deployment generation relabels the network, so Docker Compose recreates it, and starting PostgreSQL on its own tried to do that while the rest of the previous generation was still attached. The previous generation's containers are now taken down first (every profile included); volumes and data are kept. Stopping first with `./start.sh --stop` is no longer needed.
+- Upgrades and rebuilds no longer ask "Volume ... exists but doesn't match configuration in compose file. Recreate (data will be lost)? [y/N]" when run from a terminal on those installs. Answering `y` would have deleted the volume, including the PostgreSQL database; `start.sh` and `install.sh` now keep the existing volume without asking. Deleting volumes still requires `./scripts/ownership/run-operator-compose.sh --confirm-data-delete`.
+- Release tooling: `npm run release:publish` exited with status 5 after creating both releases, because its cleanup step refused the provider releases it had just registered (`policy_mismatch`, then "ambiguous"). It now exits 0, and it still never deletes a provider release.
 
 ## [0.8.78] - 2026-11-01
 

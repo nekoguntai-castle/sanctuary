@@ -65,6 +65,12 @@ function hostDisposition(registration, observation) {
 function disposition(registration, observation) {
   if (observation.state === 'missing') return { disposition: 'absent', reason: 'registered locator is absent' };
   if (HOST_CLASSES.has(registration.resourceClass)) return hostDisposition(registration, observation);
+  // Provider objects live behind a network API no local inspector reaches, and
+  // the planner refuses to delete one, so an unobserved publication is retained;
+  // a failed inspection (ambiguous) or identity drift still blocks.
+  if (observation.state === 'unverified' && registration.resourceClass === 'provider_publication') {
+    return { disposition: 'retain', reason: 'provider_publication is reconciled by the release publisher' };
+  }
   if (observation.state === 'ambiguous' || observation.state === 'unverified') {
     return { disposition: 'ambiguous', reason: observation.error ?? 'registered locator could not be verified' };
   }

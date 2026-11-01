@@ -1398,13 +1398,20 @@
       "path": "scripts/setup.sh",
       "resourceClass": "compose_container",
       "operation": "cleanup",
-      "disposition": "exempt",
-      "safetyContract": "The foreground daemon atomically removes only the resource created by this invocation."
+      "disposition": "reference_only",
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
       "path": "scripts/setup.sh",
       "resourceClass": "compose_container",
       "operation": "create",
+      "disposition": "reference_only",
+      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
+    },
+    {
+      "path": "scripts/setup.sh",
+      "resourceClass": "compose_network",
+      "operation": "cleanup",
       "disposition": "reference_only",
       "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },

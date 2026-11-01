@@ -140,6 +140,27 @@ deployment_stage_before() {
   [ "$(deployment_stage_rank "$SANCTUARY_DEPLOYMENT_STAGE")" -lt "$(deployment_stage_rank "$1")" ]
 }
 
+# A new generation carries new ownership labels, which changes the Compose
+# config hash of the project networks. Starting postgres alone would make Compose
+# remove a network the previous generation's other containers still use ("has
+# active endpoints"), so callers take that generation down first. Only a pending
+# generation that has not reached postgres_started and still has project
+# containers needs it; an unchanged active revision keeps its labels.
+deployment_previous_generation_running() {
+  [ "${SANCTUARY_DEPLOYMENT_STATE:-}" = pending ] || return 1
+  deployment_stage_before postgres_started || return 1
+  local project containers
+  project="$(deployment_locked_project)" || {
+    echo "cannot resolve the Compose project whose previous generation must stop" >&2
+    return 1
+  }
+  containers="$(docker container ls -aq --filter "label=com.docker.compose.project=$project")" || {
+    echo "cannot list the previous generation's containers for $project" >&2
+    return 1
+  }
+  [ -n "$containers" ]
+}
+
 deployment_activate() {
   [ "$SANCTUARY_DEPLOYMENT_STATE" = pending ] || return 0
   node "$DEPLOYMENT_SESSION_SCRIPT" activate >/dev/null

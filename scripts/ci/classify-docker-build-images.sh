@@ -15,6 +15,7 @@ gateway_image=false
 llm_egress_proxy_image=false
 grafana_migration_image=false
 prisma_migration_image=false
+tor_image=false
 reason='No image-impacting files changed'
 
 emit_outputs() {
@@ -25,6 +26,7 @@ emit_outputs() {
     "llm_egress_proxy_image=$llm_egress_proxy_image" \
     "grafana_migration_image=$grafana_migration_image" \
     "prisma_migration_image=$prisma_migration_image" \
+    "tor_image=$tor_image" \
     "reason=$reason"
 }
 
@@ -35,6 +37,7 @@ mark_all_images() {
   llm_egress_proxy_image=true
   grafana_migration_image=true
   prisma_migration_image=true
+  tor_image=true
 }
 
 if [ "$event_name" = "workflow_dispatch" ]; then
@@ -119,6 +122,18 @@ is_grafana_migration_image_file() {
       return 0
       ;;
     scripts/offline/bundle-common.sh|scripts/offline/create-bundle.sh)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+is_tor_image_file() {
+  case "$1" in
+    .github/workflows/docker-build.yml|.dockerignore|scripts/ci/classify-docker-build-images.sh|scripts/ci/validate-docker-build-results.sh)
+      return 0
+      ;;
+    docker/tor/*|docker/compose/tor.yml)
       return 0
       ;;
   esac
@@ -228,6 +243,11 @@ while IFS= read -r file; do
   if is_grafana_migration_image_file "$file"; then
     grafana_migration_image=true
     reason="Grafana migration image input changed: $file"
+  fi
+
+  if is_tor_image_file "$file"; then
+    tor_image=true
+    reason="Tor image input changed: $file"
   fi
 done < <(git diff --no-renames --name-only "$base_sha" "$head_sha")
 

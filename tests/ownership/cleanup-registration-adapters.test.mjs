@@ -179,6 +179,16 @@ test('publication observations retain exact identity and refuse drift', () => {
   });
   assert.equal(drifted.observation.state, 'identity_changed');
   assert.equal(drifted.disposition, 'refused');
+  // No local inspector can reach a provider; cleanup never deletes one, so an
+  // unobserved publication is retained rather than reported ambiguous (exit 4).
+  const unobserved = classifyCleanupRegistration(publication);
+  assert.equal(unobserved.observation.state, 'unverified');
+  assert.equal(unobserved.disposition, 'retain');
+  assert.equal(unobserved.executable, false);
+  const failedInspection = classifyCleanupRegistration(publication, {
+    inspectors: { provider_publication: () => { throw new Error('provider query failed'); } },
+  });
+  assert.equal(failedInspection.disposition, 'ambiguous');
   assert.deepEqual(READ_ONLY_REGISTRATION_CLASSES, [
     'collector_process', 'git_worktree', 'temporary_artifact', 'cleanup_evidence', 'provider_publication',
   ]);

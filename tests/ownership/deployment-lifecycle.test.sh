@@ -50,6 +50,7 @@ case " $* " in
     if [ "${FAKE_DOCKER_LEGACY:-no}" = yes ]; then printf 'legacy-network\tlifecycle-test_default\n'; fi
     ;;
   " container ls "*)
+    if [ "${FAKE_PROJECT_CONTAINERS:-no}" = yes ]; then printf '%s\n' cccccccccccc; fi
     ;;
   " volume inspect lifecycle-test_data ")
     created_at=2026-08-30T00:00:00Z
@@ -81,6 +82,13 @@ export SANCTUARY_OWNER_ID=owner-test
 export SANCTUARY_OPERATION_RUN_ID=run-test
 export SANCTUARY_RELEASE=v0.8.69
 export SANCTUARY_COMMIT=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+assert_previous_generation_kept() {
+  if FAKE_PROJECT_CONTAINERS=yes deployment_previous_generation_running; then
+    echo "previous generation would be taken down for $1" >&2
+    exit 1
+  fi
+}
 
 # shellcheck source=scripts/ownership/deployment-lifecycle.sh
 . "$ROOT_DIR/scripts/ownership/deployment-lifecycle.sh"
@@ -356,6 +364,8 @@ deployment_begin no no no
 # An unchanged active revision replays every operator stage: `start.sh --rebuild`
 # on v0.8.70-rc2 skipped build and up because stage "active" had no rank and the
 # gate silently answered "not before" (install-test run 14662, force rebuild gate).
+# An unchanged active revision keeps its labels, so its containers stay up.
+assert_previous_generation_kept 'unchanged active revision'
 for stage in build_completed postgres_started password_reconciled stack_started health_verified; do
   if ! deployment_stage_before "$stage" 2>"$TEST_ROOT/stage-before.err"; then
     echo "active revision must run operator stage $stage" >&2
@@ -375,6 +385,34 @@ unset SANCTUARY_DEPLOYMENT_LOCK_TOKEN DEPLOYMENT_LOCK_OWNERSHIP SANCTUARY_PENDIN
 export SANCTUARY_OPERATION_RUN_ID=run-interrupted
 deployment_begin no no no
 [ "$SANCTUARY_DEPLOYMENT_GENERATION" = 2 ]
+# A new generation carries new ownership labels, so Compose recreates the project
+# network; starting postgres alone then failed with "network ... has active
+# endpoints" while the previous generation still ran (v0.8.78 canary). The
+# previous generation's containers go first, every profile and orphan included,
+# and never their volumes.
+empty_retire_log="$TEST_ROOT/retire-empty.log"
+if FAKE_DOCKER_LOG="$empty_retire_log" deployment_previous_generation_running; then
+  echo 'a project without containers needs no previous generation retirement' >&2
+  exit 1
+fi
+grep -q 'container ls -aq --filter label=com.docker.compose.project=lifecycle-test' "$empty_retire_log"
+FAKE_PROJECT_CONTAINERS=yes deployment_previous_generation_running
+for caller in start.sh scripts/setup.sh; do
+  retire_block="$(grep -A3 'if deployment_previous_generation_running; then' "$ROOT_DIR/$caller")"
+  grep -Fq "docker compose \"\${COMPOSE_FILE_ARGS[@]}\" --profile '*' down --remove-orphans" <<< "$retire_block" \
+    || { echo "$caller does not retire every profile of the previous generation" >&2; exit 1; }
+  if grep -Eq -- ' (-v|--volumes)\b' <<< "$retire_block"; then
+    echo "$caller previous generation retirement deletes volumes" >&2
+    exit 1
+  fi
+  # A new generation's volume labels never match the existing volume, and on a
+  # terminal Compose then asks "Recreate (data will be lost)? [y/N]"; a "y"
+  # deletes the database. Without a terminal on stdin Compose keeps the volume.
+  while IFS= read -r compose_up; do
+    [[ "$compose_up" == *'< /dev/null'* ]] \
+      || { echo "$caller can prompt to recreate a volume: $compose_up" >&2; exit 1; }
+  done < <(grep -E 'docker compose .*[[:space:]]up([[:space:]]|$)' "$ROOT_DIR/$caller" | grep -v -- 'up --help')
+done
 deployment_transition build_started
 deployment_transition build_completed
 deployment_transition postgres_started
@@ -385,6 +423,8 @@ export SANCTUARY_OPERATION_RUN_ID=run-recovery
 deployment_begin no no no
 [ "$SANCTUARY_DEPLOYMENT_GENERATION" = 2 ]
 [ "$SANCTUARY_DEPLOYMENT_STAGE" = postgres_started ]
+# Resuming past postgres_started means the new generation already owns the stack.
+assert_previous_generation_kept 'resumed generation'
 grep -q '"resourceClass":"compose_volume"' "$RUNTIME/ownership/deployments/deployment-test/revisions/2/deployment-manifest.json"
 grep -q '"resourceClass":"compose_network"' "$RUNTIME/ownership/deployments/deployment-test/revisions/2/deployment-manifest.json"
 # Already-completed work is an idempotent no-op; later stages continue.
