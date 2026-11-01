@@ -30,7 +30,7 @@ MONITORING_IMAGES=(
 )
 
 TOR_IMAGES=(
-  "dperson/torproxy:latest@sha256:d8b5f1cf24f1b7a0aa334929a264b2606a107223dd0d51eb1cda8aae6fbeec53"
+  "sanctuary-tor:local"
 )
 
 offline_fail() {

@@ -13,9 +13,8 @@
     { "reference": "postgres:16-alpine", "digest": "sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777", "scope": "production-and-ci-service" },
     { "reference": "redis:7-alpine", "digest": "sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2", "scope": "production-and-ci-service" },
     { "reference": "tecnativa/docker-socket-proxy:latest", "digest": "sha256:1f5038b54f06c3e18422902cf00ba21803d1c97805aae032e5e6673d532d3459", "scope": "production-socket-boundary" },
-    { "reference": "alpine:3.24", "digest": "sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b", "scope": "test-runtime" },
+    { "reference": "alpine:3.24", "digest": "sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b", "scope": "test-runtime-and-production-tor-build" },
     { "reference": "docker.io/library/alpine:3.20", "digest": "sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc", "scope": "runner-canary" },
-    { "reference": "dperson/torproxy:latest", "digest": "sha256:d8b5f1cf24f1b7a0aa334929a264b2606a107223dd0d51eb1cda8aae6fbeec53", "scope": "production-tor" },
     { "reference": "jaegertracing/all-in-one:1.53", "digest": "sha256:60e65bfffe1f66aee96d6fc8b6bf65afd42016be5dcc09d2e15d8462f7d9409c", "scope": "production-monitoring" },
     { "reference": "grafana/loki:2.9.0", "digest": "sha256:b025a0220f390baaab01578aea2fe0ba677584d9f248c3fe5af15f84dd1de60d", "scope": "production-monitoring" },
     { "reference": "grafana/promtail:3.5.0", "digest": "sha256:507dfecd2f0949475d071c124bea1c26fc4f8c1cff0372eee57478d5b1c5fbff", "scope": "production-monitoring" },
@@ -36,6 +35,7 @@
     { "file": "docker/frontend/Dockerfile", "sha256": "37c6b935987f7836328dbc9439ee60731ee1c93b9fa213ac78e9fc209c14720b", "review": "apk repositories are transitively fixed by digest-locked Alpine bases; any Dockerfile change requires an explicit lock review" },
     { "file": "gateway/Dockerfile", "sha256": "9ce5310bf5fb8d0f41450f7c01d44eda27da580e6488b53384103dd410e1b030","review": "apk repositories are transitively fixed by the digest-locked Node Alpine base; any Dockerfile change requires an explicit lock review" },
     { "file": "scripts/bitcoin-core-docker/Dockerfile", "sha256": "54ee66000aa25a1b76beef6fc522b550b92cfb8054bf2c74441350254d320687", "review": "apt repositories are transitively fixed by the digest-locked Debian base and Core source is separately checksum-verified; any Dockerfile change requires an explicit lock review" },
+    { "file": "docker/tor/Dockerfile", "sha256": "5ed4170a76ce8b3699c7a4b3b9a7d5c55447ae20dc32c16ea46dfefbd6964427", "review": "Tor client image: tor and tini come from the Alpine repositories selected by the digest-locked alpine:3.24 base, and the build refuses a Tor older than 0.4.8 so a stale repository cannot ship a client the Tor network rejects; any Dockerfile change requires an explicit lock review" },
     { "file": "server/Dockerfile", "sha256": "d106c227eaa9431aafacf2afff5029e2321ec210ed31bc5a791d5df83bbd5ed9", "review": "apk repositories are transitively fixed by digest-locked Node Alpine bases; any Dockerfile change requires an explicit lock review" },
     {"file": "docker/test/backend.Dockerfile", "sha256": "e2a5fe59e5ba12d3e6bfceb625de3b22c88600a07f88a3835ecc004460c248ec", "review": "Isolated backend test image uses the existing digest-locked Node Alpine base repositories for bash/git/OpenSSL and workspace native build prerequisites; no production image changes. Any Dockerfile change requires explicit lock review."}
   ]

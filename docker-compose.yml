@@ -239,6 +239,8 @@ services:
       SANCTUARY_RELEASE: ${SANCTUARY_RELEASE:?SANCTUARY_RELEASE is required}
       SANCTUARY_COMMIT: ${SANCTUARY_COMMIT:?SANCTUARY_COMMIT is required}
       SANCTUARY_OPERATION_RUN_ID: ${SANCTUARY_OPERATION_RUN_ID:?SANCTUARY_OPERATION_RUN_ID is required}
+      # Names the locally built Tor image (sanctuary-tor:<tag>) the admin Tor control creates.
+      SANCTUARY_IMAGE_TAG: ${SANCTUARY_IMAGE_TAG:-local}
 
       # Database with connection pool and timeout settings:
       # - connection_limit: max pool size (default 30, configurable via DB_POOL_SIZE)

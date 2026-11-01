@@ -1591,13 +1591,6 @@
       "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
     },
     {
-      "path": "server/src/utils/docker/tor.ts",
-      "resourceClass": "oci_image",
-      "operation": "create",
-      "disposition": "reference_only",
-      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
-    },
-    {
       "disposition": "reference_only",
       "operation": "mutate",
       "path": "server/src/worker/electrumManager/lockCoordination.ts",

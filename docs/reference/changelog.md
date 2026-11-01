@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-## [0.8.78] - 2026-10-31
+## [0.8.78] - 2026-11-01
 
 ### Changed
 
@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Tor: the optional Tor service (`./start.sh --with-tor`, SOCKS proxy and the Payjoin onion service) works again. Since late October 2026 the Tor network refuses Tor 0.4.3 ("missing protocols Desc=3 Microdesc=3"), and the third-party `dperson/torproxy` image Sanctuary used shipped exactly that version, so the Tor container exited with code 1 shortly after starting, on every release. Tor now runs from a repo-owned `sanctuary-tor` image (Alpine `tor` 0.4.9, digest-locked base; its build refuses a Tor older than 0.4.8) that `start.sh`, `install.sh` and the offline bundle build or ship like the other Sanctuary images. Tor runs unprivileged as the same uid the old image used, so existing onion keys are read as they are and the `.onion` address does not change. The admin "Tor container" control now creates the container from that locally built image instead of pulling from Docker Hub; on an install that never enabled Tor it asks you to run `./start.sh --with-tor` first.
+- Startup: on a fresh database the backend, worker and MCP seed the default feature flags at the same moment, and the backend could exit during startup with "Transaction failed due to a write conflict or a deadlock" (the container's restart policy usually recovered it). Seeding is now replayed after such a conflict, up to five attempts.
 - CPFP: a large low-fee parent can now be accelerated with an ordinary target fee rate. The target package fee rate is still capped at 1000 sat/vB, but the child's own rate may now exceed it, because the child pays the parent's shortfall, while it stays below 5000 sat/vB, the limit applied when a signed transaction is finalized, measured on the smallest size the signed child can have so that a signed child is never refused. For example, at a 50 sat/vB target a parent of up to about 9,500 vB can now be accelerated (before: about 2,100 vB); a larger one needs a lower target. This applies when the parent's size can be bounded from its authenticated data (single-sig and multisig inputs, Taproot key-path spends); a parent that spends a Taproot script path or an unknown witness version keeps the 1000 sat/vB child limit and says so. For those bounded input types, a parent served with a padded witness no longer inflates the child fee: the parent is priced at its largest valid size. A CPFP is now refused when its parent is already confirmed, both when it is created and when it is broadcast, and a child whose broadcast outcome is still being reconciled is never re-submitted once its parent is mined, so no child is sent for a mined parent. The CPFP draft opens in the send wizard ready to sign.
 - CI: Full Browser E2E now fails when a top-level browser spec is not assigned to a browser E2E group (`scripts/ci/browser-e2e-groups.sh`). Before, such a spec was skipped and its PR could merge green.
 - Drafts: a transaction that is already being broadcast can no longer be saved as a draft (409 `intent_broadcast_in_flight`), and when a broadcast is accepted every draft bound to the same signed transaction is archived, so a paid transaction no longer stays listed as an actionable draft. Drafts left by this problem before the upgrade are archived the next time their broadcast is retried, or expire as before.

@@ -26,9 +26,9 @@ describe("Tor Payjoin ingress", () => {
   it("routes the hidden service only through the dedicated ingress", () => {
     expect(compose).toContain("getent hosts tor-ingress");
     expect(compose).toContain(
-      '/usr/bin/torproxy.sh -s "80;$${ingress_ip}:8080"',
+      "printf 'HiddenServiceDir /var/lib/tor/hidden_service\\nHiddenServicePort 80 %s:8080\\n' \"$$ingress_ip\" >> /etc/tor/torrc",
     );
-    expect(compose).not.toMatch(/torproxy\.sh[^\n]*backend/);
+    expect(compose).not.toMatch(/HiddenServicePort[^\n]*backend/);
     expect(compose).not.toMatch(/getent hosts backend/);
     expect(compose).toContain(
       "- ${SANCTUARY_TOR_INGRESS_CONFIG:-./docker/tor/payjoin-ingress.conf}:/etc/nginx/templates/payjoin-ingress.conf.template:ro",
@@ -47,7 +47,7 @@ describe("Tor Payjoin ingress", () => {
     expect(ingress).toContain('return 413 "original-psbt-rejected";');
     expect(ingress).toContain("location / {");
     expect(compose).toContain("http://127.0.0.1:8081/health");
-    expect(compose).toContain('"80;$${ingress_ip}:8080"');
+    expect(compose).toContain("HiddenServicePort 80 %s:8080");
     expect(ingress).not.toContain("/status");
     expect(ingress).not.toContain("/attempt");
     expect(ingress).not.toContain("/parse-uri");
@@ -130,13 +130,11 @@ describe("Tor Payjoin ingress", () => {
       /<<'PAYJOIN_INGRESS_WATCH'\n([\s\S]*?)\nPAYJOIN_INGRESS_WATCH\n/,
     )?.[1];
     expect(watcher, "tor command must define the ingress watcher").toBeDefined();
-    // torproxy.sh will not start Tor while `ps` shows another process whose
-    // line contains "tor", so the watcher's command line must not.
+    // The watcher starts before Tor and waits until a process named tor exists.
     const launch = 'sh /tmp/payjoin-ingress-watch.sh "$ingress_ip" &';
     expect(script).toContain(launch);
-    expect(launch).not.toMatch(/tor/);
     expect(script.indexOf("payjoin-ingress-watch.sh \"$ingress_ip\" &")).toBeLessThan(
-      script.indexOf("exec /usr/bin/torproxy.sh"),
+      script.indexOf("exec tor -f /etc/tor/torrc"),
     );
 
     const dir = mkdtempSync(join(tmpdir(), "tor-ingress-watch-"));
@@ -203,9 +201,60 @@ describe("Tor Payjoin ingress", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  // 2026-10: the Tor network began refusing Tor 0.4.3 ("missing protocols
+  // Desc=3 Microdesc=3"), so the third-party image exited 1 on its first
+  // consensus and the optional-profiles upgrade lane failed. Tor now runs from a
+  // repo-owned image whose build refuses a Tor older than 0.4.8.
+  it("runs Tor from the repo-owned image that refuses an obsolete Tor", () => {
+    const tor = (parse(compose) as ComposeFile).services.tor;
+    const dockerfile = readRepositoryFile("docker/tor/Dockerfile");
+    const torrc = readRepositoryFile("docker/tor/torrc");
+
+    expect(tor.image).toBe("sanctuary-tor:${SANCTUARY_IMAGE_TAG:-local}");
+    expect(tor.pull_policy).toBe("never");
+    expect(tor.build?.dockerfile).toBe("docker/tor/Dockerfile");
+    expect(compose).not.toMatch(/dperson|torproxy/);
+    expect(dockerfile).toMatch(/^FROM alpine:[0-9.]+@sha256:[0-9a-f]{64}$/m);
+    expect(dockerfile).toContain("apk add --no-cache tor tini");
+    expect(dockerfile).toContain("v[2] == 4 && v[3] >= 8");
+    expect(dockerfile).toContain('ENTRYPOINT ["/sbin/tini", "--"]');
+    expect(torrc).toContain("SocksPort 0.0.0.0:9050 IsolateDestAddr");
+    expect(torrc).toContain("ExitPolicy reject *:*");
+    expect(torrc).not.toMatch(/HiddenService|^User /m);
+    // Tor runs unprivileged as uid 101, the uid the previous image wrote the
+    // onion keys with, so existing hidden-service volumes need no chown.
+    expect(dockerfile).toContain("s/^tor:x:100:101:/tor:x:101:101:/");
+    expect(dockerfile).toContain('test "$(id -u tor)" = 101');
+    expect(dockerfile).toContain("chown -R 101:101 /var/lib/tor /etc/tor");
+    expect(dockerfile).toContain("chmod 0700 /var/lib/tor /var/lib/tor/hidden_service");
+    expect(dockerfile).toMatch(/^USER 101:101$/m);
+    expect(dockerfile.indexOf("USER 101:101")).toBeLessThan(dockerfile.indexOf("ENTRYPOINT"));
+    expect(String(tor.command?.[2])).toContain(
+      "must be owned by uid 101 (it is $$(stat -c %u /var/lib/tor/hidden_service))",
+    );
+    expect(String(tor.command?.[2])).not.toContain("chown");
+  });
+
+  it("enforces the Tor version floor the Dockerfile declares", () => {
+    const dockerfile = readRepositoryFile("docker/tor/Dockerfile");
+    const check = dockerfile.match(/awk '([^']+)'/)?.[1];
+    expect(check, "Dockerfile must gate the Tor version with awk").toBeDefined();
+    const accepts = (version: string) =>
+      spawnSync("awk", [String(check)], { input: `Tor version ${version}.\n` }).status === 0;
+    expect(accepts("0.4.3.5")).toBe(false);
+    expect(accepts("0.4.7.16")).toBe(false);
+    expect(accepts("0.4.8.0")).toBe(true);
+    expect(accepts("0.4.9.15")).toBe(true);
+    expect(accepts("0.5.0.1")).toBe(true);
+    expect(accepts("1.0.0.0")).toBe(true);
+  });
 });
 
 type ComposeService = {
+  image?: string;
+  pull_policy?: string;
+  build?: { dockerfile?: string };
   command?: string[];
   entrypoint?: string[];
   environment?: Record<string, string>;

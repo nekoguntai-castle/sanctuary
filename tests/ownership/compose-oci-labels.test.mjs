@@ -25,6 +25,7 @@ const dockerfiles = [
   'llm-egress-proxy/Dockerfile',
   'docker/frontend/Dockerfile',
   'docker/grafana-migration/Dockerfile',
+  'docker/tor/Dockerfile',
 ];
 
 function composeConfig(...files) {

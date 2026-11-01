@@ -234,6 +234,7 @@ case "$1" in
         case "$service" in
           backend|migrate|frontend|gateway|llm-egress-proxy) built="sanctuary-$service" ;;
           grafana-password-migration) built="sanctuary-grafana-migration" ;;
+          tor) built="sanctuary-tor" ;;
           *) continue ;;
         esac
         printf '%s:%s\n' "$built" "${SANCTUARY_IMAGE_TAG:-local}" >> "$SANCTUARY_FAKE_IMAGE_STORE"
@@ -289,7 +290,7 @@ case "$1" in
       image_arch="${SANCTUARY_FAKE_IMAGE_ARCH:-amd64}"
       case "$image" in
         *@sha256:*) ;;
-        postgres:*|redis:*|tecnativa/*|jaegertracing/*|grafana/*|prom/*|dperson/*)
+        postgres:*|redis:*|tecnativa/*|jaegertracing/*|grafana/*|prom/*)
           image_id="${SANCTUARY_FAKE_RUNTIME_IMAGE_ID:-$image_id}"
           ;;
         sanctuary-*) image_id="$(sanctuary_image_id "$image")" ;;
@@ -357,7 +358,7 @@ case "$1" in
     # blobs/sha256/<hex> (Docker 25+). SANCTUARY_FAKE_SAVED_CONFIG overrides it.
     saved_id="$default_image_id"
     case "$saved_image" in
-      postgres:*|redis:*|tecnativa/*|jaegertracing/*|grafana/*|prom/*|dperson/*)
+      postgres:*|redis:*|tecnativa/*|jaegertracing/*|grafana/*|prom/*)
         saved_id="${SANCTUARY_FAKE_RUNTIME_IMAGE_ID:-$saved_id}"
         ;;
       sanctuary-*) saved_id="$(sanctuary_image_id "$saved_image")" ;;
@@ -1098,6 +1099,7 @@ test_create_bundle_build_under_lane_tag_bundles_local_refs() {
         || { echo "lane image $image:$lane was not aliased to $image:local" >&2; failures=1; }
       bucket="core"
       [ "$image" != sanctuary-grafana-migration ] || bucket="monitoring"
+      [ "$image" != sanctuary-tor ] || bucket="tor"
       saved_tags="$(tar -xOzf "$output" "./images/$bucket/$image-local.tar" \
         | tar -xO manifest.json | jq -c '[.[].RepoTags[]?]')" || failures=1
       [ "$saved_tags" = "[\"$image:local\"]" ] \

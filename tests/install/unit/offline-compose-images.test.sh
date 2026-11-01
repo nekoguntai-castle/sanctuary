@@ -81,7 +81,8 @@ test_online_compose_remains_digest_pinned() {
     && assert_image_line "$MONITORING_BASE" \
       'grafana/grafana:13.2.2@sha256:ac461fb352abc50da10a51c7d02462e9c05488f11f53f14b3ad79a8145f638a0' \
     && assert_image_line "$TOR_BASE" \
-      'dperson/torproxy:latest@sha256:d8b5f1cf24f1b7a0aa334929a264b2606a107223dd0d51eb1cda8aae6fbeec53'
+      'sanctuary-tor:${SANCTUARY_IMAGE_TAG:-local}' \
+    && ! grep -Fq 'dperson/torproxy' "$TOR_BASE"
 }
 
 test_core_offline_override_is_tag_only_and_core_only() {
@@ -107,7 +108,7 @@ test_monitoring_offline_override_cannot_materialize_other_profiles() {
 
 test_tor_offline_override_cannot_materialize_other_profiles() {
   assert_service_set "$TOR_OFFLINE" tor-ingress tor \
-    && assert_image_line "$TOR_OFFLINE" 'dperson/torproxy:latest' \
+    && assert_image_line "$TOR_OFFLINE" 'sanctuary-tor:local' \
     && ! grep -Fq '@sha256:' "$TOR_OFFLINE"
 }
 

@@ -409,6 +409,18 @@ ensure_grafana_migration_image() {
     docker compose "${COMPOSE_FILE_ARGS[@]}" build grafana-password-migration
 }
 
+ensure_tor_image() {
+    local image="sanctuary-tor:${SANCTUARY_IMAGE_TAG:-local}"
+    docker image inspect "$image" >/dev/null 2>&1 && return 0
+    if [ "$IS_OFFLINE_INSTALL" = true ]; then
+        echo "Error: packaged Tor image is missing on an offline install." >&2
+        echo "Apply the official full offline bundle before starting Tor." >&2
+        exit 1
+    fi
+    echo "Tor image not found - building..."
+    docker compose "${COMPOSE_FILE_ARGS[@]}" build tor
+}
+
 # Idempotent: re-running it leaves an already-running postgres untouched.
 start_postgres_service() {
     local profiles="$1"
@@ -437,6 +449,9 @@ start_compose_stack() {
 
         if docker compose "${COMPOSE_FILE_ARGS[@]}" config --services | grep -qx grafana; then
             ensure_grafana_migration_image
+        fi
+        if docker compose "${COMPOSE_FILE_ARGS[@]}" config --services | grep -qx tor; then
+            ensure_tor_image
         fi
         deployment_transition build_completed
     fi

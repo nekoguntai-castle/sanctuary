@@ -544,13 +544,11 @@ function coordinatorCreationIsScoped(relativePath, statements, resourceClass, so
   return true;
 }
 
+// tor.ts creates only the Tor container; its image is built locally and never
+// pulled, so an image pull reappearing there is not an application boundary.
 function hasTorApplicationBoundary(source, resourceClass) {
-  if (resourceClass === 'compose_container') {
-    return /currentTorOwnership/.test(source) && /inspectHasCreatedIdentity/.test(source);
-  }
-  return resourceClass === 'oci_image'
-    && /currentTorOwnership/.test(source) && /drainDockerPull/.test(source)
-    && /TOR_DIGEST/.test(source);
+  return resourceClass === 'compose_container'
+    && /currentTorOwnership/.test(source) && /inspectHasCreatedIdentity/.test(source);
 }
 
 function specializedApplicationBoundary(relativePath, source, resourceClass) {

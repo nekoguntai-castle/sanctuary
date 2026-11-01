@@ -197,6 +197,18 @@ build_sanctuary_images() {
       docker compose -f "$OFFLINE_REPO_ROOT/docker-compose.yml" \
         -f "$OFFLINE_REPO_ROOT/docker/compose/monitoring.yml" build \
         grafana-password-migration
+    DOCKER_DEFAULT_PLATFORM="$PLATFORM" \
+      POSTGRES_PASSWORD="offline-build-postgres-password" \
+      REDIS_PASSWORD="offline-build-redis-password" \
+      JWT_SECRET="offline-build-jwt-secret-not-for-runtime" \
+      ENCRYPTION_KEY="offline-build-encryption-key-not-for-runtime" \
+      ENCRYPTION_SALT="offline-build-encryption-salt" \
+      WORKER_DIAGNOSTICS_SECRET="0000000000000000000000000000000000000000000000000000000000000000" \
+      LLM_EGRESS_PROXY_SECRET="0000000000000000000000000000000000000000000000000000000000000000" \
+      SANCTUARY_IMAGE_TAG="$SOURCE_IMAGE_TAG" \
+      docker compose -f "$OFFLINE_REPO_ROOT/docker-compose.yml" \
+        -f "$OFFLINE_REPO_ROOT/docker/compose/tor.yml" build \
+        tor
   fi
 }
 
@@ -371,7 +383,7 @@ save_images() {
       jaegertracing/*|grafana/*|prom/*)
         bucket="monitoring"
         ;;
-      dperson/torproxy:*)
+      sanctuary-tor:*)
         bucket="tor"
         ;;
     esac

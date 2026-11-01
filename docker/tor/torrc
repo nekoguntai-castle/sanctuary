@@ -1,0 +1,7 @@
+# Sanctuary Tor client: a SOCKS5 proxy for outbound Electrum connections.
+# docker/compose/tor.yml appends the Payjoin hidden service at startup.
+SocksPort 0.0.0.0:9050 IsolateDestAddr
+DataDirectory /var/lib/tor
+ExitPolicy reject *:*
+Log notice stderr
+RunAsDaemon 0

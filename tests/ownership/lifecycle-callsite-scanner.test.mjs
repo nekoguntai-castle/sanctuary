@@ -654,9 +654,11 @@ await fetch(\`${'${DOCKER_PROXY_URL}'}/images/create?fromImage=${'${TOR_REPOSITO
 await drainDockerPull(response);
 `,
   });
+  // The Tor image is built locally (docker/tor/Dockerfile); a registry pull
+  // reappearing in tor.ts is not an application boundary and must be reviewed.
   assert.deepEqual(scanLifecycleCallsites(torImage).findings, [{
     path: 'server/src/utils/docker/tor.ts', resourceClass: 'oci_image', operation: 'create',
-    mechanism: 'application_api',
+    mechanism: 'producer',
   }]);
 
   const torCleanupBypass = fixture({

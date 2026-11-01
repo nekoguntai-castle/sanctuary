@@ -56,7 +56,9 @@ is_root_vitest_input_file() {
     docker/nginx/default-ssl.conf.template|\
     docker/nginx/default.conf.template|\
     docker/nginx/docker-entrypoint.sh|\
+    docker/tor/Dockerfile|\
     docker/tor/payjoin-ingress.conf|\
+    docker/tor/torrc|\
     docs/architecture/containers.md|\
     docs/site/package-lock.json|\
     docs/site/package.json|\

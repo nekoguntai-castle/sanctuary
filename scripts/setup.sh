@@ -1020,7 +1020,7 @@ required_runtime_images() {
     fi
 
     if [ "$OPT_ENABLE_TOR" = "yes" ]; then
-        required_images+=("dperson/torproxy:latest@sha256:d8b5f1cf24f1b7a0aa334929a264b2606a107223dd0d51eb1cda8aae6fbeec53")
+        required_images+=("sanctuary-tor:${SANCTUARY_IMAGE_TAG:-local}")
     fi
 
     printf '%s\n' "${required_images[@]}"

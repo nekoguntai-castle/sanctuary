@@ -83,7 +83,7 @@ try {
   for (const image of expectedImages) {
     const bucket = image.startsWith('sanctuary-grafana-migration:') || /^(jaegertracing|grafana|prom)\//.test(image)
       ? 'monitoring'
-      : image.startsWith('dperson/torproxy:') ? 'tor' : 'core';
+      : image.startsWith('sanctuary-tor:') ? 'tor' : 'core';
     const archiveRef = image.includes('@sha256:') ? image.slice(0, image.indexOf('@sha256:')) : image;
     writeImageArchive(path.join(bundleStage, 'images', bucket, `${image.replace(/[^A-Za-z0-9._-]/g, '-')}.tar`), archiveRef);
   }
@@ -92,7 +92,7 @@ try {
   const imageFiles = expectedImages.map((image) => {
     const bucket = image.startsWith('sanctuary-grafana-migration:') || /^(jaegertracing|grafana|prom)\//.test(image)
       ? 'monitoring'
-      : image.startsWith('dperson/torproxy:') ? 'tor' : 'core';
+      : image.startsWith('sanctuary-tor:') ? 'tor' : 'core';
     return `images/${bucket}/${image.replace(/[^A-Za-z0-9._-]/g, '-')}.tar`;
   });
   const checksumFiles = ['payload.txt', 'manifest.env', 'manifest.json', 'image-inventory.json', 'image-inventory.tsv', 'repo/sanctuary.git.bundle', ...imageFiles];

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createTorContainer,
   mockFetch,
@@ -18,6 +18,18 @@ const EARLIER_RUN_LABELS = {
 
 export function registerDockerTorCreateContracts(): void {
   describe("createTorContainer", () => {
+    // CI exports a lane SANCTUARY_IMAGE_TAG; these contracts start from the
+    // default tag and set one explicitly where they need it.
+    let callerImageTag: string | undefined;
+    beforeEach(() => {
+      callerImageTag = process.env.SANCTUARY_IMAGE_TAG;
+      delete process.env.SANCTUARY_IMAGE_TAG;
+    });
+    afterEach(() => {
+      if (callerImageTag === undefined) delete process.env.SANCTUARY_IMAGE_TAG;
+      else process.env.SANCTUARY_IMAGE_TAG = callerImageTag;
+    });
+
     it("should return success if already running", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -59,10 +71,10 @@ export function registerDockerTorCreateContracts(): void {
         json: async () => [],
       });
 
-      // Pull image
+      // Local image check
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        text: async () => "Done",
+        text: async () => "{}",
       });
 
       // Create container
@@ -85,169 +97,116 @@ export function registerDockerTorCreateContracts(): void {
 
       expect(result.success).toBe(true);
       expect(result.message).toContain("created and started");
-      const pullCall = mockFetch.mock.calls.find(
-        (call) =>
-          typeof call[0] === "string" && call[0].includes("/images/create"),
+      const imageCall = mockFetch.mock.calls.find(
+        (call) => typeof call[0] === "string" && call[0].includes("/images/"),
       );
       const createCall = mockFetch.mock.calls.find(
         (call) =>
           typeof call[0] === "string" && call[0].includes("/containers/create"),
       );
-      if (!pullCall || !createCall)
-        throw new Error("Tor image pull/create requests were not issued");
-      const pullUrl = new URL(pullCall[0] as string);
-      expect(pullUrl.searchParams.get("fromImage")).toBe("dperson/torproxy");
-      expect(pullUrl.searchParams.get("tag")).toBe(
-        "sha256:d8b5f1cf24f1b7a0aa334929a264b2606a107223dd0d51eb1cda8aae6fbeec53",
-      );
-      expect(pullCall[1]?.signal).toBeInstanceOf(AbortSignal);
-      expect(JSON.parse(String(createCall[1]?.body))).toMatchObject({
-        Image:
-          "dperson/torproxy@sha256:d8b5f1cf24f1b7a0aa334929a264b2606a107223dd0d51eb1cda8aae6fbeec53",
+      if (!imageCall || !createCall)
+        throw new Error("Tor image check/create requests were not issued");
+      // The repo-owned image is built locally; nothing is pulled from a registry.
+      expect(imageCall[0]).toContain("/images/sanctuary-tor%3Alocal/json");
+      expect(imageCall[1]?.method).toBe("GET");
+      expect(imageCall[1]?.signal).toBeInstanceOf(AbortSignal);
+      expect(
+        mockFetch.mock.calls.some(
+          (call) => typeof call[0] === "string" && call[0].includes("/images/create"),
+        ),
+      ).toBe(false);
+      const body = JSON.parse(String(createCall[1]?.body));
+      expect(body).toMatchObject({
+        Image: "sanctuary-tor:local",
         Labels: TOR_OWNERSHIP_LABELS,
       });
+      expect(body.Env).toBeUndefined();
       expect(createCall[0]).toContain("name=sanctuary-tor");
       expect(mockFetch.mock.calls.at(-1)?.[0]).toContain(
         `/containers/${TOR_ID}/start`,
       );
     });
 
-    it("fails when Docker reports a pull error inside an HTTP-200 stream", async () => {
+    it("refuses to create Tor when the local image has not been built", async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => [] });
-      const body = new ReadableStream({
-        start(controller) {
-          controller.enqueue(
-            new TextEncoder().encode('{"status":"pulling"}\n'),
-          );
-          controller.enqueue(
-            new TextEncoder().encode(
-              '{"errorDetail":{"message":"digest unavailable"}}\n',
-            ),
-          );
-          controller.close();
-        },
-      });
-      mockFetch.mockResolvedValueOnce({ ok: true, body });
-
-      const result = await createTorContainer();
-
-      expect(result).toEqual({
-        success: false,
-        message: "Failed to pull Tor image: digest unavailable",
-      });
-    });
-
-    it("uses the top-level error when error details omit a message", async () => {
-      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => [] });
-      const body = new ReadableStream({
-        start(controller) {
-          controller.enqueue(
-            new TextEncoder().encode(
-              '{"errorDetail":{},"error":"fallback pull error"}\n',
-            ),
-          );
-        },
-      });
-      mockFetch.mockResolvedValueOnce({ ok: true, body });
-
-      const result = await createTorContainer();
-
-      expect(result.message).toContain("fallback pull error");
-    });
-
-    it("fails on an HTTP-200 pull error without a streamed body", async () => {
-      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => [] });
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        body: null,
-        text: async () => '{"error":"registry rejected digest"}',
-      });
-
-      const result = await createTorContainer();
-
-      expect(result.message).toContain("registry rejected digest");
-    });
-
-    it("fails on a trailing pull error without a newline", async () => {
-      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => [] });
-      const body = new ReadableStream({
-        start(controller) {
-          controller.enqueue(
-            new TextEncoder().encode('{"error":"trailing failure"}'),
-          );
-          controller.close();
-        },
-      });
-      mockFetch.mockResolvedValueOnce({ ok: true, body });
-
-      const result = await createTorContainer();
-
-      expect(result.message).toContain("trailing failure");
-    });
-
-    it("accepts a clean streamed pull response", async () => {
-      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => [] });
-      const body = new ReadableStream({
-        start(controller) {
-          controller.enqueue(
-            new TextEncoder().encode('{"status":"complete"}\n'),
-          );
-          controller.close();
-        },
-      });
-      mockFetch.mockResolvedValueOnce({ ok: true, body });
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ Id: TOR_ID }),
-      });
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ownedTorInspect(),
-      });
-      mockFetch.mockResolvedValueOnce({ status: 204 });
-
-      const result = await createTorContainer();
-
-      expect(result.success).toBe(true);
-    });
-
-    it("cancels an oversized Docker progress event", async () => {
-      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => [] });
-      const body = new ReadableStream({
-        start(controller) {
-          controller.enqueue(new TextEncoder().encode("x".repeat(4_097)));
-        },
-      });
-      mockFetch.mockResolvedValueOnce({ ok: true, body });
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 404, text: async () => "" });
 
       const result = await createTorContainer();
 
       expect(result).toEqual({
         success: false,
         message:
-          "Failed to pull Tor image: Docker pull response contained an oversized progress event",
+          "Tor image sanctuary-tor:local is not built; run ./start.sh --with-tor to build and start Tor",
       });
+      expect(
+        mockFetch.mock.calls.some(
+          (call) => typeof call[0] === "string" && call[0].includes("/containers/create"),
+        ),
+      ).toBe(false);
     });
 
-    it("should handle tor image pull failure", async () => {
-      // Status check
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => [],
-      });
-
-      // Pull image fails
+    it("reports a failed image check with Docker's bounded error text", async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => [] });
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 500,
-        text: async () => "cannot pull tor image",
+        text: async () => "x".repeat(5_000),
       });
 
       const result = await createTorContainer();
 
       expect(result.success).toBe(false);
-      expect(result.message).toContain("Failed to pull Tor image");
+      expect(result.message).toBe(
+        `Failed to check Tor image sanctuary-tor:local: ${"x".repeat(4_096)}`,
+      );
+    });
+
+    it("falls back to the status when a failed image check has no body", async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => [] });
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 503, text: async () => "" });
+
+      const result = await createTorContainer();
+
+      expect(result.message).toBe("Failed to check Tor image sanctuary-tor:local: status 503");
+    });
+
+    it("reports a Docker proxy that cannot answer the image check", async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => [] });
+      mockFetch.mockRejectedValueOnce(new Error("proxy unreachable"));
+
+      const result = await createTorContainer();
+
+      expect(result).toEqual({ success: false, message: "proxy unreachable" });
+    });
+
+    it("uses this deployment's image tag and rejects an unsafe one", async () => {
+      process.env.SANCTUARY_IMAGE_TAG = "rc078rc1";
+      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => [] });
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 404, text: async () => "" });
+      const tagged = await createTorContainer();
+      expect(tagged.message).toContain("sanctuary-tor:rc078rc1 is not built");
+      expect(String(mockFetch.mock.calls.at(-1)?.[0])).toContain(
+        "/images/sanctuary-tor%3Arc078rc1/json",
+      );
+
+      process.env.SANCTUARY_IMAGE_TAG = "   ";
+      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => [] });
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 404, text: async () => "" });
+      const blank = await createTorContainer();
+      expect(blank.message).toContain("sanctuary-tor:local is not built");
+
+      process.env.SANCTUARY_IMAGE_TAG = `a${"b".repeat(127)}`;
+      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => [] });
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 404, text: async () => "" });
+      const longest = await createTorContainer();
+      expect(longest.message).toContain(`sanctuary-tor:a${"b".repeat(127)} is not built`);
+
+      for (const unsafeTag of ["../evil", `a${"b".repeat(128)}`]) {
+        process.env.SANCTUARY_IMAGE_TAG = unsafeTag;
+        mockFetch.mockResolvedValueOnce({ ok: true, json: async () => [] });
+        const unsafe = await createTorContainer();
+        expect(unsafe).toEqual({ success: false, message: "SANCTUARY_IMAGE_TAG is invalid" });
+      }
     });
 
     it("does not derive Tor ownership from another project's container name", async () => {
@@ -263,10 +222,10 @@ export function registerDockerTorCreateContracts(): void {
         ],
       });
 
-      // Pull image
+      // Local image check
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        text: async () => "Done",
+        text: async () => "{}",
       });
 
       // Create
@@ -310,10 +269,10 @@ export function registerDockerTorCreateContracts(): void {
         ],
       });
 
-      // Pull image
+      // Local image check
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        text: async () => "Done",
+        text: async () => "{}",
       });
 
       // Create
@@ -663,10 +622,10 @@ export function registerDockerTorCreateContracts(): void {
         json: async () => [],
       });
 
-      // Pull image
+      // Local image check
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        text: async () => "Done",
+        text: async () => "{}",
       });
 
       // Create fails
@@ -690,10 +649,10 @@ export function registerDockerTorCreateContracts(): void {
         json: async () => [],
       });
 
-      // Pull image
+      // Local image check
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        text: async () => "Done",
+        text: async () => "{}",
       });
 
       // Create

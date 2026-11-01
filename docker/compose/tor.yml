@@ -89,7 +89,18 @@ services:
 
   tor:
     labels: *sanctuary-container-ownership
-    image: dperson/torproxy:latest@sha256:d8b5f1cf24f1b7a0aa334929a264b2606a107223dd0d51eb1cda8aae6fbeec53
+    # Repo-owned Tor client (docker/tor/Dockerfile). The previous third-party
+    # image shipped Tor 0.4.3, which the Tor network now refuses.
+    image: sanctuary-tor:${SANCTUARY_IMAGE_TAG:-local}
+    pull_policy: never # Built locally (start.sh builds it when missing)
+    build:
+      context: ${SANCTUARY_PROJECT_DIR:-.}
+      dockerfile: docker/tor/Dockerfile
+      args:
+        SANCTUARY_SOURCE_COMMIT: ${SANCTUARY_SOURCE_COMMIT:?SANCTUARY_SOURCE_COMMIT is required}
+        SANCTUARY_IMAGE_LOCK_SHA256: ${SANCTUARY_IMAGE_LOCK_SHA256:?SANCTUARY_IMAGE_LOCK_SHA256 is required}
+        SANCTUARY_BUILD_VERSION: ${SANCTUARY_VERSION:?SANCTUARY_VERSION is required}
+        SANCTUARY_BUILD_ID: ${SANCTUARY_BUILD_ID:?SANCTUARY_BUILD_ID is required}
     container_name: ${TOR_CONTAINER_NAME:-sanctuary-tor}
     restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
     networks:
@@ -97,27 +108,25 @@ services:
     depends_on:
       tor-ingress:
         condition: service_healthy
-    environment:
-      # Disable exit node functionality - we only need SOCKS proxy + hidden service
-      LOCATION: ""
     # Hidden service: map onion port 80 to the Payjoin-only ingress. Tor takes
     # an IP, not a name, so the ingress is resolved here. The watcher re-resolves
     # it and reloads Tor (SIGHUP) when tor-ingress is recreated with a new IP;
     # the hidden-service keys and the .onion address are unchanged by a reload.
-    # torproxy.sh refuses to start when `ps` shows any other process named
-    # like tor, so the watcher runs from a file whose command line does not,
-    # and it resolves nothing until a process named tor exists. The image runs
-    # /sbin/tini as PID 1 with Tor as its child, so the watcher finds Tor's PID
-    # by scanning /proc/<pid>/comm on every check, and exits once Tor is gone.
+    # The watcher resolves nothing until a process named tor exists. The image
+    # runs /sbin/tini as PID 1 with Tor as its child, so the watcher finds Tor's
+    # PID by scanning /proc/<pid>/comm on every check, and exits once Tor is gone.
+    # The image runs Tor as uid 101, the uid the previous image wrote the onion
+    # keys with, so existing hidden-service volumes are used as they are.
     command:
       - sh
       - -c
       - |
         set -eu
         mkdir -p /var/lib/tor/hidden_service
-        chown tor:tor /var/lib/tor/hidden_service 2>/dev/null || true
-        chmod 700 /var/lib/tor/hidden_service
-        sed -i '/^StrictNodes /d; /^ExitNodes /d' /etc/tor/torrc
+        chmod 700 /var/lib/tor/hidden_service 2>/dev/null || {
+          echo "Tor hidden-service directory /var/lib/tor/hidden_service must be owned by uid 101 (it is $$(stat -c %u /var/lib/tor/hidden_service)); fix the tor_hidden_service volume's owner" >&2
+          exit 1
+        }
         cat > /tmp/payjoin-ingress-watch.sh <<'PAYJOIN_INGRESS_WATCH'
         current="$$1"
         torrc="$${PAYJOIN_INGRESS_TORRC:-/etc/tor/torrc}"
@@ -150,8 +159,10 @@ services:
         for _ in 1 2 3 4 5 6 7 8 9 10; do
           ingress_ip="$$(getent hosts tor-ingress 2>/dev/null | awk '{print $$1; exit}' || true)"
           if [ -n "$$ingress_ip" ]; then
+            sed -i '/^HiddenServiceDir /d; /^HiddenServicePort /d' /etc/tor/torrc
+            printf 'HiddenServiceDir /var/lib/tor/hidden_service\nHiddenServicePort 80 %s:8080\n' "$$ingress_ip" >> /etc/tor/torrc
             sh /tmp/payjoin-ingress-watch.sh "$$ingress_ip" &
-            exec /usr/bin/torproxy.sh -s "80;$${ingress_ip}:8080"
+            exec tor -f /etc/tor/torrc
           fi
           sleep 2
         done

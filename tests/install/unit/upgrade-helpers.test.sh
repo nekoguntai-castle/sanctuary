@@ -626,17 +626,23 @@ test_monitoring_fixture_optional_port_blocks_do_not_overlap() {
 test_optional_owned_source_canary_fixture_contract() {
   local failures=0 registration_args
   local UPGRADE_ENABLE_MONITORING=no
+  local UPGRADE_ENABLE_TOR=no
   local -a COMPOSE_REGISTRATION_ARGS=()
 
   upgrade_compose_registration_args
   registration_args="$(printf '%s\n' "${COMPOSE_REGISTRATION_ARGS[@]}")"
   assert_not_contains "$registration_args" "sanctuary-grafana-migration" \
     "baseline image contract should exclude the monitoring migration image" || failures=1
+  assert_not_contains "$registration_args" "sanctuary-tor" \
+    "baseline image contract should exclude the Tor image" || failures=1
   UPGRADE_ENABLE_MONITORING=yes
+  UPGRADE_ENABLE_TOR=yes
   upgrade_compose_registration_args
   registration_args="$(printf '%s\n' "${COMPOSE_REGISTRATION_ARGS[@]}")"
   assert_contains "$registration_args" "sanctuary-grafana-migration" \
     "monitoring image contract should include the Grafana migration image" || failures=1
+  assert_contains "$registration_args" "sanctuary-tor" \
+    "Tor image contract should include the repo-owned Tor image" || failures=1
 
   assert_equals "36" "$(upgrade_extended_fixture_port_offset optional-owned-source)" \
     "canary fixture should resolve a stable dedicated port offset" || failures=1
@@ -959,7 +965,7 @@ services:
     command:
       - sh
       - -c
-      - /usr/bin/torproxy.sh -s "80;$${ingress_ip}:8080"
+      - exec tor -f /etc/tor/torrc
 EOF
 
   UPGRADE_EXPECT_OPTIONAL_PROFILES="true"
@@ -970,7 +976,7 @@ EOF
   local contents
   contents="$(cat "$source_tor_compose")"
 
-  assert_contains "$contents" '/usr/bin/torproxy.sh -s "80;$${ingress_ip}:8080"' \
+  assert_contains "$contents" 'exec tor -f /etc/tor/torrc' \
     "legacy Tor compose should be replaced with the target trusted-ingress overlay"
   assert_not_contains "$contents" 'command: -l ' \
     "legacy Tor compose should not keep the invalid hidden service command"
@@ -1008,20 +1014,76 @@ EOF
   fi
 }
 
+test_legacy_source_tor_runs_offline_with_key_health() {
+  local legacy="$TEST_TMP_DIR/legacy-source-tor.yml"
+  local target="$TEST_TMP_DIR/target-tor.yml"
+  local odd="$TEST_TMP_DIR/odd-legacy-tor.yml"
+  local contents
+
+  cat > "$legacy" <<'LEGACY_TOR'
+services:
+  tor:
+    image: dperson/torproxy:latest@sha256:d8b5f1cf24f1b7a0aa334929a264b2606a107223dd0d51eb1cda8aae6fbeec53
+    command:
+      - sh
+      - -c
+      - |
+        for _ in 1 2; do
+          if [ -n "$$ingress_ip" ]; then
+            exec /usr/bin/torproxy.sh -s "80;$${ingress_ip}:8080"
+          fi
+        done
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 9050 || exit 1"]
+LEGACY_TOR
+  cp "$PROJECT_ROOT/docker/compose/tor.yml" "$target"
+
+  offline_legacy_source_tor "$legacy" || return 1
+  offline_legacy_source_tor "$legacy" || return 1
+  contents="$(cat "$legacy")"
+  assert_contains "$contents" '            echo "DisableNetwork 1" >> /etc/tor/torrc
+            exec /usr/bin/torproxy.sh' \
+    "legacy source Tor should stay off the network that now refuses it" || return 1
+  if [ "$(grep -c 'DisableNetwork 1' "$legacy")" != 1 ]; then
+    echo -e "${RED}ASSERTION FAILED:${NC} the legacy Tor patch should be idempotent"
+    return 1
+  fi
+  assert_contains "$contents" '"test -s /var/lib/tor/hidden_service/hostname || exit 1"' \
+    "legacy source Tor health should prove the onion keys exist" || return 1
+  assert_not_contains "$contents" 'nc -z 127.0.0.1 9050' \
+    "a network-disabled Tor never opens the SOCKS port" || return 1
+
+  offline_legacy_source_tor "$target" || return 1
+  cmp -s "$target" "$PROJECT_ROOT/docker/compose/tor.yml" || {
+    echo -e "${RED}ASSERTION FAILED:${NC} the target Tor overlay must not be patched"
+    return 1
+  }
+
+  printf 'services:\n  tor:\n    image: dperson/torproxy:latest\n' > "$odd"
+  if offline_legacy_source_tor "$odd" 2>/dev/null; then
+    echo -e "${RED}ASSERTION FAILED:${NC} an unrecognised legacy Tor shape must fail closed"
+    return 1
+  fi
+}
+
 test_tor_compose_uses_supported_hidden_service_config() {
   local contents
   contents="$(cat "$PROJECT_ROOT/docker/compose/tor.yml")"
 
-  assert_contains "$contents" "sed -i '/^StrictNodes /d; /^ExitNodes /d'" \
-    "Tor compose should clear stale exit-node options before configuring hidden service"
+  assert_contains "$contents" "image: sanctuary-tor:\${SANCTUARY_IMAGE_TAG:-local}" \
+    "Tor compose should run the repo-owned Tor image"
+  assert_not_contains "$contents" 'dperson/torproxy' \
+    "Tor compose should not run the obsolete third-party Tor image"
   assert_contains "$contents" "mkdir -p /var/lib/tor/hidden_service" \
     "Tor compose should create the hidden-service directory before startup"
   assert_contains "$contents" "chmod 700 /var/lib/tor/hidden_service" \
     "Tor compose should apply Tor-compatible hidden-service directory permissions"
   assert_contains "$contents" 'getent hosts tor-ingress' \
     "Tor compose should resolve the trusted ingress before configuring the hidden service"
-  assert_contains "$contents" '/usr/bin/torproxy.sh -s "80;$${ingress_ip}:8080"' \
-    "Tor compose should use torproxy hidden-service option with the trusted ingress"
+  assert_contains "$contents" "HiddenServicePort 80 %s:8080" \
+    "Tor compose should map the hidden service to the trusted ingress"
+  assert_not_contains "$contents" "chown" \
+    "the unprivileged Tor image reads older hidden-service keys without a chown"
   assert_not_contains "$contents" 'getent hosts backend' \
     "Tor compose should never expose the backend directly"
   assert_contains "$contents" 'nc -z 127.0.0.1 9050' \
@@ -3156,6 +3218,7 @@ main() {
   run_test "legacy optional profile compose can use target tor overlay" test_legacy_optional_profile_compose_can_use_target_tor_overlay
   run_test "legacy optional profile compose requires target tor ingress" test_legacy_optional_profile_compose_requires_target_tor_ingress
   run_test "tor compose uses supported hidden service config" test_tor_compose_uses_supported_hidden_service_config
+  run_test "legacy source Tor runs offline with key health" test_legacy_source_tor_runs_offline_with_key_health
   run_test "MCP healthcheck uses IPv4 loopback" test_mcp_healthcheck_uses_ipv4_loopback
   run_test "current compose builds shared backend image once" test_current_compose_builds_shared_backend_image_once
   run_test "upgrade harness sources extracted helpers" test_upgrade_harness_sources_extracted_helpers

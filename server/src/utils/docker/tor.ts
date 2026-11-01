@@ -16,12 +16,10 @@ import type {
 } from "./types";
 
 const log = createLogger("UTIL:DOCKER_TOR");
-const TOR_REPOSITORY = "dperson/torproxy";
-// Reviewed `latest` image identity; rotate only through container-image-lock review.
-const TOR_DIGEST =
-  "sha256:d8b5f1cf24f1b7a0aa334929a264b2606a107223dd0d51eb1cda8aae6fbeec53";
-const TOR_IMAGE = `${TOR_REPOSITORY}@${TOR_DIGEST}`;
-const DOCKER_PULL_TIMEOUT_MS = 120_000;
+// The repo-owned Tor image (docker/tor/Dockerfile) is built locally by
+// `./start.sh --with-tor`; it is never pulled from a registry.
+const TOR_IMAGE_REPOSITORY = "sanctuary-tor";
+const IMAGE_TAG = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/;
 const DOCKER_ACTION_TIMEOUT_MS = 15_000;
 const MAX_DOCKER_ERROR_LENGTH = 4_096;
 
@@ -125,62 +123,29 @@ function summaryHasExactIdentity(
   );
 }
 
-interface DockerPullEvent {
-  error?: unknown;
-  errorDetail?: unknown;
+/** The local Tor image for this deployment's image tag (start.sh's SANCTUARY_IMAGE_TAG). */
+function currentTorImage(): string {
+  const tag = process.env.SANCTUARY_IMAGE_TAG?.trim() || "local";
+  if (!IMAGE_TAG.test(tag)) throw new Error("SANCTUARY_IMAGE_TAG is invalid");
+  return `${TOR_IMAGE_REPOSITORY}:${tag}`;
 }
 
-const parseDockerPullEvent = (line: string): DockerPullEvent | null => {
-  try {
-    return JSON.parse(line) as DockerPullEvent;
-  } catch {
-    return null;
+/** Null when the image is present locally, otherwise the reason it cannot be used. */
+async function missingTorImage(image: string): Promise<string | null> {
+  const response = await fetch(
+    `${DOCKER_PROXY_URL}/images/${encodeURIComponent(image)}/json`,
+    {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(DOCKER_ACTION_TIMEOUT_MS),
+    },
+  );
+  if (response.ok) return null;
+  if (response.status === 404) {
+    return `Tor image ${image} is not built; run ./start.sh --with-tor to build and start Tor`;
   }
-};
-
-const nonEmptyString = (value: unknown): string | null => {
-  return typeof value === "string" && value.length > 0 ? value : null;
-};
-
-const dockerPullError = (line: string): string | null => {
-  const event = parseDockerPullEvent(line);
-  if (!event) return null;
-  if (event.errorDetail && typeof event.errorDetail === "object") {
-    const detail = event.errorDetail as { message?: unknown };
-    const detailMessage = nonEmptyString(detail.message);
-    if (detailMessage) return detailMessage;
-  }
-  return nonEmptyString(event.error);
-};
-
-async function drainDockerPull(response: Response): Promise<string | null> {
-  if (!response.body) {
-    return dockerPullError(await response.text());
-  }
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let pending = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    pending += decoder.decode(value, { stream: !done });
-    if (pending.length > MAX_DOCKER_ERROR_LENGTH && !pending.includes("\n")) {
-      await reader.cancel();
-      return "Docker pull response contained an oversized progress event";
-    }
-    const lines = pending.split("\n");
-    pending = lines.pop()!;
-    for (const line of lines) {
-      const error = dockerPullError(line);
-      if (error) {
-        await reader.cancel();
-        return error.slice(0, MAX_DOCKER_ERROR_LENGTH);
-      }
-    }
-    if (done) {
-      const finalError = dockerPullError(pending);
-      return finalError ? finalError.slice(0, MAX_DOCKER_ERROR_LENGTH) : null;
-    }
-  }
+  const errorText = (await response.text()).slice(0, MAX_DOCKER_ERROR_LENGTH);
+  return `Failed to check Tor image ${image}: ${errorText || `status ${response.status}`}`;
 }
 
 /**
@@ -431,49 +396,19 @@ export async function createTorContainer(): Promise<ContainerActionResult> {
 
     log.info("Creating Tor container...");
 
-    // First, pull the image
-    const pullResponse = await fetch(
-      `${DOCKER_PROXY_URL}/images/create?fromImage=${encodeURIComponent(TOR_REPOSITORY)}&tag=${encodeURIComponent(TOR_DIGEST)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: AbortSignal.timeout(DOCKER_PULL_TIMEOUT_MS),
-      },
-    );
-
-    if (!pullResponse.ok) {
-      const errorText = (await pullResponse.text()).slice(
-        0,
-        MAX_DOCKER_ERROR_LENGTH,
-      );
-      log.warn("Failed to pull Tor image", {
-        status: pullResponse.status,
-        error: errorText,
-      });
-      return {
-        success: false,
-        message: `Failed to pull Tor image: ${errorText}`,
-      };
+    const torImage = currentTorImage();
+    const imageProblem = await missingTorImage(torImage);
+    if (imageProblem) {
+      log.warn("Tor image unavailable", { error: imageProblem });
+      return { success: false, message: imageProblem };
     }
-
-    // Docker reports registry failures inside an HTTP-200 JSON progress stream.
-    const pullError = await drainDockerPull(pullResponse);
-    if (pullError) {
-      log.warn("Failed to pull Tor image", { error: pullError });
-      return {
-        success: false,
-        message: `Failed to pull Tor image: ${pullError}`,
-      };
-    }
-    log.info("Tor image pulled successfully");
 
     // Get the network name (Docker Compose format: {project}_{network-name})
     const networkName = `${ownership.project}_sanctuary-network`;
 
     // Create the container with network alias so it's resolvable as 'tor'
     const containerConfig = {
-      Image: TOR_IMAGE,
-      Env: ["LOCATION="],
+      Image: torImage,
       HostConfig: {
         RestartPolicy: { Name: "unless-stopped" },
         LogConfig: {

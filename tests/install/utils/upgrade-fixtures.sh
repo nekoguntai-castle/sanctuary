@@ -12,9 +12,9 @@ UPGRADE_BROWSER_HOST="${UPGRADE_BROWSER_HOST:-}"
 UPGRADE_EXPECT_OPTIONAL_PROFILES="${UPGRADE_EXPECT_OPTIONAL_PROFILES:-false}"
 
 # Build the exact image contract used by owned-source upgrades. Monitoring
-# materializes the repo-owned Grafana migration image in addition to the core
-# four images; keeping it conditional preserves strict extra-image detection
-# for baseline fixtures.
+# materializes the repo-owned Grafana migration image and Tor the repo-owned
+# Tor image in addition to the core images; keeping them conditional preserves
+# strict extra-image detection for baseline fixtures.
 upgrade_compose_registration_args() {
     COMPOSE_REGISTRATION_ARGS=(
         --expected-image sanctuary-backend
@@ -29,6 +29,9 @@ upgrade_compose_registration_args() {
     )
     if [ "$UPGRADE_ENABLE_MONITORING" = "yes" ]; then
         COMPOSE_REGISTRATION_ARGS+=(--expected-image sanctuary-grafana-migration)
+    fi
+    if [ "$UPGRADE_ENABLE_TOR" = "yes" ]; then
+        COMPOSE_REGISTRATION_ARGS+=(--expected-image sanctuary-tor)
     fi
 }
 
@@ -162,6 +165,38 @@ isolate_legacy_optional_profile_compose() {
     if grep -q '^    container_name: sanctuary-tor$' "$tor_compose"; then
         sed -i 's/container_name: sanctuary-tor/container_name: ${TOR_CONTAINER_NAME:-sanctuary-tor}/' "$tor_compose"
     fi
+
+    offline_legacy_source_tor "$tor_compose"
+}
+
+# Every release before the repo-owned Tor image ran dperson/torproxy (Tor
+# 0.4.3), which the Tor network has refused since 2026-10: it exits 1 once it
+# loads the consensus, racing the source install's health wait. The source
+# stack only has to come up and write the onion keys the upgrade must keep, so
+# its Tor runs with DisableNetwork (it still creates the keys) and its health
+# check proves the keys exist instead of probing a SOCKS port that a
+# network-disabled Tor never opens. Target checkouts have no dperson image.
+offline_legacy_source_tor() {
+    local tor_compose="$1"
+    local patched="$tor_compose.offline-tor.$$"
+
+    grep -q 'dperson/torproxy' "$tor_compose" || return 0
+    grep -q 'DisableNetwork 1' "$tor_compose" && return 0
+    if ! grep -q 'exec /usr/bin/torproxy.sh' "$tor_compose" \
+        || ! grep -qF '"nc -z 127.0.0.1 9050 || exit 1"' "$tor_compose"; then
+        echo "Legacy Tor compose has an unexpected shape: $tor_compose" >&2
+        return 1
+    fi
+
+    awk '
+        /^[[:space:]]*exec \/usr\/bin\/torproxy\.sh/ {
+            match($0, /^[[:space:]]*/)
+            print substr($0, 1, RLENGTH) "echo \"DisableNetwork 1\" >> /etc/tor/torrc"
+        }
+        { sub(/"nc -z 127\.0\.0\.1 9050 \|\| exit 1"/, "\"test -s /var/lib/tor/hidden_service/hostname || exit 1\""); print }
+    ' "$tor_compose" > "$patched" || { rm -f "$patched"; return 1; }
+    cat "$patched" > "$tor_compose"
+    rm -f "$patched"
 }
 
 

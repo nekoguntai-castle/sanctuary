@@ -7,6 +7,10 @@
 import prisma, { type PrismaTxClient } from '../models/prisma';
 import type { FeatureFlag, FeatureFlagAudit, Prisma } from '../generated/prisma/client';
 import { FEATURE_RUNTIME_GENERATION_KEY } from './operationalSystemSettings';
+import { withSerializableConflictRetry } from '../utils/prismaSerializableConflict';
+
+// Backend, worker and MCP can all start at once; each peer can roll back the others once.
+const DEFAULT_SEED_CONFLICT_ATTEMPTS = 5;
 
 export { FEATURE_RUNTIME_GENERATION_KEY } from './operationalSystemSettings';
 
@@ -114,17 +118,23 @@ export async function ensureDefaults(defaults: Array<{
   category: string;
   modifiedBy: string;
 }>): Promise<FeatureRuntimeState> {
-  return prisma.$transaction(async (tx) => {
-    const existing = await tx.featureFlag.findMany({ select: { key: true } });
-    const existingKeys = new Set(existing.map(({ key }) => key));
-    const missing = defaults.filter(({ key }) => !existingKeys.has(key));
-    if (missing.length > 0) {
-      await tx.featureFlag.createMany({ data: missing, skipDuplicates: true });
-      const generation = await advanceGeneration(tx);
-      return { generation, flags: await findAllInTransaction(tx) };
-    }
-    return loadRuntimeStateInTransaction(tx);
-  }, { isolationLevel: 'Serializable' });
+  // The backend, worker and MCP all seed defaults when they start; on a fresh
+  // database a peer's commit rolls this transaction back as a write conflict,
+  // so the whole seeding unit is replayed instead of failing startup.
+  return withSerializableConflictRetry(
+    () => prisma.$transaction(async (tx) => {
+      const existing = await tx.featureFlag.findMany({ select: { key: true } });
+      const existingKeys = new Set(existing.map(({ key }) => key));
+      const missing = defaults.filter(({ key }) => !existingKeys.has(key));
+      if (missing.length > 0) {
+        await tx.featureFlag.createMany({ data: missing, skipDuplicates: true });
+        const generation = await advanceGeneration(tx);
+        return { generation, flags: await findAllInTransaction(tx) };
+      }
+      return loadRuntimeStateInTransaction(tx);
+    }, { isolationLevel: 'Serializable' }),
+    { maxAttempts: DEFAULT_SEED_CONFLICT_ATTEMPTS, onExhausted: (lastConflict) => lastConflict },
+  );
 }
 
 export async function loadRuntimeState(): Promise<FeatureRuntimeState> {

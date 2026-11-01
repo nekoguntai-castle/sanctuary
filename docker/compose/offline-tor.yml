@@ -4,5 +4,5 @@ services:
   tor-ingress:
     pull_policy: never
   tor:
-    image: dperson/torproxy:latest
+    image: sanctuary-tor:local
     pull_policy: never

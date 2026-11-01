@@ -20,6 +20,7 @@ vi.mock('../../../src/models/prisma', () => ({
 }));
 
 import prisma from '../../../src/models/prisma';
+import { Prisma } from '../../../src/generated/prisma/client';
 import { featureFlagRepository } from '../../../src/repositories/featureFlagRepository';
 
 describe('featureFlagRepository runtime snapshots', () => {
@@ -126,6 +127,55 @@ describe('featureFlagRepository runtime snapshots', () => {
     });
 
     expect(prisma.featureFlag.createMany).not.toHaveBeenCalled();
+  });
+
+  // Fresh install, run 21652 job 271015: backend, worker and MCP seed the
+  // defaults at the same moment; the losing Serializable transaction was
+  // rolled back as a write conflict and the backend exited during startup.
+  it('replays default seeding after a peer process wins the serializable conflict', async () => {
+    const conflict = new Prisma.PrismaClientKnownRequestError('write conflict', {
+      code: 'P2034',
+      clientVersion: 'test',
+    });
+    (prisma.$transaction as Mock)
+      .mockRejectedValueOnce(conflict)
+      .mockImplementation(async (operation) => operation(prisma));
+    (prisma.featureFlag.findMany as Mock).mockResolvedValue([
+      { key: 'hardwareWalletSigning', enabled: true },
+    ]);
+
+    await expect(featureFlagRepository.ensureDefaults([{
+      key: 'hardwareWalletSigning',
+      enabled: true,
+      description: 'Hardware wallet support',
+      category: 'general',
+      modifiedBy: 'system',
+    }])).resolves.toEqual({
+      generation: '7',
+      flags: [{ key: 'hardwareWalletSigning', enabled: true }],
+    });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    expect(prisma.$transaction).toHaveBeenLastCalledWith(expect.any(Function), {
+      isolationLevel: 'Serializable',
+    });
+  });
+
+  it('surfaces the last write conflict once every seeding attempt lost', async () => {
+    const conflict = new Prisma.PrismaClientKnownRequestError('write conflict', {
+      code: 'P2034',
+      clientVersion: 'test',
+    });
+    (prisma.$transaction as Mock).mockRejectedValue(conflict);
+
+    await expect(featureFlagRepository.ensureDefaults([])).rejects.toBe(conflict);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(5);
+  });
+
+  it('does not replay default seeding after an error that is not a write conflict', async () => {
+    (prisma.$transaction as Mock).mockRejectedValueOnce(new Error('database unavailable'));
+
+    await expect(featureFlagRepository.ensureDefaults([])).rejects.toThrow('database unavailable');
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
   it('treats missing generation metadata as the initial generation', async () => {
