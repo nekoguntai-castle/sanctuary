@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+### Fixed
+
+## [0.8.78] - 2026-10-31
+
+### Changed
+
 - Approvals: a `specific` approval request now counts only approvers who still have access to the wallet. A vote from a listed approver who later lost access, or was downgraded below approver, no longer counts toward quorum; a request whose listed approvers lost access stays pending until the approver list is edited or the request expires.
 - Rejecting an agent funding draft on mobile now requires the approve capability (a signer-only user can no longer reject) and is recorded as a reject vote in the approval workflow, under the same rules as the web vote. Under a policy with `allowSelfApproval: false`, the owner who created the agent draft can no longer reject it on mobile: another eligible approver, expiry or deleting the draft declines it. An already approved draft returns 409.
 - `GET /approvals/pending` and the assistant's pending-approvals tool no longer list requests on drafts already rejected, vetoed or expired; voting on or overriding such a draft returns 409.
@@ -111,6 +117,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A deployment that synced against a hostile or intercepted Electrum server returning non-lowercase txids may hold duplicate `transactions`/`utxos`/`transaction_inputs`/`transaction_outputs` rows whose `txid` is not lowercase. They are never matched or retired again, so they keep the balance inflated. Every legitimate source produces lowercase txids, so any such row is suspect; detect them read-only with `SELECT 'transactions' AS t, count(*) FROM transactions WHERE txid <> lower(txid) UNION ALL SELECT 'utxos', count(*) FROM utxos WHERE txid <> lower(txid);`. A phantom UTXO cannot move funds: its outpoint parses to the real one, so a spend fails at the node as a duplicate or already-spent input.
 - Missing-field values (fee, consolidation amount, counterparty, addressId) that a hostile server forged before this fix are fill-once and are not corrected automatically, and cannot be detected without re-fetching authenticated bytes.
+
+### Upgrade validation
+
+- No database migration or persisted settings schema change is introduced. Compose gains the one-shot `backup-volume-init` service (repairs `backup_data` ownership on fresh and upgraded installs), the worker joins `llm-egress-network` with the existing `LLM_EGRESS_PROXY_SECRET`, and the backend mounts `backup_data` read-only. New forwarded environment variables all have defaults, so no new required runtime variable is introduced. The upgrade lanes assert the worker can write `/data/backups` after upgrading, and the latest-stable and n-2 upgrade lanes, browser authentication smoke, wallet-sync persistence replays and automated wallet-safety proofs remain required.
 
 ## [0.8.77] - 2026-10-12
 
@@ -1131,7 +1141,8 @@ upgrade browser-smoke and 2FA preservation assertions.
 
 - Removed navigation-triggered syncs in favor of worker-driven sync
 
-[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.77...HEAD
+[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.78...HEAD
+[0.8.78]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.77...v0.8.78
 [0.8.77]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.76...v0.8.77
 [0.8.76]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.75...v0.8.76
 [0.8.75]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.74...v0.8.75
