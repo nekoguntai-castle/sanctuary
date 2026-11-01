@@ -48,7 +48,7 @@
     "webpack": "5.111.0",
     "image-size": "2.0.4",
     "colord": "2.10.0",
-    "joi": "18.2.9",
+    "joi": "18.3.1",
     "qs": "6.16.0",
     "minimizer-webpack-plugin": "5.10.1",
     "tinypool": "2.2.0"

@@ -18,7 +18,7 @@
     "lint": "cd .. && npm run lint:gateway"
   },
   "dependencies": {
-    "@parse/node-apn": "^8.1.0",
+    "@parse/node-apn": "^8.1.1",
     "@sanctuary/shared": "*",
     "cors": "^2.8.6",
     "express": "^5.2.1",

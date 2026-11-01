@@ -104,6 +104,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - zod is upgraded to 4.6.7 for GHSA-mrhx-c7xc-m3w5: an array in a request body could exhaust server memory during validation.
 - toml is upgraded to 5.0.1 for GHSA-4qx8-w7c3-pj3p (a transitive dependency of the Trezor connector).
 - body-parser is upgraded to 2.4.0 in the server, gateway and LLM egress proxy (GHSA-27r3-jxmh-p828), with qs to 6.16.2 to meet its range; systeminformation to 5.33.18 (GHSA-3f7j-7jwc-fxfj); undici to 8.12.3 (GHSA-xjj6-f33q-929c, GHSA-4w7w-5xrc-9h26, GHSA-2m5v-pch6-74hx, GHSA-qrxm-fqhp-jwvm). The docs site build moves to dompurify 3.4.17 (GHSA-cg2g-xh64-v4q7, GHSA-mrv2-3pqr-j5jr) and body-parser 1.20.9. The two braces waivers are removed because GHSA-vfj7-8cjw-p6xm was withdrawn.
+- The gateway's APNs client @parse/node-apn is upgraded to 8.1.1, which moves node-forge to 1.4.2 (GHSA-7wch-p9px-956x, a ReDoS in PEM decoding; also fixes GHSA-86w9-cpqp-85rv, so its waiver is removed and no audit waiver remains). follow-redirects is upgraded to 1.16.2 (GHSA-mrwp-f3q8-3g9p) in the app and the docs site, and the docs site build moves to joi 18.3.1 (GHSA-4528-x5fx-h6hg).
 
 
 ### Known limitations
