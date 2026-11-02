@@ -7,11 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.79] - 2026-11-02
+
 ### Added
 
 - CI: pull requests that change the Tor image (`docker/tor/`, `docker/compose/tor.yml`) now build it, check its configuration offline with `tor --verify-config`, confirm it runs as uid 101, and attach its SBOM and provenance in "Validate Docker Images", as the other shipped images already were.
-
-### Changed
 
 ### Fixed
 
@@ -1151,7 +1151,8 @@ upgrade browser-smoke and 2FA preservation assertions.
 
 - Removed navigation-triggered syncs in favor of worker-driven sync
 
-[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.78...HEAD
+[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.79...HEAD
+[0.8.79]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.78...v0.8.79
 [0.8.78]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.77...v0.8.78
 [0.8.77]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.76...v0.8.77
 [0.8.76]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.75...v0.8.76
