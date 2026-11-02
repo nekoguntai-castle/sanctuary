@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.8.79] - 2026-11-02
+### Fixed
+
+- Electrum pool: with more than one Electrum server configured, backup servers were reported unhealthy and put into backoff on every health pass even though they were reachable. Once the pool's connections were all in use (for example with failover-only load balancing, which sends every connection to the primary), its "every server has a connection" check could not open one to the backups and counted the pool's own refusal ("Pool connection capacity is reserved") as a failure of each backup. The check now leaves a server's health alone when the pool is full, so backups stay ready for failover.
+
+## [0.8.79] - 2026-11-01
 
 ### Added
 

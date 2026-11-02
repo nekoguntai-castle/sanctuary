@@ -7,6 +7,7 @@ import {
 import prisma from '../../../../../src/models/prisma';
 import { ElectrumClient } from '../../../../../src/services/bitcoin/electrum';
 import { updateServerHealthInDb } from '../../../../../src/services/bitcoin/electrumPool/healthChecker';
+import { PoolCapacityReservedError } from '../../../../../src/services/bitcoin/electrumPool/types';
 
 const createTimeoutHandle = () => ({}) as NodeJS.Timeout;
 
@@ -577,9 +578,7 @@ export function registerElectrumPoolInternalLifecycleTests(context: ElectrumPool
       const queuedRejection = expect(queuedAcquire).rejects.toThrow(
         'Pool is shutting down',
       );
-      await expect(rejectedCreate).rejects.toThrow(
-        'Pool connection capacity is reserved',
-      );
+      await expect(rejectedCreate).rejects.toThrow(PoolCapacityReservedError);
 
       expect(vi.mocked(ElectrumClient)).toHaveBeenCalledOnce();
       expect((context.pool as any).waitingQueue).toHaveLength(1);

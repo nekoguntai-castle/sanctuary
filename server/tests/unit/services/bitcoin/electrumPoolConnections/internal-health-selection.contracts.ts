@@ -633,6 +633,35 @@ export function registerElectrumPoolInternalHealthSelectionTests(context: Electr
       expect(s2Stats.isHealthy).toBe(false);
     });
 
+    it('ensureMinimumConnections leaves backup health untouched when the pool is at capacity', async () => {
+      // failover_only puts every slot on the primary, so the backup has no
+      // socket; the pool's own capacity refusal is not a server failure.
+      context.pool = createPool({
+        enabled: true,
+        minConnections: 1,
+        maxConnections: 2,
+        loadBalancing: 'failover_only',
+      });
+      context.pool!.setServers([
+        { id: 's1', label: 'Primary', host: 'a', port: 1, useSsl: false, priority: 1, enabled: true },
+        { id: 's2', label: 'Backup', host: 'b', port: 2, useSsl: false, priority: 2, enabled: true },
+      ]);
+      (context.pool as any).isShuttingDown = false;
+      for (const id of ['primary-1', 'primary-2']) {
+        (context.pool as any).connections.set(id, makeConn({ id, serverId: 's1', state: 'idle' }));
+      }
+      const failureSpy = vi.spyOn(context.pool as any, 'recordServerFailure');
+
+      await (context.pool as any).ensureMinimumConnections();
+
+      const backupStats = (context.pool as any).serverStats.get('s2');
+      expect(backupStats.isHealthy).toBe(true);
+      expect(backupStats.consecutiveFailures).toBe(0);
+      expect(failureSpy).not.toHaveBeenCalled();
+      expect(context.pool!.getServerBackoffState('s2')).toMatchObject({ level: 0, inCooldown: false });
+      expect((context.pool as any).connections.size).toBe(2);
+    });
+
     it('ensureMinimumConnections returns early when pool is disabled', async () => {
       context.pool = createPool({ enabled: false });
       context.pool!.setServers([{ id: 's1', label: 'S1', host: 'a', port: 1, useSsl: true, priority: 0, enabled: true }]);

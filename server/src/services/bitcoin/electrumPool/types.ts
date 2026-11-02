@@ -295,3 +295,14 @@ export function createDefaultServerState(): ServerState {
     healthHistory: [],
   };
 }
+
+/**
+ * The pool refused to open a socket because every slot is taken. No server
+ * was contacted, so callers must not count it against any server's health.
+ */
+export class PoolCapacityReservedError extends Error {
+  constructor() {
+    super('Pool connection capacity is reserved');
+    this.name = 'PoolCapacityReservedError';
+  }
+}

@@ -17,6 +17,7 @@ import type {
   NetworkType,
   ProxyConfig,
 } from './types';
+import { PoolCapacityReservedError } from './types';
 
 const log = createLogger('ELECTRUM_POOL:SVC_CONNECTION');
 
@@ -344,7 +345,7 @@ export async function ensureMinimumConnections(
   for (const server of servers) {
     const count = serverConnectionCounts.get(server.id) || 0;
     if (count === 0) {
-      log.info(`Server ${server.label} has no connections, creating one...`);
+      log.debug(`Server ${server.label} has no connections, creating one...`);
       try {
         await connectToServer(server);
         log.info(`Created connection to ${server.label}`);
@@ -359,6 +360,11 @@ export async function ensureMinimumConnections(
           await updateServerHealthInDb(server.id, true, 0);
         }
       } catch (error) {
+        if (error instanceof PoolCapacityReservedError) {
+          // Capacity cannot free up mid-loop, so every later server would be refused too.
+          log.debug('Pool at capacity; zero-connection servers keep their health state');
+          break;
+        }
         const errorStr = getErrorMessage(error);
         log.warn(`Failed to create connection to ${server.label}`, { error: errorStr });
 

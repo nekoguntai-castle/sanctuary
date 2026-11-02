@@ -28,6 +28,7 @@ import {
   DEFAULT_POOL_CONFIG,
   DEFAULT_BACKOFF_CONFIG,
   createDefaultServerState,
+  PoolCapacityReservedError,
 } from './types';
 import { selectServer, sortServersCanonically } from './serverSelector';
 import {
@@ -664,7 +665,7 @@ export class ElectrumPool extends EventEmitter {
       && this.connections.size + this.pendingAcquisitionConnections
         >= this.getEffectiveMaxConnections()
     ) {
-      throw new Error('Pool connection capacity is reserved');
+      throw new PoolCapacityReservedError();
     }
 
     if (!reservationHeld) this.pendingAcquisitionConnections++;
