@@ -51,6 +51,7 @@ startup_contract() (
     export_runtime_environment() { :; }
     deployment_stage_before() { [[ "$1" == stack_started && "$stage" != stack_started ]]; }
     deployment_transition() { stage="$1"; }
+    deployment_pin_resource_labels() { :; }
     docker() {
         if [[ "$*" == 'compose up --help' ]]; then
             echo --pull
@@ -264,6 +265,7 @@ resume_reensure_contract() (
     deployment_stage_before() { case "$stage:$1" in postgres_started:password_reconciled|postgres_started:stack_started|password_reconciled:stack_started) return 0 ;; *) return 1 ;; esac; }
     deployment_transition() { stage="$1"; }
     start_compose_services() { :; }
+    deployment_pin_resource_labels() { echo pin >> "$log"; }
     docker() {
         if [[ "$*" == 'compose up --help' ]]; then echo --pull; return 0; fi
         echo "docker $*" >> "$log"
@@ -277,6 +279,7 @@ resume_reensure_contract() (
     up_line="$(grep -n ' up .* postgres$' "$log" | head -n 1 | cut -d: -f1)"
     rec_line="$(grep -nx reconcile "$log" | head -n 1 | cut -d: -f1)"
     [[ -n "$up_line" && -n "$rec_line" && "$up_line" -lt "$rec_line" ]] || fail "resume did not re-ensure postgres before reconcile: $(cat "$log")"
+    [[ "$(sed -n "$((up_line - 1))p" "$log")" == pin ]] || fail "resume started postgres without pinning resource labels: $(cat "$log")"
     if [[ "$offline" == true ]]; then grep -q 'up -d --no-build --pull never postgres' "$log" || fail 'offline re-ensure lost --pull never'; fi
 )
 mkdir -p "$ROOT/.tmp"

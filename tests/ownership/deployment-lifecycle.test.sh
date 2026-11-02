@@ -13,6 +13,7 @@ mkdir -p "$TEST_ROOT/bin"
 cat > "$TEST_ROOT/bin/docker" <<'EOF'
 #!/usr/bin/env bash
 if [ -n "${FAKE_DOCKER_LOG:-}" ]; then printf '%s\n' "$*" >> "$FAKE_DOCKER_LOG"; fi
+if [ -n "${FAKE_DOCKER_STDIN_LOG:-}" ]; then printf '%s %s\n' "$(readlink /proc/self/fd/0)" "$*" >> "$FAKE_DOCKER_STDIN_LOG"; fi
 if [ -n "${FAKE_REQUIRE_LOCK:-}" ] && [ ! -e "$FAKE_REQUIRE_LOCK" ]; then
   printf 'deployment lock was not held during Docker command\n' >&2
   exit 65
@@ -46,6 +47,9 @@ case " $* " in
   " volume ls "*)
     if [ "${FAKE_DOCKER_LEGACY:-no}" = yes ]; then printf '%s\n' lifecycle-test_data; fi
     ;;
+  " network ls -q "*)
+    if [ "${FAKE_DOCKER_LEGACY:-no}" = yes ]; then printf '%s\n' legacy-network; fi
+    ;;
   " network ls "*)
     if [ "${FAKE_DOCKER_LEGACY:-no}" = yes ]; then printf 'legacy-network\tlifecycle-test_default\n'; fi
     ;;
@@ -59,7 +63,7 @@ case " $* " in
       '[{"Name":"lifecycle-test_data","Driver":"local","Scope":"local","Mountpoint":"/var/lib/docker/volumes/lifecycle-test_data/_data","CreatedAt":$createdAt,"Options":{},"Labels":({"com.docker.compose.project":"lifecycle-test","com.docker.compose.volume":"data"} + (if $claimed == "yes" then {"io.sanctuary.project":"sanctuary"} else {} end))}]'
     ;;
   " network inspect legacy-network "|" network inspect lifecycle-test_default ")
-    printf '%s\n' '[{"Id":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","Labels":{"com.docker.compose.project":"lifecycle-test","com.docker.compose.network":"default"}}]'
+    printf '%s\n' '[{"Id":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","Name":"lifecycle-test_default","Labels":{"com.docker.compose.project":"lifecycle-test","com.docker.compose.network":"default","org.example.origin":"legacy"}}]'
     ;;
   *)
     printf 'unexpected fake Docker inspection: %s\n' "$*" >&2
@@ -174,6 +178,11 @@ unset SANCTUARY_DEPLOYMENT_LOCK_TOKEN DEPLOYMENT_LOCK_OWNERSHIP SANCTUARY_PENDIN
 export SANCTUARY_OPERATION_RUN_ID=run-prepared-resume
 deployment_begin no no no
 [ "$(deployment_locked_project)" = lifecycle-test ]
+# Pinning before each `up` replaces the previous overlay instead of stacking it.
+deployment_pin_resource_labels
+deployment_pin_resource_labels
+[ "$(printf '%s\n' "${COMPOSE_FILE_ARGS[@]}" | grep -c 'compose-resource-labels')" -eq 1 ]
+[ "${COMPOSE_FILE_ARGS[-1]}" = "$RUNTIME/compose-resource-labels.lifecycle-test.yml" ]
 [ "$(env -u SANCTUARY_PROJECT -u COMPOSE_PROJECT_NAME bash -c '. "$1"; deployment_locked_project' _ "$ROOT_DIR/scripts/ownership/deployment-lifecycle.sh")" = lifecycle-test ]
 (
   unset SANCTUARY_DEPLOYMENT_LOCK_TOKEN
@@ -199,8 +208,50 @@ env -u SANCTUARY_DEPLOYMENT_LOCK_TOKEN -u DEPLOYMENT_LOCK_OWNERSHIP \
     config --format json >/dev/null
 grep -q '/ownership/deployments/deployment-test/revisions/1/compose/' "$operator_log"
 [ "$(grep -o '/ownership/deployments/deployment-test/revisions/1/compose/' "$operator_log" | wc -l)" -eq 2 ]
+# Read-only commands do not pay for the resource label pin.
+if grep -q 'compose-resource-labels' "$operator_log"; then
+  echo 'operator config pinned resource labels' >&2
+  exit 1
+fi
 grep -R -q 'external: true' "$RUNTIME/ownership/deployments/deployment-test/revisions/1/compose"
 [ ! -e "$RUNTIME/ownership/deployments/deployment-test/mutation-lock" ]
+
+# Operator `up` never reads a terminal, so Compose's volume-recreate prompt
+# cannot be answered; `exec` keeps its stdin for piped SQL and shells.
+operator_stdin_log="$TEST_ROOT/operator-stdin.log"
+printf 'input\n' > "$TEST_ROOT/operator-stdin.txt"
+for operator_command in 'up -d' '--profile up up -d' 'exec -T postgres sh'; do
+  : > "$operator_stdin_log"
+  # shellcheck disable=SC2086 # each case is a word list
+  env -u SANCTUARY_DEPLOYMENT_LOCK_TOKEN -u DEPLOYMENT_LOCK_OWNERSHIP \
+    FAKE_DOCKER_STDIN_LOG="$operator_stdin_log" \
+    "$ROOT_DIR/scripts/ownership/run-operator-compose.sh" $operator_command \
+    < "$TEST_ROOT/operator-stdin.txt" >/dev/null
+  operator_stdin="$(tail -n 1 "$operator_stdin_log")"
+  case "$operator_command" in
+    exec*) expected_stdin="$TEST_ROOT/operator-stdin.txt" ;;
+    *) expected_stdin=/dev/null ;;
+  esac
+  if [ "${operator_stdin%% *}" != "$expected_stdin" ]; then
+    echo "operator '$operator_command' read stdin from ${operator_stdin%% *}, expected $expected_stdin" >&2
+    exit 1
+  fi
+  # `up` re-declares existing resources with their own labels, last, so
+  # Compose sees unchanged configs instead of recreating the volume or network.
+  case "$operator_command" in
+    exec*) [[ "$operator_stdin" != *compose-resource-labels* ]] ;;
+    *) [[ "$operator_stdin" == *"-f $RUNTIME/compose-resource-labels.lifecycle-test.yml "* ]] ;;
+  esac
+done
+diff - "$RUNTIME/compose-resource-labels.lifecycle-test.yml" <<'OVERLAY'
+volumes:
+  "data":
+    labels: !override {}
+networks:
+  "default":
+    labels: !override
+      "org.example.origin": "legacy"
+OVERLAY
 
 operator_down_log="$TEST_ROOT/operator-down.log"
 operator_lock="$RUNTIME/ownership/deployments/deployment-test/mutation-lock"
@@ -405,13 +456,20 @@ for caller in start.sh scripts/setup.sh; do
     echo "$caller previous generation retirement deletes volumes" >&2
     exit 1
   fi
-  # A new generation's volume labels never match the existing volume, and on a
-  # terminal Compose then asks "Recreate (data will be lost)? [y/N]"; a "y"
-  # deletes the database. Without a terminal on stdin Compose keeps the volume.
+  # If a volume's definition ever differs, a terminal gets "Recreate (data will
+  # be lost)? [y/N]" and a "y" deletes the database. Without a terminal on stdin
+  # Compose keeps the volume. Each `up` first pins existing resources' labels,
+  # on the line before it, so after the retirement above the old networks'
+  # labels are not carried over.
   while IFS= read -r compose_up; do
     [[ "$compose_up" == *'< /dev/null'* ]] \
       || { echo "$caller can prompt to recreate a volume: $compose_up" >&2; exit 1; }
   done < <(grep -E 'docker compose .*[[:space:]]up([[:space:]]|$)' "$ROOT_DIR/$caller" | grep -v -- 'up --help')
+  while IFS= read -r pinned_up; do
+    grep -q 'deployment_pin_resource_labels' <<< "$pinned_up" \
+      || { echo "$caller starts services without pinning resource labels: $pinned_up" >&2; exit 1; }
+  done < <(grep -B2 -E '^[[:space:]]*(if )?docker compose .*[[:space:]]up([[:space:]]|$)' "$ROOT_DIR/$caller" \
+    | grep -v -- 'up --help' | paste -sd' ' | sed 's/ -- /\n/g')
 done
 deployment_transition build_started
 deployment_transition build_completed

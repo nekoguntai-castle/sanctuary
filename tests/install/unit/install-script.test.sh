@@ -1697,7 +1697,7 @@ if [ "$1" = "compose" ]; then
     shift
     while [ "$#" -gt 0 ]; do
         case "$1" in
-            -f|--file|--project-directory|--env-file|-p)
+            -f|--file|--project-directory|--env-file|-p|--profile)
                 shift 2
                 ;;
             *)

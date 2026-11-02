@@ -14,7 +14,7 @@ deployment_lifecycle_initialize() {
 }
 
 deployment_begin() {
-  local monitoring="$1" tor="$2" mcp="$3" upgrade="${4:-false}" result args_file lock_ownership_result
+  local monitoring="$1" tor="$2" mcp="$3" upgrade="${4:-false}" result lock_ownership_result
   deployment_lifecycle_initialize
   result="$(SANCTUARY_INCLUDE_MONITORING="$monitoring" SANCTUARY_INCLUDE_TOR="$tor" \
     SANCTUARY_INCLUDE_MCP="$mcp" SANCTUARY_UPGRADE_MODE="$upgrade" node "$DEPLOYMENT_SESSION_SCRIPT" begin)"
@@ -30,14 +30,7 @@ deployment_begin() {
   export SANCTUARY_DEPLOYMENT_STATE SANCTUARY_DEPLOYMENT_GENERATION SANCTUARY_PENDING_DIGEST
   export SANCTUARY_DEPLOYMENT_STAGE
   export SANCTUARY_DEPLOYMENT_LOCK_TOKEN SANCTUARY_PROJECT_LOCK_TOKEN SANCTUARY_PROJECT_LOCK_OWNERSHIP DEPLOYMENT_LOCK_OWNERSHIP
-  args_file="$(mktemp "${TMPDIR:-/tmp}/sanctuary-compose-args.XXXXXX")" || return 1
-  if ! node "$DEPLOYMENT_SESSION_SCRIPT" compose-args "$SANCTUARY_DEPLOYMENT_GENERATION" > "$args_file"; then
-    rm -f "$args_file"
-    return 1
-  fi
-  mapfile -d '' -t COMPOSE_FILE_ARGS < "$args_file"
-  rm -f "$args_file"
-  [ "${#COMPOSE_FILE_ARGS[@]}" -gt 0 ]
+  deployment_load_compose_args
 }
 
 deployment_verify_legacy_upgrade() {
@@ -84,7 +77,7 @@ deployment_locked_project() {
 }
 
 deployment_use_active() {
-  local result args_file lock_ownership_result
+  local result lock_ownership_result
   deployment_lifecycle_initialize
   result="$(node "$DEPLOYMENT_SESSION_SCRIPT" use-active)"
   IFS=$'\t' read -r SANCTUARY_DEPLOYMENT_STATE SANCTUARY_DEPLOYMENT_GENERATION \
@@ -98,6 +91,11 @@ deployment_use_active() {
   SANCTUARY_PROJECT_LOCK_TOKEN="$SANCTUARY_DEPLOYMENT_LOCK_TOKEN"
   SANCTUARY_PROJECT_LOCK_OWNERSHIP="${SANCTUARY_PROJECT_LOCK_OWNERSHIP:-owned}"
   export SANCTUARY_DEPLOYMENT_LOCK_TOKEN SANCTUARY_PROJECT_LOCK_TOKEN SANCTUARY_PROJECT_LOCK_OWNERSHIP DEPLOYMENT_LOCK_OWNERSHIP
+  deployment_load_compose_args
+}
+
+deployment_load_compose_args() {
+  local args_file
   args_file="$(mktemp "${TMPDIR:-/tmp}/sanctuary-compose-args.XXXXXX")" || return 1
   if ! node "$DEPLOYMENT_SESSION_SCRIPT" compose-args "$SANCTUARY_DEPLOYMENT_GENERATION" > "$args_file"; then
     rm -f "$args_file"
@@ -106,6 +104,33 @@ deployment_use_active() {
   mapfile -d '' -t COMPOSE_FILE_ARGS < "$args_file"
   rm -f "$args_file"
   [ "${#COMPOSE_FILE_ARGS[@]}" -gt 0 ]
+}
+
+# Docker labels are fixed at creation, while the ownership anchor carries this
+# run's provenance. Re-declaring each existing volume and network with its own
+# labels keeps its Compose config hash unchanged, so Compose neither offers to
+# recreate (and empty) a data volume nor recreates a network that running
+# containers still use. Call it right before each `up`: resources removed since
+# (the previous generation's networks) must take this run's labels instead.
+deployment_pin_resource_labels() {
+  local project overlay index pinned=()
+  project="$(deployment_locked_project)" || return 1
+  overlay="${SANCTUARY_RUNTIME_DIR:?SANCTUARY_RUNTIME_DIR is required}/compose-resource-labels.$project.yml"
+  for ((index = 0; index < ${#COMPOSE_FILE_ARGS[@]}; index++)); do
+    if [ "${COMPOSE_FILE_ARGS[index]}" = -f ] && [ "${COMPOSE_FILE_ARGS[index + 1]:-}" = "$overlay" ]; then
+      index=$((index + 1))
+    else
+      pinned+=("${COMPOSE_FILE_ARGS[index]}")
+    fi
+  done
+  COMPOSE_FILE_ARGS=("${pinned[@]}")
+  # Every profile, so resources only a profiled service uses are pinned too.
+  docker compose "${COMPOSE_FILE_ARGS[@]}" --profile '*' config --format json \
+    | node "$DEPLOYMENT_LIFECYCLE_DIR/compose-resource-labels.mjs" "$project" > "$overlay" || {
+    echo "cannot re-declare the existing volume and network labels for $project" >&2
+    return 1
+  }
+  [ ! -s "$overlay" ] || COMPOSE_FILE_ARGS+=(-f "$overlay")
 }
 
 deployment_transition() {
@@ -140,12 +165,12 @@ deployment_stage_before() {
   [ "$(deployment_stage_rank "$SANCTUARY_DEPLOYMENT_STAGE")" -lt "$(deployment_stage_rank "$1")" ]
 }
 
-# A new generation carries new ownership labels, which changes the Compose
-# config hash of the project networks. Starting postgres alone would make Compose
-# remove a network the previous generation's other containers still use ("has
-# active endpoints"), so callers take that generation down first. Only a pending
-# generation that has not reached postgres_started and still has project
-# containers needs it; an unchanged active revision keeps its labels.
+# A new generation can change a project network's Compose definition (the
+# resource label overlay only pins labels). Starting postgres alone would then
+# make Compose remove a network the previous generation's other containers
+# still use ("has active endpoints"), so callers take that generation down
+# first. Only a pending generation that has not reached postgres_started and
+# still has project containers needs it; an active revision is unchanged.
 deployment_previous_generation_running() {
   [ "${SANCTUARY_DEPLOYMENT_STATE:-}" = pending ] || return 1
   deployment_stage_before postgres_started || return 1

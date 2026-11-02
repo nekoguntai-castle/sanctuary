@@ -421,13 +421,16 @@ ensure_tor_image() {
     docker compose "${COMPOSE_FILE_ARGS[@]}" build tor
 }
 
-# Compose up reads stdin from /dev/null: each new generation relabels the
-# existing volumes, and on a terminal Compose would ask "Recreate (data will be
-# lost)? [y/N]". Without a terminal it keeps the volume and carries on.
+# Existing volumes and networks keep their creation labels (see
+# deployment_pin_resource_labels), so Compose sees them unchanged. Compose up
+# still reads stdin from /dev/null: if a volume's definition ever differs, a
+# terminal would get "Recreate (data will be lost)? [y/N]", while without one
+# Compose keeps the volume and carries on.
 # Idempotent: re-running it leaves an already-running postgres untouched.
 start_postgres_service() {
     local profiles="$1"
     local postgres_up_flags="$2"
+    deployment_pin_resource_labels || return 1
     docker compose "${COMPOSE_FILE_ARGS[@]}" $profiles up $postgres_up_flags postgres < /dev/null
 }
 
@@ -479,6 +482,7 @@ start_compose_stack() {
         deployment_transition password_reconciled
     fi
     if deployment_stage_before stack_started; then
+        deployment_pin_resource_labels || return 1
         docker compose "${COMPOSE_FILE_ARGS[@]}" $profiles up $up_flags < /dev/null
         deployment_transition stack_started
     fi

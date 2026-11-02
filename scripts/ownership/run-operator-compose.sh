@@ -44,6 +44,29 @@ for argument in "$@"; do
 done
 [ "$volume_delete_command" != true ] || [ "$short_volume_flag" != true ] || deletes_volumes=true
 
+# The first non-option argument is the Compose subcommand; skip global options
+# that take a value so their value is not mistaken for it.
+compose_subcommand=""
+expects_value=false
+for argument in "${compose_arguments[@]}"; do
+  if [ "$expects_value" = true ]; then expects_value=false; continue; fi
+  case "$argument" in
+    -f|--file|-p|--project-name|--profile|--env-file|--project-directory|--workdir|--ansi|--progress|--parallel)
+      expects_value=true ;;
+    -*) ;;
+    *) compose_subcommand="$argument"; break ;;
+  esac
+done
+# `up` and `create` must never read a terminal: when a volume's definition no
+# longer matches, Compose asks "Recreate (data will be lost)?" and a `y` empties
+# the volume. Without stdin it keeps the volume. `exec` and `run` keep stdin.
+run_compose() {
+  case "$compose_subcommand" in
+    up|create) "$@" < /dev/null ;;
+    *) "$@" ;;
+  esac
+}
+
 if [ "$deletes_volumes" = true ] && [ "$confirm_data_delete" != true ]; then
   echo 'Volume deletion requires the separate --confirm-data-delete operator flag.' >&2
   exit 2
@@ -60,7 +83,10 @@ if [ -e "$deployment_root/identity.json" ] || [ -e "$deployment_root/active-revi
   . "$SCRIPT_DIR/deployment-lifecycle.sh"
   trap deployment_lock_release EXIT
   deployment_use_active
-  docker compose "${COMPOSE_FILE_ARGS[@]}" "${compose_arguments[@]}"
+  case "$compose_subcommand" in
+    up|create|run) deployment_pin_resource_labels ;;
+  esac
+  run_compose docker compose "${COMPOSE_FILE_ARGS[@]}" "${compose_arguments[@]}"
 else
   if [ "$requires_active" = true ]; then
     echo 'Destructive operator Compose commands require an exact active deployment manifest.' >&2
@@ -69,6 +95,6 @@ else
   # A checkout that has never created a deployment manifest remains usable for
   # non-destructive initial operator setup and development. Once state exists,
   # the branch above fails closed instead of dropping retained snapshot overlays.
-  docker compose --project-directory "$PROJECT_ROOT" --env-file "$SANCTUARY_ENV_FILE" \
+  run_compose docker compose --project-directory "$PROJECT_ROOT" --env-file "$SANCTUARY_ENV_FILE" \
     -p "$SANCTUARY_PROJECT" "${compose_arguments[@]}"
 fi

@@ -1177,10 +1177,13 @@ run_grafana_credential_migration() {
     fi
 }
 
-# Compose up reads stdin from /dev/null: each new generation relabels the
-# existing volumes, and on a terminal Compose would ask "Recreate (data will be
-# lost)? [y/N]". Without a terminal it keeps the volume and carries on.
+# Existing volumes and networks keep their creation labels (see
+# deployment_pin_resource_labels), so Compose sees them unchanged. Compose up
+# still reads stdin from /dev/null: if a volume's definition ever differs, a
+# terminal would get "Recreate (data will be lost)? [y/N]", while without one
+# Compose keeps the volume and carries on.
 start_postgres_service() {
+    deployment_pin_resource_labels || return 1
     if [ "$OPT_OFFLINE" = true ]; then
         docker compose "${COMPOSE_FILE_ARGS[@]}" up $(compose_up_no_build_args) postgres < /dev/null
     else
@@ -1272,6 +1275,7 @@ start_compose_services() {
 
     # A failed up leaves the pending stage retryable. Never infer success from
     # other running containers or advance the checkpoint after a partial start.
+    deployment_pin_resource_labels || return 1
     if docker compose "${COMPOSE_FILE_ARGS[@]}" up $up_args < /dev/null; then
         if [ "$USED_WAIT_FLAG" = true ]; then
             FRONTEND_RUNNING=true

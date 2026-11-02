@@ -14,7 +14,7 @@ const REQUIRED_LABELS = [
   'io.sanctuary.creation-run-id',
 ];
 
-function docker(args) {
+export function docker(args) {
   try {
     return execFileSync('docker', args, {
       encoding: 'utf8', maxBuffer: 8 * 1024 * 1024, timeout: 30_000,
@@ -37,7 +37,7 @@ function dockerComposeWithOverlay(composeArgs, overlay) {
   }
 }
 
-function parseJson(output, label) {
+export function parseJson(output, label) {
   try { return JSON.parse(output); } catch { throw new Error(`${label} returned malformed JSON`); }
 }
 
