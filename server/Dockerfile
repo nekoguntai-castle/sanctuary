@@ -4,7 +4,7 @@
 # =============================================
 
 # Shared Node/npm toolchain. npm 12.0.2+ is required by the root package policy.
-FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS node-toolchain
+FROM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85 AS node-toolchain
 ARG NPM_VERSION=12.0.2
 RUN npm install --global --audit=false --fund=false "npm@$NPM_VERSION"
 
@@ -86,7 +86,7 @@ RUN node node_modules/@prisma/engines/scripts/postinstall.js && \
     test -n "$(find node_modules/@prisma/engines -name 'schema-engine-*' -type f -print -quit)"
 
 # Stage 3: Production
-FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS runtime-base
+FROM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85 AS runtime-base
 # Runtime entrypoints use Node or the locally installed Prisma CLI, never npm.
 # Exclude the base image's unused package manager and its vulnerable bundle.
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx

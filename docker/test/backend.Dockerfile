@@ -1,4 +1,4 @@
-FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43
+FROM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85
 ARG NPM_VERSION=12.0.2
 RUN apk add --no-cache bash git openssl python3 make g++ linux-headers eudev-dev \
     && npm install --global --audit=false --fund=false "npm@$NPM_VERSION"

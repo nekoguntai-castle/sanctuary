@@ -3980,7 +3980,7 @@ for dockerfile in docker/frontend/Dockerfile gateway/Dockerfile; do
   assert_contains_in_order \
     "$REPO_ROOT/$dockerfile" \
     "$dockerfile pins an allowScripts-capable npm" \
-    "FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS node-toolchain" \
+    "FROM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85 AS node-toolchain" \
     "ARG NPM_VERSION=12.0.2" \
     'npm install --global --audit=false --fund=false "npm@$NPM_VERSION"' \
     "FROM node-toolchain AS deps" \
@@ -3990,7 +3990,7 @@ done
 assert_contains_in_order \
   "$REPO_ROOT/server/Dockerfile" \
   "server/Dockerfile pins an allowScripts-capable npm on a digest-locked Node base" \
-  "FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS node-toolchain" \
+  "FROM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85 AS node-toolchain" \
   "ARG NPM_VERSION=12.0.2" \
   'npm install --global --audit=false --fund=false "npm@$NPM_VERSION"' \
   "FROM node-toolchain AS deps" \
