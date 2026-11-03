@@ -4,7 +4,7 @@ import { ACTIONABLE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/constants/draf
 import { draftRepository, type DraftStatus } from '../repositories';
 import { ConflictError, InvalidInputError, NotFoundError } from '../errors';
 import { createLogger } from '../utils/logger';
-import { normalizeAndAssertSignedDeviceBelongsToWallet } from './draftSigning';
+import { assertDeviceSignedPsbt, resolveWalletSigningDevice, type WalletSigningDevice } from './draftSigning';
 import { validatePartialSignedPsbt } from './bitcoin/signingIntent';
 import type { UpdateDraftInput } from './draftTypes';
 
@@ -83,24 +83,54 @@ const combineSignedPsbtBase64 = (
   }
 };
 
-const addSignedDeviceIfNeeded = (
+/**
+ * The PSBT whose signatures attribute a signedDeviceId: the combined PSBT this
+ * update stores (already validated), else the stored one, re-validated because
+ * attribution trusts only verified signatures.
+ */
+const resolveAttributionPsbt = async (
+  draftId: string,
   latestDraft: DraftTransaction,
-  signedDeviceId: string | null,
   updateData: DraftUpdateData
-): void => {
-  if (!signedDeviceId) return;
+): Promise<string | null> => {
+  if (updateData.signedPsbtBase64 !== undefined) return updateData.signedPsbtBase64;
+  const stored = latestDraft.signedPsbtBase64;
+  if (!stored) return null;
+  if (!latestDraft.signingIntentId || !latestDraft.signingIntentDigest) {
+    throw new InvalidInputError('Draft has no authenticated signing intent', 'signedDeviceId', {
+      reason: 'missing_intent',
+    });
+  }
+  await validatePartialSignedPsbt({
+    walletId: latestDraft.walletId,
+    intentId: latestDraft.signingIntentId,
+    intentDigest: latestDraft.signingIntentDigest,
+    signedPsbtBase64: stored,
+    draftId,
+  });
+  return stored;
+};
+
+const addSignedDeviceIfNeeded = async (
+  draftId: string,
+  latestDraft: DraftTransaction,
+  signingDevice: WalletSigningDevice | null,
+  updateData: DraftUpdateData
+): Promise<void> => {
+  if (!signingDevice) return;
 
   const currentSigned = latestDraft.signedDeviceIds || [];
-  if (!currentSigned.includes(signedDeviceId)) {
-    updateData.signedDeviceIds = [...currentSigned, signedDeviceId];
-  }
+  if (currentSigned.includes(signingDevice.deviceId)) return;
+
+  assertDeviceSignedPsbt(signingDevice, await resolveAttributionPsbt(draftId, latestDraft, updateData));
+  updateData.signedDeviceIds = [...currentSigned, signingDevice.deviceId];
 };
 
 const buildDraftUpdateData = async (
   draftId: string,
   latestDraft: DraftTransaction,
   data: UpdateDraftInput,
-  signedDeviceId: string | null,
+  signingDevice: WalletSigningDevice | null,
   requiresOptimisticRetry: boolean,
   attempt: number
 ): Promise<DraftUpdateData> => {
@@ -135,7 +165,7 @@ const buildDraftUpdateData = async (
     updateData.signedPsbtBase64 = combined;
   }
 
-  addSignedDeviceIfNeeded(latestDraft, signedDeviceId, updateData);
+  await addSignedDeviceIfNeeded(draftId, latestDraft, signingDevice, updateData);
 
   if (data.status !== undefined) {
     updateData.status = data.status;
@@ -198,10 +228,10 @@ export async function updateDraft(
 
   assertValidDraftStatus(data.status);
 
-  const signedDeviceId = data.signedDeviceId !== undefined
-    ? await normalizeAndAssertSignedDeviceBelongsToWallet(walletId, data.signedDeviceId)
+  const signingDevice = data.signedDeviceId !== undefined
+    ? await resolveWalletSigningDevice(walletId, data.signedDeviceId)
     : null;
-  const requiresOptimisticRetry = data.signedPsbtBase64 !== undefined || signedDeviceId !== null;
+  const requiresOptimisticRetry = data.signedPsbtBase64 !== undefined || signingDevice !== null;
   const maxAttempts = requiresOptimisticRetry ? MAX_SIGNATURE_UPDATE_RETRIES : 1;
   let latestDraft = existingDraft;
 
@@ -213,7 +243,7 @@ export async function updateDraft(
           draftId,
           latestDraft,
           data,
-          signedDeviceId,
+          signingDevice,
           requiresOptimisticRetry,
           attempt + 1
         )

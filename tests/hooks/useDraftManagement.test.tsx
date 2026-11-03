@@ -754,6 +754,23 @@ describe('useDraftManagement', () => {
       expect(mocks.updateDraft.mock.calls.every(call => call[1] === draftId)).toBe(true);
     });
 
+    // Trezor single-sig returns only a signed raw transaction, so the PSBT is
+    // unchanged; the server rejects attribution its signatures cannot back.
+    it.each(paths)('attributes no device when the PSBT carries no new signature for a $name', async ({ state, draftId }) => {
+      const deps = createDeps({
+        state: createState(state),
+        unsignedPsbt: baseTxData.psbtBase64,
+        signedDevices: new Set(['dev-trezor']),
+      });
+      const { result } = renderHook(() => useDraftManagement(deps));
+
+      await act(async () => { await result.current.saveDraft(); });
+
+      expect(mocks.updateDraft.mock.calls.map(call => call.slice(0, 3))).toEqual([
+        ['wallet-1', draftId, { signedPsbtBase64: baseTxData.psbtBase64, signedDeviceId: undefined }],
+      ]);
+    });
+
     it.each(paths)('stops patching once the lease goes stale for a $name', async ({ state }) => {
       let current = true;
       mocks.updateDraft.mockImplementationOnce(async () => { current = false; });

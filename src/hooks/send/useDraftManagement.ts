@@ -115,8 +115,16 @@ const buildDraftRequest = (
 };
 
 // The server records one signed device per update, so a draft with several signers needs one PATCH each.
-const getDraftSignedDeviceIds = (signedDevices: Set<string>): string[] =>
-  Array.from(signedDevices).filter(deviceId => deviceId !== UNATTRIBUTED_SIGNATURE_ID);
+// It records a device only when that device's key signed the PSBT; a device that returned just a raw
+// transaction (Trezor single-sig) leaves the PSBT unchanged, so there is nothing to attribute.
+const getDraftSignedDeviceIds = (
+  unsignedPsbt: string | null,
+  currentTxData: TransactionData,
+  signedDevices: Set<string>
+): string[] => {
+  if (unsignedPsbt === currentTxData.psbtBase64) return [];
+  return Array.from(signedDevices).filter(deviceId => deviceId !== UNATTRIBUTED_SIGNATURE_ID);
+};
 
 // Idempotent server-side, so retrying after a partial failure converges.
 const patchRemainingSignedDevices = async (
@@ -148,7 +156,7 @@ const buildSignedDraftUpdate = (
   const hasSignatures = hasSignedPsbtState(unsignedPsbt, currentTxData, signedDevices);
   return {
     signedPsbtBase64: hasSignatures && unsignedPsbt ? unsignedPsbt : undefined,
-    signedDeviceId: getDraftSignedDeviceIds(signedDevices)[0],
+    signedDeviceId: getDraftSignedDeviceIds(unsignedPsbt, currentTxData, signedDevices)[0],
   };
 };
 
@@ -166,7 +174,8 @@ const updateExistingDraft = async (
     buildSignedDraftUpdate(unsignedPsbt, currentTxData, signedDevices),
     lease.signal,
   );
-  await patchRemainingSignedDevices(walletId, draftId, getDraftSignedDeviceIds(signedDevices).slice(1), lease);
+  const remainingDeviceIds = getDraftSignedDeviceIds(unsignedPsbt, currentTxData, signedDevices).slice(1);
+  await patchRemainingSignedDevices(walletId, draftId, remainingDeviceIds, lease);
   return draftId;
 };
 
@@ -191,7 +200,7 @@ const saveSignedStateForNewDraft = async (
     signedDevices: Array.from(signedDevices),
     psbtChanged: unsignedPsbt !== currentTxData.psbtBase64,
   });
-  const [firstDeviceId, ...remainingDeviceIds] = getDraftSignedDeviceIds(signedDevices);
+  const [firstDeviceId, ...remainingDeviceIds] = getDraftSignedDeviceIds(unsignedPsbt, currentTxData, signedDevices);
   await draftsApi.updateDraft(walletId, draftId, {
     signedPsbtBase64: unsignedPsbt,
     signedDeviceId: firstDeviceId,

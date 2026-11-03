@@ -131,7 +131,11 @@ export const draftSchemas = {
         enum: ['not_required', 'pending', 'approved', 'rejected', 'vetoed', 'expired'],
         description: 'Vault approval state. Broadcast is allowed only for not_required or approved drafts.',
       },
-      signedDeviceIds: { type: 'array', items: { type: 'string' } },
+      signedDeviceIds: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Wallet devices whose key produced a verified signature in signedPsbtBase64.',
+      },
       agentId: { type: 'string', nullable: true },
       agentOperationalWalletId: { type: 'string', nullable: true },
       createdAt: { type: 'string', format: 'date-time' },
@@ -177,7 +181,11 @@ export const draftSchemas = {
       effectiveAmount: draftIntegerValueSchema,
       inputPaths: { type: 'array', items: { type: 'string', minLength: 1 } },
       signedPsbtBase64: { type: 'string', minLength: 1 },
-      signedDeviceId: { type: 'string', minLength: 1 },
+      signedDeviceId: {
+        type: 'string',
+        minLength: 1,
+        description: 'Wallet device that signed. Rejected unless its key produced a verified signature in the signed PSBT.',
+      },
     },
     required: ['recipient', 'amount', 'feeRate', 'psbtBase64', 'intentId', 'intentDigest'],
     additionalProperties: false,
@@ -186,7 +194,11 @@ export const draftSchemas = {
     type: 'object',
     properties: {
       signedPsbtBase64: { type: 'string', minLength: 1 },
-      signedDeviceId: { type: 'string', minLength: 1 },
+      signedDeviceId: {
+        type: 'string',
+        minLength: 1,
+        description: 'Wallet device that signed. Rejected unless its key produced a verified signature in the signed PSBT.',
+      },
       status: { type: 'string', enum: [...ACTIONABLE_DRAFT_STATUS_VALUES] },
       label: { type: 'string', nullable: true },
       memo: { type: 'string', nullable: true },

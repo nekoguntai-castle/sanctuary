@@ -313,7 +313,10 @@ async function applyDeviceSignResult({
   setUnsignedPsbt(signedPsbt);
   storeSignedRawTxIfPresent(signResult, device, setSignedRawTx);
   markSignedDevice(setSignedDevices, device.id);
-  await persistDeviceSignatureToDraft(walletId, draftId, signedPsbt, device.id, lease.signal);
+  // A rawTx-only result leaves the PSBT unsigned, so the server has no signature to attribute.
+  if (signResult.psbt) {
+    await persistDeviceSignatureToDraft(walletId, draftId, signedPsbt, device.id, lease.signal);
+  }
 
   log.info('Device signing successful', {
     deviceId: device.id,

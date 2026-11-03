@@ -105,8 +105,12 @@ import {
   deleteExpiredDrafts,
 } from '../../../src/services/draftService';
 import { registerDraftDeletionTests } from './draftService.delete.contracts';
+import { buildMultisigPsbt } from './draftSignerPsbtFixture';
 
 describe('DraftService', () => {
+  const AGENT_FP = 'a1a1a1a1';
+  const HUMAN_FP = 'b2b2b2b2';
+  const agentSignedPsbt = buildMultisigPsbt([AGENT_FP, HUMAN_FP], [AGENT_FP]);
   const userId = 'user-123';
   const walletId = 'wallet-456';
   const draftId = 'draft-789';
@@ -278,21 +282,21 @@ describe('DraftService', () => {
       (walletRepository.findByIdWithSigningDevices as Mock).mockResolvedValue({
         id: walletId,
         devices: [
-          { deviceId: 'device-agent' },
-          { deviceId: 'device-human' },
+          { deviceId: 'device-agent', signerFingerprint: AGENT_FP },
+          { deviceId: 'device-human', signerFingerprint: HUMAN_FP },
         ],
       });
 
       await createDraft(walletId, userId, {
         ...validInput,
-        signedPsbtBase64: 'agent-signed-psbt',
+        signedPsbtBase64: agentSignedPsbt,
         signedDeviceId: 'device-agent',
       });
 
       expect(walletRepository.findByIdWithSigningDevices).toHaveBeenCalledWith(walletId);
       expect(draftRepository.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          signedPsbtBase64: 'agent-signed-psbt',
+          signedPsbtBase64: agentSignedPsbt,
           signedDeviceIds: ['device-agent'],
           status: 'partial',
         }),
@@ -304,7 +308,7 @@ describe('DraftService', () => {
       await expect(
         createDraft(walletId, userId, {
           ...validInput,
-          signedPsbtBase64: 'agent-signed-psbt',
+          signedPsbtBase64: agentSignedPsbt,
         })
       ).rejects.toThrow(InvalidInputError);
 
@@ -323,13 +327,13 @@ describe('DraftService', () => {
     it('rejects initial signed PSBT creation when signedDeviceId is not linked to the wallet', async () => {
       (walletRepository.findByIdWithSigningDevices as Mock).mockResolvedValue({
         id: walletId,
-        devices: [{ deviceId: 'device-human' }],
+        devices: [{ deviceId: 'device-human', signerFingerprint: HUMAN_FP }],
       });
 
       await expect(
         createDraft(walletId, userId, {
           ...validInput,
-          signedPsbtBase64: 'agent-signed-psbt',
+          signedPsbtBase64: agentSignedPsbt,
           signedDeviceId: 'device-agent',
         })
       ).rejects.toThrow(InvalidInputError);
@@ -471,12 +475,12 @@ describe('DraftService', () => {
     it('passes agent funding metadata and explicit notification actor through draft notifications', async () => {
       (walletRepository.findByIdWithSigningDevices as Mock).mockResolvedValue({
         id: walletId,
-        devices: [{ deviceId: 'device-agent' }],
+        devices: [{ deviceId: 'device-agent', signerFingerprint: AGENT_FP }],
       });
 
       await createDraft(walletId, userId, {
         ...validInput,
-        signedPsbtBase64: 'agent-signed-psbt',
+        signedPsbtBase64: agentSignedPsbt,
         signedDeviceId: 'device-agent',
         agentId: 'agent-1',
         agentOperationalWalletId: 'operational-wallet',
@@ -584,18 +588,22 @@ describe('DraftService', () => {
   });
 
   describe('updateDraft', () => {
+    // Every fixture device signs with COSIGNER_FP, which signed the stored PSBT.
+    const COSIGNER_FP = 'c3c3c3c3';
+    const signedDraft = {
+      ...mockDraft,
+      status: 'partial',
+      signedPsbtBase64: buildMultisigPsbt([COSIGNER_FP, HUMAN_FP], [COSIGNER_FP]),
+    };
+
     beforeEach(() => {
-      (draftRepository.findByIdInWallet as Mock).mockResolvedValue(mockDraft);
+      (draftRepository.findByIdInWallet as Mock).mockResolvedValue(signedDraft);
       (draftRepository.update as Mock).mockResolvedValue({ ...mockDraft, status: 'partial' });
       (walletRepository.findByIdWithSigningDevices as Mock).mockResolvedValue({
         id: walletId,
         devices: [
-          { deviceId: 'device-1' },
-          { deviceId: 'device-first' },
-          { deviceId: 'device-retry' },
-          { deviceId: 'device-fail' },
-          { deviceId: 'device-missing' },
-          { deviceId: 'device-err' },
+          ...['device-1', 'device-first', 'device-retry', 'device-fail', 'device-missing', 'device-err']
+            .map(deviceId => ({ deviceId, signerFingerprint: COSIGNER_FP })),
         ],
       });
     });
@@ -653,7 +661,7 @@ describe('DraftService', () => {
 
     it('uses empty signed-device list when draft has no signedDeviceIds yet', async () => {
       (draftRepository.findByIdInWallet as Mock).mockResolvedValue({
-        ...mockDraft,
+        ...signedDraft,
         signedDeviceIds: undefined,
       });
 
@@ -859,14 +867,14 @@ describe('DraftService', () => {
 
     it('retries on optimistic conflict and succeeds with refreshed draft', async () => {
       const refreshedDraft = {
-        ...mockDraft,
+        ...signedDraft,
         updatedAt: new Date(mockDraft.updatedAt.getTime() + 1000),
       };
       (draftRepository.update as Mock)
         .mockRejectedValueOnce(new Error('DRAFT_UPDATE_CONFLICT'))
         .mockResolvedValueOnce({ ...mockDraft, status: 'partial' });
       (draftRepository.findByIdInWallet as Mock)
-        .mockResolvedValueOnce(mockDraft)
+        .mockResolvedValueOnce(signedDraft)
         .mockResolvedValueOnce(refreshedDraft);
 
       const result = await updateDraft(walletId, draftId,{
@@ -879,7 +887,7 @@ describe('DraftService', () => {
         draftId,
         expect.objectContaining({
           signedDeviceIds: ['device-retry'],
-          expectedUpdatedAt: mockDraft.updatedAt,
+          expectedUpdatedAt: signedDraft.updatedAt,
         })
       );
       expect(draftRepository.update).toHaveBeenNthCalledWith(
@@ -894,7 +902,7 @@ describe('DraftService', () => {
 
     it('throws ConflictError after exhausting optimistic retries', async () => {
       (draftRepository.update as Mock).mockRejectedValue(new Error('DRAFT_UPDATE_CONFLICT'));
-      (draftRepository.findByIdInWallet as Mock).mockResolvedValue(mockDraft);
+      (draftRepository.findByIdInWallet as Mock).mockResolvedValue(signedDraft);
 
       await expect(
         updateDraft(walletId, draftId,{ signedDeviceId: 'device-fail' })
@@ -904,7 +912,7 @@ describe('DraftService', () => {
     it('throws NotFoundError if draft disappears during conflict retry', async () => {
       (draftRepository.update as Mock).mockRejectedValueOnce(new Error('DRAFT_UPDATE_CONFLICT'));
       (draftRepository.findByIdInWallet as Mock)
-        .mockResolvedValueOnce(mockDraft)
+        .mockResolvedValueOnce(signedDraft)
         .mockResolvedValueOnce(null);
 
       await expect(

@@ -523,11 +523,10 @@ describe('useUsbSigning', () => {
     expect(mocks.hardwareWallet.connect).not.toHaveBeenCalled();
   });
 
-  it('signWithDevice accepts rawTx-only result and tolerates draft persistence failures', async () => {
+  it('signWithDevice keeps a rawTx-only result local without attributing it on the draft', async () => {
     mocks.hardwareWallet.signPSBT.mockResolvedValueOnce({
       rawTx: 'rawtx-from-device',
     });
-    mocks.updateDraft.mockRejectedValueOnce(new Error('persist failed'));
 
     const deps = createDeps({
       draftId: 'draft-1',
@@ -550,11 +549,24 @@ describe('useUsbSigning', () => {
     const updater = vi.mocked(deps.setSignedDevices).mock.calls[0][0];
     const signedSet = updater(new Set<string>());
     expect(signedSet.has('dev-1')).toBe(true);
+    // The PSBT carries no signature, so the server could not verify the attribution.
+    expect(mocks.updateDraft).not.toHaveBeenCalled();
+    expect(mocks.hardwareWallet.disconnect).toHaveBeenCalled();
+  });
+
+  it('signWithDevice tolerates draft persistence failures', async () => {
+    mocks.updateDraft.mockRejectedValueOnce(new Error('persist failed'));
+    const deps = createDeps({ draftId: 'draft-1' });
+    const { result } = renderHook(() => useUsbSigning(deps));
+
+    await expect(
+      result.current.signWithDevice(trezorDevice('dev-1'))
+    ).resolves.toBe(true);
+
     expect(mocks.logger.warn).toHaveBeenCalledWith(
       'Failed to persist signature to draft',
       expect.objectContaining({ error: expect.any(Error) })
     );
-    expect(mocks.hardwareWallet.disconnect).toHaveBeenCalled();
   });
 
   it('signWithDevice signs multisig PSBT with descriptor xpubs and no draft persistence', async () => {
