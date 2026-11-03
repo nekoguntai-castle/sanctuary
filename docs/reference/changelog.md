@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.80] - 2026-11-03
+
+### Security
+
+- The server, gateway, frontend build and LLM egress proxy images move to Node.js 24.22.2 (from 24.19.0) for the Node.js security release of 2026-10-21. The most relevant fix is CVE-2026-111497, an out-of-bounds write in the Brotli decoder: Express accepts `Content-Encoding: br` request bodies and decompresses them with that decoder. The release also fixes TLS hostname checks that unusual IPv4/IPv6 spellings could mislead (CVE-2026-106069, CVE-2026-105483, CVE-2026-106072) and hostname truncation at a NUL byte in `dns.resolve*()` (CVE-2026-105482).
+
 ### Fixed
 
 - Electrum pool: with more than one Electrum server configured, backup servers were reported unhealthy and put into backoff on every health pass even though they were reachable. Once the pool's connections were all in use (for example with failover-only load balancing, which sends every connection to the primary), its "every server has a connection" check could not open one to the backups and counted the pool's own refusal ("Pool connection capacity is reserved") as a failure of each backup. The check now leaves a server's health alone when the pool is full, so backups stay ready for failover.
