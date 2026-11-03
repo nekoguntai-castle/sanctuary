@@ -12,7 +12,7 @@
   "connectIntegrity": "sha512-oAOfvJHT8tPqOXTmCOhn8uTZcoqSDuWAiWXQegx7C46tq+NLg+enkYXxUYEHq/9PmfZAOrUT9VMxZDsXM2thkA==",
   "connectWebIntegrity": "sha512-oTI/v9sUJMvLZgLa0seSGyPaumXydRYeAT4OVTQxIaEiL1hOA0yH+UvEfT4WKwxbxOtOqWosD8chP3uuWSArcg==",
   "runtimeCompatibility": {
-    "node": "24.21.0",
+    "node": "24.22.2",
     "npm": "12.0.2",
     "runnerOs": "Linux",
     "runnerArchitecture": "x86_64",

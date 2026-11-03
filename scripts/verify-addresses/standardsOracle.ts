@@ -23,7 +23,7 @@ export type StandardPolicy = (typeof STANDARD_POLICY_ORACLE)[number];
 
 export const PINNED_CORE_IMAGE = 'bitcoin/bitcoin:31.1@sha256:da25cedc66b1daefff9f412ee196c901a899c3fa68a33b20849c3e08b5c40d63' as const;
 export const PINNED_CORE_VERSION = '31.1.0' as const;
-export const PINNED_NODE_VERSION = '24.21.0' as const;
+export const PINNED_NODE_VERSION = '24.22.2' as const;
 export const PINNED_PYTHON_VERSION = '3.13.5' as const;
 export const PINNED_PYTHON_EFFECTIVE_UID = 65532 as const;
 export const PINNED_PYTHON_BASE_IMAGE = 'python:3.13.5-slim-bookworm@sha256:4c2cf9917bd1cbacc5e9b07320025bdb7cdf2df7b0ceaccb55e9dd7e30987419' as const;

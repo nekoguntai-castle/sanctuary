@@ -57,7 +57,7 @@
     "cborXIntegrity": "sha512-8QiD9PGOxyQHo7s2pzwTBH6lTjqekxPdl9Aq6fXvZgCuCJHOht1puDEA/fTr6mciB76c+M+Gi0qT2i1a4pm4Wg=="
   },
   "runtimeCompatibility": {
-    "node": "24.21.0",
+    "node": "24.22.2",
     "npm": "12.0.2",
     "runnerOs": "Linux",
     "runnerArchitecture": "x86_64",

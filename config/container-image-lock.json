@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "lockedImages": [
     { "reference": "ghcr.io/catthehacker/ubuntu:act-22.04", "digest": "sha256:41e84facdece5f25b0de00cd69969f5f032c54f5bb7313f385727330db9ac40f", "scope": "wallet-proof-runner-parent" },
-    { "reference": "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go", "digest": "sha256:00c4092dc9e30c242c4d1acb69f3c223e983932b9595752ac435385a6801a2b0", "scope": "wallet-proof-runner" },
+    { "reference": "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go", "digest": "sha256:14d65190139aad39b2af99b751d12237c259a952b7f908e0dcde25512c09299f", "scope": "wallet-proof-runner" },
     { "reference": "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright", "digest": "sha256:14f52c1a6257ac9c23d47265e6324c341ef86ccf83230d6657dfe66a8fb4e8a4", "scope": "playwright-e2e-runner" },
     { "reference": "nexus.tabineko.dev/nekoguntai-castle/act-ubuntu-node", "digest": "sha256:9a9cf26dae68eb81e0446f91f81427b0c65c380371225b47ece9ddb407a68891", "scope": "playwright-e2e-runner-parent" },
     { "reference": "node:24-alpine", "digest": "sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85", "scope": "production-build-and-runtime" },

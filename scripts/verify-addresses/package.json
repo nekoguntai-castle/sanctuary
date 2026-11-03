@@ -25,7 +25,7 @@
   },
   "devDependencies": {
     "@types/node": "24.13.5",
-    "node-linux-x64": "24.21.0",
+    "node-linux-x64": "24.22.2",
     "tsx": "^4.23.13",
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "@typescript/native": "npm:typescript@7.0.2"

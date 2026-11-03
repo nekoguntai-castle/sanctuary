@@ -63,7 +63,7 @@ if [ "${1:-}" = "--prefix" ] && [ "${3:-}" = "ci" ]; then
 #!/usr/bin/env bash
 set -euo pipefail
 if [ "${1:-}" = "-p" ] && [ "${2:-}" = "process.versions.node" ]; then
-  printf '%s\n' "${VERIFY_STUB_LOCKED_NODE_VERSION:-24.21.0}"
+  printf '%s\n' "${VERIFY_STUB_LOCKED_NODE_VERSION:-24.22.2}"
   exit 0
 fi
 if [ "${1:-}" = "-e" ]; then
@@ -91,7 +91,7 @@ fi
 if [ "${1:-}" = "run" ] && { [ "${2:-}" = "verify" ] || [ "${2:-}" = "generate" ]; }; then
   [[ "${VERIFY_ADDRESSES_PYTHON_IMAGE_ID:?}" =~ ^sha256:[0-9a-f]{64}$ ]] || exit 1
   [ "${VERIFY_ADDRESSES_PYTHON_PROVENANCE_MODE:?}" = 'local-iid' ] || exit 1
-  [ "$(node -p 'process.versions.node')" = '24.21.0' ] || exit 1
+  [ "$(node -p 'process.versions.node')" = '24.22.2' ] || exit 1
   if [ -n "${VERIFY_STUB_DOCKER_STATE_DIR:-}" ]; then
     if [ -n "${VERIFY_STUB_NPM_READY_FILE:-}" ]; then
       touch "$VERIFY_STUB_NPM_READY_FILE"
@@ -528,8 +528,8 @@ main() {
   grep -F -- 'image=bitcoin/bitcoin:31.1@sha256:da25cedc66b1daefff9f412ee196c901a899c3fa68a33b20849c3e08b5c40d63' \
     "$TEST_TEMP_DIR/endpoint-log" >/dev/null ||
     fail 'expected the exact Core image provenance to reach the verifier'
-  grep -F -- 'runtime_node=24.21.0' "$TEST_TEMP_DIR/endpoint-log" >/dev/null ||
-    fail 'expected Node 24 bootstrap to hand off to locked verifier Node 24.21.0'
+  grep -F -- 'runtime_node=24.22.2' "$TEST_TEMP_DIR/endpoint-log" >/dev/null ||
+    fail 'expected Node 24 bootstrap to hand off to locked verifier Node 24.22.2'
   grep -F -- 'python_image_id=sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc' \
     "$TEST_TEMP_DIR/endpoint-log" >/dev/null ||
     fail 'expected the immutable Python image ID to reach the verifier'
@@ -704,7 +704,7 @@ main() {
     bash "$SCRIPT" verify 2>&1)"; then
     fail 'expected a wrong locked verifier Node version to fail closed'
   fi
-  grep -F -- 'Locked verifier Node runtime does not match 24.21.0' <<<"$failure_output" >/dev/null ||
+  grep -F -- 'Locked verifier Node runtime does not match 24.22.2' <<<"$failure_output" >/dev/null ||
     fail 'expected the wrong locked runtime guard to report its exact cause'
 
   : > "$TEST_TEMP_DIR/curl-log"

@@ -3864,21 +3864,21 @@ for node_workflow in architecture quality release-candidate test; do
   assert_contains_in_order \
     "$REPO_ROOT/.github/workflows/${node_workflow}.yml" \
     "${node_workflow} pins an allowScripts-capable npm" \
-    "NODE_VERSION: '24.21.0'" \
+    "NODE_VERSION: '24.22.2'" \
     "NPM_VERSION: '12.0.2'"
 done
 
 assert_contains_in_order \
   "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "verify-vectors pins its funds-safety Node and npm runtime exactly" \
-  "NODE_VERSION: '24.21.0'" \
+  "NODE_VERSION: '24.22.2'" \
   "NPM_VERSION: '12.0.2'" \
   "uses: ./.github/actions/setup-node-toolchain" \
   "install-npm: 'false'"
 assert_occurrence_count \
   "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "verify-vectors jobs use the immutable checksum-built wallet verifier image" \
-  "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:00c4092dc9e30c242c4d1acb69f3c223e983932b9595752ac435385a6801a2b0" 8
+  "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:14d65190139aad39b2af99b751d12237c259a952b7f908e0dcde25512c09299f" 8
 assert_occurrence_count \
   "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "verify-vectors jobs disable network npm repair" \
@@ -3887,10 +3887,10 @@ assert_occurrence_count \
 GO_RUNNER_DOCKERFILE="$REPO_ROOT/scripts/ci/images/go-runner.Dockerfile"
 assert_occurrence_count "$GO_RUNNER_DOCKERFILE" \
   "wallet verifier runner pins Node exactly" \
-  "ARG NODE_VERSION=24.21.0" 1
+  "ARG NODE_VERSION=24.22.2" 1
 assert_occurrence_count "$GO_RUNNER_DOCKERFILE" \
   "wallet verifier runner pins the official Node archive checksum" \
-  "ARG NODE_SHA256=fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6" 1
+  "ARG NODE_SHA256=48cc0e21e048790e54c0cf5749c2725005313d652651c40b7a21feb9697aaf75" 1
 assert_occurrence_count "$GO_RUNNER_DOCKERFILE" \
   "wallet verifier runner verifies the Node archive checksum" \
   'echo "${NODE_SHA256}  /tmp/node.tar.xz" | sha256sum -c -' 1

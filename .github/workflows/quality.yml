@@ -40,7 +40,7 @@ env:
   GIT_CONFIG_COUNT: '1'
   GIT_CONFIG_KEY_0: init.defaultBranch
   GIT_CONFIG_VALUE_0: main
-  NODE_VERSION: '24.21.0'
+  NODE_VERSION: '24.22.2'
   NPM_VERSION: '12.0.2'
   # Lizard is the only host-Python consumer; pin the runtime baked into the
   # Ubuntu 22.04 job image instead of claiming a different unavailable patch.

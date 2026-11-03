@@ -63,7 +63,7 @@ result.
 ## Repeatable verification
 
 Prerequisites are a Node.js 24 bootstrap, Go 1.27.1, Docker Compose, and curl.
-The verifier installs its exact Node 24.21.0 runtime from the npm lock and runs
+The verifier installs its exact Node 24.22.2 runtime from the npm lock and runs
 Python 3.13.5 inside a digest-pinned, network-isolated local image. Run:
 
 ```bash

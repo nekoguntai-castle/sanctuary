@@ -43,7 +43,7 @@ const createWorkspace = (): void => {
     path.join(repoRoot, "scripts/ci/resolve-trezor-publish-binding.sh"),
     path.join(workspace, "scripts/ci/resolve-trezor-publish-binding.sh"),
   );
-  writeFileSync(path.join(workspace, ".nvmrc"), "24.21.0\n");
+  writeFileSync(path.join(workspace, ".nvmrc"), "24.22.2\n");
   writeFileSync(
     path.join(workspace, "package.json"),
     JSON.stringify({ packageManager: "npm@12.0.2" }),
@@ -54,7 +54,7 @@ const installCommandMocks = (): void => {
   writeExecutable(
     "node",
     `#!/usr/bin/env bash
-printf 'v%s\\n' "\${MOCK_NODE_VERSION:-24.21.0}"
+printf 'v%s\\n' "\${MOCK_NODE_VERSION:-24.22.2}"
 `,
   );
   writeExecutable(
