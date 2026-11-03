@@ -7,6 +7,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { BITCOIN_NETWORKS, BITCOIN_NON_REGTEST_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
+import { authenticate } from '../../middleware/auth';
 import { getElectrumClient } from '../../services/bitcoin/electrum';
 import * as mempool from '../../services/bitcoin/mempool';
 import { getBitcoinNetworkStatus } from '../../services/bitcoin/networkStatusService';
@@ -159,7 +160,7 @@ router.get('/blocks/recent', asyncHandler(async (req, res) => {
  * GET /api/v1/bitcoin/block/:height
  * Get block information
  */
-router.get('/block/:height', asyncHandler(async (req, res) => {
+router.get('/block/:height', authenticate, asyncHandler(async (req, res) => {
   const heightResult = BlockHeightSchema.safeParse(req.params.height);
   if (!heightResult.success) {
     throw new ValidationError('Invalid block height');

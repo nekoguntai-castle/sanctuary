@@ -42,7 +42,7 @@ const addressLookupValidationMessage = (issues: Array<{ message: string }>) => {
  * POST /api/v1/bitcoin/address/validate
  * Validate a Bitcoin address
  */
-router.post('/address/validate', validate(
+router.post('/address/validate', authenticate, validate(
   { body: AddressValidateBodySchema },
   { message: 'address is required' }
 ), asyncHandler(async (req, res) => {
@@ -57,7 +57,7 @@ router.post('/address/validate', validate(
  * GET /api/v1/bitcoin/address/:address
  * Get address information from blockchain
  */
-router.get('/address/:address', asyncHandler(async (req, res) => {
+router.get('/address/:address', authenticate, asyncHandler(async (req, res) => {
   const { address } = req.params;
   const networkResult = AddressNetworkSchema.safeParse(req.query.network ?? 'mainnet');
   if (!networkResult.success) {

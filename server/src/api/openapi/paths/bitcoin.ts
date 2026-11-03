@@ -337,6 +337,7 @@ export const bitcoinPaths = {
       summary: "Get block header",
       description:
         "Get a block header by non-negative block height from the configured Electrum server.",
+      security: bearerAuth,
       parameters: [
         {
           name: "height",
@@ -351,6 +352,7 @@ export const bitcoinPaths = {
           "#/components/schemas/BitcoinBlockHeader",
         ),
         400: apiErrorResponse,
+        401: apiErrorResponse,
         500: apiErrorResponse,
       },
     },
@@ -431,6 +433,7 @@ export const bitcoinPaths = {
       summary: "Validate Bitcoin address",
       description:
         "Validate a Bitcoin address and optionally fetch balance/count details.",
+      security: bearerAuth,
       requestBody: jsonRequestBody(
         "#/components/schemas/AddressValidationRequest",
       ),
@@ -440,6 +443,7 @@ export const bitcoinPaths = {
           "#/components/schemas/AddressValidationResponse",
         ),
         400: apiErrorResponse,
+        401: apiErrorResponse,
         500: apiErrorResponse,
       },
     },
@@ -450,6 +454,7 @@ export const bitcoinPaths = {
       summary: "Get Bitcoin address info",
       description:
         "Validate an address and return address type, balance, and transaction count.",
+      security: bearerAuth,
       parameters: [
         {
           name: "address",
@@ -465,6 +470,7 @@ export const bitcoinPaths = {
           "#/components/schemas/AddressInfoResponse",
         ),
         400: apiErrorResponse,
+        401: apiErrorResponse,
         500: apiErrorResponse,
       },
     },
@@ -520,12 +526,14 @@ export const bitcoinPaths = {
       summary: "Get Bitcoin transaction details",
       description:
         "Get transaction details from the configured blockchain data source.",
+      security: bearerAuth,
       parameters: [txidParameter, addressNetworkQueryParameter],
       responses: {
         200: jsonResponse(
           "Transaction details",
           "#/components/schemas/BitcoinTransactionDetails",
         ),
+        401: apiErrorResponse,
         500: apiErrorResponse,
       },
     },

@@ -11,11 +11,23 @@ import {
   mockSyncIntentAdmission,
   mockUtils,
   request,
+  mockAuthState,
 } from './bitcoinTestHarness';
 
 export const registerBitcoinAddressRouteTests = () => {
   describe('Address Routes', () => {
     describe('POST /bitcoin/address/validate', () => {
+      it('should require authentication before querying the node', async () => {
+        mockAuthState.authenticated = false;
+
+        const response = await request(app)
+          .post('/bitcoin/address/validate')
+          .send({ address: 'bc1qtest123' });
+
+        expect(response.status).toBe(401);
+        expect(mockBlockchain.checkAddress).not.toHaveBeenCalled();
+      });
+
       it('should validate a valid Bitcoin address', async () => {
         mockBlockchain.checkAddress.mockResolvedValue({
           valid: true,
@@ -71,6 +83,16 @@ export const registerBitcoinAddressRouteTests = () => {
     });
 
     describe('GET /bitcoin/address/:address', () => {
+      it('should require authentication before querying the node', async () => {
+        mockAuthState.authenticated = false;
+
+        const response = await request(app)
+          .get('/bitcoin/address/bc1qtest123');
+
+        expect(response.status).toBe(401);
+        expect(mockBlockchain.checkAddress).not.toHaveBeenCalled();
+      });
+
       it('should return address info for valid address', async () => {
         mockBlockchain.checkAddress.mockResolvedValue({
           valid: true,

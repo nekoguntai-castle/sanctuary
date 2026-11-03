@@ -11,6 +11,8 @@ import {
 } from '../../../mocks/electrum';
 
 const bitcoinApiMocks = vi.hoisted(() => ({
+  // The mocked authenticate rejects every request while this is false.
+  authState: { authenticated: true },
   mockNodeClient: {
     getElectrumClientIfActive: vi.fn(),
     getNodeConfig: vi.fn(),
@@ -64,6 +66,7 @@ const bitcoinApiMocks = vi.hoisted(() => ({
   mockEnqueueWalletSyncBatch: vi.fn(),
 }));
 
+export const mockAuthState = bitcoinApiMocks.authState;
 export const mockNodeClient = bitcoinApiMocks.mockNodeClient;
 export const mockBlockchain = bitcoinApiMocks.mockBlockchain;
 export const mockMempool = bitcoinApiMocks.mockMempool;
@@ -128,6 +131,10 @@ vi.mock('../../../../src/services/bitcoin/electrumPool', () => ({
 vi.mock('../../../../src/middleware/auth', () => ({
   requireAuthenticatedUser: (req: any) => req.user ?? { userId: 'test-user-id', username: 'testuser', isAdmin: false },
   authenticate: (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (!bitcoinApiMocks.authState.authenticated) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
     (req as any).user = { userId: 'test-user-id', isAdmin: false };
     next();
   },
@@ -273,6 +280,7 @@ export const setupBitcoinApiMocks = () => {
   resetElectrumMocks();
   resetElectrumPoolMocks();
   vi.clearAllMocks();
+  mockAuthState.authenticated = true;
 
   // Set up default mock return values
   mockNodeClient.getElectrumClientIfActive.mockReturnValue(mockElectrumClient);

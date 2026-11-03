@@ -119,7 +119,7 @@ const normalizeTransactionLookupId = (txid: string): string =>
  * GET /api/v1/bitcoin/transaction/:txid
  * Get transaction details from blockchain
  */
-router.get('/transaction/:txid', asyncHandler(async (req, res) => {
+router.get('/transaction/:txid', authenticate, asyncHandler(async (req, res) => {
   const txid = normalizeTransactionLookupId(req.params.txid);
   const network = resolveBitcoinNetworkParam(req.query.network);
 

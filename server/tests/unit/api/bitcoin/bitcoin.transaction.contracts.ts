@@ -12,6 +12,7 @@ import {
   mockUtils,
   mockAssertWalletHardwareCapabilityById,
   request,
+  mockAuthState,
 } from './bitcoinTestHarness';
 
 function expectGroupAwareEditLookup(): void {
@@ -23,6 +24,16 @@ function expectGroupAwareEditLookup(): void {
 export const registerBitcoinTransactionRouteTests = () => {
   describe('Transaction Routes', () => {
     describe('GET /bitcoin/transaction/:txid', () => {
+      it('should require authentication before querying the node', async () => {
+        mockAuthState.authenticated = false;
+
+        const response = await request(app)
+          .get('/bitcoin/transaction/abc123');
+
+        expect(response.status).toBe(401);
+        expect(mockBlockchain.getTransactionDetails).not.toHaveBeenCalled();
+      });
+
       it('should return transaction details', async () => {
         const txDetails = {
           txid: 'abc123',

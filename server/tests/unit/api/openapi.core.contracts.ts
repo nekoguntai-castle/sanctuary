@@ -304,6 +304,18 @@ export function registerOpenApiCoreTests() {
       name: "Node",
       description: "Bitcoin node connectivity checks",
     });
+
+    // Node lookups keyed by caller-chosen input require authentication.
+    const authenticatedLookups = [
+      openApiSpec.paths["/bitcoin/block/{height}"].get,
+      openApiSpec.paths["/bitcoin/address/validate"].post,
+      openApiSpec.paths["/bitcoin/address/{address}"].get,
+      openApiSpec.paths["/bitcoin/transaction/{txid}"].get,
+    ];
+    for (const operation of authenticatedLookups) {
+      expect(operation.security).toEqual(browserOrBearerAuthSecurity);
+      expect(operation.responses).toHaveProperty("401");
+    }
     expect(
       openApiSpec.paths["/bitcoin/silent-payments/readiness"].get.responses[200]
         .content["application/json"].schema,

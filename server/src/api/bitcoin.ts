@@ -22,8 +22,9 @@ import syncRouter from './bitcoin/sync';
 
 const router = Router();
 
-// All bitcoin routes are public by default
-// Individual routes apply authenticate middleware as needed
+// Network-wide reads (status, fees, mempool, recent blocks) are public. Routes
+// that query the node with caller-chosen input (txid, address, block height)
+// or touch wallets require authentication; syncRouter applies it router-wide.
 router.use('/', networkRouter);
 router.use('/', feesRouter);
 router.use('/', addressRouter);

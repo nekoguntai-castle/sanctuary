@@ -10,6 +10,7 @@ import {
   mockSilentPayments,
   mockUtils,
   request,
+  mockAuthState,
 } from './bitcoinTestHarness';
 
 export const registerBitcoinNetworkRouteTests = () => {
@@ -677,6 +678,16 @@ export const registerBitcoinNetworkRouteTests = () => {
     });
 
     describe('GET /bitcoin/block/:height', () => {
+      it('should require authentication before querying the node', async () => {
+        mockAuthState.authenticated = false;
+
+        const response = await request(app)
+          .get('/bitcoin/block/850000');
+
+        expect(response.status).toBe(401);
+        expect(mockElectrumClient.getBlockHeader).not.toHaveBeenCalled();
+      });
+
       it('should return 400 for invalid height', async () => {
         const response = await request(app).get('/bitcoin/block/invalid');
 
