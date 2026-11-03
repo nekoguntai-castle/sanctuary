@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.8.80] - 2026-11-03
+### Security
+
+- Dependency refresh for moderate advisories. Runtime: nodemailer 10.3.1 (address-parser recipient confusion and SMTP AUTH regex denial of service), ip-address 10.7.5 (used by express-rate-limit to key IPv6 clients in the gateway and LLM egress proxy, and by the SOCKS client; fixes long-input denial of service and IPv6 range misclassification), fast-uri 3.1.9, and pbkdf2 3.1.7. Development: vitest 4.1.12 (manual-mock registration code injection). firebase-admin's optional Cloud Storage and Firestore clients now resolve gaxios 6.3.0 and google-gax 5.0.4, the newest releases outside the affected ranges; this drops their vulnerable uuid, glob and rimraf dependencies. Push notifications use firebase-admin messaging, which does not load either client.
+
+## [0.8.80] - 2026-11-02
 
 ### Security
 
@@ -1161,7 +1165,8 @@ upgrade browser-smoke and 2FA preservation assertions.
 
 - Removed navigation-triggered syncs in favor of worker-driven sync
 
-[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.79...HEAD
+[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.80...HEAD
+[0.8.80]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.79...v0.8.80
 [0.8.79]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.78...v0.8.79
 [0.8.78]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.77...v0.8.78
 [0.8.77]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.76...v0.8.77
