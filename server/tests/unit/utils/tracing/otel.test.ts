@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Module from 'node:module';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const serverPackageVersion: string = JSON.parse(
+  readFileSync(join(__dirname, '../../../../package.json'), 'utf-8'),
+).version;
 
 const { mockLogger } = vi.hoisted(() => ({
   mockLogger: {
@@ -92,8 +98,12 @@ describe('initializeOpenTelemetry', () => {
       constructor(_config: any) {}
     }
 
+    let resourceAttributes: Record<string, string> | undefined;
+
     class MockResource {
-      constructor(_config: any) {}
+      constructor(config: Record<string, string>) {
+        resourceAttributes = config;
+      }
     }
 
     const requireSpy = vi.spyOn(Module.prototype, 'require').mockImplementation(function (
@@ -125,6 +135,13 @@ describe('initializeOpenTelemetry', () => {
       await initializeOpenTelemetry();
 
       expect(sdkStart).toHaveBeenCalledTimes(1);
+      // npm_package_version is unset (as in the containers), so the version
+      // must come from the server package.json rather than a placeholder.
+      expect(resourceAttributes).toMatchObject({
+        'service.name': 'svc-test',
+        'service.version': serverPackageVersion,
+        'deployment.environment': 'test',
+      });
       expect(ignoreIncomingRequestHook?.({ url: '/health' })).toBe(true);
       expect(ignoreIncomingRequestHook?.({ url: '/metrics' })).toBe(true);
       expect(ignoreIncomingRequestHook?.({ url: '/api/wallets' })).toBe(false);

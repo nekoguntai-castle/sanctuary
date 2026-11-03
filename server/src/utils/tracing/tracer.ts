@@ -36,6 +36,7 @@
 
 import { createLogger } from '../logger';
 import { requestContext } from '../requestContext';
+import { PACKAGE_VERSION } from '../../config/packageInfo';
 import type {
   Span,
   SpanAttributes,
@@ -56,7 +57,7 @@ const log = createLogger('UTIL:TRACING');
 const DEFAULT_CONFIG: TracingConfig = {
   enabled: process.env.OTEL_TRACING_ENABLED === 'true',
   serviceName: process.env.OTEL_SERVICE_NAME || 'sanctuary-api',
-  serviceVersion: process.env.npm_package_version || '1.0.0',
+  serviceVersion: PACKAGE_VERSION,
   environment: process.env.NODE_ENV || 'development',
   exporterEndpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
   exporterProtocol: (process.env.OTEL_EXPORTER_OTLP_PROTOCOL as 'http' | 'grpc') || 'http',

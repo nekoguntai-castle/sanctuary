@@ -11,6 +11,7 @@
 
 import { createLogger } from '../logger';
 import { getErrorMessage } from '../errors';
+import { PACKAGE_VERSION } from '../../config/packageInfo';
 
 const log = createLogger('UTIL:OTEL');
 
@@ -40,7 +41,7 @@ export async function initializeOpenTelemetry(): Promise<void> {
     /* eslint-enable @typescript-eslint/no-var-requires */
 
     const serviceName = process.env.OTEL_SERVICE_NAME || 'sanctuary-api';
-    const serviceVersion = process.env.npm_package_version || '1.0.0';
+    const serviceVersion = PACKAGE_VERSION;
     const environment = process.env.NODE_ENV || 'development';
 
     // Configure the OTLP exporter

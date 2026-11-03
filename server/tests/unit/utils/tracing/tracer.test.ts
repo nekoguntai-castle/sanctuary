@@ -186,7 +186,7 @@ describe('tracer', () => {
     expect(third).not.toBe(first);
   });
 
-  it('uses default serviceVersion/environment when env vars are missing at import time', async () => {
+  it('uses the default environment when NODE_ENV and npm_package_version are missing at import time', async () => {
     const previousPackageVersion = process.env.npm_package_version;
     const previousNodeEnv = process.env.NODE_ENV;
     delete process.env.npm_package_version;

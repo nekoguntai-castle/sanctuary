@@ -8,6 +8,12 @@ import { vi, Mock } from 'vitest';
 
 import request from 'supertest';
 import express, { Express } from 'express';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
+const serverPackageVersion: string = JSON.parse(
+  readFileSync(join(__dirname, '../../../package.json'), 'utf-8'),
+).version;
 
 // Mock dependencies
 vi.mock('../../../src/models/prisma', () => ({
@@ -270,16 +276,25 @@ describe('Health API', () => {
       expect(response.body.components.memory.details.rss).toBeDefined();
     });
 
-    it('should fall back to default version when package version is unset', async () => {
+    it('should report the server package version when npm_package_version is unset', async () => {
+      // Containers start node directly, so npm never sets npm_package_version;
+      // the health version must come from package.json, not from npm's env.
       const originalVersion = process.env.npm_package_version;
-      process.env.npm_package_version = '';
+      delete process.env.npm_package_version;
 
-      const response = await request(app).get('/api/v1/health');
+      try {
+        const response = await request(app).get('/api/v1/health');
 
-      process.env.npm_package_version = originalVersion;
-
-      expect(response.status).toBe(200);
-      expect(response.body.version).toBe('0.0.0');
+        expect(response.status).toBe(200);
+        expect(response.body.version).toBe(serverPackageVersion);
+        expect(response.body.version).not.toBe('0.0.0');
+      } finally {
+        if (originalVersion === undefined) {
+          delete process.env.npm_package_version;
+        } else {
+          process.env.npm_package_version = originalVersion;
+        }
+      }
     });
 
     it('should include database latency in response', async () => {

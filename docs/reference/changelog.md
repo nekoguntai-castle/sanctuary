@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Dependency refresh for moderate advisories. Runtime: nodemailer 10.3.1 (address-parser recipient confusion and SMTP AUTH regex denial of service), ip-address 10.7.5 (used by express-rate-limit to key IPv6 clients in the gateway and LLM egress proxy, and by the SOCKS client; fixes long-input denial of service and IPv6 range misclassification), fast-uri 3.1.9, and pbkdf2 3.1.7. Development: vitest 4.1.12 (manual-mock registration code injection). firebase-admin's optional Cloud Storage and Firestore clients now resolve gaxios 6.3.0 and google-gax 5.0.4, the newest releases outside the affected ranges; this drops their vulnerable uuid, glob and rimraf dependencies. Push notifications use firebase-admin messaging, which does not load either client.
 
+### Fixed
+
+- `/api/v1/health` reported `version: "0.0.0"` and OpenTelemetry traces carried `service.version` `1.0.0` on every install. Both read `npm_package_version`, which npm sets only when a process starts through `npm run`, and the containers start Node directly. They now use the server's `package.json` version, as the admin version endpoint already did.
+
 ## [0.8.80] - 2026-11-02
 
 ### Security

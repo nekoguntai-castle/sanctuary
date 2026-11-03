@@ -11,6 +11,7 @@ import type { ComponentHealth, HealthStatus, HealthResponse } from '../../servic
 import { checkDatabase, checkDiskSpace, checkMemory } from '../../services/health';
 import { checkElectrum, checkWebSocket, checkSync, checkRedis, checkJobQueue } from '../../services/health';
 import { checkCircuitBreakers, checkCacheInvalidation, checkStartup } from './infrastructureChecks';
+import { PACKAGE_VERSION } from '../../config/packageInfo';
 
 const router = Router();
 
@@ -69,7 +70,7 @@ router.get('/', asyncHandler(async (_req, res) => {
     status,
     timestamp: new Date().toISOString(),
     uptime: Math.floor((Date.now() - startTime) / 1000),
-    version: process.env.npm_package_version || '0.0.0',
+    version: PACKAGE_VERSION,
     components,
   };
 
