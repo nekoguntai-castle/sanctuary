@@ -35,6 +35,9 @@ export function useSendOperationOwner(hasInitialTransaction: boolean): SendOpera
   // broadcast is in flight must not abort the broadcast's lease after the server call has
   // already gone out (see useBroadcast.ts).
   const broadcasting = useRef<OperationSlot | null>(null);
+  // Draft save owns its own slot too. Sharing `signing` let a signing click abort an
+  // in-flight save: the save then never cleared its busy flag and the wizard wedged.
+  const draftSaving = useRef<OperationSlot | null>(null);
 
   const invalidate = useCallback(() => {
     formGeneration.current += 1;
@@ -42,6 +45,7 @@ export function useSendOperationOwner(hasInitialTransaction: boolean): SendOpera
     abortSlot(creation);
     abortSlot(signing);
     abortSlot(broadcasting);
+    abortSlot(draftSaving);
   }, []);
 
   const begin = useCallback((slot: React.RefObject<OperationSlot | null>): SendOperationLease => {
@@ -63,20 +67,19 @@ export function useSendOperationOwner(hasInitialTransaction: boolean): SendOpera
   const beginCreation = useCallback(() => {
     transactionGeneration.current = null;
     abortSlot(signing);
+    abortSlot(draftSaving);
     return begin(creation);
   }, [begin]);
 
-  const beginSigning = useCallback(() => {
+  // Work on the current transaction: refused once the form moved on.
+  const beginForTransaction = useCallback((slot: React.RefObject<OperationSlot | null>) => {
     if (transactionGeneration.current !== formGeneration.current) return null;
-    return begin(signing);
+    return begin(slot);
   }, [begin]);
 
-  const beginDraftSave = beginSigning;
-
-  const beginBroadcast = useCallback(() => {
-    if (transactionGeneration.current !== formGeneration.current) return null;
-    return begin(broadcasting);
-  }, [begin]);
+  const beginSigning = useCallback(() => beginForTransaction(signing), [beginForTransaction]);
+  const beginDraftSave = useCallback(() => beginForTransaction(draftSaving), [beginForTransaction]);
+  const beginBroadcast = useCallback(() => beginForTransaction(broadcasting), [beginForTransaction]);
 
   const acceptTransaction = useCallback((lease: SendOperationLease) => {
     if (!lease.isCurrent()) return false;

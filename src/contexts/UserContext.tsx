@@ -11,6 +11,7 @@ import type {
 } from './userContextTypes';
 import { getUserPreferenceRecord } from './userModel';
 import { clearQueryCacheForLogout } from '../providers/queryCacheReset';
+import { websocketClient } from '../services/websocket';
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
@@ -40,6 +41,11 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setTwoFactorPending(null);
     setError(null);
     setNotice(null);
+    // Every logout path (explicit, forced after a failed refresh, another tab)
+    // runs this listener. Close the live-update socket and drop its
+    // subscriptions, or it reconnect-loops while logged out and replays the
+    // previous user's channels; the next login's pages connect a fresh one.
+    websocketClient.disconnect();
     // Runs after the user state is cleared above, so no authenticated query
     // can remount against the React Query cache before it is wiped. Not
     // awaited: clearSessionState is a synchronous terminal-logout listener,

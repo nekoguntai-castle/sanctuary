@@ -31,6 +31,11 @@ const {
   mockAddAppNotification: vi.fn(),
 }));
 
+const mockSocketConnect = vi.hoisted(() => vi.fn());
+vi.mock("../src/services/websocket", () => ({
+  websocketClient: { connect: mockSocketConnect },
+}));
+
 vi.mock("../src/hooks/websocket", () => ({
   useWebSocketQueryInvalidation: (...args: unknown[]) =>
     mockUseWebSocketQueryInvalidation(...args),
@@ -306,6 +311,7 @@ describe("App branch coverage", () => {
     expect(screen.getByText("Login Screen")).toBeInTheDocument();
     expect(screen.queryByText("Dashboard Page")).not.toBeInTheDocument();
     expect(mockUseWebSocketQueryInvalidation).toHaveBeenCalled();
+    expect(mockSocketConnect).not.toHaveBeenCalled();
   });
 
   it("renders the email verification page, not Login, for an unauthenticated /verify-email", () => {
@@ -338,6 +344,8 @@ describe("App branch coverage", () => {
 
     expect(screen.getByRole("heading", { name: "Email verification" })).toBeInTheDocument();
     expect(screen.queryByText("Dashboard Page")).not.toBeInTheDocument();
+    // Logout closes the socket, so each signed-in session connects one on any page.
+    expect(mockSocketConnect).toHaveBeenCalled();
   });
 
   it("an admin login consumes a stashed restore hand-off", async () => {

@@ -54,6 +54,10 @@ vi.mock('../../src/api/twoFactor', () => ({
 // mount and calls triggerLogout on explicit logout. Neither should
 // actually exercise the Web Lock / BroadcastChannel paths in these
 // tests — those have their own dedicated tests in tests/api/refresh.test.ts.
+const mockSocketDisconnect = vi.hoisted(() => vi.fn());
+vi.mock('../../src/services/websocket', () => ({
+  websocketClient: { disconnect: mockSocketDisconnect },
+}));
 const mockOnTerminalLogout = vi.fn<(cb: () => void) => () => void>(() => () => {});
 const mockTriggerLogout = vi.fn<() => void>();
 vi.mock('../../src/api/refresh', () => ({
@@ -668,6 +672,29 @@ describe('UserContext', () => {
         expect(screen.getByTestId('user')).toHaveTextContent('null');
       });
       expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
+    });
+
+    it('closes the live-update socket when a forced logout fires', async () => {
+      vi.mocked(authApi.getCurrentUser).mockResolvedValue(mockUser);
+      let capturedListener: (() => void) | null = null;
+      mockOnTerminalLogout.mockImplementation((cb: () => void) => {
+        capturedListener = cb;
+        return () => {};
+      });
+
+      render(<UserProvider><TestConsumer /></UserProvider>);
+      await waitFor(() => {
+        expect(screen.getByTestId('user')).toHaveTextContent('testuser');
+      });
+
+      if (!capturedListener) throw new Error('terminal logout listener not captured');
+      act(() => {
+        (capturedListener as () => void)();
+      });
+
+      // Forced logouts (refresh failure, another tab) skip the explicit logout
+      // action, so the disconnect must live in the shared listener.
+      expect(mockSocketDisconnect).toHaveBeenCalledTimes(1);
     });
     });
   }

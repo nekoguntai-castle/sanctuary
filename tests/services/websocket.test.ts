@@ -635,6 +635,46 @@ describe('WebSocketClient', () => {
   // Reconnection
   // ========================================
   describe('reconnection', () => {
+    it('keeps a new session socket when the old one closes late', () => {
+      client.connect();
+      const oldWs = getLastWs();
+      oldWs.simulateOpen();
+      client.disconnect();
+
+      client.connect();
+      const newWs = getLastWs();
+      newWs.simulateOpen();
+      // The old socket's close event lands after the new session connected.
+      oldWs.simulateClose(1000, 'Client disconnect');
+
+      expect(client.getState()).toBe('connected');
+      vi.advanceTimersByTime(2000);
+      expect(mockWsInstances.length).toBe(2);
+    });
+
+    it('lets a new session connect after disconnecting mid-handshake', () => {
+      client.connect();
+      client.disconnect();
+
+      client.connect();
+
+      expect(mockWsInstances.length).toBe(2);
+    });
+
+    it('reconnects again in a session started after a logout disconnect', () => {
+      client.connect();
+      getLastWs().simulateOpen();
+      client.disconnect();
+
+      // The next session (after login) must get automatic reconnection back.
+      client.connect();
+      getLastWs().simulateOpen();
+      getLastWs().simulateClose(1006, 'Abnormal');
+      vi.advanceTimersByTime(2000);
+
+      expect(mockWsInstances.length).toBe(3);
+    });
+
     it('should attempt reconnection after unexpected close', () => {
       client.connect();
       getLastWs().simulateOpen();

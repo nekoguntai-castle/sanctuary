@@ -75,6 +75,39 @@ describe('useSendOperationOwner', () => {
     expect(broadcast.signal.aborted).toBe(false);
   });
 
+  it('refuses a draft save without a current transaction', () => {
+    const { result } = renderHook(() => useSendOperationOwner(false));
+
+    expect(result.current.beginDraftSave()).toBeNull();
+  });
+
+  it('does not let a signing begin abort an in-flight draft save', () => {
+    const { result } = renderHook(() => useSendOperationOwner(false));
+    beginAcceptedTransaction(result.current);
+
+    const save = requireLease(result.current.beginDraftSave());
+    // A signing click mid-save used to take over the shared slot: the save's
+    // lease went stale, isSavingDraft never cleared, and the wizard wedged.
+    requireLease(result.current.beginSigning());
+
+    expect(save.isCurrent()).toBe(true);
+    expect(save.signal.aborted).toBe(false);
+  });
+
+  it('aborts an in-flight draft save on invalidate and on a new creation', () => {
+    const { result } = renderHook(() => useSendOperationOwner(false));
+    beginAcceptedTransaction(result.current);
+
+    const save = requireLease(result.current.beginDraftSave());
+    act(() => result.current.invalidate());
+    expect(save.signal.aborted).toBe(true);
+
+    beginAcceptedTransaction(result.current);
+    const nextSave = requireLease(result.current.beginDraftSave());
+    result.current.beginCreation();
+    expect(nextSave.signal.aborted).toBe(true);
+  });
+
   it('rejects a new broadcast begin once ownership has been invalidated', () => {
     const { result } = renderHook(() => useSendOperationOwner(false));
     beginAcceptedTransaction(result.current);

@@ -188,12 +188,11 @@ export function ReviewStep({
   // Can broadcast?
   const canBroadcast = canBroadcastReviewTransaction(txData, hasEnoughSignatures, signedDevices);
 
-  // A broadcast already in flight must lock the signing controls too. Broadcast and
-  // signing now own separate ownership slots (useSendOperationOwner), so a stray click
-  // can no longer tear down the broadcast's lease directly — but the controls still need
-  // to stay disabled: re-signing a transaction that is already being broadcast is not a
-  // valid user action while the server call is outstanding.
-  const signingControlsBusy = signing || broadcasting;
+  // A broadcast or draft save in flight must lock the signing controls too. Each owns a
+  // separate ownership slot (useSendOperationOwner), so a stray click can no longer tear
+  // down its lease directly — but re-signing a transaction that is being broadcast or
+  // saved is not a valid user action while that server call is outstanding.
+  const signingControlsBusy = signing || broadcasting || savingDraft;
   const approvalMode = getReviewApprovalMode(approvalAction, txData, state.draftId, isDraftMode);
   const showPayjoinNotice = payjoinStatus === 'idle' && isPayjoinCandidate({ state, wallet, txData: txData ?? null });
 

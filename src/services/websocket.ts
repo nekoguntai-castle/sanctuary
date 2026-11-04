@@ -41,7 +41,6 @@ export class WebSocketClient {
   private reconnectDelay: number = 1000; // Start with 1 second
   private reconnectTimer: NodeJS.Timeout | null = null;
   private isConnecting: boolean = false;
-  private shouldReconnect: boolean = true;
   // Timer that credits the connection as "stable" (and resets the reconnect
   // backoff) after it has stayed open for RECONNECT_STABLE_WINDOW_MS, or
   // after the first server message arrives, whichever comes first. The
@@ -180,25 +179,24 @@ export class WebSocketClient {
         // Notify connection listeners
         this.notifyConnectionListeners(false);
 
-        // Attempt reconnection
-        if (this.shouldReconnect) {
-          if (this.reconnectAttempts < this.maxReconnectAttempts) {
-            this.scheduleReconnect();
-          } else {
-            // Fast reconnects exhausted — notify UI and schedule a slow retry
-            log.warn('Fast reconnect attempts exhausted, scheduling slow retry in 5 minutes');
-            this.dispatchEvent({
-              type: 'event',
-              event: 'disconnected',
-              data: { exhausted: true, message: 'Connection lost. Will retry in 5 minutes.' },
-            });
+        // Attempt reconnection. disconnect() detaches this handler, so an
+        // intentional close never reaches here.
+        if (this.reconnectAttempts < this.maxReconnectAttempts) {
+          this.scheduleReconnect();
+        } else {
+          // Fast reconnects exhausted — notify UI and schedule a slow retry
+          log.warn('Fast reconnect attempts exhausted, scheduling slow retry in 5 minutes');
+          this.dispatchEvent({
+            type: 'event',
+            event: 'disconnected',
+            data: { exhausted: true, message: 'Connection lost. Will retry in 5 minutes.' },
+          });
 
-            this.reconnectTimer = setTimeout(() => {
-              log.debug('Attempting slow reconnect after 5 minute wait');
-              this.resetReconnectState();
-              this.connect(this.token || undefined);
-            }, 5 * 60 * 1000);
-          }
+          this.reconnectTimer = setTimeout(() => {
+            log.debug('Attempting slow reconnect after 5 minute wait');
+            this.resetReconnectState();
+            this.connect(this.token || undefined);
+          }, 5 * 60 * 1000);
         }
       };
     } catch (err) {
@@ -211,8 +209,6 @@ export class WebSocketClient {
    * Disconnect from WebSocket server
    */
   disconnect() {
-    this.shouldReconnect = false;
-
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -228,10 +224,19 @@ export class WebSocketClient {
     // null. Clearing the flag here closes that window.
     this.isServerReady = false;
 
-    if (this.ws) {
-      this.ws.close(1000, 'Client disconnect');
+    const ws = this.ws;
+    if (ws) {
+      // Detach first: the close event arrives asynchronously and, once a new
+      // session has connected, would null out (and reconnect over) the new socket.
+      ws.onopen = null;
+      ws.onmessage = null;
+      ws.onerror = null;
+      ws.onclose = null;
+      ws.close(1000, 'Client disconnect');
       this.ws = null;
+      this.notifyConnectionListeners(false);
     }
+    this.isConnecting = false;
 
     this.subscriptions.clear();
     log.debug('Disconnected');
