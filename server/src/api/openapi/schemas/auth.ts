@@ -322,6 +322,11 @@ export const authSchemas = {
       message: { type: 'string' },
       email: { type: 'string', format: 'email', nullable: true },
       emailVerified: { type: 'boolean' },
+      pendingEmail: {
+        type: 'string',
+        format: 'email',
+        description: 'New address awaiting verification. The current email stays active until it is verified.',
+      },
       verificationSent: { type: 'boolean' },
     },
     required: ['success', 'message', 'email', 'emailVerified', 'verificationSent'],

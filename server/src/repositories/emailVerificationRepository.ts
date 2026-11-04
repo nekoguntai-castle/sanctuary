@@ -4,16 +4,18 @@
  * Abstracts database operations for email verification tokens.
  */
 
-import prisma from '../models/prisma';
+import prisma, { type PrismaTxClient } from '../models/prisma';
 import type { EmailVerificationToken, User } from '../generated/prisma/client';
 import { normalizeEmail } from '../utils/email';
+import { isUniqueConstraintError } from '../utils/errors';
 
 export type EmailVerificationConsumeError =
   | 'INVALID_TOKEN'
   | 'EXPIRED_TOKEN'
   | 'ALREADY_USED'
   | 'USER_NOT_FOUND'
-  | 'EMAIL_MISMATCH';
+  | 'EMAIL_MISMATCH'
+  | 'EMAIL_TAKEN';
 
 export type EmailVerificationConsumeResult =
   | { success: true; userId: string; email: string }
@@ -79,35 +81,32 @@ export async function replaceUnusedAndCreate(data: {
 }
 
 /**
- * Invalidate old unused intents, optionally create the new intent, then reset
- * the user's normalized email/verification state in one transaction.
+ * Invalidate old unused intents and optionally create the new intent, in one
+ * transaction. A verified address stays active until the new one is verified:
+ * the user row is left alone and the new address lives only on the token
+ * (`pendingEmail`), so a mistyped address can't lock the account out. A user
+ * with no verified address is switched to the new, unverified one at once.
  */
 export async function replaceUnusedForEmailUpdate(data: {
   userId: string;
   email: string;
   tokenHash?: string;
   expiresAt?: Date;
-}): Promise<{ token?: EmailVerificationToken; user: User }> {
+}): Promise<{ token?: EmailVerificationToken; user: User; pendingEmail?: string }> {
   const email = normalizeEmail(data.email);
 
   return prisma.$transaction(async (tx) => {
-    await tx.emailVerificationToken.deleteMany({
-      where: {
-        userId: data.userId,
-        usedAt: null,
-      },
-    });
-
+    await deleteUnusedByUserId(data.userId, tx);
     const token = data.tokenHash && data.expiresAt
       ? await tx.emailVerificationToken.create({
-        data: {
-          userId: data.userId,
-          email,
-          tokenHash: data.tokenHash,
-          expiresAt: data.expiresAt,
-        },
+        data: { userId: data.userId, email, tokenHash: data.tokenHash, expiresAt: data.expiresAt },
       })
       : undefined;
+
+    const current = await tx.user.findUniqueOrThrow({ where: { id: data.userId } });
+    if (current.email && current.emailVerified) {
+      return { token, user: current, pendingEmail: email };
+    }
 
     const user = await tx.user.update({
       where: { id: data.userId },
@@ -174,12 +173,12 @@ export async function markUsed(id: string): Promise<EmailVerificationToken> {
 }
 
 /**
- * Consume a verification token only if the token is unused/unexpired and the
- * owning user's current normalized email still equals the token email.
- *
- * If the user email no longer matches, the transaction rolls back so the stale
- * token is not marked used and the user email is never overwritten from token
- * data.
+ * Consume an unused, unexpired verification token. It verifies the user's
+ * current address, or applies a verified account's pending email change
+ * (replaceUnusedForEmailUpdate). Every path that changes `user.email` deletes
+ * the user's unused tokens, so a surviving token for another address is the
+ * latest change request. Anything else is stale: the transaction rolls back
+ * so the token is not marked used and `user.email` is not overwritten.
  */
 export async function consumeForCurrentEmail(
   tokenHash: string
@@ -212,30 +211,47 @@ export async function consumeForCurrentEmail(
         return { success: false, error: 'ALREADY_USED', userId: token.userId };
       }
 
-      const verified = await tx.user.updateMany({
-        where: {
-          id: token.userId,
-          email: normalizeEmail(token.email),
-        },
-        data: {
-          emailVerified: true,
-          emailVerifiedAt: now,
-        },
+      const tokenEmail = normalizeEmail(token.email);
+      const user = await tx.user.findUnique({
+        where: { id: token.userId },
+        select: { email: true, emailVerified: true },
       });
-
-      if (verified.count !== 1) {
-        const user = await tx.user.findUnique({
-          where: { id: token.userId },
-          select: { id: true },
-        });
-        throw new EmailVerificationRollback({
-          success: false,
-          error: user ? 'EMAIL_MISMATCH' : 'USER_NOT_FOUND',
-          userId: token.userId,
-        });
+      if (!user) {
+        throw new EmailVerificationRollback({ success: false, error: 'USER_NOT_FOUND', userId: token.userId });
       }
 
-      return { success: true, userId: token.userId, email: normalizeEmail(token.email) };
+      const currentEmail = user.email ? normalizeEmail(user.email) : null;
+      if (currentEmail !== tokenEmail && !(currentEmail && user.emailVerified)) {
+        // Not the current address and not a pending change on a verified
+        // account: a stale intent from before the address changed.
+        throw new EmailVerificationRollback({ success: false, error: 'EMAIL_MISMATCH', userId: token.userId });
+      }
+
+      // Verify the current address, or apply a verified account's pending
+      // change. CAS on the address read above so a concurrent change wins.
+      let applied: { count: number };
+      try {
+        applied = await tx.user.updateMany({
+          where: { id: token.userId, email: user.email },
+          data: {
+            ...(currentEmail !== tokenEmail && { email: tokenEmail }),
+            emailVerified: true,
+            emailVerifiedAt: now,
+          },
+        });
+      } catch (error) {
+        if (!isUniqueConstraintError(error)) throw error;
+        throw new EmailVerificationRollback({ success: false, error: 'EMAIL_TAKEN', userId: token.userId });
+      }
+      if (applied.count !== 1) {
+        throw new EmailVerificationRollback({ success: false, error: 'EMAIL_MISMATCH', userId: token.userId });
+      }
+
+      // Any other unused token is superseded now (two concurrent change
+      // requests can both leave one); it must not apply a later change.
+      await deleteUnusedByUserId(token.userId, tx);
+
+      return { success: true, userId: token.userId, email: tokenEmail };
     });
   } catch (error) {
     if (error instanceof EmailVerificationRollback) {
@@ -270,8 +286,11 @@ export async function deleteExpired(): Promise<number> {
 /**
  * Delete unused tokens for a user (when creating a new token)
  */
-export async function deleteUnusedByUserId(userId: string): Promise<number> {
-  const result = await prisma.emailVerificationToken.deleteMany({
+export async function deleteUnusedByUserId(
+  userId: string,
+  client: PrismaTxClient = prisma,
+): Promise<number> {
+  const result = await client.emailVerificationToken.deleteMany({
     where: {
       userId,
       usedAt: null,

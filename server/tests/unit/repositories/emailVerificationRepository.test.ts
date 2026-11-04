@@ -26,6 +26,7 @@ vi.mock('../../../src/models/prisma', () => ({
       update: vi.fn(),
       updateMany: vi.fn(),
       findUnique: vi.fn(),
+      findUniqueOrThrow: vi.fn(),
     },
     $transaction: vi.fn(),
   },
@@ -136,6 +137,7 @@ describe('Email Verification Repository', () => {
       };
       (prisma.emailVerificationToken.deleteMany as Mock).mockResolvedValue({ count: 1 });
       (prisma.emailVerificationToken.create as Mock).mockResolvedValue(mockToken);
+      (prisma.user.findUniqueOrThrow as Mock).mockResolvedValue({ id: testUserId, email: 'old@example.com', emailVerified: false });
       (prisma.user.update as Mock).mockResolvedValue(updatedUser);
 
       const result = await emailVerificationRepository.replaceUnusedForEmailUpdate({
@@ -179,6 +181,7 @@ describe('Email Verification Repository', () => {
         emailVerifiedAt: null,
       };
       (prisma.emailVerificationToken.deleteMany as Mock).mockResolvedValue({ count: 1 });
+      (prisma.user.findUniqueOrThrow as Mock).mockResolvedValue({ id: testUserId, email: null, emailVerified: false });
       (prisma.user.update as Mock).mockResolvedValue(updatedUser);
 
       const result = await emailVerificationRepository.replaceUnusedForEmailUpdate({
@@ -202,6 +205,41 @@ describe('Email Verification Repository', () => {
           emailVerifiedAt: null,
         },
       });
+    });
+  });
+
+  describe('replaceUnusedForEmailUpdate on a verified account', () => {
+    it('keeps the verified address active and records the new one as pending', async () => {
+      const verifiedUser = { id: testUserId, email: 'old@example.com', emailVerified: true };
+      (prisma.emailVerificationToken.deleteMany as Mock).mockResolvedValue({ count: 0 });
+      (prisma.emailVerificationToken.create as Mock).mockResolvedValue(mockToken);
+      (prisma.user.findUniqueOrThrow as Mock).mockResolvedValue(verifiedUser);
+
+      const result = await emailVerificationRepository.replaceUnusedForEmailUpdate({
+        userId: testUserId,
+        email: testEmail.toUpperCase(),
+        tokenHash: testTokenHash,
+        expiresAt: futureDate,
+      });
+
+      // A mistyped address must not flip the account to unverified (lockout).
+      expect(result).toEqual({ token: mockToken, user: verifiedUser, pendingEmail: testEmail });
+      expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(prisma.emailVerificationToken.create).toHaveBeenCalledWith({
+        data: { userId: testUserId, email: testEmail, tokenHash: testTokenHash, expiresAt: futureDate },
+      });
+    });
+
+    it('records no token when token data is omitted', async () => {
+      const verifiedUser = { id: testUserId, email: 'old@example.com', emailVerified: true };
+      (prisma.emailVerificationToken.deleteMany as Mock).mockResolvedValue({ count: 0 });
+      (prisma.user.findUniqueOrThrow as Mock).mockResolvedValue(verifiedUser);
+
+      await expect(emailVerificationRepository.replaceUnusedForEmailUpdate({
+        userId: testUserId,
+        email: testEmail,
+      })).resolves.toEqual({ token: undefined, user: verifiedUser, pendingEmail: testEmail });
+      expect(prisma.emailVerificationToken.create).not.toHaveBeenCalled();
     });
   });
 
@@ -367,6 +405,7 @@ describe('Email Verification Repository', () => {
     it('should claim an unused token and verify only the current matching user email', async () => {
       (prisma.emailVerificationToken.findUnique as Mock).mockResolvedValue(mockToken);
       (prisma.emailVerificationToken.updateMany as Mock).mockResolvedValue({ count: 1 });
+      (prisma.user.findUnique as Mock).mockResolvedValue({ id: testUserId, email: testEmail, emailVerified: false });
       (prisma.user.updateMany as Mock).mockResolvedValue({ count: 1 });
 
       const result = await emailVerificationRepository.consumeForCurrentEmail(testTokenHash);
@@ -397,14 +436,13 @@ describe('Email Verification Repository', () => {
       });
     });
 
-    it('should report stale email intent without writing user.email from token data', async () => {
+    it('should report stale email intent on an unverified account without writing user.email', async () => {
       (prisma.emailVerificationToken.findUnique as Mock).mockResolvedValue({
         ...mockToken,
         email: 'old@example.com',
       });
       (prisma.emailVerificationToken.updateMany as Mock).mockResolvedValue({ count: 1 });
-      (prisma.user.updateMany as Mock).mockResolvedValue({ count: 0 });
-      (prisma.user.findUnique as Mock).mockResolvedValue({ id: testUserId });
+      (prisma.user.findUnique as Mock).mockResolvedValue({ id: testUserId, email: testEmail, emailVerified: false });
 
       const result = await emailVerificationRepository.consumeForCurrentEmail(testTokenHash);
 
@@ -414,22 +452,83 @@ describe('Email Verification Repository', () => {
         userId: testUserId,
       });
       expect(prisma.user.update).not.toHaveBeenCalled();
-      expect(prisma.user.updateMany).toHaveBeenCalledWith({
-        where: {
-          id: testUserId,
-          email: 'old@example.com',
-        },
-        data: {
-          emailVerified: true,
-          emailVerifiedAt: expect.any(Date),
-        },
+      expect(prisma.user.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('treats a token for an account whose email was removed as stale', async () => {
+      (prisma.emailVerificationToken.findUnique as Mock).mockResolvedValue(mockToken);
+      (prisma.emailVerificationToken.updateMany as Mock).mockResolvedValue({ count: 1 });
+      (prisma.user.findUnique as Mock).mockResolvedValue({ id: testUserId, email: null, emailVerified: false });
+
+      await expect(emailVerificationRepository.consumeForCurrentEmail(testTokenHash)).resolves.toMatchObject({
+        success: false,
+        error: 'EMAIL_MISMATCH',
       });
+      expect(prisma.user.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('applies a verified account\'s pending email change', async () => {
+      (prisma.emailVerificationToken.findUnique as Mock).mockResolvedValue(mockToken);
+      (prisma.emailVerificationToken.updateMany as Mock).mockResolvedValue({ count: 1 });
+      (prisma.user.findUnique as Mock).mockResolvedValue({ id: testUserId, email: 'old@example.com', emailVerified: true });
+      (prisma.user.updateMany as Mock).mockResolvedValue({ count: 1 });
+
+      await expect(emailVerificationRepository.consumeForCurrentEmail(testTokenHash)).resolves.toEqual({
+        success: true,
+        userId: testUserId,
+        email: testEmail,
+      });
+      // CAS on the address the account still has, so a concurrent change wins.
+      expect(prisma.user.updateMany).toHaveBeenCalledWith({
+        where: { id: testUserId, email: 'old@example.com' },
+        data: { email: testEmail, emailVerified: true, emailVerifiedAt: expect.any(Date) },
+      });
+      // A concurrent second change request's token is superseded and dies here.
+      expect(prisma.emailVerificationToken.deleteMany).toHaveBeenCalledWith({
+        where: { userId: testUserId, usedAt: null },
+      });
+    });
+
+    it('rolls back a pending change whose address another account took meanwhile', async () => {
+      const { Prisma } = await import('../../../src/generated/prisma/client');
+      (prisma.emailVerificationToken.findUnique as Mock).mockResolvedValue(mockToken);
+      (prisma.emailVerificationToken.updateMany as Mock).mockResolvedValue({ count: 1 });
+      (prisma.user.findUnique as Mock).mockResolvedValue({ id: testUserId, email: 'old@example.com', emailVerified: true });
+      (prisma.user.updateMany as Mock).mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', { code: 'P2002', clientVersion: 'test' }),
+      );
+
+      await expect(emailVerificationRepository.consumeForCurrentEmail(testTokenHash)).resolves.toEqual({
+        success: false,
+        error: 'EMAIL_TAKEN',
+        userId: testUserId,
+      });
+    });
+
+    it('reports a concurrent address change as a mismatch', async () => {
+      (prisma.emailVerificationToken.findUnique as Mock).mockResolvedValue(mockToken);
+      (prisma.emailVerificationToken.updateMany as Mock).mockResolvedValue({ count: 1 });
+      (prisma.user.findUnique as Mock).mockResolvedValue({ id: testUserId, email: testEmail, emailVerified: false });
+      (prisma.user.updateMany as Mock).mockResolvedValue({ count: 0 });
+
+      await expect(emailVerificationRepository.consumeForCurrentEmail(testTokenHash)).resolves.toMatchObject({
+        success: false,
+        error: 'EMAIL_MISMATCH',
+      });
+    });
+
+    it('rethrows unexpected failures while applying the change', async () => {
+      (prisma.emailVerificationToken.findUnique as Mock).mockResolvedValue(mockToken);
+      (prisma.emailVerificationToken.updateMany as Mock).mockResolvedValue({ count: 1 });
+      (prisma.user.findUnique as Mock).mockResolvedValue({ id: testUserId, email: testEmail, emailVerified: false });
+      (prisma.user.updateMany as Mock).mockRejectedValue(new Error('db down'));
+
+      await expect(emailVerificationRepository.consumeForCurrentEmail(testTokenHash)).rejects.toThrow('db down');
     });
 
     it('should report missing users distinctly from stale email mismatch', async () => {
       (prisma.emailVerificationToken.findUnique as Mock).mockResolvedValue(mockToken);
       (prisma.emailVerificationToken.updateMany as Mock).mockResolvedValue({ count: 1 });
-      (prisma.user.updateMany as Mock).mockResolvedValue({ count: 0 });
       (prisma.user.findUnique as Mock).mockResolvedValue(null);
 
       await expect(

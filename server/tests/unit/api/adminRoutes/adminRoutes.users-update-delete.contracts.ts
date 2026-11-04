@@ -165,6 +165,10 @@ export function registerAdminRoutesUserUpdateDeleteContracts(): void {
 
       expect(response.status).toBe(200);
       expect(response.body.email).toBe('new@test.com');
+      // A pending self-service change must not later overwrite the admin's address.
+      expect(mockPrisma.emailVerificationToken.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1', usedAt: null },
+      });
       expect(mockPrisma.user.findUnique).toHaveBeenNthCalledWith(2, {
         where: { email: 'new@test.com' },
       });

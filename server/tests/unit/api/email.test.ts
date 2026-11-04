@@ -20,6 +20,7 @@ const {
     resendVerification: vi.fn(),
     createVerificationToken: vi.fn(),
     updateEmailWithVerification: vi.fn(),
+    cancelPendingEmailChange: vi.fn().mockResolvedValue(undefined),
     isVerificationRequired: vi.fn(),
     isSmtpConfigured: vi.fn(),
     assertEmailChangeDeliverable: vi.fn().mockResolvedValue(undefined),
@@ -196,6 +197,21 @@ describe('Email Verification API', () => {
       expect(response.status).toBe(400);
       expect(response.body.code).toBe('VALIDATION_ERROR');
       expect(response.body.details.code).toBe('INVALID_TOKEN');
+    });
+
+    it('explains a pending change whose address another account took', async () => {
+      mockEmailVerificationService.verifyEmail.mockResolvedValue({
+        success: false,
+        error: 'EMAIL_TAKEN',
+      });
+
+      const response = await request(app)
+        .post('/api/v1/auth/email/verify')
+        .send({ token: 'pending-change-token' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.details.code).toBe('EMAIL_TAKEN');
+      expect(response.body.message).toContain('another account');
     });
 
     it('should handle EXPIRED_TOKEN error', async () => {
@@ -490,6 +506,89 @@ describe('Email Verification API', () => {
       expect(response.body.success).toBe(true);
       expect(response.body.email).toBe(newEmail);
       expect(response.body.emailVerified).toBe(false);
+      expect(response.body).not.toHaveProperty('pendingEmail');
+      expect(mockAuditService.auditService.log).toHaveBeenCalledWith(expect.objectContaining({
+        details: expect.objectContaining({ outcome: 'applied' }),
+      }));
+    });
+
+    it('keeps a verified address active and reports the new one as pending', async () => {
+      (verifyPassword as any).mockResolvedValue(true);
+      mockUserRepository.emailExists.mockResolvedValue(false);
+      mockEmailVerificationService.updateEmailWithVerification.mockResolvedValue({
+        user: { id: testUserId, email: testEmail, emailVerified: true },
+        pendingEmail: newEmail,
+        verification: { success: true },
+      });
+
+      const response = await request(app)
+        .put('/api/v1/auth/me/email')
+        .send({ email: newEmail, password: currentPassword });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        email: testEmail,
+        emailVerified: true,
+        pendingEmail: newEmail,
+        verificationSent: true,
+      });
+      expect(response.body.message).toContain('stays active');
+      expect(mockEmailVerificationService.cancelPendingEmailChange).not.toHaveBeenCalled();
+      expect(mockAuditService.auditService.log).toHaveBeenCalledWith(expect.objectContaining({
+        details: expect.objectContaining({ outcome: 'pending_verification' }),
+      }));
+    });
+
+    it('does not promise a link that was never sent', async () => {
+      (verifyPassword as any).mockResolvedValue(true);
+      mockUserRepository.emailExists.mockResolvedValue(false);
+      mockEmailVerificationService.updateEmailWithVerification
+        .mockResolvedValueOnce({
+          user: { id: testUserId, email: testEmail, emailVerified: true },
+          pendingEmail: newEmail,
+          verification: { success: false, error: 'SMTP timeout' },
+        })
+        .mockResolvedValueOnce({
+          user: { id: testUserId, email: newEmail, emailVerified: false },
+          verification: { success: false, error: 'SMTP timeout' },
+        });
+
+      const pending = await request(app)
+        .put('/api/v1/auth/me/email')
+        .send({ email: newEmail, password: currentPassword });
+      expect(pending.body).toMatchObject({ verificationSent: false, email: testEmail });
+      expect(pending.body).not.toHaveProperty('pendingEmail');
+      expect(pending.body.message).toContain('was not changed');
+      // The unsendable pending change is dropped, matching the reply.
+      expect(mockEmailVerificationService.cancelPendingEmailChange).toHaveBeenCalledWith(testUserId);
+
+      mockEmailVerificationService.cancelPendingEmailChange.mockClear();
+      const immediate = await request(app)
+        .put('/api/v1/auth/me/email')
+        .send({ email: newEmail, password: currentPassword });
+      expect(immediate.body.message).toContain('could not be sent');
+      expect(mockEmailVerificationService.cancelPendingEmailChange).not.toHaveBeenCalled();
+    });
+
+    it('still answers when dropping an unsent pending change fails', async () => {
+      (verifyPassword as any).mockResolvedValue(true);
+      mockUserRepository.emailExists.mockResolvedValue(false);
+      mockEmailVerificationService.updateEmailWithVerification.mockResolvedValueOnce({
+        user: { id: testUserId, email: testEmail, emailVerified: true },
+        pendingEmail: newEmail,
+        verification: { success: false, error: 'SMTP timeout' },
+      });
+      mockEmailVerificationService.cancelPendingEmailChange.mockRejectedValueOnce(new Error('db down'));
+
+      const response = await request(app)
+        .put('/api/v1/auth/me/email')
+        .send({ email: newEmail, password: currentPassword });
+
+      expect(response.status).toBe(200);
+      expect(response.body.message).toContain('was not changed');
+      expect(mockAuditService.auditService.log).toHaveBeenCalledWith(expect.objectContaining({
+        details: expect.objectContaining({ outcome: 'not_sent' }),
+      }));
     });
 
     it('refuses with the guard error and never updates when the new address could not be verified', async () => {
@@ -720,6 +819,8 @@ describe('Email Verification API', () => {
         verificationSent: false,
       });
       expect(mockEmailVerificationService.updateEmailWithVerification).not.toHaveBeenCalled();
+      // Re-saving the current address cancels a pending change to another one.
+      expect(mockEmailVerificationService.cancelPendingEmailChange).toHaveBeenCalledWith(testUserId);
       expect(mockUserRepository.emailExists).not.toHaveBeenCalled();
     });
 

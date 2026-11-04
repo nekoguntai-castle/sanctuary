@@ -1,5 +1,6 @@
 import { Prisma } from '../generated/prisma/client';
 import prisma from '../models/prisma';
+import { deleteUnusedByUserId } from './emailVerificationRepository';
 import { ACTIONABLE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/constants/drafts';
 import { ConflictError, NotFoundError } from '../errors';
 import { isPrismaError } from '../utils/errors';
@@ -60,6 +61,21 @@ async function attemptAdminRoleUpdate<T extends Prisma.UserSelect>(
   }, { isolationLevel: 'Serializable' });
 }
 
+/**
+ * A pending self-service email change lives only on an unused verification
+ * token (emailVerificationRepository.replaceUnusedForEmailUpdate). An admin
+ * change of the address supersedes it, so the stale intent must not survive to
+ * overwrite the admin's address when its link is later followed.
+ */
+async function clearUnusedEmailIntentsOnEmailChange(
+  tx: TxClient,
+  id: string,
+  data: AdminUserUpdateData,
+): Promise<void> {
+  if (!('email' in data)) return;
+  await deleteUnusedByUserId(id, tx);
+}
+
 async function updateUserAndInvalidateSessions<T extends Prisma.UserSelect>(
   tx: TxClient,
   id: string,
@@ -84,6 +100,7 @@ async function updateUserAndInvalidateSessions<T extends Prisma.UserSelect>(
     data: updateData as Prisma.UserUpdateInput,
     select,
   });
+  await clearUnusedEmailIntentsOnEmailChange(tx, id, data);
   if (invalidatesSessions) {
     // This is the transaction-scoped SEC-003 equivalent of
     // tokenRevocation.revokeAllUserTokens. Keep the sessionVersion increment
@@ -303,7 +320,7 @@ export async function executeAdminUserUpdate<T extends Prisma.UserSelect>(
     return attemptAdminSecurityUpdate(id, data, select, transitions);
   }
 
-  const user = await prisma.user.update<{
+  const updateUser = (client: TxClient | typeof prisma) => client.user.update<{
     where: Prisma.UserWhereUniqueInput;
     data: Prisma.UserUpdateInput;
     select: T;
@@ -312,6 +329,15 @@ export async function executeAdminUserUpdate<T extends Prisma.UserSelect>(
     data: data as Prisma.UserUpdateInput,
     select,
   });
+  // Unrelated updates stay on the direct path; an address change also clears
+  // the pending email intents, atomically with the update.
+  const user = 'email' in data
+    ? await prisma.$transaction(async (tx) => {
+      const updated = await updateUser(tx);
+      await clearUnusedEmailIntentsOnEmailChange(tx, id, data);
+      return updated;
+    })
+    : await updateUser(prisma);
   return {
     user,
     transitions,

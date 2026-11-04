@@ -126,29 +126,38 @@ describeWithDb('Email verification flows', () => {
     }
   });
 
-  it('lets a user who changed their email resend and verify, ending up on the new address', async () => {
+  it('keeps a verified user signed in on their old address until the new one is verified', async () => {
     const testUser = getTestUser();
     await createTestUser(prisma, testUser);
     await setSystemSetting('email.verificationRequired', 'true');
 
     try {
       const token = await loginTestUser(app, testUser);
+      const firstEmail = `first-${testUser.email}`;
       const newEmail = `new-${testUser.email}`;
-      await request(app)
+      const change = (email: string) => request(app)
         .put('/api/v1/auth/me/email')
         .set('Authorization', `Bearer ${token}`)
-        .send({ email: newEmail, password: testUser.password })
+        .send({ email, password: testUser.password })
         .expect(200);
+
+      const first = await change(firstEmail);
+      expect(first.body).toMatchObject({ emailVerified: true, pendingEmail: firstEmail });
+      const firstToken = lastMailedToken();
+
+      // A second request supersedes the first; its link must no longer apply.
+      await change(newEmail);
       const changeToken = lastMailedToken();
-      await expectLoginBlocked(testUser);
 
-      await resendPending(testUser);
-      expect(sentMail.messages).toHaveLength(2);
-
-      await verifyStaleThenFresh(changeToken);
+      // Not locked out: the verified address stays active meanwhile.
       expect(await loginTestUser(app, testUser)).not.toBe('');
+      const pending = await prisma.user.findUniqueOrThrow({ where: { username: testUser.username } });
+      expect(pending).toMatchObject({ email: testUser.email.toLowerCase(), emailVerified: true });
+
+      await verifyStaleThenFresh(firstToken);
+      expect(lastMailedToken()).toBe(changeToken);
       const user = await prisma.user.findUniqueOrThrow({ where: { username: testUser.username } });
-      expect(user.email).toBe(newEmail);
+      expect(user.email).toBe(newEmail.toLowerCase());
       expect(user.emailVerified).toBe(true);
     } finally {
       await prisma.systemSetting.deleteMany({ where: { key: { in: SETTING_KEYS } } });

@@ -11,6 +11,7 @@ import {
   verifyEmail,
   resendVerification,
   updateEmailWithVerification,
+  cancelPendingEmailChange,
   isVerificationRequired,
   assertEmailChangeDeliverable,
 } from '../../services/email';
@@ -93,6 +94,18 @@ async function sendPendingVerification(req: Request, user: User): Promise<void> 
   });
 }
 
+/** The change-email reply must not promise a link that was never sent. */
+function emailUpdateMessage(pending: boolean, verificationSent: boolean): string {
+  if (!verificationSent) {
+    return pending
+      ? 'The verification email could not be sent, so your email was not changed. Please try again.'
+      : 'Email updated, but the verification email could not be sent. Please request a new one.';
+  }
+  return pending
+    ? 'Check the new address for a verification link. Your current email stays active until you confirm it.'
+    : 'Email updated. Please check your inbox for verification.';
+}
+
 /**
  * Create email verification router with rate limiters
  */
@@ -121,6 +134,7 @@ export function createEmailRouter(
         EXPIRED_TOKEN: 'This verification link has expired. Please request a new one.',
         ALREADY_USED: 'This email has already been verified',
         USER_NOT_FOUND: 'User account not found',
+        EMAIL_TAKEN: 'That email address is now used by another account',
         UNKNOWN_ERROR: 'An error occurred during verification',
       };
 
@@ -277,9 +291,10 @@ export function createEmailRouter(
       const normalizedEmail = normalizeEmail(email);
       const currentEmail = user.email ? normalizeEmail(user.email) : null;
 
-      // Re-saving the current address of a verified user changes nothing; writing
-      // would reset emailVerified and lock the user out where verification is required.
+      // Re-saving the current address of a verified user keeps it as is, and
+      // cancels any pending change to another address.
       if (normalizedEmail === currentEmail && user.emailVerified) {
+        await cancelPendingEmailChange(userId);
         return res.json({
           success: true,
           message: 'Email address unchanged.',
@@ -310,6 +325,19 @@ export function createEmailRouter(
         throw error;
       }
       const verificationResult = updateResult.verification;
+      // A pending change whose link never went out can't be completed; report it
+      // as not changed and drop its token (best effort; the link was never sent).
+      let pendingEmail = updateResult.pendingEmail;
+      if (pendingEmail && !verificationResult.success) {
+        pendingEmail = undefined;
+        // Cleanup only: nobody holds the unsent token's link.
+        await cancelPendingEmailChange(userId).catch((error: unknown) => {
+          log.warn('Could not drop an unsent pending email change', { userId, error: getErrorMessage(error) });
+        });
+      }
+      const outcome = updateResult.pendingEmail
+        ? (pendingEmail ? 'pending_verification' : 'not_sent')
+        : 'applied';
 
       const { ipAddress, userAgent } = getClientInfo(req);
       await auditService.log({
@@ -321,6 +349,7 @@ export function createEmailRouter(
         details: {
           oldEmail: user.email,
           newEmail: normalizedEmail,
+          outcome,
         },
         ipAddress,
         userAgent,
@@ -335,9 +364,10 @@ export function createEmailRouter(
 
       return res.json({
         success: true,
-        message: 'Email updated. Please check your inbox for verification.',
+        message: emailUpdateMessage(Boolean(updateResult.pendingEmail), verificationResult.success),
         email: updateResult.user.email,
         emailVerified: updateResult.user.emailVerified,
+        ...(pendingEmail && { pendingEmail }),
         verificationSent: verificationResult.success,
       });
     })

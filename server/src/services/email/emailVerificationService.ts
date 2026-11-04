@@ -174,10 +174,19 @@ export async function assertEmailChangeDeliverable(): Promise<void> {
 }
 
 /**
- * Update a user's email and create the replacement verification intent in the
- * same transaction that invalidates older unused intents. SMTP delivery happens
- * only after that transaction commits, so stale old-address tokens cannot
- * survive when mail delivery is unavailable.
+ * Cancel a pending email change by dropping the user's unused verification
+ * tokens; the current, verified address is untouched.
+ */
+export async function cancelPendingEmailChange(userId: string): Promise<void> {
+  await emailVerificationRepository.deleteUnusedByUserId(userId);
+}
+
+/**
+ * Request an email change and create its verification intent in the same
+ * transaction that invalidates older unused intents. A verified address stays
+ * active until the new one is verified (`pendingEmail`); an account without
+ * one switches at once. SMTP delivery happens only after that transaction
+ * commits, so stale old-address tokens cannot survive when delivery fails.
  */
 export async function updateEmailWithVerification(
   userId: string,
@@ -185,6 +194,8 @@ export async function updateEmailWithVerification(
   username: string
 ): Promise<{
   user: Awaited<ReturnType<typeof userRepository.updateEmail>>;
+  /** Set when a verified address stays active until this one is verified. */
+  pendingEmail?: string;
   verification: {
     success: boolean;
     tokenId?: string;
@@ -201,7 +212,7 @@ export async function updateEmailWithVerification(
     const expiresAt = tokenHash
       ? new Date(Date.now() + expiryHours * 60 * 60 * 1000)
       : undefined;
-    const { token: verificationToken, user } = await emailVerificationRepository.replaceUnusedForEmailUpdate({
+    const { token: verificationToken, user, pendingEmail } = await emailVerificationRepository.replaceUnusedForEmailUpdate({
       userId,
       email,
       tokenHash,
@@ -215,6 +226,7 @@ export async function updateEmailWithVerification(
       });
       return {
         user,
+        pendingEmail,
         verification: {
           success: false,
           error: 'SMTP not configured',
@@ -246,6 +258,7 @@ export async function updateEmailWithVerification(
       });
       return {
         user,
+        pendingEmail,
         verification: {
           success: false,
           tokenId: verificationToken.id,
@@ -257,6 +270,7 @@ export async function updateEmailWithVerification(
 
     return {
       user,
+      pendingEmail,
       verification: {
         success: true,
         tokenId: verificationToken.id,
@@ -277,7 +291,7 @@ export async function verifyEmail(token: string): Promise<{
   success: boolean;
   userId?: string;
   email?: string;
-  error?: 'INVALID_TOKEN' | 'EXPIRED_TOKEN' | 'ALREADY_USED' | 'USER_NOT_FOUND' | 'UNKNOWN_ERROR';
+  error?: 'INVALID_TOKEN' | 'EXPIRED_TOKEN' | 'ALREADY_USED' | 'USER_NOT_FOUND' | 'EMAIL_TAKEN' | 'UNKNOWN_ERROR';
 }> {
   try {
     const tokenHash = hashToken(token);
@@ -402,6 +416,7 @@ export default {
   isVerificationRequired,
   createVerificationToken,
   updateEmailWithVerification,
+  cancelPendingEmailChange,
   verifyEmail,
   resendVerification,
   isEmailVerified,

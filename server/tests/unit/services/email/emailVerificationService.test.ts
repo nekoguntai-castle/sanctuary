@@ -102,6 +102,7 @@ vi.mock('../../../../src/utils/logger', () => ({
 import {
   createVerificationToken,
   updateEmailWithVerification,
+  cancelPendingEmailChange,
   assertEmailChangeDeliverable,
   verifyEmail,
   resendVerification,
@@ -309,6 +310,16 @@ describe('Email Verification Service', () => {
     });
   });
 
+  describe('cancelPendingEmailChange', () => {
+    it('drops the unused tokens that carry a pending change', async () => {
+      mockEmailVerificationRepository.deleteUnusedByUserId.mockResolvedValue(1);
+
+      await cancelPendingEmailChange(testUserId);
+
+      expect(mockEmailVerificationRepository.deleteUnusedByUserId).toHaveBeenCalledWith(testUserId);
+    });
+  });
+
   describe('updateEmailWithVerification', () => {
     it('refuses the change before any write when verification is required and SMTP is not configured', async () => {
       mockEmailService.isSmtpConfigured.mockResolvedValue(false);
@@ -387,6 +398,31 @@ describe('Email Verification Service', () => {
       expect(mockEmailVerificationRepository.replaceUnusedForEmailUpdate).toHaveBeenCalledBefore(
         mockEmailService.sendEmail,
       );
+    });
+
+    it('passes through the pending address when the verified one stays active', async () => {
+      const verifiedUser = { id: testUserId, username: testUsername, email: 'old@example.com', emailVerified: true };
+      mockEmailService.isSmtpConfigured.mockResolvedValue(true);
+      mockEmailService.sendEmail.mockResolvedValue({ success: true });
+      mockEmailVerificationRepository.replaceUnusedForEmailUpdate.mockResolvedValue({
+        token: {
+          id: testTokenId,
+          userId: testUserId,
+          email: testEmail,
+          tokenHash: 'hashed-token',
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          createdAt: new Date(),
+          usedAt: null,
+        },
+        user: verifiedUser,
+        pendingEmail: testEmail,
+      });
+
+      const result = await updateEmailWithVerification(testUserId, testEmail, testUsername);
+
+      expect(result).toMatchObject({ user: verifiedUser, pendingEmail: testEmail, verification: { success: true } });
+      // The link goes to the new address, not the one still on the account.
+      expect(mockEmailService.sendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: testEmail }));
     });
 
     it('should report send failure after committing the email update intent', async () => {

@@ -31,6 +31,7 @@ const createModelMock = () => ({
 export const mockPrismaClient = {
   // Models
   user: createModelMock(),
+  emailVerificationToken: createModelMock(),
   wallet: createModelMock(),
   walletUser: createModelMock(),
   walletDevice: createModelMock(),
