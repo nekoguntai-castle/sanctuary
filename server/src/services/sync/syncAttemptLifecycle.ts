@@ -1,7 +1,6 @@
 import {
   isSyncExecutionOwner,
   isWalletSyncFailureClass,
-  type SyncExecutionOwner,
   type SyncLifecycleTransitionKind,
 } from '@sanctuary/shared/constants/sync';
 import type {
@@ -11,7 +10,6 @@ import type {
 import { withTimeout } from '../../utils/async';
 import { getErrorMessage } from '../../utils/errors';
 import { createLogger } from '../../utils/logger';
-import { classifyWalletSyncFailure } from './failureClassification';
 import {
   isSyncAttemptTimeoutError,
   SyncAttemptTimeoutError,
@@ -37,18 +35,6 @@ const PERSISTENCE_RETRY_BACKOFF_MS = [250, 1_000, 3_000] as const;
 
 type WalletSyncStateRecord = IncrementalSyncLifecycleState;
 
-export interface SyncAttemptWriter {
-  updateSyncState: (
-    walletId: string,
-    state: WalletSyncStatePatch,
-  ) => Promise<WalletSyncStateRecord>;
-  completeSyncSuccess: (
-    walletId: string,
-    syncedAt: Date,
-    lastSyncedBlockHeight: number,
-  ) => Promise<WalletSyncStateRecord>;
-}
-
 /**
  * Writes lock contention only while no sync holds the wallet, returning null
  * when one does (see syncIntentRepository.recordLockContentionIfIdle).
@@ -58,39 +44,11 @@ export type LockContentionWriter = (
   errorMessage: string,
 ) => Promise<WalletSyncStateRecord | null>;
 
-export type SyncStatePersister = (
-  walletId: string,
-  state: WalletSyncStatePatch,
-  writer: SyncAttemptWriter,
-) => Promise<IncrementalSyncLifecycleState | null>;
-
 /** Exact database snapshot produced by one persisted lifecycle transition. */
 export interface PersistedSyncTransition {
   walletId: string;
   transition: SyncLifecycleTransitionKind;
   state: IncrementalSyncLifecycleState;
-}
-
-export interface StartSyncAttemptInput {
-  owner: SyncExecutionOwner;
-  retryCount: number;
-  startedAt: Date;
-}
-
-export interface SyncSuccessInput {
-  syncedAt: Date;
-  lastSyncedBlockHeight?: number;
-}
-
-export interface SyncRetryInput {
-  owner: SyncExecutionOwner;
-  retryCount: number;
-  nextRetryAt: Date;
-  error: unknown;
-}
-
-export interface SyncFailureInput {
-  error: unknown;
 }
 
 export interface SyncLockContentionInput {
@@ -149,14 +107,6 @@ function projectSyncState(record: WalletSyncStateRecord): IncrementalSyncLifecyc
     syncStartedAt: record.syncStartedAt,
     syncStateVersion: record.syncStateVersion,
   };
-}
-
-function requirePersistedSyncState(
-  record: WalletSyncStateRecord,
-): IncrementalSyncLifecycleState {
-  const validationError = persistedSyncStateError(record);
-  if (validationError) throw new Error(validationError);
-  return projectSyncState(record);
 }
 
 function delay(ms: number): Promise<void> {
@@ -291,23 +241,10 @@ export async function runSettledSyncAttemptWithTimeout<T>(
 }
 
 /**
- * Persist sync state through a short, bounded database outage.
- *
- * This never throws because callers are already handling a sync failure and
- * must not replace the original error with a bookkeeping error.
- */
-export async function persistSyncStateWithRetry(
-  walletId: string,
-  state: WalletSyncStatePatch,
-  writer: SyncAttemptWriter,
-): Promise<IncrementalSyncLifecycleState | null> {
-  return persistLifecycleWrite(walletId, state, () => writer.updateSyncState(walletId, state));
-}
-
-/**
  * Retry one lifecycle write through transient failures. A write that resolves
  * to null lost its compare-and-set; that is a decision, not a failure, so it is
- * returned as null without retrying. Never throws (see persistSyncStateWithRetry).
+ * returned as null without retrying. Never throws: callers are already handling
+ * a sync failure and must not replace the original error with a bookkeeping one.
  */
 async function persistLifecycleWrite(
   walletId: string,
@@ -359,102 +296,6 @@ async function persistLifecycleWrite(
   return null;
 }
 
-/** Mark an attempt active before its adapter starts wallet synchronization. */
-export async function startSyncAttempt(
-  walletId: string,
-  input: StartSyncAttemptInput,
-  writer: SyncAttemptWriter,
-): Promise<PersistedSyncTransition> {
-  const state = requirePersistedSyncState(await writer.updateSyncState(walletId, {
-    syncInProgress: true,
-    lastSyncStatus: 'syncing',
-    syncExecutionOwner: input.owner,
-    syncRetryCount: input.retryCount,
-    syncNextRetryAt: null,
-    syncStartedAt: input.startedAt,
-  }));
-  return persistedTransition(walletId, 'started', state);
-}
-
-/** Persist the canonical successful terminal state for an executed attempt. */
-export async function recordSyncSuccess(
-  walletId: string,
-  input: SyncSuccessInput,
-  writer: SyncAttemptWriter,
-): Promise<PersistedSyncTransition> {
-  if (input.lastSyncedBlockHeight !== undefined) {
-    const state = requirePersistedSyncState(await writer.completeSyncSuccess(
-      walletId,
-      input.syncedAt,
-      input.lastSyncedBlockHeight,
-    ));
-    return persistedTransition(walletId, 'succeeded', state);
-  }
-
-  const state = requirePersistedSyncState(await writer.updateSyncState(walletId, {
-    lastSyncedAt: input.syncedAt,
-    lastSyncStatus: 'success',
-    lastSyncError: null,
-    lastSyncFailureClass: null,
-    syncInProgress: false,
-    syncExecutionOwner: null,
-    syncRetryCount: 0,
-    syncNextRetryAt: null,
-    syncStartedAt: null,
-  }));
-  return persistedTransition(walletId, 'succeeded', state);
-}
-
-/** Persist a retry-pending transition without masking the execution error. */
-export async function recordSyncRetry(
-  walletId: string,
-  input: SyncRetryInput,
-  writer: SyncAttemptWriter,
-  persist: SyncStatePersister = persistSyncStateWithRetry,
-): Promise<PersistedSyncTransition | null> {
-  const errorMessage = getErrorMessage(input.error, 'Unknown error');
-  const state = await persist(
-    walletId,
-    {
-      lastSyncStatus: 'retrying',
-      lastSyncError: errorMessage,
-      lastSyncFailureClass: classifyWalletSyncFailure(errorMessage),
-      syncInProgress: false,
-      syncExecutionOwner: input.owner,
-      syncRetryCount: input.retryCount,
-      syncNextRetryAt: input.nextRetryAt,
-      syncStartedAt: null,
-    },
-    writer,
-  );
-  return state && persistedTransition(walletId, 'retrying', state);
-}
-
-/** Persist the canonical failed terminal state without masking the execution error. */
-export async function recordSyncFailure(
-  walletId: string,
-  input: SyncFailureInput,
-  writer: SyncAttemptWriter,
-  persist: SyncStatePersister = persistSyncStateWithRetry,
-): Promise<PersistedSyncTransition | null> {
-  const errorMessage = getErrorMessage(input.error, 'Unknown error');
-  const state = await persist(
-    walletId,
-    {
-      lastSyncStatus: 'failed',
-      lastSyncError: errorMessage,
-      lastSyncFailureClass: classifyWalletSyncFailure(errorMessage),
-      syncInProgress: false,
-      syncExecutionOwner: null,
-      syncRetryCount: 0,
-      syncNextRetryAt: null,
-      syncStartedAt: null,
-    },
-    writer,
-  );
-  return state && persistedTransition(walletId, 'failed', state);
-}
-
 /**
  * Record terminal pre-attempt lock contention without clearing another
  * holder's `syncInProgress` flag. A non-final BullMQ attempt has another chance
@@ -482,22 +323,4 @@ export async function recordSyncLockContention(
     () => writeIfIdle(walletId, errorMessage),
   );
   return state && persistedTransition(walletId, 'failed', state);
-}
-
-/** Best-effort safety transition that clears an abandoned attempt coherently. */
-export async function clearActiveSyncAttempt(
-  walletId: string,
-  writer: SyncAttemptWriter,
-): Promise<PersistedSyncTransition> {
-  const state = requirePersistedSyncState(await writer.updateSyncState(walletId, {
-    syncInProgress: false,
-    lastSyncStatus: null,
-    lastSyncError: null,
-    lastSyncFailureClass: null,
-    syncExecutionOwner: null,
-    syncRetryCount: 0,
-    syncNextRetryAt: null,
-    syncStartedAt: null,
-  }));
-  return persistedTransition(walletId, 'cleared', state);
 }

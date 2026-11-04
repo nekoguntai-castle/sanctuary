@@ -149,50 +149,6 @@ vi.mock('../../../../src/repositories', () => ({
         ...state,
       };
     },
-    clearSyncStateIfUnchanged: async (candidate: any) => {
-      const result = await mockPrismaClient.wallet.updateMany({
-        where: {
-          id: candidate.id,
-          syncInProgress: true,
-          syncExecutionOwner: candidate.syncExecutionOwner,
-          syncStartedAt: candidate.syncStartedAt,
-          syncStateVersion: candidate.syncStateVersion,
-        },
-        data: {
-          syncInProgress: false,
-          syncExecutionOwner: null,
-          syncRetryCount: 0,
-          syncNextRetryAt: null,
-          syncStartedAt: null,
-          syncStateVersion: { increment: 1 },
-        },
-      });
-      if (result.count !== 1) return null;
-      return {
-        id: candidate.id,
-        requestedIncrementalSyncGeneration: 1,
-        claimedIncrementalSyncGeneration: 1,
-        processedIncrementalSyncGeneration: 0,
-        incrementalSyncLeaseToken: null,
-        incrementalSyncClaimedAt: null,
-        incrementalSyncLeaseExpiresAt: null,
-        syncActionRequiredAt: null,
-        requestedFullResyncGeneration: 0,
-        preparedFullResyncGeneration: 0,
-        processedFullResyncGeneration: 0,
-        syncInProgress: false,
-        lastSyncedAt: null,
-        lastSyncedBlockHeight: null,
-        lastSyncStatus: null,
-        lastSyncError: null,
-        lastSyncFailureClass: null,
-        syncExecutionOwner: null,
-        syncRetryCount: 0,
-        syncNextRetryAt: null,
-        syncStartedAt: null,
-        syncStateVersion: candidate.syncStateVersion + 1,
-      };
-    },
     resetAllStuckSyncFlags: () => mockPrismaClient.wallet.updateMany({
       where: {
         syncInProgress: true,

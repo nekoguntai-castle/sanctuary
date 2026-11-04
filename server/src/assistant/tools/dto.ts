@@ -141,7 +141,6 @@ export function toUtxoDto(utxo: RecordLike) {
     confirmations: utxo.confirmations,
     blockHeight: utxo.blockHeight,
     spent: utxo.spent,
-    spentTxid: utxo.spentTxid,
     frozen: utxo.frozen,
     lockedByDraft: utxo.draftLock?.draft
       ? {

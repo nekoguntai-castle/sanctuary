@@ -273,39 +273,6 @@ describeIfDatabase('WalletRepository Integration Tests', () => {
     });
   });
 
-  describe('resetSyncState', () => {
-    it('should reset all sync-related fields', async () => {
-      await withTestTransaction(async (tx) => {
-        const user = await createTestUser(tx);
-        const wallet = await createTestWallet(tx, user.id);
-
-        // Set some sync state
-        await tx.wallet.update({
-          where: { id: wallet.id },
-          data: {
-            syncInProgress: true,
-            lastSyncedAt: new Date(),
-            lastSyncStatus: 'success',
-          },
-        });
-
-        // Reset
-        const reset = await tx.wallet.update({
-          where: { id: wallet.id },
-          data: {
-            syncInProgress: false,
-            lastSyncedAt: null,
-            lastSyncStatus: null,
-          },
-        });
-
-        expect(reset.syncInProgress).toBe(false);
-        expect(reset.lastSyncedAt).toBeNull();
-        expect(reset.lastSyncStatus).toBeNull();
-      });
-    });
-  });
-
   describe('hasAccess', () => {
     it('should return true for direct wallet user', async () => {
       await withTestTransaction(async (tx) => {

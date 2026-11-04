@@ -29,6 +29,7 @@ const statusCountsSchema = z.object({
   failed: boundedCountSchema,
   retrying: boundedCountSchema,
   resyncing: boundedCountSchema,
+  syncing: boundedCountSchema,
   never_synced: boundedCountSchema,
   other: boundedCountSchema,
 }).strict();

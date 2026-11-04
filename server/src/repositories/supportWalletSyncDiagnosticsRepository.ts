@@ -17,6 +17,7 @@ export interface WalletSyncNetworkAggregate {
   failed: number;
   retrying: number;
   resyncing: number;
+  syncing: number;
   neverSynced: number;
   otherStatus: number;
   syncInProgress: number;
@@ -85,10 +86,11 @@ export async function getWalletSyncAggregates(
         COUNT(*) FILTER (WHERE "lastSyncStatus" = 'failed')::int AS "failed",
         COUNT(*) FILTER (WHERE "lastSyncStatus" = 'retrying')::int AS "retrying",
         COUNT(*) FILTER (WHERE "lastSyncStatus" = 'resyncing')::int AS "resyncing",
+        COUNT(*) FILTER (WHERE "lastSyncStatus" = 'syncing')::int AS "syncing",
         COUNT(*) FILTER (WHERE "lastSyncStatus" IS NULL)::int AS "neverSynced",
         COUNT(*) FILTER (
           WHERE "lastSyncStatus" IS NOT NULL
-            AND "lastSyncStatus" NOT IN ('success', 'failed', 'retrying', 'resyncing')
+            AND "lastSyncStatus" NOT IN ('success', 'failed', 'retrying', 'resyncing', 'syncing')
         )::int AS "otherStatus",
         COUNT(*) FILTER (WHERE "syncInProgress")::int AS "syncInProgress",
         -- syncStartedAt is the attempt clock. Null remains a candidate for

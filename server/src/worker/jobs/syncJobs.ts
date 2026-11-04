@@ -64,7 +64,6 @@ import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { isFullResyncGeneration } from '../../constants/fullResync';
 import {
-  recordSyncFailure,
   recordSyncLockContention,
   type PersistedSyncTransition,
 } from '../../services/sync/syncAttemptLifecycle';

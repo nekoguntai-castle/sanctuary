@@ -28,10 +28,11 @@ const walletSyncStatusCounts = {
     failed: walletSyncCount,
     retrying: walletSyncCount,
     resyncing: walletSyncCount,
+    syncing: walletSyncCount,
     never_synced: walletSyncCount,
     other: walletSyncCount,
   },
-  required: ['success', 'failed', 'retrying', 'resyncing', 'never_synced', 'other'],
+  required: ['success', 'failed', 'retrying', 'resyncing', 'syncing', 'never_synced', 'other'],
   additionalProperties: false,
 } as const;
 

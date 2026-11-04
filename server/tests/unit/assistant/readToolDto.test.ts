@@ -285,7 +285,6 @@ describe("assistant read-tool DTO redaction helpers", () => {
         confirmations: 2,
         blockHeight: 840000,
         spent: false,
-        spentTxid: null,
         frozen: true,
         draftLock: { draft: { id: "draft-1", label: "rebalance" } },
         createdAt: "2026-04-26T00:00:00.000Z",

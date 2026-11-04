@@ -36,6 +36,7 @@ function networkRow(overrides: Record<string, unknown> = {}) {
     failed: 0,
     retrying: 0,
     resyncing: 0,
+    syncing: 0,
     neverSynced: 0,
     otherStatus: 0,
     syncInProgress: 0,
@@ -129,7 +130,9 @@ describe('wallet sync collector', () => {
         }),
         networkRow({
           network: 'signet',
-          total: 2,
+          total: 3,
+          // A wallet mid-sync: its own bucket, not lumped into 'other'.
+          syncing: 1,
           neverSynced: 1,
           otherStatus: 1,
           ageNever: 1,
@@ -149,9 +152,9 @@ describe('wallet sync collector', () => {
     expect(result).toMatchObject({
       observation: 'observed',
       unit: 'wallet_rows',
-      totalWallets: 6,
+      totalWallets: 7,
       byStatus: {
-        success: 1, failed: 1, retrying: 1, resyncing: 1, never_synced: 1, other: 1,
+        success: 1, failed: 1, retrying: 1, resyncing: 1, syncing: 1, never_synced: 1, other: 1,
       },
       syncInProgressCount: 2,
       stuckCandidatesCount: 1,
@@ -196,9 +199,9 @@ describe('wallet sync collector', () => {
       'mainnet', 'regtest', 'signet', 'testnet3', 'testnet4',
     ]);
     expect(byNetwork.signet).toEqual({
-      total: 2,
+      total: 3,
       byStatus: {
-        success: 0, failed: 0, retrying: 0, resyncing: 0, never_synced: 1, other: 1,
+        success: 0, failed: 0, retrying: 0, resyncing: 0, syncing: 1, never_synced: 1, other: 1,
       },
       syncInProgressCount: 0,
       stuckCandidatesCount: 0,

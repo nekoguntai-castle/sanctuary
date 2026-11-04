@@ -212,57 +212,12 @@ export async function updateSyncState(
   }) as Promise<IncrementalSyncLifecycleState>;
 }
 
-/** Atomically persist a worker sync's success metadata and lifecycle state. */
-export async function completeSyncSuccess(
-  walletId: string,
-  lastSyncedAt: Date,
-  lastSyncedBlockHeight: number,
-): Promise<IncrementalSyncLifecycleState> {
-  return prisma.wallet.update({
-    where: { id: walletId },
-    data: {
-      lastSyncedAt,
-      lastSyncedBlockHeight,
-      lastSyncStatus: 'success',
-      lastSyncError: null,
-      lastSyncFailureClass: null,
-      syncInProgress: false,
-      syncExecutionOwner: null,
-      syncRetryCount: 0,
-      syncNextRetryAt: null,
-      syncStartedAt: null,
-      syncStateVersion: { increment: 1 },
-    },
-  }) as Promise<IncrementalSyncLifecycleState>;
-}
-
 /** Read the authoritative persisted sync lifecycle state. */
 export async function findSyncState(walletId: string): Promise<WalletSyncDurableState | null> {
   return prisma.wallet.findUnique({
     where: { id: walletId },
     select: walletSyncStateSelect,
   }) as Promise<WalletSyncDurableState | null>;
-}
-
-/**
- * Reset sync state for a wallet
- */
-export async function resetSyncState(walletId: string): Promise<Wallet> {
-  return prisma.wallet.update({
-    where: { id: walletId },
-    data: {
-      syncInProgress: false,
-      lastSyncedAt: null,
-      lastSyncStatus: null,
-      lastSyncError: null,
-      lastSyncFailureClass: null,
-      syncExecutionOwner: null,
-      syncRetryCount: 0,
-      syncNextRetryAt: null,
-      syncStartedAt: null,
-      syncStateVersion: { increment: 1 },
-    },
-  });
 }
 
 /**
@@ -536,42 +491,6 @@ export async function demoteStrandedInlineRetries(
     },
   });
   return result.count;
-}
-
-/** Clear a stale active row only if its observed lifecycle snapshot is current. */
-export async function clearSyncStateIfUnchanged(candidate: {
-  id: string;
-  syncExecutionOwner: string | null;
-  syncStartedAt: Date | null;
-  syncStateVersion: number;
-}): Promise<WalletSyncDurableState | null> {
-  return prisma.$transaction(async (tx) => {
-    const result = await tx.wallet.updateMany({
-      where: {
-        id: candidate.id,
-        syncInProgress: true,
-        syncExecutionOwner: candidate.syncExecutionOwner,
-        syncStartedAt: candidate.syncStartedAt,
-        syncStateVersion: candidate.syncStateVersion,
-      },
-      data: {
-        syncInProgress: false,
-        lastSyncStatus: null,
-        lastSyncError: null,
-        lastSyncFailureClass: null,
-        syncExecutionOwner: null,
-        syncRetryCount: 0,
-        syncNextRetryAt: null,
-        syncStartedAt: null,
-        syncStateVersion: { increment: 1 },
-      },
-    });
-    if (result.count !== 1) return null;
-    return tx.wallet.findUnique({
-      where: { id: candidate.id },
-      select: walletSyncStateSelect,
-    }) as Promise<WalletSyncDurableState | null>;
-  });
 }
 
 /**
@@ -957,9 +876,7 @@ export const walletRepository = {
   findByNetworkWithSyncStatus,
   getIdsByNetwork,
   updateSyncState,
-  completeSyncSuccess,
   findSyncState,
-  resetSyncState,
   update,
   hasAccess,
   findById,
@@ -977,7 +894,6 @@ export const walletRepository = {
   findRepresentedNetworks,
   resetAllStuckSyncFlags,
   demoteStrandedInlineRetries,
-  clearSyncStateIfUnchanged,
   findStuckSyncing,
   findStale,
   findStuckWithCutoff,

@@ -561,7 +561,7 @@ model Transaction {
   txid                String
   walletId            String
   userId              String?
-  type                String // sent, received
+  type                String // PERSISTED_TRANSACTION_TYPES (shared/constants/transactions.ts): sent, received, consolidation
   classificationInputsComplete Boolean @default(false)
   classificationVersion Int      @default(1)
   classificationAddressCount Int @default(0)
@@ -687,7 +687,7 @@ model UTXO {
   confirmations Int      @default(0)
   blockHeight   Int?
   spent         Boolean  @default(false)
-  spentTxid     String? // Transaction ID that spent this UTXO
+  spentTxid     String? // Never written by sync; kept only because the schema takes no new migrations
   frozen        Boolean  @default(false) // Prevent UTXO from being used in transactions
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -750,7 +750,7 @@ model DraftTransaction {
   signingContext       Json?
 
   // Signing status (for multisig)
-  status          String   @default("unsigned") // unsigned, partial, signed
+  status          String   @default("unsigned") // DRAFT_LIFECYCLE_STATUS_VALUES (shared/constants/drafts.ts): unsigned, partial, signed, broadcasted; derived server-side from the PSBT
   signedDeviceIds String[] // Device IDs that have signed
 
   // Agent funding metadata

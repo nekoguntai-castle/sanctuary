@@ -163,6 +163,22 @@ describeWithDatabase('sync intent lifecycle', () => {
     await expect(trailingCount()).resolves.toBe(baseline + 1);
   });
 
+  it('counts a wallet mid-sync in its own syncing bucket, not other', async () => {
+    const counts = async () => {
+      const aggregates = await getWalletSyncAggregates({ staleThresholdMs: 600_000 });
+      const row = aggregates.networks.find(entry => entry.network === 'testnet3');
+      return { syncing: row?.syncing ?? 0, other: row?.otherStatus ?? 0 };
+    };
+    const baseline = await counts();
+    const walletId = await createWallet();
+    await prisma.wallet.update({ where: { id: walletId }, data: { lastSyncStatus: 'syncing' } });
+
+    await expect(counts()).resolves.toEqual({
+      syncing: baseline.syncing + 1,
+      other: baseline.other,
+    });
+  });
+
   it('does not clear a newer successful lifecycle state from an older stale snapshot', async () => {
     const walletId = await createWallet();
     await requestIncrementalSync(walletId);

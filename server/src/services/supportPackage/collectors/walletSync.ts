@@ -23,7 +23,7 @@ import {
 
 const MAX_STALE_THRESHOLD_MINUTES = 100_000;
 
-type StatusKey = 'success' | 'failed' | 'retrying' | 'resyncing' | 'never_synced' | 'other';
+type StatusKey = 'success' | 'failed' | 'retrying' | 'resyncing' | 'syncing' | 'never_synced' | 'other';
 type StatusCounts = Record<StatusKey, number>;
 type AgeKey =
   | 'never'
@@ -63,7 +63,7 @@ function boundedCounts<Key extends string>(counts: Record<Key, number>): Record<
 }
 
 function emptyStatusCounts(): StatusCounts {
-  return { success: 0, failed: 0, retrying: 0, resyncing: 0, never_synced: 0, other: 0 };
+  return { success: 0, failed: 0, retrying: 0, resyncing: 0, syncing: 0, never_synced: 0, other: 0 };
 }
 
 function emptyNetworkSection(): NetworkSection {
@@ -126,6 +126,7 @@ function summarize(aggregates: WalletSyncAggregates, staleThresholdMs: number) {
     byStatus.failed += row.failed;
     byStatus.retrying += row.retrying;
     byStatus.resyncing += row.resyncing;
+    byStatus.syncing += row.syncing;
     byStatus.never_synced += row.neverSynced;
     byStatus.other += row.otherStatus;
     lastSyncAgeBuckets.never += row.ageNever;
@@ -166,6 +167,7 @@ function summarize(aggregates: WalletSyncAggregates, staleThresholdMs: number) {
     section.byStatus.failed += row.failed;
     section.byStatus.retrying += row.retrying;
     section.byStatus.resyncing += row.resyncing;
+    section.byStatus.syncing += row.syncing;
     section.byStatus.never_synced += row.neverSynced;
     section.byStatus.other += row.otherStatus;
     section.syncInProgressCount += row.syncInProgress;

@@ -29,7 +29,6 @@ const {
     findByNetworkWithSyncStatus: vi.fn(),
     findNetworkWalletIdsWithEditAccess: vi.fn(),
     findAccessibleWithSelect: vi.fn().mockResolvedValue([]),
-    resetSyncState: vi.fn(),
   },
   mockTransactionRepository: {
     deleteByWalletId: vi.fn(),
@@ -748,7 +747,6 @@ describe('Sync API - Network Endpoints', () => {
       ]);
       mockTransactionRepository.deleteByWalletId.mockResolvedValue(50);
       mockAddressRepository.resetUsedFlags.mockResolvedValue({ count: 10 });
-      mockWalletRepository.resetSyncState.mockResolvedValue({});
 
       const response = await request(app)
         .post('/sync/network/mainnet/resync')
@@ -849,7 +847,6 @@ describe('Sync API - Network Endpoints', () => {
       ]);
       mockTransactionRepository.deleteByWalletId.mockResolvedValue(30);
       mockAddressRepository.resetUsedFlags.mockResolvedValue({ count: 5 });
-      mockWalletRepository.resetSyncState.mockResolvedValue({});
 
       const response = await request(app)
         .post('/sync/network/testnet3/resync')

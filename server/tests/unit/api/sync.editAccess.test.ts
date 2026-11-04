@@ -32,7 +32,6 @@ const {
     findByNetworkWithSyncStatus: vi.fn(),
     findNetworkWalletIdsWithEditAccess: vi.fn(),
     findAccessibleWithSelect: vi.fn().mockResolvedValue([]),
-    resetSyncState: vi.fn(),
   },
   mockTransactionRepository: {
     deleteByWalletId: vi.fn(),

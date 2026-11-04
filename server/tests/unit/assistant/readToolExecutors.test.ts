@@ -230,7 +230,6 @@ describe('assistant read-tool executors', () => {
           confirmations: 4,
           blockHeight: 840001,
           spent: false,
-          spentTxid: null,
           frozen: true,
           draftLock: { draft: { id: 'draft-1', label: 'rebalance' } },
           createdAt: new Date('2026-04-25T00:00:00.000Z'),
