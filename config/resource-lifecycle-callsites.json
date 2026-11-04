@@ -2914,6 +2914,13 @@
       "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
     },
     {
+      "path": "tests/scripts/checkStatusWrites.test.ts",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
       "path": "tests/scripts/checkSemgrepBaseline.test.ts",
       "resourceClass": "temporary_artifact",
       "operation": "cleanup",

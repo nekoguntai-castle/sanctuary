@@ -69,6 +69,7 @@ is_root_vitest_input_file() {
     scripts/check-architecture-boundaries.mjs|\
     scripts/check-bitcoin-network-boundaries.mjs|\
     scripts/check-safety-catch-guards.mjs|\
+    scripts/check-status-writes.mjs|\
     scripts/check-server-cycle-baseline.mjs|\
     scripts/ci/check-trezor-transport-provenance.sh|\
     scripts/ci/docker-endpoint-lib.sh|\
@@ -92,6 +93,7 @@ is_root_vitest_input_file() {
     scripts/generate-readme.sh|\
     scripts/generate-signer-inventory.mjs|\
     scripts/ops/runtime-environment.mjs|\
+    scripts/quality/status-write-owners.json|\
     scripts/quality/architecture-boundary-exceptions.json|\
     scripts/quality/architecture-exception-budget.mjs|\
     scripts/quality/bitcoin-network-boundary-allowlist.json|\

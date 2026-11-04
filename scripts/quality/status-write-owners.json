@@ -1,0 +1,231 @@
+{
+  "version": 1,
+  "description": "Owner modules allowed to write each guarded status/state column. See scripts/check-status-writes.mjs.",
+  "columns": [
+    {
+      "model": "draftTransaction",
+      "table": "draft_transactions",
+      "field": "status",
+      "owners": [
+        {
+          "file": "server/src/repositories/draftRepository.ts",
+          "reason": "Owning repository for this model's state."
+        },
+        {
+          "file": "server/src/repositories/draftSigningIntentRepository.ts",
+          "reason": "Archives a draft as broadcasted in the signing-intent settlement transaction."
+        },
+        {
+          "file": "server/src/services/bitcoin/transactions/persistTransaction.ts",
+          "reason": "Broadcast persistence: archives the broadcast draft and records the new transaction row in one funds-path transaction."
+        }
+      ]
+    },
+    {
+      "model": "draftTransaction",
+      "table": "draft_transactions",
+      "field": "approvalStatus",
+      "owners": [
+        {
+          "file": "server/src/repositories/draftRepository.ts",
+          "reason": "Owning repository for this model's state."
+        }
+      ]
+    },
+    {
+      "model": "approvalRequest",
+      "table": "approval_requests",
+      "field": "status",
+      "owners": [
+        {
+          "file": "server/src/repositories/policyRepository.ts",
+          "reason": "Owning repository for this model's state."
+        }
+      ]
+    },
+    {
+      "model": "transactionSigningIntent",
+      "table": "transaction_signing_intents",
+      "field": "broadcastState",
+      "owners": [
+        {
+          "file": "server/src/repositories/transactionSigningIntentRepository.ts",
+          "reason": "Owning repository for this model's state."
+        }
+      ]
+    },
+    {
+      "model": "transaction",
+      "table": "transactions",
+      "field": "rbfStatus",
+      "owners": [
+        {
+          "file": "server/src/repositories/transactions/core.ts",
+          "reason": "Transaction repository core writes."
+        },
+        {
+          "file": "server/src/repositories/transactions/fieldPatches.ts",
+          "reason": "Transaction field patches (repository module)."
+        },
+        {
+          "file": "server/src/repositories/transactions/sync.ts",
+          "reason": "Sync reconciliation writes transaction rows (repository module)."
+        },
+        {
+          "file": "server/src/repositories/transactions/syncRbf.ts",
+          "reason": "Sync RBF replacement detection (repository module)."
+        },
+        {
+          "file": "server/src/services/bitcoin/transactions/persistTransaction.ts",
+          "reason": "Broadcast persistence: archives the broadcast draft and records the new transaction row in one funds-path transaction."
+        }
+      ]
+    },
+    {
+      "model": "wallet",
+      "table": "wallets",
+      "field": "lastSyncStatus",
+      "owners": [
+        {
+          "file": "server/src/repositories/resyncRepository.ts",
+          "reason": "Full-resync reset and completion (generation-fenced)."
+        },
+        {
+          "file": "server/src/repositories/syncIntentRepository.ts",
+          "reason": "Canonical sync claim/complete/fail lifecycle (lease-fenced)."
+        },
+        {
+          "file": "server/src/repositories/walletRemediationRepository.ts",
+          "reason": "Applies a proven remediation proposal patch to the wallet row (opaque patch data, CAS on the proven pre-state)."
+        },
+        {
+          "file": "server/src/repositories/walletRepository.ts",
+          "reason": "Owning repository for this model's state."
+        },
+        {
+          "file": "server/src/services/walletImport/walletImportService.ts",
+          "reason": "Creates the wallet row on import; sync columns start at their defaults (opaque create data)."
+        }
+      ]
+    },
+    {
+      "model": "wallet",
+      "table": "wallets",
+      "field": "syncInProgress",
+      "owners": [
+        {
+          "file": "server/src/repositories/resyncRepository.ts",
+          "reason": "Full-resync reset and completion (generation-fenced)."
+        },
+        {
+          "file": "server/src/repositories/syncIntentRepository.ts",
+          "reason": "Canonical sync claim/complete/fail lifecycle (lease-fenced)."
+        },
+        {
+          "file": "server/src/repositories/walletRemediationRepository.ts",
+          "reason": "Applies a proven remediation proposal patch to the wallet row (opaque patch data, CAS on the proven pre-state)."
+        },
+        {
+          "file": "server/src/repositories/walletRepository.ts",
+          "reason": "Owning repository for this model's state."
+        },
+        {
+          "file": "server/src/services/walletImport/walletImportService.ts",
+          "reason": "Creates the wallet row on import; sync columns start at their defaults (opaque create data)."
+        }
+      ]
+    },
+    {
+      "model": "walletAgent",
+      "table": "wallet_agents",
+      "field": "status",
+      "owners": [
+        {
+          "file": "server/src/repositories/agentRepository.ts",
+          "reason": "Owning repository for this model's state."
+        }
+      ]
+    },
+    {
+      "model": "agentFundingOverride",
+      "table": "agent_funding_overrides",
+      "field": "status",
+      "owners": [
+        {
+          "file": "server/src/repositories/agentRepository.ts",
+          "reason": "Owning repository for this model's state."
+        }
+      ]
+    },
+    {
+      "model": "agentAlert",
+      "table": "agent_alerts",
+      "field": "status",
+      "owners": [
+        {
+          "file": "server/src/repositories/agentRepository.ts",
+          "reason": "Owning repository for this model's state."
+        }
+      ]
+    },
+    {
+      "model": "ownershipTransfer",
+      "table": "ownership_transfers",
+      "field": "status",
+      "owners": [
+        {
+          "file": "server/src/repositories/transferRepository.ts",
+          "reason": "Owning repository for this model's state."
+        },
+        {
+          "file": "server/src/services/transferService/confirm.ts",
+          "reason": "Transfer confirmation runs in its own serializable transaction (ownership move plus status), so the transition lives with it."
+        }
+      ]
+    },
+    {
+      "model": "webhookDelivery",
+      "table": "webhook_deliveries",
+      "field": "status",
+      "owners": [
+        {
+          "file": "server/src/repositories/webhookRepository.ts",
+          "reason": "Owning repository for this model's state."
+        }
+      ]
+    },
+    {
+      "model": "aIInsight",
+      "table": "ai_insights",
+      "field": "status",
+      "owners": [
+        {
+          "file": "server/src/repositories/intelligenceRepository.ts",
+          "reason": "Owning repository for this model's state."
+        }
+      ]
+    },
+    {
+      "model": "consoleTurn",
+      "table": "console_turns",
+      "field": "state",
+      "owners": [
+        {
+          "file": "server/src/repositories/consoleRepository.ts",
+          "reason": "Owning repository for this model's state."
+        }
+      ]
+    },
+    {
+      "model": "consoleToolTrace",
+      "table": "console_tool_traces",
+      "field": "status",
+      "owners": [
+        {
+          "file": "server/src/repositories/consoleRepository.ts",
+          "reason": "Owning repository for this model's state."
+        }
+      ]
+    }
+  ]
+}
