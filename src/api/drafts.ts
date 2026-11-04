@@ -7,6 +7,7 @@
 import apiClient from './client';
 import { DraftTransactionSchema, DraftTransactionsResponseSchema } from '@sanctuary/shared/schemas/transactionResponses';
 import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
+import type { DraftLifecycleStatus } from '@sanctuary/shared/constants/drafts';
 
 export type DraftIntegerValue = number | string;
 export type DraftTextValue = string | null;
@@ -96,8 +97,8 @@ export interface DraftTransaction {
   effectiveAmount: number;
   inputPaths: string[];
 
-  // Signing status
-  status: 'unsigned' | 'partial' | 'signed';
+  // Signing status, derived by the server from the verified signatures
+  status: DraftLifecycleStatus;
   signedDeviceIds: string[];
   approvalStatus?: DraftApprovalStatus;
   agentId?: string;
@@ -141,7 +142,6 @@ export interface CreateDraftRequest {
 export interface UpdateDraftRequest {
   signedPsbtBase64?: string;
   signedDeviceId?: string;
-  status?: 'unsigned' | 'partial' | 'signed';
   label?: DraftTextValue;
   memo?: DraftTextValue;
 }

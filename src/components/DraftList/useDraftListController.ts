@@ -10,7 +10,6 @@ import {
   createPsbtBlob,
   getDownloadablePsbt,
   getDraftPsbtFilename,
-  getSignedDraftStatus,
   ParsedPsbtFile,
   readSignedPsbtFile,
   sortDraftsByExpiration,
@@ -42,8 +41,7 @@ export function useDraftListController({
   walletAddresses = [],
   walletId,
   walletName,
-  walletType,
-}: DraftListProps): DraftListController {
+}: Omit<DraftListProps, 'walletType'>): DraftListController {
   const navigate = useNavigate();
   const { format } = usePriceFreeFormatter();
   const [drafts, setDrafts] = useState<DraftTransaction[]>([]);
@@ -161,16 +159,14 @@ export function useDraftListController({
       const draft = drafts.find(d => d.id === draftId);
       if (!draft) return;
 
-      await updateDraft(walletId, draftId, {
-        signedPsbtBase64: signedPsbt.base64,
-        status: getSignedDraftStatus(walletType),
-      });
+      // The server derives the status from the uploaded signatures.
+      await updateDraft(walletId, draftId, { signedPsbtBase64: signedPsbt.base64 });
     });
 
     if (result !== null) {
       await loadDrafts();
     }
-  }, [drafts, loadDrafts, runOperation, walletId, walletType]);
+  }, [drafts, loadDrafts, runOperation, walletId]);
 
   const toggleExpandedDraft = React.useCallback((draftId: string) => {
     setExpandedDraft(current => (current === draftId ? null : draftId));

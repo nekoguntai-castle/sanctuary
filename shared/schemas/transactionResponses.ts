@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { PsbtSigningContextSchema } from './psbtSigningContext';
+import { DRAFT_LIFECYCLE_STATUS_VALUES } from '../constants/drafts';
 
 /**
  * Runtime shapes for the responses a user signs against.
@@ -85,7 +86,7 @@ export const DraftTransactionSchema = z.looseObject({
   totalInput: satoshis,
   totalOutput: satoshis,
   changeAmount: satoshis,
-  status: z.enum(['unsigned', 'partial', 'signed']),
+  status: z.enum(DRAFT_LIFECYCLE_STATUS_VALUES),
   // Read by `.length` to count signatures against the quorum; a missing array
   // would throw, and a wrong one would misreport how far along a draft is.
   signedDeviceIds: z.array(z.string()),

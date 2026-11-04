@@ -119,4 +119,27 @@ describe('updateDraft signer attribution', () => {
       signedDeviceIds: ['device-unsigned'],
     }));
   });
+
+  it('derives the stored status from the combined PSBT', async () => {
+    (draftRepository.findByIdInWallet as Mock).mockResolvedValue(signedDraft);
+
+    await updateDraft(walletId, draftId, {
+      signedPsbtBase64: buildMultisigPsbt([COSIGNER_FP, HUMAN_FP], [HUMAN_FP]),
+      status: 'unsigned',
+    });
+
+    // COSIGNER signed earlier, HUMAN now: 2 of 2, regardless of the claimed status.
+    expect(draftRepository.update).toHaveBeenCalledWith(draftId, expect.objectContaining({ status: 'signed' }));
+  });
+
+  it('keeps a partly signed draft partial', async () => {
+    (draftRepository.findByIdInWallet as Mock).mockResolvedValue(mockDraft);
+
+    await updateDraft(walletId, draftId, {
+      signedPsbtBase64: buildMultisigPsbt([COSIGNER_FP, HUMAN_FP], [HUMAN_FP]),
+      status: 'signed',
+    });
+
+    expect(draftRepository.update).toHaveBeenCalledWith(draftId, expect.objectContaining({ status: 'partial' }));
+  });
 });

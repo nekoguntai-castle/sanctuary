@@ -91,6 +91,7 @@ export interface MobileAgentDraftDecisionResponse {
 export interface MobileAgentDraftSignatureInput {
   signedPsbtBase64: string;
   signedDeviceId: string;
+  /** @deprecated Ignored: the server derives draft status from the verified signatures. */
   status?: DraftStatus;
 }
 
@@ -427,7 +428,6 @@ export async function submitAgentFundingDraftSignature(
   await draftService.updateDraft(context.draft.walletId, draftId, {
     signedPsbtBase64: input.signedPsbtBase64,
     signedDeviceId: input.signedDeviceId,
-    status: input.status,
   });
 
   const updated = await getReviewContext(userId, draftId);

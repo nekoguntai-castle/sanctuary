@@ -1,5 +1,4 @@
 import { DraftTransaction } from '../../api/drafts';
-import { WalletType } from '../../types';
 import {
   BASE64_TEXT_PATTERN,
   HEX_TEXT_PATTERN,
@@ -44,10 +43,6 @@ export function createPsbtBlob(psbtBase64: string): Blob {
 
 export function getDraftPsbtFilename(draftId: string): string {
   return `sanctuary-draft-${draftId.slice(0, 8)}.psbt`;
-}
-
-export function getSignedDraftStatus(walletType: WalletType): 'partial' | 'signed' {
-  return walletType === WalletType.MULTI_SIG ? 'partial' : 'signed';
 }
 
 export async function readSignedPsbtFile(file: File): Promise<ParsedPsbtFile> {

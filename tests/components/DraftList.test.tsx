@@ -353,7 +353,7 @@ describe('DraftList', () => {
       expect(screen.queryByTestId('flow-preview')).not.toBeInTheDocument();
     });
 
-    it('uploads binary PSBT and marks single-sig draft as signed', async () => {
+    it('uploads binary PSBT without claiming a status', async () => {
       renderDraftList();
       await screen.findByText('Unsigned');
 
@@ -370,13 +370,13 @@ describe('DraftList', () => {
         expect(draftsApi.updateDraft).toHaveBeenCalledWith(
           'wallet-1',
           'draft-2',
-          expect.objectContaining({ status: 'signed', signedPsbtBase64: expect.any(String) })
+          { signedPsbtBase64: expect.any(String) }
         );
       });
       expect(draftsApi.getDrafts).toHaveBeenCalledTimes(2);
     });
 
-    it('uploads base64 PSBT and marks single-sig draft as signed', async () => {
+    it('uploads base64 PSBT without claiming a status', async () => {
       renderDraftList();
       await screen.findByText('Unsigned');
 
@@ -392,12 +392,12 @@ describe('DraftList', () => {
         expect(draftsApi.updateDraft).toHaveBeenCalledWith(
           'wallet-1',
           'draft-2',
-          expect.objectContaining({ status: 'signed', signedPsbtBase64: expect.any(String) })
+          { signedPsbtBase64: expect.any(String) }
         );
       });
     });
 
-    it('uploads hex PSBT and marks single-sig draft as signed', async () => {
+    it('uploads hex PSBT without claiming a status', async () => {
       renderDraftList();
       await screen.findByText('Unsigned');
 
@@ -424,7 +424,7 @@ describe('DraftList', () => {
         expect(draftsApi.updateDraft).toHaveBeenCalledWith(
           'wallet-1',
           'draft-2',
-          expect.objectContaining({ status: 'signed', signedPsbtBase64: expect.any(String) })
+          { signedPsbtBase64: expect.any(String) }
         );
       });
 

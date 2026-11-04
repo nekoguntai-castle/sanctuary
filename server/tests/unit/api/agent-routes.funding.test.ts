@@ -78,7 +78,6 @@ describe("Agent Routes funding drafts", () => {
       {
         signedPsbtBase64: "cHNidP8agentSigned",
         signedDeviceId: "agent-device",
-        status: "partial",
       },
     );
   });

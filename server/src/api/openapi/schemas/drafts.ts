@@ -125,7 +125,11 @@ export const draftSchemas = {
       changeAddress: { type: 'string', nullable: true },
       effectiveAmount: { type: 'number', nullable: true },
       inputPaths: { type: 'array', items: { type: 'string' } },
-      status: { type: 'string', enum: [...ACTIONABLE_DRAFT_STATUS_VALUES] },
+      status: {
+        type: 'string',
+        enum: [...ACTIONABLE_DRAFT_STATUS_VALUES],
+        description: 'Derived by the server from the verified signatures in signedPsbtBase64.',
+      },
       approvalStatus: {
         type: 'string',
         enum: ['not_required', 'pending', 'approved', 'rejected', 'vetoed', 'expired'],
@@ -199,7 +203,12 @@ export const draftSchemas = {
         minLength: 1,
         description: 'Wallet device that signed. Rejected unless its key produced a verified signature in the signed PSBT.',
       },
-      status: { type: 'string', enum: [...ACTIONABLE_DRAFT_STATUS_VALUES] },
+      status: {
+        type: 'string',
+        enum: [...ACTIONABLE_DRAFT_STATUS_VALUES],
+        deprecated: true,
+        description: 'Ignored. The server derives draft status from the verified signatures.',
+      },
       label: { type: 'string', nullable: true },
       memo: { type: 'string', nullable: true },
     },

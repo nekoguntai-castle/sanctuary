@@ -60,7 +60,7 @@ describe("Remaining API Modules", () => {
         changeAmount: "200",
         effectiveAmount: "1000",
       });
-      await draftsApi.updateDraft("w1", "d1", { status: "signed", label: null, memo: null });
+      await draftsApi.updateDraft("w1", "d1", { label: null, memo: null });
       await draftsApi.deleteDraft("w1", "d1");
 
       expect(mockGet).toHaveBeenCalledWith("/wallets/w1/drafts", undefined, undefined, expect.objectContaining({ schema: expect.anything() }));
@@ -89,7 +89,6 @@ describe("Remaining API Modules", () => {
         effectiveAmount: "1000",
       });
       expect(mockPatch).toHaveBeenCalledWith("/wallets/w1/drafts/d1", {
-        status: "signed",
         label: null,
         memo: null,
       });
@@ -109,10 +108,10 @@ describe("Remaining API Modules", () => {
         expect.objectContaining({ recipient: "bc1qdest" }),
         { signal: controller.signal },
       );
-      await draftsApi.updateDraft("w1", "d1", { status: "signed" }, controller.signal);
+      await draftsApi.updateDraft("w1", "d1", { label: "x" }, controller.signal);
       expect(mockPatch).toHaveBeenCalledWith(
         "/wallets/w1/drafts/d1",
-        { status: "signed" },
+        { label: "x" },
         { signal: controller.signal },
       );
     });

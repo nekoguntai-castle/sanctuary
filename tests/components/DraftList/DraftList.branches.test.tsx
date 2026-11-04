@@ -255,7 +255,8 @@ describe('DraftList branch coverage', () => {
       expect(draftsApi.updateDraft).toHaveBeenCalledWith(
         'wallet-1',
         'd1',
-        expect.objectContaining({ status: 'partial', signedPsbtBase64: expect.any(String) })
+        // The server derives the status; the client no longer claims one.
+        { signedPsbtBase64: expect.any(String) }
       );
     });
   });

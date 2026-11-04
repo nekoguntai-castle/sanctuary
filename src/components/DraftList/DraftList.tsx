@@ -26,7 +26,7 @@ export const DraftList: React.FC<DraftListProps> = ({
     setDeleteConfirm,
     sortedDrafts,
     toggleExpandedDraft,
-  } = useDraftListController({ walletType, ...controllerProps });
+  } = useDraftListController(controllerProps);
 
   if (loading) {
     return (

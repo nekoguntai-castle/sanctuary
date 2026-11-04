@@ -29,16 +29,24 @@ const newPsbt = (): bitcoin.Psbt => {
   return psbt;
 };
 
-/**
- * One multisig input whose derivation map lists every cosigner fingerprint;
- * `signedBy` picks the cosigners that carry a partial signature.
- */
-export function buildMultisigPsbt(cosignerFingerprints: string[], signedBy: string[]): string {
-  const psbt = newPsbt();
+const addMultisigInput = (
+  psbt: bitcoin.Psbt,
+  cosignerFingerprints: string[],
+  signedBy: string[],
+  quorum: number,
+  hash: string,
+  nested = false,
+): (() => void) => {
+  const inputIndex = psbt.inputCount;
+  const pubkeys = SIGNER_PUBKEYS.slice(0, cosignerFingerprints.length);
+  const witnessScript = bitcoin.payments.p2ms({ m: quorum, pubkeys }).output;
   psbt.addInput({
-    hash: 'aa'.repeat(32),
+    hash,
     index: 0,
     witnessUtxo: { script: p2wshScript, value: 10_000n },
+    witnessScript,
+    // P2SH-P2WSH: the redeemScript is the P2WSH wrapper, the quorum lives in the witnessScript.
+    ...(nested && { redeemScript: bitcoin.payments.p2wsh({ redeem: { output: witnessScript } }).output }),
     bip32Derivation: cosignerFingerprints.map((fingerprint, index) => ({
       masterFingerprint: Buffer.from(fingerprint, 'hex'),
       pubkey: SIGNER_PUBKEYS[index],
@@ -49,8 +57,59 @@ export function buildMultisigPsbt(cosignerFingerprints: string[], signedBy: stri
     .map((fingerprint, index) => ({ fingerprint, pubkey: SIGNER_PUBKEYS[index] }))
     .filter(({ fingerprint }) => signedBy.includes(fingerprint))
     .map(({ pubkey }) => ({ pubkey, signature: PLACEHOLDER_ECDSA_SIGNATURE }));
-  if (partialSig.length > 0) {
-    psbt.updateInput(0, { partialSig });
+  // bitcoinjs refuses new inputs once any input is signed, so signing is deferred.
+  return () => {
+    if (partialSig.length > 0) psbt.updateInput(inputIndex, { partialSig });
+  };
+};
+
+/**
+ * One `quorum`-of-n multisig input whose derivation map lists every cosigner
+ * fingerprint; `signedBy` picks the cosigners that carry a partial signature.
+ */
+export function buildMultisigPsbt(
+  cosignerFingerprints: string[],
+  signedBy: string[],
+  quorum = cosignerFingerprints.length,
+  nested = false,
+): string {
+  const psbt = newPsbt();
+  addMultisigInput(psbt, cosignerFingerprints, signedBy, quorum, 'aa'.repeat(32), nested)();
+  return psbt.toBase64();
+}
+
+/** Two multisig inputs signed by different cosigner sets. */
+export function buildTwoInputMultisigPsbt(
+  cosignerFingerprints: string[],
+  signedBy: [string[], string[]],
+  quorum: number,
+): string {
+  const psbt = newPsbt();
+  const signFirst = addMultisigInput(psbt, cosignerFingerprints, signedBy[0], quorum, 'aa'.repeat(32));
+  const signSecond = addMultisigInput(psbt, cosignerFingerprints, signedBy[1], quorum, 'dd'.repeat(32));
+  signFirst();
+  signSecond();
+  return psbt.toBase64();
+}
+
+/** One single-key input (P2WPKH, or P2SH-P2WPKH when nested), optionally signed. */
+export function buildSingleSigPsbt(fingerprint: string, signed: boolean, nested = false): string {
+  const psbt = newPsbt();
+  psbt.addInput({
+    hash: 'ee'.repeat(32),
+    index: 0,
+    witnessUtxo: { script: Buffer.concat([Buffer.from([0x00, 0x14]), Buffer.alloc(20, 4)]), value: 10_000n },
+    ...(nested && { redeemScript: bitcoin.payments.p2wpkh({ pubkey: SIGNER_PUBKEYS[0] }).output }),
+    bip32Derivation: [{
+      masterFingerprint: Buffer.from(fingerprint, 'hex'),
+      pubkey: SIGNER_PUBKEYS[0],
+      path: "m/84'/1'/0'/0/0",
+    }],
+  });
+  if (signed) {
+    psbt.updateInput(0, {
+      partialSig: [{ pubkey: SIGNER_PUBKEYS[0], signature: PLACEHOLDER_ECDSA_SIGNATURE }],
+    });
   }
   return psbt.toBase64();
 }

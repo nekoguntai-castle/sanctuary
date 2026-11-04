@@ -15,12 +15,15 @@ import { validatePartialSignedPsbt } from '../../../src/services/bitcoin/signing
 import { InvalidInputError } from '../../../src/errors';
 import {
   assertDeviceSignedPsbt,
+  deriveDraftSigningStatus,
   resolveWalletSigningDevice,
   validateInitialSigningState,
 } from '../../../src/services/draftSigning';
 import {
   buildMultisigPsbt,
+  buildSingleSigPsbt,
   buildTaprootPsbt,
+  buildTwoInputMultisigPsbt,
   buildUnattributablePsbt,
 } from './draftSignerPsbtFixture';
 
@@ -123,6 +126,48 @@ describe('draft signer attribution', () => {
     it('attributes a Taproot key-path signature through its derivation', () => {
       expect(() => assertDeviceSignedPsbt(deviceA, buildTaprootPsbt(FP_A, true))).not.toThrow();
       expect(() => assertDeviceSignedPsbt(deviceA, buildTaprootPsbt(FP_A, false))).toThrow(signerMismatch);
+    });
+  });
+
+  describe('deriveDraftSigningStatus', () => {
+    it('reads the quorum from each input script', () => {
+      const cosigners = [FP_A, FP_B, FP_C];
+
+      expect(deriveDraftSigningStatus(buildMultisigPsbt(cosigners, [], 2))).toBe('unsigned');
+      expect(deriveDraftSigningStatus(buildMultisigPsbt(cosigners, [FP_A], 2))).toBe('partial');
+      expect(deriveDraftSigningStatus(buildMultisigPsbt(cosigners, [FP_A, FP_C], 2))).toBe('signed');
+      expect(deriveDraftSigningStatus(buildMultisigPsbt(cosigners, [FP_A, FP_B, FP_C], 2))).toBe('signed');
+    });
+
+    it('needs every input at quorum before reporting signed', () => {
+      const cosigners = [FP_A, FP_B, FP_C];
+
+      expect(deriveDraftSigningStatus(buildTwoInputMultisigPsbt(cosigners, [[FP_A, FP_B], [FP_A]], 2))).toBe('partial');
+      expect(deriveDraftSigningStatus(buildTwoInputMultisigPsbt(cosigners, [[FP_A, FP_B], [FP_B, FP_C]], 2))).toBe('signed');
+    });
+
+    it('reads the quorum of nested (P2SH-wrapped) scripts', () => {
+      const cosigners = [FP_A, FP_B, FP_C];
+
+      expect(deriveDraftSigningStatus(buildMultisigPsbt(cosigners, [FP_A], 2, true))).toBe('partial');
+      expect(deriveDraftSigningStatus(buildMultisigPsbt(cosigners, [FP_A, FP_B], 2, true))).toBe('signed');
+      expect(deriveDraftSigningStatus(buildSingleSigPsbt(FP_A, true, true))).toBe('signed');
+    });
+
+    it('needs one signature for single-key inputs', () => {
+      expect(deriveDraftSigningStatus(buildSingleSigPsbt(FP_A, false))).toBe('unsigned');
+      expect(deriveDraftSigningStatus(buildSingleSigPsbt(FP_A, true))).toBe('signed');
+      expect(deriveDraftSigningStatus(buildTaprootPsbt(FP_A, false))).toBe('unsigned');
+      expect(deriveDraftSigningStatus(buildTaprootPsbt(FP_A, true))).toBe('signed');
+    });
+
+    it('derives the status of a draft created with a full set of signatures', async () => {
+      const signedPsbtBase64 = buildMultisigPsbt([FP_A, FP_B], [FP_A], 1);
+
+      await expect(validateInitialSigningState(walletId, {
+        signedPsbtBase64,
+        signedDeviceId: 'device-a',
+      } as never)).resolves.toMatchObject({ status: 'signed' });
     });
   });
 });

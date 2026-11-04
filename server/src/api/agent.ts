@@ -272,7 +272,6 @@ router.patch(
     const draft = await draftService.updateDraft(fundingWalletId, draftId, {
       signedPsbtBase64,
       signedDeviceId: context.signerDeviceId,
-      status: 'partial',
     });
 
     res.json(serializeDraftTransaction(draft));

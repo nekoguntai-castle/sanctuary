@@ -1,7 +1,9 @@
 import * as bitcoin from 'bitcoinjs-lib';
 import { walletRepository } from '../repositories';
 import { InvalidInputError, NotFoundError } from '../errors';
+import type { DraftStatus } from '@sanctuary/shared/constants/drafts';
 import type { CreateDraftInput, InitialSigningState } from './draftTypes';
+import { parseMultisigScript } from './bitcoin/psbtBuilder';
 import { validatePartialSignedPsbt } from './bitcoin/signingIntent';
 
 export interface WalletSigningDevice {
@@ -59,6 +61,35 @@ const signerFingerprints = (verifiedPsbtBase64: string): Set<string> => {
   return fingerprints;
 };
 
+type PsbtInput = bitcoin.Psbt['data']['inputs'][number];
+
+/** Signatures an input needs: m for an m-of-n multisig script, else one. */
+const requiredSignatures = (input: PsbtInput): number => {
+  const script = input.witnessScript ?? input.redeemScript;
+  const multisig = script ? parseMultisigScript(script) : null;
+  return multisig?.isMultisig ? multisig.m : 1;
+};
+
+/**
+ * Draft signing status as a function of the PSBT's signatures: unsigned with
+ * none, signed when every input meets its script's quorum, else partial. Only
+ * sound for a PSBT that passed validatePartialSignedPsbt, which verifies the
+ * signatures and pins each input's script to the server-built PSBT. Drafts never
+ * carry payjoin peer inputs (draft-bound intents can't negotiate payjoin); a
+ * peer input would count zero signatures here and hold the draft at partial.
+ */
+export function deriveDraftSigningStatus(verifiedPsbtBase64: string): DraftStatus {
+  let anySigned = false;
+  let allAtQuorum = true;
+  for (const input of bitcoin.Psbt.fromBase64(verifiedPsbtBase64).data.inputs) {
+    const signatures = (input.partialSig?.length ?? 0) + (input.tapKeySig ? 1 : 0);
+    if (signatures > 0) anySigned = true;
+    if (signatures < requiredSignatures(input)) allAtQuorum = false;
+  }
+  if (!anySigned) return 'unsigned';
+  return allAtQuorum ? 'signed' : 'partial';
+}
+
 /**
  * Reject a signedDeviceId unless that device's key produced a signature in the
  * verified PSBT, so signedDeviceIds never names a cosigner that did not sign.
@@ -110,6 +141,6 @@ export async function validateInitialSigningState(
   return {
     signedPsbtBase64: data.signedPsbtBase64,
     signedDeviceIds: [signingDevice.deviceId],
-    status: 'partial',
+    status: deriveDraftSigningStatus(data.signedPsbtBase64),
   };
 }

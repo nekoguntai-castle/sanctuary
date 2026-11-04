@@ -4,7 +4,12 @@ import { ACTIONABLE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/constants/draf
 import { draftRepository, type DraftStatus } from '../repositories';
 import { ConflictError, InvalidInputError, NotFoundError } from '../errors';
 import { createLogger } from '../utils/logger';
-import { assertDeviceSignedPsbt, resolveWalletSigningDevice, type WalletSigningDevice } from './draftSigning';
+import {
+  assertDeviceSignedPsbt,
+  deriveDraftSigningStatus,
+  resolveWalletSigningDevice,
+  type WalletSigningDevice,
+} from './draftSigning';
 import { validatePartialSignedPsbt } from './bitcoin/signingIntent';
 import type { UpdateDraftInput } from './draftTypes';
 
@@ -163,13 +168,10 @@ const buildDraftUpdateData = async (
       draftId,
     });
     updateData.signedPsbtBase64 = combined;
+    updateData.status = deriveDraftSigningStatus(combined);
   }
 
   await addSignedDeviceIfNeeded(draftId, latestDraft, signingDevice, updateData);
-
-  if (data.status !== undefined) {
-    updateData.status = data.status;
-  }
 
   if (data.label !== undefined) {
     updateData.label = data.label;
@@ -227,6 +229,11 @@ export async function updateDraft(
   }
 
   assertValidDraftStatus(data.status);
+  if (data.status !== undefined) {
+    // Status is a function of the verified signatures. Ignored (not rejected)
+    // for one release so older clients keep working; then reject it.
+    log.warn('Ignoring client-supplied draft status', { draftId, status: data.status });
+  }
 
   const signingDevice = data.signedDeviceId !== undefined
     ? await resolveWalletSigningDevice(walletId, data.signedDeviceId)

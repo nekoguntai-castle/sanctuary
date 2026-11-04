@@ -506,7 +506,6 @@ describe('mobileAgentDraftService', () => {
     expect(draftService.updateDraft).toHaveBeenCalledWith('wallet-1', 'draft-1', {
       signedPsbtBase64: 'human-signed',
       signedDeviceId: 'mobile-device',
-      status: 'signed',
     });
     expect(result.status).toBe('signed');
     expect(result.signing.signedDeviceIds).toEqual(['agent-device', 'mobile-device']);

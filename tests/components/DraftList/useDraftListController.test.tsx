@@ -13,7 +13,6 @@ import { act,renderHook,waitFor } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { useDraftListController } from '../../../src/components/DraftList/useDraftListController';
 import { DraftTransaction } from '../../../src/api/drafts';
-import { WalletType } from '../../../src/types';
 
 interface Deferred<T> {
   resolve: (value: T) => void;
@@ -92,7 +91,6 @@ describe('useDraftListController wallet switching', () => {
     const { result, rerender } = renderHook(
       ({ walletId }: { walletId: string }) => useDraftListController({
         walletId,
-        walletType: WalletType.SINGLE_SIG,
         onDraftsChange,
       }),
       { initialProps: { walletId: 'wallet-A' } },
@@ -125,7 +123,6 @@ describe('useDraftListController wallet switching', () => {
     const { result, rerender } = renderHook(
       ({ walletId }: { walletId: string }) => useDraftListController({
         walletId,
-        walletType: WalletType.SINGLE_SIG,
       }),
       { initialProps: { walletId: 'wallet-A' } },
     );
@@ -149,7 +146,6 @@ describe('useDraftListController wallet switching', () => {
     const { result, rerender } = renderHook(
       ({ walletId }: { walletId: string }) => useDraftListController({
         walletId,
-        walletType: WalletType.SINGLE_SIG,
       }),
       { initialProps: { walletId: 'wallet-A' } },
     );

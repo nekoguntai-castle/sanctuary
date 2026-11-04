@@ -608,11 +608,15 @@ describe('DraftService', () => {
       });
     });
 
-    it('should update draft status', async () => {
-      const result = await updateDraft(walletId, draftId,{ status: 'partial' });
+    it('ignores a client-supplied signing status', async () => {
+      await updateDraft(walletId, draftId, { status: 'signed' });
 
-      expect(draftRepository.update).toHaveBeenCalledWith(draftId, { status: 'partial' });
-      expect(result.status).toBe('partial');
+      // Status is derived from verified signatures; a bare claim changes nothing.
+      expect(draftRepository.update).toHaveBeenCalledWith(draftId, {});
+      expect(loggerMocks.warn).toHaveBeenCalledWith(
+        'Ignoring client-supplied draft status',
+        expect.objectContaining({ draftId, status: 'signed' }),
+      );
     });
 
     it('should add signed device ID', async () => {
@@ -756,7 +760,9 @@ describe('DraftService', () => {
       const fromBase64Spy = vi.spyOn(bitcoin.Psbt, 'fromBase64');
       fromBase64Spy
         .mockReturnValueOnce(existingPsbtObj as any)
-        .mockReturnValueOnce(newPsbtObj as any);
+        .mockReturnValueOnce(newPsbtObj as any)
+        // deriveDraftSigningStatus reads the combined PSBT
+        .mockReturnValueOnce(existingPsbtObj as any);
 
       await updateDraft(walletId, draftId,{ signedPsbtBase64: 'new-psbt' });
 
@@ -793,7 +799,9 @@ describe('DraftService', () => {
       const fromBase64Spy = vi.spyOn(bitcoin.Psbt, 'fromBase64');
       fromBase64Spy
         .mockReturnValueOnce(existingPsbtObj as any)
-        .mockReturnValueOnce(newPsbtObj as any);
+        .mockReturnValueOnce(newPsbtObj as any)
+        // deriveDraftSigningStatus reads the combined PSBT
+        .mockReturnValueOnce(existingPsbtObj as any);
 
       await updateDraft(walletId, draftId, { signedPsbtBase64: 'new-taproot-psbt' });
 
@@ -831,7 +839,9 @@ describe('DraftService', () => {
       const fromBase64Spy = vi.spyOn(bitcoin.Psbt, 'fromBase64');
       fromBase64Spy
         .mockReturnValueOnce(existingPsbtObj as any)
-        .mockReturnValueOnce(newPsbtObj as any);
+        .mockReturnValueOnce(newPsbtObj as any)
+        // deriveDraftSigningStatus reads the combined PSBT
+        .mockReturnValueOnce(existingPsbtObj as any);
 
       await updateDraft(walletId, draftId,{ signedPsbtBase64: 'new-psbt-no-partials' });
 
@@ -857,7 +867,9 @@ describe('DraftService', () => {
       const fromBase64Spy = vi.spyOn(bitcoin.Psbt, 'fromBase64');
       fromBase64Spy
         .mockReturnValueOnce(existingPsbtObj as any)
-        .mockReturnValueOnce(newPsbtObj as any);
+        .mockReturnValueOnce(newPsbtObj as any)
+        // deriveDraftSigningStatus reads the combined PSBT
+        .mockReturnValueOnce(existingPsbtObj as any);
 
       await expect(updateDraft(walletId, draftId, { signedPsbtBase64: 'fallback-psbt' }))
         .rejects.toThrow('cannot be combined');
