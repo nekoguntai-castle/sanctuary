@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
 
-import { mockVoteRequestReads, draftId, makePendingRequest, mockDraftRepo, mockLog, mockNotify, mockPolicyRepo, mockWalletSharingRepo, otherUserId, requestId, walletId } from './approvalServiceTestHarness';
+import { mockVoteRequestReads, draftId, makePendingRequest, mockDraftLockRepo, mockDraftRepo, mockLog, mockNotify, mockPolicyRepo, mockWalletSharingRepo, otherUserId, requestId, walletId } from './approvalServiceTestHarness';
 import { approvalService } from '../../../../src/services/vaultPolicy/approvalService';
 
 export function registerUpdateDraftApprovalFromRequestsContracts() {
@@ -27,6 +27,43 @@ export function registerUpdateDraftApprovalFromRequestsContracts() {
     await approvalService.castVote(requestId, otherUserId, 'reject');
 
     expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'rejected');
+  });
+
+  it('releases the UTXO locks of a draft whose approval resolves to a terminal refusal', async () => {
+    mockPolicyRepo.findApprovalRequestsByDraftId.mockResolvedValue([{ status: 'rejected' }]);
+
+    await approvalService.rederiveDraftApprovalStatus(draftId);
+
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'rejected');
+    expect(mockDraftLockRepo.deleteByDraftId).toHaveBeenCalledWith(draftId);
+  });
+
+  it('keeps the UTXO locks of an approved draft', async () => {
+    mockPolicyRepo.findApprovalRequestsByDraftId.mockResolvedValue([{ status: 'approved' }]);
+    mockDraftRepo.findById.mockResolvedValue(null);
+
+    await approvalService.rederiveDraftApprovalStatus(draftId);
+
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'approved');
+    expect(mockDraftLockRepo.deleteByDraftId).not.toHaveBeenCalled();
+  });
+
+  it('clears a pending approval whose requests are all gone', async () => {
+    mockPolicyRepo.findApprovalRequestsByDraftId.mockResolvedValue([]);
+    mockDraftRepo.findById.mockResolvedValue({ id: draftId, walletId, approvalStatus: 'pending' });
+
+    await approvalService.rederiveDraftApprovalStatus(draftId);
+
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'not_required');
+  });
+
+  it('leaves a non-pending draft with no requests alone', async () => {
+    mockPolicyRepo.findApprovalRequestsByDraftId.mockResolvedValue([]);
+    mockDraftRepo.findById.mockResolvedValue({ id: draftId, walletId, approvalStatus: 'rejected' });
+
+    await approvalService.rederiveDraftApprovalStatus(draftId);
+
+    expect(mockDraftRepo.updateApprovalStatus).not.toHaveBeenCalled();
   });
 
   it('updates draft to vetoed when any request is vetoed', async () => {

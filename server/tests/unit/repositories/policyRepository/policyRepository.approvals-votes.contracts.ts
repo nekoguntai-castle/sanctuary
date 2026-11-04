@@ -2,6 +2,8 @@ import { prisma, type Mock } from './policyRepositoryTestHarness';
 import { describe, expect, it } from 'vitest';
 import {
   findApprovalRequestsByDraftId,
+  findPendingDraftIdsWithApprovalRequestsForPolicy,
+  findPendingDraftIdsWithoutApprovalRequests,
   findApprovalRequestById,
   findPendingApprovalsForUser,
   createApprovalRequest,
@@ -14,6 +16,39 @@ import {
 } from '../../../../src/repositories/policyRepository';
 
 export const registerPolicyRepositoryApprovalVoteContracts = () => {
+  describe('findPendingDraftIdsWithoutApprovalRequests', () => {
+    it('finds actionable drafts pending approval with no request rows left', async () => {
+      (prisma.draftTransaction.findMany as Mock).mockResolvedValue([{ id: 'draft-1' }]);
+
+      await expect(findPendingDraftIdsWithoutApprovalRequests()).resolves.toEqual(['draft-1']);
+      expect(prisma.draftTransaction.findMany).toHaveBeenCalledWith({
+        where: {
+          approvalStatus: 'pending',
+          status: { in: ['unsigned', 'partial', 'signed'] },
+          approvalRequests: { none: {} },
+        },
+        select: { id: true },
+        take: 500,
+      });
+    });
+  });
+
+  describe('findPendingDraftIdsWithApprovalRequestsForPolicy', () => {
+    it('lists each still-pending draft holding a request under the policy once', async () => {
+      (prisma.approvalRequest.findMany as Mock).mockResolvedValue([
+        { draftTransactionId: 'draft-1' },
+        { draftTransactionId: 'draft-2' },
+      ]);
+
+      await expect(findPendingDraftIdsWithApprovalRequestsForPolicy('policy-1')).resolves.toEqual(['draft-1', 'draft-2']);
+      expect(prisma.approvalRequest.findMany).toHaveBeenCalledWith({
+        where: { policyId: 'policy-1', draftTransaction: { approvalStatus: 'pending' } },
+        select: { draftTransactionId: true },
+        distinct: ['draftTransactionId'],
+      });
+    });
+  });
+
   describe('findApprovalRequestsByDraftId', () => {
     it('finds approval requests with votes by draftTransactionId', async () => {
       const requests = [{ id: 'ar1', votes: [{ id: 'v1' }] }];

@@ -15,6 +15,7 @@ const approvalMocks = vi.hoisted(() => ({
     findPendingApprovalsForUser: vi.fn(),
     findOverduePendingApprovalRequests: vi.fn(),
     findPendingDraftIdsWithExpiredRequests: vi.fn(),
+    findPendingDraftIdsWithoutApprovalRequests: vi.fn().mockResolvedValue([]),
     createApprovalRequest: vi.fn(),
     resolveApprovalRequestIfPending: vi.fn(),
     createVote: vi.fn(),
@@ -32,6 +33,9 @@ const approvalMocks = vi.hoisted(() => ({
   mockWalletSharingRepo: {
     findEffectiveApproverIds: vi.fn(),
   },
+  mockDraftLockRepo: {
+    deleteByDraftId: vi.fn().mockResolvedValue(0),
+  },
 }));
 
 export const mockLog = approvalMocks.mockLog;
@@ -39,6 +43,7 @@ export const mockPolicyRepo = approvalMocks.mockPolicyRepo;
 export const mockDraftRepo = approvalMocks.mockDraftRepo;
 export const mockNotify = approvalMocks.mockNotify;
 export const mockWalletSharingRepo = approvalMocks.mockWalletSharingRepo;
+export const mockDraftLockRepo = approvalMocks.mockDraftLockRepo;
 
 vi.mock('../../../../src/utils/logger', () => ({
   createLogger: () => mockLog,
@@ -58,6 +63,10 @@ vi.mock('../../../../src/repositories/draftRepository', () => ({
 
 vi.mock('../../../../src/repositories/walletSharingRepository', () => ({
   walletSharingRepository: mockWalletSharingRepo,
+}));
+
+vi.mock('../../../../src/repositories/draftLockRepository', () => ({
+  draftLockRepository: mockDraftLockRepo,
 }));
 
 vi.mock('../../../../src/models/prisma', () => ({

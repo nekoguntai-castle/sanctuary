@@ -149,6 +149,20 @@ export function registerCreateApprovalRequestsForDraftContracts() {
     expect(mockDraftRepo.updateApprovalStatus).not.toHaveBeenCalled();
   });
 
+  it('marks the draft not_required when every triggering policy is gone', async () => {
+    mockPolicyRepo.findPolicyById.mockResolvedValue(null);
+
+    const result = await approvalService.createApprovalRequestsForDraft(
+      draftId,
+      walletId,
+      userId,
+      [{ policyId, policyName: 'Approval', type: 'approval_required', action: 'approval_required', reason: 'needs approval' }]
+    );
+
+    expect(result).toHaveLength(0);
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'not_required');
+  });
+
   it('returns empty array when triggered list is empty', async () => {
     const result = await approvalService.createApprovalRequestsForDraft(
       draftId, walletId, userId, []

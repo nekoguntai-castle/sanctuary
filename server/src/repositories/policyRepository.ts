@@ -7,6 +7,7 @@
 import prisma from '../models/prisma';
 import type { VaultPolicy, ApprovalRequest, ApprovalVote, PolicyEvent, PolicyAddress } from '../generated/prisma/client';
 import { Prisma } from '../generated/prisma/client';
+import { ACTIONABLE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/constants/drafts';
 import { RESOLVED_APPROVAL_STATUSES } from './approvalStatuses';
 import type {
   PolicyType,
@@ -165,6 +166,19 @@ export async function removePolicy(policyId: string): Promise<void> {
 // APPROVAL REQUESTS
 // ========================================
 
+/**
+ * Drafts still pending approval that hold a request under a policy (each listed
+ * once). Resolved drafts are excluded so a policy delete can't overturn them.
+ */
+export async function findPendingDraftIdsWithApprovalRequestsForPolicy(policyId: string): Promise<string[]> {
+  const rows = await prisma.approvalRequest.findMany({
+    where: { policyId, draftTransaction: { approvalStatus: 'pending' } },
+    select: { draftTransactionId: true },
+    distinct: ['draftTransactionId'],
+  });
+  return rows.map(row => row.draftTransactionId);
+}
+
 export async function findApprovalRequestsByDraftId(
   draftTransactionId: string
 ): Promise<(ApprovalRequest & { votes: ApprovalVote[] })[]> {
@@ -245,6 +259,23 @@ export async function findOverduePendingApprovalRequests(
     orderBy: { expiresAt: 'asc' },
     take: EXPIRY_SWEEP_LIMIT,
   });
+}
+
+/**
+ * Actionable drafts still marked pending although no approval request row is
+ * left (a policy or group delete cascaded them away).
+ */
+export async function findPendingDraftIdsWithoutApprovalRequests(): Promise<string[]> {
+  const rows = await prisma.draftTransaction.findMany({
+    where: {
+      approvalStatus: 'pending',
+      status: { in: [...ACTIONABLE_DRAFT_STATUS_VALUES] },
+      approvalRequests: { none: {} },
+    },
+    select: { id: true },
+    take: EXPIRY_SWEEP_LIMIT,
+  });
+  return rows.map(row => row.id);
 }
 
 /** Drafts still awaiting approval although one of their requests already expired. */
@@ -645,6 +676,8 @@ export async function getSupportStats(now: Date = new Date()): Promise<PolicySup
 // ========================================
 
 export const policyRepository = {
+  findPendingDraftIdsWithoutApprovalRequests,
+  findPendingDraftIdsWithApprovalRequestsForPolicy,
   // Policies
   findPoliciesByWalletId,
   findAllPoliciesForWallet,

@@ -7,7 +7,7 @@
  * same draft update path used by web signing.
  */
 
-import { draftRepository, type MobileAgentDraftRecord } from '../repositories';
+import { draftLockRepository, draftRepository, type MobileAgentDraftRecord } from '../repositories';
 import { draftService } from './draftService';
 import { mobilePermissionService } from './mobilePermissions';
 import { approvalService } from './vaultPolicy/approvalService';
@@ -380,6 +380,8 @@ async function rejectWithoutRequests(draft: MobileAgentDraftRecord): Promise<voi
     throw new ConflictError('Draft has no approval request to vote on');
   }
   await draftRepository.updateApprovalStatus(draft.id, 'rejected');
+  // A rejected draft can never broadcast; release its UTXOs like any other refusal.
+  await draftLockRepository.deleteByDraftId(draft.id);
 }
 
 export async function rejectAgentFundingDraft(

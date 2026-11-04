@@ -15,6 +15,7 @@ import type { PolicyDbClient } from '../../repositories/policyRepository';
 import { draftRepository } from '../../repositories/draftRepository';
 import type { DraftDbClient } from '../../repositories/draftRepository';
 import { RESOLVED_APPROVAL_STATUSES } from '../../repositories/approvalStatuses';
+import { draftLockRepository } from '../../repositories/draftLockRepository';
 import { walletSharingRepository, type EffectiveApproverDbClient } from '../../repositories/walletSharingRepository';
 import { NotFoundError, ForbiddenError, InvalidInputError, ConflictError } from '../../errors';
 import { createLogger } from '../../utils/logger';
@@ -143,8 +144,10 @@ export async function createApprovalRequestsForDraft(
     });
   }
 
-  // Update draft approval status
-  await updateDraftApprovalStatus(draftId, 'pending', client);
+  // Zero requests here only means every triggering policy was deleted between
+  // evaluation and now (a failed request write throws above, failing closed).
+  // With the policies gone there is nothing to vote on, so don't leave it pending.
+  await updateDraftApprovalStatus(draftId, requests.length > 0 ? 'pending' : 'not_required', client);
 
   return requests;
 }
@@ -492,7 +495,13 @@ export async function expireOverdueApprovals(
     if (expired > 0) updated.add(draftId);
   }
 
-  for (const draftId of await policyRepository.findPendingDraftIdsWithExpiredRequests()) {
+  // Drafts left pending with an expired request, or with no request at all after
+  // a policy or group delete cascaded them away.
+  const stranded = [
+    ...await policyRepository.findPendingDraftIdsWithExpiredRequests(),
+    ...await policyRepository.findPendingDraftIdsWithoutApprovalRequests(),
+  ];
+  for (const draftId of stranded) {
     if (updated.has(draftId)) continue;
     await updateDraftApprovalFromRequests(draftId);
     updated.add(draftId);
@@ -793,23 +802,21 @@ async function updateDraftApprovalFromRequests(
   const requests = await policyRepository.findApprovalRequestsByDraftId(draftId);
 
   if (requests.length === 0) {
+    // Deleting a policy cascades its requests away. A pending draft with no
+    // requests left has nothing to vote on, so it no longer needs approval.
+    const draft = await draftRepository.findById(draftId);
+    if (draft?.approvalStatus === 'pending') {
+      await updateDraftApprovalStatus(draftId, 'not_required');
+    }
     return;
   }
 
-  // If any request is rejected or vetoed, the draft is rejected/vetoed
-  if (requests.some(r => r.status === 'rejected')) {
-    await updateDraftApprovalStatus(draftId, 'rejected');
-    return;
-  }
-
-  if (requests.some(r => r.status === 'vetoed')) {
-    await updateDraftApprovalStatus(draftId, 'vetoed');
-    return;
-  }
-
-  // An expired request can no longer be approved, so the draft is expired.
-  if (requests.some(r => r.status === 'expired')) {
-    await updateDraftApprovalStatus(draftId, 'expired');
+  // Rejected beats vetoed beats expired. An expired request can no longer be
+  // approved. Each is terminal for the draft, so its UTXOs are released.
+  const refusal = RESOLVED_APPROVAL_STATUSES.find(status => requests.some(r => r.status === status));
+  if (refusal) {
+    await updateDraftApprovalStatus(draftId, refusal);
+    await draftLockRepository.deleteByDraftId(draftId);
     return;
   }
 
@@ -848,8 +855,17 @@ async function updateDraftApprovalStatus(
 // EXPORTS
 // ========================================
 
+/**
+ * Re-derive a draft's approval status from its remaining requests, e.g. after
+ * deleting a policy cascaded some of them away.
+ */
+export async function rederiveDraftApprovalStatus(draftId: string): Promise<void> {
+  await updateDraftApprovalFromRequests(draftId);
+}
+
 export const approvalService = {
   createApprovalRequestsForDraft,
+  rederiveDraftApprovalStatus,
   castVote,
   ownerOverride,
   expireOverdueApprovals,

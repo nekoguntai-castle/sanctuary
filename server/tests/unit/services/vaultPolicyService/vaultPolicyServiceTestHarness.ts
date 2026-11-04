@@ -18,6 +18,7 @@ const vaultPolicyMocks = vi.hoisted(() => ({
     createPolicy: vi.fn(),
     updatePolicy: vi.fn(),
     removePolicy: vi.fn(),
+    findPendingDraftIdsWithApprovalRequestsForPolicy: vi.fn().mockResolvedValue([]),
     countPoliciesByWalletId: vi.fn(),
     findPolicyEvents: vi.fn(),
     findPolicyAddresses: vi.fn(),
@@ -29,11 +30,15 @@ const vaultPolicyMocks = vi.hoisted(() => ({
     findById: vi.fn(),
     findNetwork: vi.fn(),
   },
+  mockApprovalService: {
+    rederiveDraftApprovalStatus: vi.fn().mockResolvedValue(undefined),
+  },
 }));
 
 export const mockLog = vaultPolicyMocks.mockLog;
 export const mockPolicyRepo = vaultPolicyMocks.mockPolicyRepo;
 export const mockWalletRepo = vaultPolicyMocks.mockWalletRepo;
+export const mockApprovalService = vaultPolicyMocks.mockApprovalService;
 
 vi.mock('../../../../src/utils/logger', () => ({
   createLogger: () => vaultPolicyMocks.mockLog,
@@ -45,6 +50,10 @@ vi.mock('../../../../src/repositories/policyRepository', () => ({
 
 vi.mock('../../../../src/repositories/walletRepository', () => ({
   walletRepository: vaultPolicyMocks.mockWalletRepo,
+}));
+
+vi.mock('../../../../src/services/vaultPolicy/approvalService', () => ({
+  approvalService: vaultPolicyMocks.mockApprovalService,
 }));
 
 type VaultPolicyService = typeof import(

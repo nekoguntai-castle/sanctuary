@@ -67,6 +67,18 @@ export function registerApprovalExpiryContracts() {
     expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'expired');
   });
 
+  it('sweep clears a draft left pending after its requests were cascaded away', async () => {
+    mockPolicyRepo.findOverduePendingApprovalRequests.mockResolvedValue([]);
+    mockPolicyRepo.findPendingDraftIdsWithExpiredRequests.mockResolvedValue([]);
+    mockPolicyRepo.findPendingDraftIdsWithoutApprovalRequests.mockResolvedValueOnce([draftId]);
+    mockPolicyRepo.findApprovalRequestsByDraftId.mockResolvedValue([]);
+    mockDraftRepo.findById.mockResolvedValue({ id: draftId, approvalStatus: 'pending' });
+
+    await expect(approvalService.expireOverdueApprovals())
+      .resolves.toEqual({ expiredRequests: 0, updatedDrafts: 1 });
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'not_required');
+  });
+
   it('sweep does not re-evaluate a draft the overdue pass already updated', async () => {
     mockPolicyRepo.findOverduePendingApprovalRequests.mockResolvedValue([{ id: 'r1', draftTransactionId: draftId }]);
     mockPolicyRepo.findPendingDraftIdsWithExpiredRequests.mockResolvedValue([draftId]);

@@ -3,6 +3,8 @@ import { faker } from '@faker-js/faker';
 
 import { InvalidInputError } from '../../../../src/errors/ApiError';
 import {
+  mockApprovalService,
+  mockLog,
   mockPolicyRepo,
   policyId,
   userId,
@@ -114,6 +116,30 @@ export function registerVaultPolicyUpdateDeleteContracts(): void {
       await vaultPolicyService.deletePolicy(policyId, walletId);
 
       expect(mockPolicyRepo.removePolicy).toHaveBeenCalledWith(policyId);
+    });
+
+    it('re-derives the approval status of drafts whose requests the delete cascades away', async () => {
+      mockPolicyRepo.findPolicyById.mockResolvedValue({ id: policyId, walletId, sourceType: 'wallet' });
+      mockPolicyRepo.findPendingDraftIdsWithApprovalRequestsForPolicy.mockResolvedValue(['draft-1', 'draft-2']);
+
+      await vaultPolicyService.deletePolicy(policyId, walletId);
+
+      expect(mockPolicyRepo.findPendingDraftIdsWithApprovalRequestsForPolicy.mock.invocationCallOrder[0])
+        .toBeLessThan(mockPolicyRepo.removePolicy.mock.invocationCallOrder[0]);
+      expect(mockApprovalService.rederiveDraftApprovalStatus).toHaveBeenCalledWith('draft-1');
+      expect(mockApprovalService.rederiveDraftApprovalStatus).toHaveBeenCalledWith('draft-2');
+    });
+
+    it('still completes the delete when re-deriving a draft fails', async () => {
+      mockPolicyRepo.findPolicyById.mockResolvedValue({ id: policyId, walletId, sourceType: 'wallet' });
+      mockPolicyRepo.findPendingDraftIdsWithApprovalRequestsForPolicy.mockResolvedValue(['draft-1']);
+      mockApprovalService.rederiveDraftApprovalStatus.mockRejectedValueOnce(new Error('db down'));
+
+      await expect(vaultPolicyService.deletePolicy(policyId, walletId)).resolves.toBeUndefined();
+      expect(mockLog.error).toHaveBeenCalledWith(
+        'Failed to re-derive draft approval after policy delete',
+        expect.objectContaining({ policyId, draftId: 'draft-1', error: 'db down' }),
+      );
     });
 
     it('rejects deleting non-existent policy', async () => {

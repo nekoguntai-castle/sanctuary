@@ -11,6 +11,9 @@ vi.mock('../../../src/repositories', () => ({
   policyRepository: {
     findPolicyById: vi.fn(),
   },
+  draftLockRepository: {
+    deleteByDraftId: vi.fn().mockResolvedValue(0),
+  },
 }));
 
 vi.mock('../../../src/services/vaultPolicy/approvalService', () => ({
@@ -33,7 +36,7 @@ vi.mock('../../../src/services/mobilePermissions', () => ({
   },
 }));
 
-import { draftRepository } from '../../../src/repositories';
+import { draftLockRepository, draftRepository } from '../../../src/repositories';
 import { draftService } from '../../../src/services/draftService';
 import { mobilePermissionService } from '../../../src/services/mobilePermissions';
 import { approvalService } from '../../../src/services/vaultPolicy/approvalService';
@@ -296,6 +299,8 @@ describe('mobileAgentDraftService', () => {
       const result = await mobileAgentDraftService.rejectAgentFundingDraft('user-1', 'draft-1', 'Not expected');
 
       expect(draftRepository.updateApprovalStatus).toHaveBeenCalledWith('draft-1', 'rejected');
+      // A rejected draft can never broadcast, so its UTXOs are released.
+      expect(draftLockRepository.deleteByDraftId).toHaveBeenCalledWith('draft-1');
       expect(approvalService.castVote).not.toHaveBeenCalled();
       expect(result).toMatchObject({
         decision: 'reject',
