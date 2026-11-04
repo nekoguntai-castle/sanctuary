@@ -71,7 +71,7 @@ export const VERIFIER_PROVENANCE = {
   "schemaVersion": 2,
   "matrixId": "sanctuary-seed-to-address-v2",
   "exactCaseCount": 480,
-  "sourceSha256": "471634ef252dcc3040afaf89e10f1c0daa6231f16d372268365d15699d4f59ed",
+  "sourceSha256": "d9304b82e321acde5afe69d7e5d6eecd2a6ec0fd5efecafc39b6098017652afb",
   "coreImage": "bitcoin/bitcoin:31.1@sha256:da25cedc66b1daefff9f412ee196c901a899c3fa68a33b20849c3e08b5c40d63",
   "runtimes": {
     "node": "24.22.2",

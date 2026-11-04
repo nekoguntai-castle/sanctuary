@@ -197,12 +197,15 @@ case "$lane" in
     (cd server && exec npm run test:mutation:critical:gate)
     ;;
   browser_smoke)
+    "$SCRIPT_DIR/install-playwright-chromium.sh"
     exec npx playwright test --config config/tooling/playwright.config.ts --project=chromium --grep '@smoke|browser-smoke'
     ;;
   render_regression)
+    "$SCRIPT_DIR/install-playwright-chromium.sh"
     exec npx playwright test --config config/tooling/playwright.config.ts --project=chromium tests/e2e/render-regression.spec.ts
     ;;
   e2e_full)
+    "$SCRIPT_DIR/install-playwright-chromium.sh"
     exec npx playwright test --config config/tooling/playwright.config.ts
     ;;
   build)

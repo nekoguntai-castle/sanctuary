@@ -2,16 +2,15 @@
 # ("Full Browser E2E Tests", "Full Render E2E Tests" in .github/workflows/test.yml).
 #
 # Extends the act base the Forgejo runner fleet already uses (docker CLI,
-# node/python tool cache, act compatibility) and bakes in Playwright's
-# Chromium + its OS dependencies. This removes the on-the-fly
-# `playwright install --with-deps chromium` (an apt-get) from the critical
-# path of every browser/render E2E run.
+# node/python tool cache, act compatibility) and bakes in Playwright's OS
+# dependencies, separately pinned Chrome for Testing, and Playwright's FFmpeg
+# executable for video artifacts.
 #
 # Modelled directly on counting-cats' scripts/ci/images/playwright-runner.Dockerfile
 # (see runner-infra's docs/how-to/runner-job-images.md, "Adding an image").
 #
-# Rebuild and retag whenever the lockfile's Playwright version changes. The
-# builder is owned by runner-infra: build and publish are fleet policy shared
+# Rebuild and retag whenever the Playwright or browser toolchain pin changes.
+# The builder is owned by runner-infra: build and publish are fleet policy shared
 # with the other repos that ship job images, while this Dockerfile stays here
 # because only this repo knows what its browser jobs need. From a
 # runner-infra checkout:
@@ -33,12 +32,10 @@
 # repo's own PR (see docs/reference/ci-cd-strategy.md's "CI job images"
 # note).
 #
-# The pinned digest and this file's default PLAYWRIGHT_VERSION are both
-# load-bearing beyond documentation:
-# tests/ci/check-playwright-runner-contract.test.mjs requires this file's
-# default PLAYWRIGHT_VERSION to equal the version node_modules/playwright-core
-# resolves to in package-lock.json (so a Playwright bump cannot silently
-# desync the Dockerfile from the lockfile), and requires both jobs'
+# The pinned digest and this file's toolchain defaults are load-bearing:
+# tests/ci/check-playwright-runner-contract.test.mjs requires the Playwright
+# version to match package-lock.json and browser pins to match
+# config/browser-toolchain.json, and requires both jobs'
 # container.image to pin the same real digest (not the
 # PLAYWRIGHT_IMAGE_DIGEST_PENDING placeholder left until the image above is
 # built and pushed).
@@ -56,15 +53,33 @@
 # build and rebuilding this image on top.
 FROM nexus.tabineko.dev/nekoguntai-castle/act-ubuntu-node@sha256:9a9cf26dae68eb81e0446f91f81427b0c65c380371225b47ece9ddb407a68891
 
-# Exact version from the lockfile (node_modules/playwright-core in
-# package-lock.json), so the image cannot drift from what the repo installs.
-# Baking Chromium removes `playwright install --with-deps` from the critical
-# path -- the step that has previously hung for hours on a transient
-# apt-mirror outage (see CLAUDE.md's Docker Commands / CI section).
-ARG PLAYWRIGHT_VERSION=1.63.0
-RUN npx --yes playwright@${PLAYWRIGHT_VERSION} install --with-deps chromium \
+# Playwright's bundled Chromium is below Sanctuary's minimum supported browser
+# version. Install Playwright's OS dependencies, then fetch the independently
+# pinned Chrome for Testing archive and verify it before extraction.
+ARG TOOLCHAIN_VERSION=pw1.64.1-chrome157.0.8103.38
+ARG PLAYWRIGHT_VERSION=1.64.1
+ARG CHROME_VERSION=157.0.8103.38
+ARG MINIMUM_BROWSER_VERSION=156.0.8078.73
+ARG CHROME_SHA256=8cdeb344e9b2cefe59f4aea8d1d93d5d93054c03cde217665c16fc1f62e72a66
+ENV PLAYWRIGHT_VERSION=${PLAYWRIGHT_VERSION} \
+    CHROME_VERSION=${CHROME_VERSION} \
+    MINIMUM_BROWSER_VERSION=${MINIMUM_BROWSER_VERSION} \
+    PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/opt/chrome/chrome-linux64/chrome
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl unzip \
+ && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install --prefix /opt/playwright --no-save --no-package-lock "playwright@${PLAYWRIGHT_VERSION}" \
+ && /opt/playwright/node_modules/.bin/playwright install-deps chromium \
+ && /opt/playwright/node_modules/.bin/playwright install ffmpeg \
+ && curl --fail --location --silent --show-error --connect-timeout 20 --max-time 300 --retry 3 --retry-all-errors --retry-delay 2 \
+      "https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chrome-linux64.zip" \
+      --output /tmp/chrome-for-testing.zip \
+ && echo "${CHROME_SHA256}  /tmp/chrome-for-testing.zip" | sha256sum --check --status \
+ && mkdir -p /opt/chrome \
+ && unzip -q /tmp/chrome-for-testing.zip -d /opt/chrome \
+ && /opt/chrome/chrome-linux64/chrome --version | grep -F "${CHROME_VERSION}" \
+ && rm -f /tmp/chrome-for-testing.zip \
  && rm -rf /var/lib/apt/lists/*
 
 LABEL org.opencontainers.image.title="sanctuary-ci-playwright" \
-      org.opencontainers.image.description="act-ubuntu-node + baked Playwright ${PLAYWRIGHT_VERSION} Chromium + deps for Sanctuary's browser/render E2E lanes" \
-      org.opencontainers.image.version="${PLAYWRIGHT_VERSION}"
+      org.opencontainers.image.description="act-ubuntu-node + Playwright ${PLAYWRIGHT_VERSION} and verified Chrome for Testing ${CHROME_VERSION}" \
+      org.opencontainers.image.version="${TOOLCHAIN_VERSION}"

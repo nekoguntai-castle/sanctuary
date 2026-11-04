@@ -869,7 +869,8 @@ test('tracked lifecycle registry exactly covers Docker and host-artifact surface
     direct: 'migrate', canonical_executor: 'exempt', cleanup_coordinator: 'exempt',
     daemon_atomic: 'exempt', registered_transient: 'exempt', registered_exact: 'exempt',
     retained_shared_cache: 'exempt', retained_application: 'exempt',
-    ownership_manifest: 'exempt', application_api: 'reference_only',
+    ownership_manifest: 'exempt', scoped_temporary_artifact: 'exempt',
+    application_api: 'reference_only',
   };
   for (const finding of scan.findings) {
     const key = `${finding.path}:${finding.resourceClass}:${finding.operation}`;

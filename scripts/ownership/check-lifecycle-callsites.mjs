@@ -1104,9 +1104,26 @@ function hasTestFixtureProof(relativePath, source, statements) {
     && destructive.every((line) => !broadHostTarget.test(line));
 }
 
+function hasScopedPlaywrightInstallerCleanup(relativePath, source, statements) {
+  if (relativePath !== 'scripts/ci/install-playwright-chromium.sh') return false;
+  const recursiveDeletions = statements.filter(hasRecursivePathDeletion);
+  const tempDirectoryAssignments = statements.filter((line) => /\btemp_dir\s*=/.test(line));
+  return recursiveDeletions.length === 1
+    && recursiveDeletions[0] === `trap 'rm -rf "$temp_dir"' EXIT`
+    && tempDirectoryAssignments.length === 1
+    && tempDirectoryAssignments[0] === 'temp_dir="$(mktemp -d "$cache_parent/.chrome-$browser_version.XXXXXX")"'
+    && /trap 'rm -rf "\$temp_dir"' EXIT/.test(source)
+    && /staged_root="\$temp_dir\/verified"/.test(source)
+    && /unzip -q "\$temp_dir\/chrome\.zip" -d "\$staged_root"/.test(source)
+    && /printf '%s\\n' "\$browser_sha256" >"\$staged_root\/\.archive-sha256"/.test(source)
+    && /mv -T -n "\$staged_root" "\$browser_root"/.test(source)
+    && /\[ "\$\(cat "\$verified_marker"\)" = "\$browser_sha256" \]/.test(source);
+}
+
 function hostMechanism(relativePath, source, statements) {
   if (hasExactForwarderShutdownProof(relativePath, source)) return 'registered_exact';
   if (hasCanonicalHostInternalProof(relativePath, source)) return 'canonical_host_internal';
+  if (hasScopedPlaywrightInstallerCleanup(relativePath, source, statements)) return 'scoped_temporary_artifact';
   if (hasTestFixtureProof(relativePath, source, statements)) return 'test_fixture';
   return 'host_migration';
 }
@@ -1268,7 +1285,8 @@ const EXEMPT_CLEANUP_MECHANISMS = new Set([
 ]);
 const APPLICATION_MECHANISMS = new Set(['application_api', 'ownership_manifest']);
 const EXEMPT_HOST_MECHANISMS = new Set([
-  'canonical_host_internal', 'cleanup_coordinator', 'registered_exact', 'test_fixture',
+  'canonical_host_internal', 'cleanup_coordinator', 'registered_exact',
+  'scoped_temporary_artifact', 'test_fixture',
 ]);
 
 function exemptDeclarationErrors(key, entry, finding) {

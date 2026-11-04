@@ -134,6 +134,7 @@ retire_exact_runtime_reference() {
 
 owned_image_ref=''
 owned_image_id=''
+build_log=''
 
 retire_on_exit() {
   local subject_status="$?" retirement_status=0 recovered_id
@@ -146,6 +147,10 @@ retire_on_exit() {
   fi
   if [ -n "$owned_image_id" ]; then
     retire_exact_runtime_reference "$owned_image_ref" "$owned_image_id" || retirement_status=$?
+  fi
+  if [ -n "$build_log" ]; then
+    rm -f -- "$build_log" || retirement_status=$?
+    build_log=''
   fi
   if [ "$subject_status" -eq 0 ] && [ "$retirement_status" -ne 0 ]; then
     subject_status="$retirement_status"
@@ -172,28 +177,80 @@ trap 'exit 143' TERM
 
 cache_args=()
 target_args=()
+cache_enabled=false
 if [ -n "$target" ]; then
   target_args+=(--target "$target")
 fi
 if [ "${SANCTUARY_IMAGE_CACHE:-true}" = true ]; then
+  cache_enabled=true
   # The provider cache is deliberately stable across runs and therefore shared.
   # It has no exact run-owned identity and must never be pruned by this lane.
   cache_args+=(--cache-from "type=gha,scope=runtime-image-$role")
   cache_args+=(--cache-to "type=gha,mode=max,scope=runtime-image-$role,ignore-error=true")
 fi
 
-build_status=0
-docker buildx build \
-  --file "$dockerfile" \
-  --load \
-  --tag "$owned_image_ref" \
-  --build-arg "SANCTUARY_SOURCE_COMMIT=$SANCTUARY_SOURCE_COMMIT" \
-  --build-arg "SANCTUARY_IMAGE_LOCK_SHA256=$SANCTUARY_IMAGE_LOCK_SHA256" \
-  --build-arg "SANCTUARY_BUILD_VERSION=$SANCTUARY_VERSION" \
-  --build-arg "SANCTUARY_BUILD_ID=$SANCTUARY_BUILD_ID" \
-  ${target_args[@]+"${target_args[@]}"} \
-  "${cache_args[@]}" \
-  "$context" || build_status=$?
+build_log="$(mktemp "${TMPDIR:-/tmp}/sanctuary-runtime-image-build.XXXXXXXX")" \
+  || fail 'could not create a temporary build log for bounded cache recovery'
+
+run_runtime_image_build() {
+  local cache_mode="$1" append_log="$2"
+  local -a args=() pipeline_status=() tee_args=()
+  args+=(--file "$dockerfile")
+  args+=(--build-arg "SANCTUARY_SOURCE_COMMIT=$SANCTUARY_SOURCE_COMMIT")
+  args+=(--build-arg "SANCTUARY_IMAGE_LOCK_SHA256=$SANCTUARY_IMAGE_LOCK_SHA256")
+  args+=(--build-arg "SANCTUARY_BUILD_VERSION=$SANCTUARY_VERSION")
+  args+=(--build-arg "SANCTUARY_BUILD_ID=$SANCTUARY_BUILD_ID")
+  args+=("${target_args[@]}")
+  case "$cache_mode" in
+    shared) args+=("${cache_args[@]}") ;;
+    no-cache) args+=(--no-cache) ;;
+    disabled) ;;
+    *) fail "unsupported runtime image cache mode: $cache_mode" ;;
+  esac
+  args+=("$context")
+
+  if [ "$append_log" = true ]; then
+    tee_args+=(-a)
+  fi
+  set +e
+  docker buildx build --load --tag "$owned_image_ref" "${args[@]}" 2>&1 | tee "${tee_args[@]}" "$build_log"
+  pipeline_status=("${PIPESTATUS[@]}")
+  set -e
+  build_status="${pipeline_status[0]:-1}"
+  build_log_status="${pipeline_status[1]:-1}"
+  if [ "$build_status" -eq 0 ] && [ "$build_log_status" -ne 0 ]; then
+    build_status="$build_log_status"
+  fi
+}
+
+has_imported_cache_artifact_404() {
+  local log_file="$1"
+  grep -Eq 'importing cache manifest from gha:[0-9]+' "$log_file" \
+    && grep -Eq 'ERROR: failed to build: failed to solve: failed to compute cache key: failed to copy: invalid status response 404 Not Found for http://host\.containers\.internal:4000/[[:xdigit:]]{32}/_apis/artifactcache/artifacts/[0-9]+$' "$log_file"
+}
+
+exact_owned_image_tag_absent() {
+  local listed_references
+  listed_references="$(docker image ls --no-trunc --filter "reference=$owned_image_ref" \
+    --format '{{.ID}}')" || return 1
+  [ -z "$listed_references" ] || return 2
+}
+
+first_cache_mode=disabled
+[ "$cache_enabled" = true ] && first_cache_mode=shared
+run_runtime_image_build "$first_cache_mode" false
+
+if [ "$build_status" -ne 0 ] && [ "$build_log_status" -eq 0 ] \
+    && [ "$cache_enabled" = true ] && has_imported_cache_artifact_404 "$build_log"; then
+  preflight_status=0
+  exact_owned_image_tag_absent || preflight_status=$?
+  if [ "$preflight_status" -eq 0 ]; then
+    echo "build-runtime-image: imported cache artifact returned 404 (build exit $build_status); retrying once without provider cache" >&2
+    run_runtime_image_build no-cache true
+  else
+    echo "build-runtime-image: imported cache artifact returned 404, but exact image-tag absence was not proven (docker listing status $preflight_status); not retrying" >&2
+  fi
+fi
 
 recovery_status=0
 owned_image_id="$(recover_exact_runtime_image "$owned_image_ref")" || recovery_status=$?

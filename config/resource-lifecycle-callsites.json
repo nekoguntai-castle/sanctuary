@@ -422,6 +422,13 @@
       "safetyContract": "The resource is registered with exact authority and cleanup is delegated to the canonical executor."
     },
     {
+      "path": "scripts/ci/install-playwright-chromium.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The installer removes only its mktemp-generated staging directory under the versioned browser cache after atomic publication."
+    },
+    {
       "path": "scripts/ci/docker-exec-tcp-forwarder.mjs",
       "resourceClass": "collector_process",
       "operation": "cleanup",
@@ -1697,6 +1704,20 @@
     },
     {
       "path": "tests/ci/browser-e2e-groups.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns a private bounded fixture and removes only resources created for that test invocation."
+    },
+    {
+      "path": "tests/ci/browser-toolchain-freshness.test.sh",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns and terminates only its loopback fixture server process."
+    },
+    {
+      "path": "tests/ci/browser-toolchain-freshness.test.sh",
       "resourceClass": "temporary_artifact",
       "operation": "cleanup",
       "disposition": "exempt",

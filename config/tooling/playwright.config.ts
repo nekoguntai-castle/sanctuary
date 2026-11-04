@@ -1,12 +1,14 @@
 import { defineConfig, devices } from '@playwright/test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolvePlaywrightBrowser } from './playwright-browser';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 const PLAYWRIGHT_PORT = Number(process.env.PLAYWRIGHT_PORT ?? 5173);
 const DEFAULT_BASE_URL = `http://localhost:${PLAYWRIGHT_PORT}`;
 const BASE_URL = process.env.BASE_URL || DEFAULT_BASE_URL;
+const chromiumExecutablePath = resolvePlaywrightBrowser(repoRoot);
 
 /**
  * Playwright E2E Test Configuration
@@ -39,7 +41,10 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        ...(chromiumExecutablePath ? { launchOptions: { executablePath: chromiumExecutablePath } } : {}),
+      },
     },
     {
       name: 'firefox',
@@ -52,7 +57,10 @@ export default defineConfig({
     // Mobile viewports
     {
       name: 'mobile-chrome',
-      use: { ...devices['Pixel 5'] },
+      use: {
+        ...devices['Pixel 5'],
+        ...(chromiumExecutablePath ? { launchOptions: { executablePath: chromiumExecutablePath } } : {}),
+      },
     },
     {
       name: 'mobile-safari',

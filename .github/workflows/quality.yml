@@ -799,6 +799,7 @@ jobs:
           bash -n tests/ci/observe-runtime-image-cves.test.sh
           bash -n tests/ci/cleanup-docker-resources.test.sh
           bash -n tests/ci/install-playwright-chromium.test.sh
+          bash -n tests/ci/browser-toolchain-freshness.test.sh
           bash -n tests/ci/quality-audit.test.sh
           bash -n tests/ci/quality-lizard-bootstrap.test.sh
           bash -n tests/ci/relay-job-diagnosability.test.sh
@@ -871,6 +872,7 @@ jobs:
           node --test tests/ci/runtime-prisma-dependencies.test.cjs
           node --test tests/ci/gateway-runtime-dependencies.test.cjs
           node --test tests/ci/check-playwright-runner-contract.test.mjs
+          bash tests/ci/browser-toolchain-freshness.test.sh
           node tests/ci/check-root-layout.test.mjs
           node tests/ci/docker-compose-test-contract.test.mjs
           node --test tests/ci/backend-docker-test.test.mjs tests/ci/backend-docker-subject.test.mjs

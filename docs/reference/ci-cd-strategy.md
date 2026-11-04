@@ -611,13 +611,15 @@ Initial targets:
 
 ### Playwright version and follow-up capability inventory
 
-`@playwright/test` was bumped from `^1.49.1` to `^1.63.0` (bundled Chromium
-moved from revision 1228 / Chrome for Testing 149.0.7827.55 to revision 1243 /
-Chrome for Testing 153.0.8010.12). Browsers are still installed per-run from
-the package itself via `scripts/ci/install-playwright-chromium.sh` — no
-pinned browser image or digest exists for the two Playwright CI jobs (`Full
-Browser E2E Tests`, `Full Render E2E Tests`), so this bump required no runner
-or workflow change, only the version pin and lockfile update.
+`@playwright/test` is pinned to `1.64.1`. Playwright's bundled Chromium does
+not meet Sanctuary's minimum browser floor, so `config/browser-toolchain.json`
+independently pins Chrome for Testing `157.0.8103.38`, its minimum accepted
+version `156.0.8078.73`, and the archive SHA-256. Browser and mobile-Chrome
+projects use that executable explicitly. The CI image verifies and bakes the
+same archive; `scripts/ci/install-playwright-chromium.sh` installs the same
+verified archive into a versioned user cache when run outside that image.
+The image and installer provision Playwright's FFmpeg separately so video
+artifacts do not depend on installing the old bundled browser.
 
 The following are **not implemented in this PR** — a follow-up list of
 capabilities the 1.50-1.63 range adds that this suite could adopt:
@@ -747,11 +749,10 @@ an image"). `sanctuary-ci-playwright` is consumed via a job-level
 `container:` block (below), so there is no runner-label mapping step for
 it — `go-runner.Dockerfile`'s `sanctuary-ci-go`, by contrast, is also
 consumed via `container:` in `verify-vectors.yml`, and neither image needs
-`config/runner-images.env` or a host re-render. The Dockerfile's
-`ARG PLAYWRIGHT_VERSION` default is pinned to `package-lock.json`'s resolved
-`node_modules/playwright-core` version and enforced by
-`tests/ci/check-playwright-runner-contract.test.mjs`, so a Playwright bump in
-this repo cannot silently leave the baked image stale.
+`config/runner-images.env` or a host re-render. The Dockerfile's Playwright,
+Chrome, archive-checksum, and combined toolchain tag defaults are enforced
+against `package-lock.json` and `config/browser-toolchain.json` by
+`tests/ci/check-playwright-runner-contract.test.mjs`.
 
 The two E2E jobs name the image directly with a job-level `container:` block
 — the same shape `verify-vectors.yml`'s `sanctuary-ci-go` jobs already use —
@@ -774,21 +775,18 @@ time; it does not queue silently until `timeout-minutes` expires the way an
 unpublished runner label would.
 
 `scripts/ci/install-playwright-chromium.sh` stays wired into both jobs as a
-fallback — it probes for an already-launchable Chromium first (via
-Playwright's own browser-path resolution, so it needs no hardcoded path) and
-is a no-op on the prebaked image, but still does the real install on any
-runner that lands without it.
+fallback. It selects the image's verified executable or downloads and checks
+the same pinned archive into a versioned user cache; it never installs
+Playwright's bundled browser as a substitute.
 
 **Bumping the Playwright version:**
 
-1. Bump the Playwright dependency (`package-lock.json`'s resolved
-   `node_modules/playwright-core` version changes).
-   `tests/ci/check-playwright-runner-contract.test.mjs` starts failing
-   because the Dockerfile's `ARG PLAYWRIGHT_VERSION` no longer matches.
-2. Update the Dockerfile's `ARG PLAYWRIGHT_VERSION` default to match (this
-   also updates the `org.opencontainers.image.version` OCI label the
-   contract test checks for, since the label reads the same ARG).
-3. Build and push from a runner-infra checkout:
+1. Pin `@playwright/test` and update `config/browser-toolchain.json`. Select a
+   Chrome for Testing release at or above `minimumBrowserVersion`, record its
+   published archive SHA-256, and keep the package-lock Playwright version
+   synchronized. The contract test checks the Docker args and combined
+   `pw<version>-chrome<version>` toolchain tag.
+2. Build and push from a runner-infra checkout:
 
    ```bash
    scripts/ops/build-runner-image.sh --image sanctuary-ci-playwright \
@@ -796,7 +794,7 @@ runner that lands without it.
      --registry nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright
    ```
 
-4. Take the digest **the registry serves for the tag**, not the one the
+3. Take the digest **the registry serves for the tag**, not the one the
    builder prints: the builder reports Podman's locally computed RepoDigest,
    which differs from the manifest digest the registry stores (observed on
    the first 1.63.0 build: printed `db88f6…`, served `14f52c…`; only the
@@ -805,15 +803,15 @@ runner that lands without it.
    ```bash
    curl -sI -u "nekoguntai:$FORGEJO_TOKEN" \
      -H 'Accept: application/vnd.oci.image.manifest.v1+json' \
-     https://nexus.tabineko.dev/v2/nekoguntai-castle/sanctuary-ci-playwright/manifests/<version> \
+     https://nexus.tabineko.dev/v2/nekoguntai-castle/sanctuary-ci-playwright/manifests/pw<playwright-version>-chrome<browser-version> \
      | grep -i docker-content-digest
    ```
 
    Paste it into both `container.image` lines in `.github/workflows/test.yml`
-   (`full-browser-e2e-tests` and `full-render-e2e-tests`) — both jobs must
-   pin the identical digest, which the contract test also checks — and into
-   the `sanctuary-ci-playwright` entry of `config/container-image-lock.json`,
-   which `npm run check:supply-chain-locks` requires to match.
+   (`full-browser-e2e-tests` and `full-render-e2e-tests`) and the
+   `sanctuary-ci-playwright` entry of `config/container-image-lock.json`; the
+   supply-chain check requires the lock to match. Keep the prior digest until
+   the rebuilt image is available.
 
 No host re-render, no drain, and no `runner-job-images.md` rollout ordering
 is needed at any step — the whole bump lands in this repo's own PR.

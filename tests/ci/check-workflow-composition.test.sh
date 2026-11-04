@@ -635,7 +635,7 @@ node24_runner_report() {
         docker_socket = 1
       }
 
-      in_jobs && docker_socket && /^      image: nexus\.tabineko\.dev\/nekoguntai-castle\/sanctuary-ci-playwright@sha256:/ {
+      in_jobs && docker_socket && /^      image: nexus\.tabineko\.dev\/nekoguntai-castle\/sanctuary-ci-playwright:pw[0-9]+\.[0-9]+\.[0-9]+-chrome[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+@sha256:[a-f0-9]{64}$/ {
         selected = 1
       }
 
@@ -2999,6 +2999,22 @@ assert_named_job_step_contains "$VV" \
   "Prove exact transaction fee invariants by mutation" \
   "verify-vectors fee-policy mutation proof has a contention-safe timeout" \
   "timeout-minutes: 15"
+
+assert_named_job_step_contains "$VV" \
+  "verify-vectors-mutation-fee" \
+  "Prove receive transaction evidence by mutation" \
+  "receive-evidence proof has its own bounded deadline" \
+  "timeout-minutes: 5"
+assert_named_job_step_contains "$VV" \
+  "verify-vectors-mutation-fee" \
+  "Prove receive transaction evidence by mutation" \
+  "receive-evidence command executes in its own step" \
+  "npm --prefix server run test:mutation:receive-evidence"
+assert_named_job_step_not_contains "$VV" \
+  "verify-vectors-mutation-fee" \
+  "Prove exact transaction fee invariants by mutation" \
+  "fee-policy deadline cannot consume receive-evidence execution time" \
+  "test:mutation:receive-evidence"
 
 assert_contains_in_order "$VV" \
   "verify-vectors wait-for-docker diagnostics" \

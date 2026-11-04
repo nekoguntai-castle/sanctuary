@@ -55,42 +55,48 @@ main() {
   local log_file="$TEST_TEMP_DIR/npx.log"
   mkdir -p "$bin_dir"
   write_mock_npx "$bin_dir" "$log_file"
+  local browser_executable="$TEST_TEMP_DIR/chrome"
+  printf '#!/usr/bin/env bash\necho "Google Chrome 157.0.8103.38"\nexit 0\n' >"$browser_executable"
+  chmod +x "$browser_executable"
 
-  # Case 1: the browser is already present (the sanctuary-playwright-* image
-  # bakes it in) -- the leading probe succeeds on its first call, and the
-  # script must skip the install entirely, making it a no-op fallback.
+  # Case 1: the image-provided pinned browser launches; only FFmpeg is
+  # installed because Playwright no longer provisions its bundled browser.
   local probe_count="$TEST_TEMP_DIR/probe-count"
   printf '0' >"$probe_count"
   PATH="$bin_dir:$PATH" \
     SANCTUARY_RETRY_DELAY_SECONDS=0 \
+    PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$browser_executable" \
     SANCTUARY_PLAYWRIGHT_PROBE_CMD="$(probe_cmd_succeeding_on_call 1 "$probe_count")" \
     bash "$SCRIPT"
-  [ ! -s "$log_file" ] || fail 'expected no npx calls when Chromium is already present'
+  assert_contains "$log_file" 'playwright install ffmpeg'
+  assert_not_contains "$log_file" 'playwright install chromium'
+  assert_not_contains "$log_file" 'install-deps'
   [ "$(cat "$probe_count")" = '1' ] || fail 'expected exactly one probe call when already present'
 
-  # Case 2: not present yet, but launches cleanly right after
-  # `playwright install chromium` -- no OS dependency install needed.
+  # Case 2: the pinned browser launches initially; no install is needed.
   : >"$log_file"
   printf '0' >"$probe_count"
   PATH="$bin_dir:$PATH" \
     SANCTUARY_RETRY_DELAY_SECONDS=0 \
+    PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$browser_executable" \
+    SANCTUARY_PLAYWRIGHT_PROBE_CMD="$(probe_cmd_succeeding_on_call 1 "$probe_count")" \
+    bash "$SCRIPT"
+  assert_contains "$log_file" 'playwright install ffmpeg'
+  assert_not_contains "$log_file" 'playwright install chromium'
+  assert_not_contains "$log_file" 'install-deps'
+  [ "$(cat "$probe_count")" = '1' ] || fail 'expected exactly one probe call'
+
+  # Case 3: a failed pinned-browser launch installs OS dependencies, then probes again.
+  : >"$log_file"
+  printf '0' >"$probe_count"
+  PATH="$bin_dir:$PATH" \
+    SANCTUARY_RETRY_DELAY_SECONDS=0 \
+    PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$browser_executable" \
     SANCTUARY_PLAYWRIGHT_PROBE_CMD="$(probe_cmd_succeeding_on_call 2 "$probe_count")" \
     bash "$SCRIPT"
-  assert_contains "$log_file" 'playwright install chromium'
-  assert_not_contains "$log_file" 'install-deps'
-  [ "$(cat "$probe_count")" = '2' ] || fail 'expected exactly two probe calls'
-
-  # Case 3: still fails to launch after `install chromium` -- falls through
-  # to `install-deps` and verifies once more.
-  : >"$log_file"
-  printf '0' >"$probe_count"
-  PATH="$bin_dir:$PATH" \
-    SANCTUARY_RETRY_DELAY_SECONDS=0 \
-    SANCTUARY_PLAYWRIGHT_PROBE_CMD="$(probe_cmd_succeeding_on_call 3 "$probe_count")" \
-    bash "$SCRIPT"
-  assert_contains "$log_file" 'playwright install chromium'
   assert_contains "$log_file" 'playwright install-deps chromium'
-  [ "$(cat "$probe_count")" = '3' ] || fail 'expected exactly three probe calls'
+  assert_contains "$log_file" 'playwright install ffmpeg'
+  [ "$(cat "$probe_count")" = '2' ] || fail 'expected exactly two probe calls'
 
   echo 'install-playwright-chromium regression checks passed'
 }

@@ -570,7 +570,7 @@ jobs:
     runs-on: docker-socket
     container:
       image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:14d65190139aad39b2af99b751d12237c259a952b7f908e0dcde25512c09299f
-    # Above the step bounds (10 + 15) plus setup, so a run that hits a step
+    # Above the step bounds (10 + 15 + 5) plus setup, so a run that hits a step
     # bound still writes and uploads its diagnostics.
     timeout-minutes: 35
     env:
@@ -596,13 +596,20 @@ jobs:
         # eight-minute bound; the same tree passed when run in isolation. Keep
         # the proof blocking and finite while allowing that observed tail.
         timeout-minutes: 15
-        run: |
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/fee-policy-mutation.log" \
-            ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain bash -c '
-              set -euo pipefail
-              ${{ github.workspace }}/scripts/ci/time-command.sh "fee-policy mutation proof" npm --prefix server run test:mutation:fee-policy
-              ${{ github.workspace }}/scripts/ci/time-command.sh "receive-evidence mutation proof" npm --prefix server run test:mutation:receive-evidence
-            '
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/fee-policy-mutation.log"
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
+          ${{ github.workspace }}/scripts/ci/time-command.sh "fee-policy mutation proof" npm --prefix server run test:mutation:fee-policy
+
+      - name: Prove receive transaction evidence by mutation
+        # Run 21980's passing fee proof consumed 876 seconds of the shared
+        # 15-minute step. This proof previously took 35 seconds, so it needs
+        # its own finite deadline rather than the fee proof's remaining time.
+        timeout-minutes: 5
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/receive-evidence-mutation.log"
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
+          ${{ github.workspace }}/scripts/ci/time-command.sh "receive-evidence mutation proof" npm --prefix server run test:mutation:receive-evidence
 
       - name: Upload fee-policy mutation reports
         if: always()

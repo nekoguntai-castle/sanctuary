@@ -18,11 +18,7 @@
 // fill in once the image is built and pushed) and (b) be identical between
 // the two jobs, since both run the same image.
 //
-// counting-cats' equivalent image has no such automated check -- its
-// runner label version and its Dockerfile's ARG default are kept in sync by
-// hand. This repo adds the check counting-cats lacks, using node:test since
-// that is this repo's convention for CI helper contract tests (see
-// tests/ci/check-wallet-sync-lifecycle-contract.test.mjs).
+// Keep these assertions local so each consuming repository checks its pins.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -32,9 +28,14 @@ import test from 'node:test';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const dockerfilePath = path.join(repoRoot, 'scripts/ci/images/playwright-runner.Dockerfile');
 const lockfilePath = path.join(repoRoot, 'package-lock.json');
+const browserToolchainPath = path.join(repoRoot, 'config/browser-toolchain.json');
+const browserResolverPath = path.join(repoRoot, 'config/tooling/playwright-browser.ts');
+const packageManifestPath = path.join(repoRoot, 'package.json');
 const testWorkflowPath = path.join(repoRoot, '.github/workflows/test.yml');
 
-const PLAYWRIGHT_IMAGE_REPO = 'nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright';
+const browserToolchain = JSON.parse(readFileSync(browserToolchainPath, 'utf8'));
+const PLAYWRIGHT_IMAGE_REPO = 'nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright:' +
+  `pw${browserToolchain.playwrightVersion}-chrome${browserToolchain.browserVersion}`;
 const PLAYWRIGHT_IMAGE_DIGEST_PLACEHOLDER = 'PLAYWRIGHT_IMAGE_DIGEST_PENDING';
 const PLAYWRIGHT_E2E_JOB_NAMES = ['full-browser-e2e-tests', 'full-render-e2e-tests'];
 
@@ -54,13 +55,29 @@ export function dockerfilePlaywrightVersion(dockerfileText) {
   return match[1];
 }
 
+export function dockerfileArg(dockerfileText, name) {
+  const match = dockerfileText.match(new RegExp(`^ARG ${name}=(\\S+)$`, 'm'));
+  if (!match) throw new Error(`playwright-runner.Dockerfile has no ${name} default`);
+  return match[1];
+}
+
+function versionAtLeast(actual, minimum) {
+  const actualParts = actual.split('.').map(Number);
+  const minimumParts = minimum.split('.').map(Number);
+  for (let index = 0; index < Math.max(actualParts.length, minimumParts.length); index += 1) {
+    const delta = (actualParts[index] ?? 0) - (minimumParts[index] ?? 0);
+    if (delta !== 0) return delta > 0;
+  }
+  return true;
+}
+
 export function dockerfileVersionLabel(dockerfileText) {
   const match = dockerfileText.match(
-    /org\.opencontainers\.image\.version="\$\{PLAYWRIGHT_VERSION\}"/,
+    /org\.opencontainers\.image\.version="\$\{TOOLCHAIN_VERSION\}"/,
   );
   if (!match) {
     throw new Error(
-      'playwright-runner.Dockerfile has no LABEL org.opencontainers.image.version="${PLAYWRIGHT_VERSION}"',
+      'playwright-runner.Dockerfile has no LABEL org.opencontainers.image.version="${TOOLCHAIN_VERSION}"',
     );
   }
   return match[0];
@@ -161,6 +178,60 @@ test('playwright-runner.Dockerfile default version matches the lockfile', () => 
       `package-lock.json node_modules/playwright-core version ${lockVersion}. Bump the ` +
       'Dockerfile default alongside any Playwright version bump.',
   );
+});
+
+test('pinned Chrome for Testing toolchain matches its independent Docker build arguments', () => {
+  const toolchain = JSON.parse(readFileSync(browserToolchainPath, 'utf8'));
+  const dockerfileText = readFileSync(dockerfilePath, 'utf8');
+  assert.equal(toolchain.playwrightVersion, lockfilePlaywrightVersion(JSON.parse(readFileSync(lockfilePath, 'utf8'))));
+  assert.match(toolchain.browserSha256, /^[a-f0-9]{64}$/);
+  assert.ok(
+    versionAtLeast(toolchain.browserVersion, toolchain.minimumBrowserVersion),
+    `${toolchain.browserVersion} must meet minimum ${toolchain.minimumBrowserVersion}`,
+  );
+  assert.equal(dockerfileArg(dockerfileText, 'PLAYWRIGHT_VERSION'), toolchain.playwrightVersion);
+  assert.equal(dockerfileArg(dockerfileText, 'CHROME_VERSION'), toolchain.browserVersion);
+  assert.equal(dockerfileArg(dockerfileText, 'MINIMUM_BROWSER_VERSION'), toolchain.minimumBrowserVersion);
+  assert.equal(dockerfileArg(dockerfileText, 'CHROME_SHA256'), toolchain.browserSha256);
+  assert.equal(
+    dockerfileArg(dockerfileText, 'TOOLCHAIN_VERSION'),
+    `pw${toolchain.playwrightVersion}-chrome${toolchain.browserVersion}`,
+  );
+  assert.match(dockerfileText, /PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=\/opt\/chrome\/chrome-linux64\/chrome/);
+  assert.match(dockerfileText, /MINIMUM_BROWSER_VERSION=\$\{MINIMUM_BROWSER_VERSION\}/);
+  assert.match(dockerfileText, /sha256sum --check --status/);
+  assert.match(dockerfileText, /playwright install ffmpeg/);
+  assert.doesNotMatch(dockerfileText, /playwright install --with-deps chromium/);
+  assert.match(dockerfileText, /chrome --version \| grep -F "\$\{CHROME_VERSION\}"/);
+
+  const browserResolver = readFileSync(browserResolverPath, 'utf8');
+  assert.match(browserResolver, /Pinned Chrome for Testing .* is unavailable/);
+  assert.match(browserResolver, /\.archive-sha256/);
+  assert.match(browserResolver, /process\.env\.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH/);
+  assert.match(browserResolver, /versionMatch\?\.\[1\] !== toolchain\.browserVersion/);
+  const packageScripts = JSON.parse(readFileSync(packageManifestPath, 'utf8')).scripts;
+  for (const scriptName of [
+    'test:e2e', 'test:e2e:render', 'test:e2e:render:update', 'test:e2e:ui',
+    'test:e2e:headed', 'demo:capture',
+  ]) {
+    assert.match(packageScripts[scriptName], /^scripts\/ci\/install-playwright-chromium\.sh && /);
+  }
+  const runLane = readFileSync(path.join(repoRoot, 'scripts/ci/run-lane.sh'), 'utf8');
+  for (const laneName of ['browser_smoke', 'render_regression', 'e2e_full']) {
+    assert.match(
+      runLane,
+      new RegExp(`${laneName}\\)[\\s\\S]*?install-playwright-chromium\\.sh`),
+    );
+  }
+
+  for (const configPath of [
+    path.join(repoRoot, 'config/tooling/playwright.config.ts'),
+    path.join(repoRoot, 'scripts/demo/capture/capture.config.ts'),
+  ]) {
+    const configText = readFileSync(configPath, 'utf8');
+    assert.match(configText, /launchOptions: \{ executablePath: chromiumExecutablePath \}/);
+    assert.match(configText, /resolvePlaywrightBrowser\(repoRoot\)/);
+  }
 });
 
 test('playwright-runner.Dockerfile records its version in an OCI label', () => {

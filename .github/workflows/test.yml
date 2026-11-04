@@ -1378,7 +1378,7 @@ jobs:
     # jobs to pin the same real digest.
     runs-on: docker-socket
     container:
-      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright@sha256:14f52c1a6257ac9c23d47265e6324c341ef86ccf83230d6657dfe66a8fb4e8a4
+      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright:pw1.64.1-chrome157.0.8103.38@sha256:fde8670f103cc24fd71ea8185e8707856e2f756635c5c273c1b9789f9cb29241
     timeout-minutes: 90
     # Deliberately not ordered after full-backend-unit-coverage-shards. That
     # edge kept heavy lanes off the shared DIND daemon; every job now runs in
@@ -1436,14 +1436,14 @@ jobs:
           scripts/ci/retry-command.sh "browser npm ci"
           scripts/ci/time-command.sh "browser npm ci"
           npm ci --strict-allow-scripts --audit=false --fund=false --cache .tmp/npm-cache
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
 
-      # No "Cache Playwright browsers" step here: the sanctuary-playwright-*
-      # image already bakes Chromium into /root/.cache/ms-playwright, so
-      # caching that path on this runner would only cache what the image
-      # already provides. The install step below is a no-op fallback (see
-      # scripts/ci/install-playwright-chromium.sh) for any runner that lands
-      # on a host without the image, so it stays.
-      - name: Ensure Playwright browsers (no-op on the prebaked image)
+      # No "Cache Playwright browsers" step here: the CI image bakes the
+      # independently pinned Chrome for Testing archive into /opt/chrome.
+      # The installer below selects that executable or provisions the same
+      # verified archive in a versioned user cache.
+      - name: Ensure pinned Chromium and Playwright FFmpeg
         run: >
           scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-playwright.log"
           scripts/ci/time-command.sh "browser playwright install"
@@ -1598,7 +1598,7 @@ jobs:
     # the placeholder-digest gate.
     runs-on: docker-socket
     container:
-      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright@sha256:14f52c1a6257ac9c23d47265e6324c341ef86ccf83230d6657dfe66a8fb4e8a4
+      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright:pw1.64.1-chrome157.0.8103.38@sha256:fde8670f103cc24fd71ea8185e8707856e2f756635c5c273c1b9789f9cb29241
     timeout-minutes: 60
     # Runs beside full-browser-e2e-tests rather than after it: each lane has
     # its own job container, and the ordering only added the browser lane's
@@ -1626,9 +1626,11 @@ jobs:
           scripts/ci/retry-command.sh "render npm ci"
           scripts/ci/time-command.sh "render npm ci"
           npm ci --strict-allow-scripts --audit=false --fund=false --cache .tmp/npm-cache
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
 
-      # No "Cache Playwright browsers" step: see full-browser-e2e-tests above.
-      - name: Ensure Playwright browsers (no-op on the prebaked image)
+      # The image provides the pinned Chrome archive; see full-browser-e2e-tests.
+      - name: Ensure pinned Chromium and Playwright FFmpeg
         run: >
           scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-playwright.log"
           scripts/ci/time-command.sh "render playwright install"

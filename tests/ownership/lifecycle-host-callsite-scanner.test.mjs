@@ -214,6 +214,22 @@ child.kill('SIGTERM');
   assert.equal(findings.get('tests/ci/danger.test.sh').mechanism, 'host_migration');
 });
 
+test('Playwright installer cleanup is exempt only for its private atomic staging directory', () => {
+  const pathname = 'scripts/ci/install-playwright-chromium.sh';
+  const canonical = readFileSync(path.join(CHECKOUT, pathname), 'utf8');
+  const finding = (source) => scanLifecycleCallsites(fixture({ [pathname]: source })).findings
+    .find((entry) => entry.resourceClass === 'temporary_artifact' && entry.operation === 'cleanup');
+
+  assert.equal(finding(canonical).mechanism, 'scoped_temporary_artifact');
+  assert.equal(finding(canonical.replace('rm -rf "$temp_dir"', 'rm -rf "$cache_parent"')).mechanism, 'host_migration');
+  assert.equal(finding(`${canonical}\ntemp_dir="$HOME"\n`).mechanism, 'host_migration');
+  assert.equal(finding(canonical.replace('mv -T -n "$staged_root" "$browser_root"',
+    'mv -T "$staged_root" "$browser_root"')).mechanism, 'host_migration');
+  const commentOnlyTrap = canonical.replace('trap \'rm -rf "$temp_dir"\' EXIT', '')
+    + '\n# trap \'rm -rf "$temp_dir"\' EXIT\nrm -rf "$cache_parent"\n';
+  assert.equal(finding(commentOnlyTrap).mechanism, 'host_migration');
+});
+
 test('scanner fixture command strings are explicitly treated as non-executable test data', () => {
   const source = fixture({
     'tests/ownership/lifecycle-callsite-scanner.test.mjs': 'rm -rf "$HOME"\nkill "$pid"\n',

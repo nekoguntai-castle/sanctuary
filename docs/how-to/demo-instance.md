@@ -77,7 +77,7 @@ and group.
 ## Capture screenshots
 
 ```bash
-npx playwright install chromium   # once, if no browser is cached
+scripts/ci/install-playwright-chromium.sh  # once, if no pinned Chrome is cached
 npm run demo:capture              # every shot, dark and light
 npm run demo:capture -- --grep dashboard
 ```

@@ -38,6 +38,7 @@ is_root_vitest_input_file() {
     .github/workflows/verify-vectors.yml|\
     .nvmrc|\
     config/address-key-corpus-sources.json|\
+    config/browser-toolchain.json|\
     config/hardware-physical-evidence-trust.json|\
     config/hardware-wallet-implementation-inventory.json|\
     config/jade-emulator-proof.json|\
