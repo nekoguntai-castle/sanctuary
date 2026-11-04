@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.82] - 2026-11-04
+
+### Security
+
+- Node lookups required no login (GHSA-q288-2xgh-xv2g, reported by @hokvo). `GET /api/v1/bitcoin/transaction/:txid` was public, so anyone who could reach an install could make its Bitcoin node or Electrum server fetch arbitrary transactions. Bitcoin lookups keyed by caller input now require an authenticated session (#1440).
+- A draft's claimed signer was never checked against the PSBT (GHSA-q288-2xgh-xv2g, reported by @hokvo). The client sent `signedDeviceId` with an uploaded PSBT and the server recorded that device as having signed without verifying it. The server now verifies the device's signature in the PSBT before it records the device as a signer, and rejects the upload otherwise (#1441).
+
+### Changed
+
+- Draft signing status (`unsigned`, `partial`, `signed`) is now derived on the server from the signatures in the PSBT. A `status` sent by the client is ignored and logged, and will be rejected in a later release (#1444).
+- Agent alerts can now be acknowledged and resolved. Admins get Acknowledge and Resolve buttons in the agent wallet dashboard's alert panel, backed by `POST /api/v1/admin/agents/:agentId/alerts/:alertId/acknowledge` and `.../resolve`. Before, alerts could only be `open`, so the "Open alerts" counts only ever grew. The dashboard now lists acknowledged alerts too; the open counts stay open-only. The assistant's `recentAlertCount` now counts unresolved (open and acknowledged) alerts (#1455).
+- Changing your email no longer unverifies a verified account. The current address stays active and verified until the link sent to the new address is followed, and re-saving the current address cancels a pending change. Before, a mistyped address with email verification required locked the user out until an admin fixed it (#1448).
+- Gateway: the advertised exponential `retryAfter` backoff, which the limiter never enforced, is removed; `retryAfter` now reports the limiter's own window reset (#1449).
+- Gateway: push formatters for five event types the server never sends (`broadcast_success`, `broadcast_failed`, `psbt_signing_required`, `draft_created`, `draft_approved`) are removed. The push event vocabulary is now shared between the server and the gateway (#1453).
+- The support package's wallet sync summary counts wallets mid-sync in their own `syncing` bucket instead of `other` (#1452).
+- The assistant and MCP UTXO responses no longer include `spentTxid`, which sync never wrote and was always null (#1452).
+- CI: a new `check:status-writes` gate (Code Quality) fails when a guarded status or state column is written outside its owner modules (#1456).
+
+### Fixed
+
+- Revoking a wallet agent is now final. A later edit could set a revoked agent back to `active`, and its API keys are now revoked in the same transaction (#1442).
+- The circuit breaker now needs its configured number of consecutive successes before closing after a failure; a previous run's successes no longer count (#1442).
+- Approvals: drafts could stay `pending` forever after their policy changed or was deleted, or when a policy evaluation was refused. They are now re-evaluated, and a refused evaluation releases the draft's UTXO locks; the expiry sweep backs this up (#1445).
+- Wallet sync: a lock-contention failure could overwrite the state of a sync that had just started, and a retry restored from a backup lost its worker ownership and stalled. Both writes are now fenced (#1446).
+- Send: clicking a signing button while a draft was saving could leave the wizard locked until a reload. Saving now has its own slot and the signing controls are disabled while it runs (#1447).
+- The live-update connection now closes on logout (including a forced logout or one in another tab) and reconnects for the next session, instead of reconnecting with the previous user's subscriptions (#1447).
+- Gateway: after a dropped connection the server still showed the gateway as connected and pushes were silently lost. Both sides now heartbeat and reconnect (#1449).
+- Push: a confirmation push was skipped when a block took a transaction from 0 to 2 or more confirmations at once (#1449).
+- AI features could fail for up to five minutes after the LLM egress proxy restarted; the server now re-sends the proxy configuration when the proxy reports it has none (#1449).
+- Agent funding overrides: revoking an override that a draft had just used no longer marks it revoked (#1450).
+- Treasury Intelligence: an expired or already-resolved insight can no longer be dismissed or marked acted on (409), and expired insights no longer appear in active lists (#1450).
+- Console: a failure after a turn completed could overwrite it as failed, and turns cut off mid-run (for example by a restart) stayed in progress forever. Finished turns no longer change, and a turn left unfinished for over an hour is marked failed when the session's next turn starts (#1450).
+- Deployment and cleanup state files are written atomically. A crash or full disk mid-write left a torn file that made every later `./start.sh` or cleanup run fail until it was deleted by hand (#1451).
+- Send: when a payjoin proposal's broadcast outcome is unknown, the wizard now says so instead of showing "broadcasting payjoin..." indefinitely. Broadcasting again resends only the same proposal (#1454).
+
 ## [0.8.81] - 2026-11-03
 
 ### Security
@@ -1175,7 +1210,8 @@ upgrade browser-smoke and 2FA preservation assertions.
 
 - Removed navigation-triggered syncs in favor of worker-driven sync
 
-[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.81...HEAD
+[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.82...HEAD
+[0.8.82]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.81...v0.8.82
 [0.8.81]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.80...v0.8.81
 [0.8.80]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.79...v0.8.80
 [0.8.79]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.78...v0.8.79
