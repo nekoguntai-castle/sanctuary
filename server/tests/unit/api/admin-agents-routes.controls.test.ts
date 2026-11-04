@@ -28,6 +28,34 @@ describe("Admin wallet agent route controls", () => {
     resetAdminAgentsRouteMocks();
   });
 
+  it("reports an override a draft used before the revoke landed as already inactive", async () => {
+    const overrideId = "88888888-8888-4888-8888-888888888888";
+    mocks.agentRepository.findAgentById.mockResolvedValue(agentFixture());
+    mocks.agentRepository.findFundingOverrideById.mockResolvedValueOnce(
+      overrideFixture({ id: overrideId }),
+    );
+    mocks.agentRepository.revokeFundingOverride.mockResolvedValueOnce({
+      override: overrideFixture({ id: overrideId, status: "used", usedAt: now }),
+      revoked: false,
+    });
+
+    const response = await request(app)
+      .delete(`/api/v1/admin/agents/${agentId}/overrides/${overrideId}`)
+      .expect(200);
+
+    expect(response.body.status).toBe("used");
+
+    // Deleted between the read and the revoke: report the row as it was read.
+    mocks.agentRepository.findFundingOverrideById.mockResolvedValueOnce(
+      overrideFixture({ id: overrideId }),
+    );
+    mocks.agentRepository.revokeFundingOverride.mockResolvedValueOnce({ override: null, revoked: false });
+    const vanished = await request(app)
+      .delete(`/api/v1/admin/agents/${agentId}/overrides/${overrideId}`)
+      .expect(200);
+    expect(vanished.body.id).toBe(overrideId);
+  });
+
   it("creates, lists, and revokes owner funding overrides", async () => {
     const overrideId = "88888888-8888-4888-8888-888888888888";
     const expiresAt = new Date(Date.now() + 86_400_000).toISOString();
@@ -105,13 +133,14 @@ describe("Admin wallet agent route controls", () => {
     mocks.agentRepository.findFundingOverrideById.mockResolvedValueOnce(
       overrideFixture({ id: overrideId }),
     );
-    mocks.agentRepository.revokeFundingOverride.mockResolvedValueOnce(
-      overrideFixture({
+    mocks.agentRepository.revokeFundingOverride.mockResolvedValueOnce({
+      override: overrideFixture({
         id: overrideId,
         status: "revoked",
         revokedAt: now,
       }),
-    );
+      revoked: true,
+    });
 
     await request(app)
       .delete(`/api/v1/admin/agents/${agentId}/overrides/${overrideId}`)

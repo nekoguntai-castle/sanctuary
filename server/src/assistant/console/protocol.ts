@@ -28,6 +28,12 @@ export const CONSOLE_TURN_STATE_VALUES = [
   "failed",
   "canceled",
 ] as const;
+/** Finished turns: they never change state again. */
+export const CONSOLE_TERMINAL_TURN_STATES: readonly ConsoleTurnState[] = [
+  "completed",
+  "failed",
+  "canceled",
+];
 export const CONSOLE_NETWORK_VALUES = [
   "mainnet",
   "testnet3",

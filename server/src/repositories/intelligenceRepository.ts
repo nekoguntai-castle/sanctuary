@@ -99,24 +99,36 @@ async function findInsightsByWallet(
   });
 }
 
+/** Active and not past expiresAt; the expiry sweep only runs periodically. */
+const liveInsightWhere = (): Prisma.AIInsightWhereInput => ({
+  status: 'active',
+  OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+});
+
 async function findActiveInsights(walletId: string): Promise<AIInsight[]> {
   return prisma.aIInsight.findMany({
-    where: { walletId, status: 'active' },
+    where: { walletId, ...liveInsightWhere() },
     orderBy: { createdAt: 'desc' },
   });
 }
 
 async function countActiveInsights(walletId: string): Promise<number> {
   return prisma.aIInsight.count({
-    where: { walletId, status: 'active' },
+    where: { walletId, ...liveInsightWhere() },
   });
 }
 
-async function updateInsightStatus(id: string, status: InsightStatus): Promise<AIInsight> {
-  return prisma.aIInsight.update({
-    where: { id },
+/**
+ * Move a live insight to dismissed/acted_on. Only an active, unexpired insight
+ * changes; returns null when it was already resolved or has expired.
+ */
+async function updateInsightStatus(id: string, status: InsightStatus): Promise<AIInsight | null> {
+  const { count } = await prisma.aIInsight.updateMany({
+    where: { id, ...liveInsightWhere() },
     data: { status },
   });
+  if (count === 0) return null;
+  return prisma.aIInsight.findUnique({ where: { id } });
 }
 
 async function markInsightNotified(id: string): Promise<void> {

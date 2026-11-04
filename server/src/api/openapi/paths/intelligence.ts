@@ -147,7 +147,7 @@ export const intelligencePaths = {
     patch: {
       tags: ['Intelligence'],
       summary: 'Update insight status',
-      description: 'Dismiss an insight or mark it as acted on after verifying wallet access.',
+      description: 'Dismiss an insight or mark it as acted on after verifying wallet access. Only an active, unexpired insight can change (409 otherwise).',
       security: bearerAuth,
       parameters: [idParameter],
       requestBody: jsonRequestBody('#/components/schemas/IntelligenceUpdateInsightRequest'),
@@ -157,6 +157,7 @@ export const intelligencePaths = {
         401: apiErrorResponse,
         403: apiErrorResponse,
         404: apiErrorResponse,
+        409: apiErrorResponse,
         500: apiErrorResponse,
       },
     },

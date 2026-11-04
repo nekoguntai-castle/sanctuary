@@ -11,6 +11,7 @@ const prisma = vi.hoisted(() => ({
   consoleTurn: {
     create: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
     findMany: vi.fn(),
     count: vi.fn(),
   },
@@ -171,6 +172,11 @@ describe("consoleRepository", () => {
     await expect(
       consoleRepository.updateTurnState(turnId, "planning"),
     ).resolves.toBe(turn);
+    // Turn writes skip a finished turn (e.g. one swept as stale meanwhile).
+    expect(prisma.consoleTurn.update).toHaveBeenLastCalledWith({
+      where: { id: turnId, state: { notIn: ["completed", "failed", "canceled"] } },
+      data: { state: "planning" },
+    });
     await expect(
       consoleRepository.completeTurn({
         id: turnId,
@@ -180,9 +186,29 @@ describe("consoleRepository", () => {
         plannedTools: { toolCalls: [] },
       }),
     ).resolves.toBe(turn);
+    expect(prisma.consoleTurn.update).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: { id: turnId, state: { notIn: ["completed", "failed", "canceled"] } },
+    }));
+    (prisma.consoleTurn.updateMany as Mock).mockResolvedValueOnce({ count: 1 });
     await expect(
       consoleRepository.failTurn(turnId, { message: "failed" }),
-    ).resolves.toBe(turn);
+    ).resolves.toBe(true);
+    // A turn that already finished is not overwritten.
+    expect(prisma.consoleTurn.updateMany).toHaveBeenLastCalledWith({
+      where: { id: turnId, state: { notIn: ["completed", "failed", "canceled"] } },
+      data: { state: "failed", error: { message: "failed" }, completedAt: expect.any(Date) },
+    });
+    (prisma.consoleTurn.updateMany as Mock).mockResolvedValueOnce({ count: 0 });
+    await expect(
+      consoleRepository.failTurn(turnId, { message: "late" }),
+    ).resolves.toBe(false);
+    const cutoff = new Date("2026-11-03T00:00:00.000Z");
+    (prisma.consoleTurn.updateMany as Mock).mockResolvedValueOnce({ count: 2 });
+    await expect(consoleRepository.failStaleTurns(sessionId, cutoff)).resolves.toBe(2);
+    expect(prisma.consoleTurn.updateMany).toHaveBeenLastCalledWith({
+      where: { sessionId, state: { notIn: ["completed", "failed", "canceled"] }, createdAt: { lt: cutoff } },
+      data: { state: "failed", error: { message: "Console turn did not finish" }, completedAt: expect.any(Date) },
+    });
     await expect(
       consoleRepository.attachPromptToTurn(turnId, promptId),
     ).resolves.toBe(turn);

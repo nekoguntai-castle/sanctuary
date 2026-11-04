@@ -473,12 +473,12 @@ export async function revokeAgentFundingOverride(agentId: string, overrideId: st
     throw new NotFoundError('Agent funding override not found');
   }
 
-  const revoked = existing.status === 'active' ? await agentRepository.revokeFundingOverride(overrideId) : existing;
+  if (existing.status !== 'active') {
+    return { override: existing, alreadyInactive: true };
+  }
 
-  return {
-    override: revoked,
-    alreadyInactive: existing.status !== 'active',
-  };
+  const { override, revoked } = await agentRepository.revokeFundingOverride(overrideId);
+  return { override: override ?? existing, alreadyInactive: !revoked };
 }
 
 export async function listAgentApiKeys(agentId: string) {

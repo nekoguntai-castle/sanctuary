@@ -7,6 +7,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { InsightsTab } from '../../../src/components/Intelligence/tabs/InsightsTab';
 import * as intelligenceApi from '../../../src/api/intelligence';
+import { ApiError } from '../../../src/api/client';
 
 describe('InsightsTab', () => {
   beforeEach(() => {
@@ -292,6 +293,29 @@ describe('InsightsTab', () => {
     expect(await screen.findByText(/Failed to update insight/)).toBeInTheDocument();
     expect(intelligenceApi.updateInsightStatus).toHaveBeenCalled();
     expect(screen.getByText('Fragmented UTXOs Detected')).toBeInTheDocument();
+  });
+
+  it('drops an insight the server reports as no longer active', async () => {
+    vi.mocked(intelligenceApi.getInsights).mockResolvedValue({
+      insights: [mockInsight],
+    });
+    vi.mocked(intelligenceApi.updateInsightStatus).mockRejectedValue(
+      new ApiError('Insight is no longer active', 409),
+    );
+
+    render(<InsightsTab walletId="wallet-1" />);
+    await waitFor(() => {
+      expect(screen.getByText('Fragmented UTXOs Detected')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('Fragmented UTXOs Detected'));
+    await waitFor(() => {
+      expect(screen.getByText('Dismiss')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('Dismiss'));
+
+    // It expired or was resolved elsewhere: it no longer belongs in the active list.
+    expect(await screen.findByText(/no longer active/)).toBeInTheDocument();
+    expect(screen.queryByText('Fragmented UTXOs Detected')).not.toBeInTheDocument();
   });
 
   it('should change severity filter', async () => {

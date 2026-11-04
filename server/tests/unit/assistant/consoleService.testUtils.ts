@@ -39,6 +39,7 @@ const hoistedMocks = vi.hoisted(() => {
       updateTurnState: vi.fn(),
       completeTurn: vi.fn(),
       failTurn: vi.fn(),
+      failStaleTurns: vi.fn(),
       listTurns: vi.fn(),
       createPrompt: vi.fn(),
       attachPromptToTurn: vi.fn(),
@@ -205,6 +206,7 @@ export function resetHappyPath() {
   mocks.consoleRepository.softDeletePromptsForUser.mockResolvedValue(2);
   mocks.consoleRepository.createTurn.mockResolvedValue(turn());
   mocks.consoleRepository.updateTurnState.mockResolvedValue(turn());
+  mocks.consoleRepository.failStaleTurns.mockResolvedValue(0);
   mocks.consoleRepository.attachPromptToTurn.mockResolvedValue(turn());
   mocks.consoleRepository.createPrompt.mockResolvedValue(promptHistory());
   mocks.consoleRepository.completeTurn.mockResolvedValue({

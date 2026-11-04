@@ -353,6 +353,13 @@ export async function listConsoleTurns(
   return consoleRepository.listTurns(session.id, limit);
 }
 
+/**
+ * A turn still unfinished after this long was cut off (e.g. a restart). Far
+ * above any plan + tools + synthesis run; a live turn that is swept anyway can
+ * no longer change state (the turn writes skip finished turns).
+ */
+const STALE_CONSOLE_TURN_MS = 60 * 60 * 1000;
+
 export async function runConsoleTurn(
   actor: AssistantToolActor,
   input: RunConsoleTurnInput,
@@ -367,6 +374,7 @@ export async function runConsoleTurn(
     maxSensitivity: input.maxSensitivity,
     expiresAt: input.expiresAt,
   });
+  await consoleRepository.failStaleTurns(session.id, new Date(Date.now() - STALE_CONSOLE_TURN_MS));
   const turn = await consoleRepository.createTurn({
     sessionId: session.id,
     prompt: input.prompt,

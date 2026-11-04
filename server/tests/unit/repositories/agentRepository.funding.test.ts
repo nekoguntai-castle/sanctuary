@@ -290,18 +290,20 @@ describe('agentRepository funding controls', () => {
       agentRepository.markFundingOverrideUsed('override-1', 'draft-3'),
     ).rejects.toThrow('not found');
 
-    prisma.agentFundingOverride.update.mockResolvedValue({
-      ...override,
-      status: 'revoked',
-      revokedAt: now,
+    prisma.agentFundingOverride.updateMany.mockResolvedValueOnce({ count: 1 });
+    prisma.agentFundingOverride.findUnique.mockResolvedValueOnce({ ...override, status: 'revoked', revokedAt: now });
+    await expect(agentRepository.revokeFundingOverride('override-1')).resolves.toMatchObject({ revoked: true });
+    // CAS: a concurrent draft that already used the override keeps it 'used'.
+    expect(prisma.agentFundingOverride.updateMany).toHaveBeenLastCalledWith({
+      where: { id: 'override-1', status: 'active', revokedAt: null, usedAt: null },
+      data: { status: 'revoked', revokedAt: expect.any(Date) },
     });
-    await agentRepository.revokeFundingOverride('override-1');
-    expect(prisma.agentFundingOverride.update).toHaveBeenLastCalledWith({
-      where: { id: 'override-1' },
-      data: {
-        status: 'revoked',
-        revokedAt: expect.any(Date),
-      },
+
+    prisma.agentFundingOverride.updateMany.mockResolvedValueOnce({ count: 0 });
+    prisma.agentFundingOverride.findUnique.mockResolvedValueOnce({ ...override, status: 'used' });
+    await expect(agentRepository.revokeFundingOverride('override-1')).resolves.toMatchObject({
+      revoked: false,
+      override: { status: 'used' },
     });
   });
 

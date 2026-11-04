@@ -248,8 +248,13 @@ describe('Intelligence Repository', () => {
       const result = await intelligenceRepository.findActiveInsights('wallet-1');
 
       expect(result).toEqual([mockInsight]);
+      // Expired-but-unswept insights don't count as active.
       expect(prisma.aIInsight.findMany).toHaveBeenCalledWith({
-        where: { walletId: 'wallet-1', status: 'active' },
+        where: {
+          walletId: 'wallet-1',
+          status: 'active',
+          OR: [{ expiresAt: null }, { expiresAt: { gt: expect.any(Date) } }],
+        },
         orderBy: { createdAt: 'desc' },
       });
     });
@@ -263,23 +268,39 @@ describe('Intelligence Repository', () => {
 
       expect(result).toBe(5);
       expect(prisma.aIInsight.count).toHaveBeenCalledWith({
-        where: { walletId: 'wallet-1', status: 'active' },
+        where: {
+          walletId: 'wallet-1',
+          status: 'active',
+          OR: [{ expiresAt: null }, { expiresAt: { gt: expect.any(Date) } }],
+        },
       });
     });
   });
 
   describe('updateInsightStatus', () => {
-    it('should update insight status', async () => {
+    it('should update an active, unexpired insight', async () => {
       const updated = { ...mockInsight, status: 'dismissed' };
-      (prisma.aIInsight.update as Mock).mockResolvedValue(updated);
+      (prisma.aIInsight.updateMany as Mock).mockResolvedValue({ count: 1 });
+      (prisma.aIInsight.findUnique as Mock).mockResolvedValue(updated);
 
       const result = await intelligenceRepository.updateInsightStatus('insight-1', 'dismissed');
 
       expect(result).toEqual(updated);
-      expect(prisma.aIInsight.update).toHaveBeenCalledWith({
-        where: { id: 'insight-1' },
+      expect(prisma.aIInsight.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'insight-1',
+          status: 'active',
+          OR: [{ expiresAt: null }, { expiresAt: { gt: expect.any(Date) } }],
+        },
         data: { status: 'dismissed' },
       });
+    });
+
+    it('should not touch an insight that is no longer active', async () => {
+      (prisma.aIInsight.updateMany as Mock).mockResolvedValue({ count: 0 });
+
+      await expect(intelligenceRepository.updateInsightStatus('insight-1', 'acted_on')).resolves.toBeNull();
+      expect(prisma.aIInsight.findUnique).not.toHaveBeenCalled();
     });
   });
 

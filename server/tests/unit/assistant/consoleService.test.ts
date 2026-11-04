@@ -131,6 +131,13 @@ describe("console service", () => {
     expect(
       JSON.stringify(mocks.auditLog.mock.calls[0][0].details),
     ).not.toContain("What is this wallet doing?");
+    // Turns in this session cut off mid-run long ago are failed before a new one starts.
+    expect(mocks.consoleRepository.failStaleTurns).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(Date),
+    );
+    expect(mocks.consoleRepository.failStaleTurns.mock.invocationCallOrder[0])
+      .toBeLessThan(mocks.consoleRepository.createTurn.mock.invocationCallOrder[0]);
   });
 
   it("resolves auto context into an accessible wallet-set planning envelope", async () => {

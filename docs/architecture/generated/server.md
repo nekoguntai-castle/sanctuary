@@ -175,6 +175,7 @@ n_src_models__collapsed-->n_src_observability__collapsed
 n_src_models__collapsed-->n_src_utils__collapsed
 n_src_observability__collapsed-->n_src_utils__collapsed
 n_src_providers__collapsed-->n_src_utils__collapsed
+n_src_repositories__collapsed-->n_src_assistant__collapsed
 n_src_repositories__collapsed-->n_src_constants__collapsed
 n_src_repositories__collapsed-->n_src_errors__collapsed
 n_src_repositories__collapsed-->n_src_models__collapsed

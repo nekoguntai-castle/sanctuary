@@ -653,14 +653,20 @@ export async function markFundingOverrideUsed(
   return override;
 }
 
-export async function revokeFundingOverride(id: string): Promise<AgentFundingOverride> {
-  return prisma.agentFundingOverride.update({
-    where: { id },
-    data: {
-      status: 'revoked',
-      revokedAt: new Date(),
-    },
+/**
+ * Revoke an override only while it is still active and unused. A draft that
+ * consumed it concurrently (markFundingOverrideUsed, the same CAS shape) keeps
+ * it 'used'; `revoked` reports whether this call won.
+ */
+export async function revokeFundingOverride(
+  id: string
+): Promise<{ override: AgentFundingOverride | null; revoked: boolean }> {
+  const { count } = await prisma.agentFundingOverride.updateMany({
+    where: { id, status: 'active', revokedAt: null, usedAt: null },
+    data: { status: 'revoked', revokedAt: new Date() },
   });
+  const override = await prisma.agentFundingOverride.findUnique({ where: { id } });
+  return { override, revoked: count === 1 };
 }
 
 export async function createApiKey(input: CreateAgentApiKeyInput): Promise<AgentApiKey> {

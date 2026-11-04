@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as intelligenceApi from '../../../../api/intelligence';
+import { ApiError } from '../../../../api/client';
 import type { AIInsight } from '../../../../api/intelligence';
 import { extractErrorMessage } from '@sanctuary/shared/utils/errors';
 import { createLogger } from '../../../../utils/logger';
@@ -65,6 +66,10 @@ export function useInsightsController(walletId: string) {
       if (ownership.current.isRouteOwner(token)) {
         log.error('Failed to update insight status', { error });
         setStatusError(extractErrorMessage(error));
+        // 409: it expired or was resolved elsewhere, so it is no longer active.
+        if (error instanceof ApiError && error.status === 409) {
+          setInsights((prev) => prev.filter((insight) => insight.id !== id));
+        }
       }
     }
   }, [requestKey]);

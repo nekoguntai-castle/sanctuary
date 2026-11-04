@@ -162,6 +162,15 @@ describe('Insight Service', () => {
     });
   });
 
+  describe('changing an insight that is no longer active', () => {
+    it('refuses to dismiss or act on it', async () => {
+      (intelligenceRepository.updateInsightStatus as Mock).mockResolvedValue(null);
+
+      await expect(dismissInsight('insight-1')).rejects.toThrow('no longer active');
+      await expect(markActedOn('insight-1')).rejects.toThrow('no longer active');
+    });
+  });
+
   describe('dismissInsight', () => {
     it('should update insight status to dismissed', async () => {
       const dismissed = { ...mockInsight, status: 'dismissed' };

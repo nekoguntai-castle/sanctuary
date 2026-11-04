@@ -6,6 +6,7 @@ import type {
   Prisma,
 } from "../generated/prisma/client";
 import prisma from "../models/prisma";
+import { CONSOLE_TERMINAL_TURN_STATES } from "../assistant/console/protocol";
 
 export type ConsoleTurnWithTraces = ConsoleTurn & {
   toolTraces: ConsoleToolTrace[];
@@ -155,11 +156,15 @@ async function createTurn(input: CreateConsoleTurnInput): Promise<ConsoleTurn> {
   });
 }
 
+/** A finished turn never changes again (see CONSOLE_TERMINAL_TURN_STATES). */
+const TERMINAL_TURN_STATES = [...CONSOLE_TERMINAL_TURN_STATES];
+
 async function updateTurnState(
   id: string,
   state: string,
 ): Promise<ConsoleTurn> {
-  return prisma.consoleTurn.update({ where: { id }, data: { state } });
+  // Throws (P2025) for a finished turn, e.g. one swept as stale meanwhile.
+  return prisma.consoleTurn.update({ where: { id, state: { notIn: TERMINAL_TURN_STATES } }, data: { state } });
 }
 
 async function completeTurn(input: {
@@ -170,7 +175,7 @@ async function completeTurn(input: {
   plannedTools?: Prisma.InputJsonValue;
 }): Promise<ConsoleTurn> {
   return prisma.consoleTurn.update({
-    where: { id: input.id },
+    where: { id: input.id, state: { notIn: TERMINAL_TURN_STATES } },
     data: {
       state: "completed",
       response: input.response,
@@ -182,14 +187,43 @@ async function completeTurn(input: {
   });
 }
 
+
+/**
+ * Fail a turn that is still running. A turn that already finished keeps its
+ * state (a failure after completeTurn must not overwrite `completed`).
+ */
 async function failTurn(
   id: string,
   error: Prisma.InputJsonValue,
-): Promise<ConsoleTurn> {
-  return prisma.consoleTurn.update({
-    where: { id },
+): Promise<boolean> {
+  const { count } = await prisma.consoleTurn.updateMany({
+    where: { id, state: { notIn: TERMINAL_TURN_STATES } },
     data: { state: "failed", error, completedAt: new Date() },
   });
+  return count === 1;
+}
+
+/**
+ * Fail a session's turns that never finished (the process died mid-turn), so
+ * they don't stay planning/executing forever.
+ */
+async function failStaleTurns(
+  sessionId: string,
+  startedBefore: Date,
+): Promise<number> {
+  const { count } = await prisma.consoleTurn.updateMany({
+    where: {
+      sessionId,
+      state: { notIn: TERMINAL_TURN_STATES },
+      createdAt: { lt: startedBefore },
+    },
+    data: {
+      state: "failed",
+      error: { message: "Console turn did not finish" },
+      completedAt: new Date(),
+    },
+  });
+  return count;
 }
 
 async function listTurns(
@@ -364,6 +398,7 @@ export const consoleRepository = {
   updateTurnState,
   completeTurn,
   failTurn,
+  failStaleTurns,
   listTurns,
   createPrompt,
   attachPromptToTurn,

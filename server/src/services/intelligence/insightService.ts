@@ -7,6 +7,7 @@
 import { intelligenceRepository } from '../../repositories/intelligenceRepository';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
+import { ConflictError } from '../../errors';
 import type { CreateInsightInput, InsightFilter } from '../../repositories/intelligenceRepository';
 
 const log = createLogger('INTELLIGENCE:SVC_INSIGHT');
@@ -38,12 +39,20 @@ export async function countActiveInsights(walletId: string) {
   return intelligenceRepository.countActiveInsights(walletId);
 }
 
+async function resolveInsight(id: string, status: 'dismissed' | 'acted_on') {
+  const updated = await intelligenceRepository.updateInsightStatus(id, status);
+  if (!updated) {
+    throw new ConflictError('Insight is no longer active');
+  }
+  return updated;
+}
+
 export async function dismissInsight(id: string) {
-  return intelligenceRepository.updateInsightStatus(id, 'dismissed');
+  return resolveInsight(id, 'dismissed');
 }
 
 export async function markActedOn(id: string) {
-  return intelligenceRepository.updateInsightStatus(id, 'acted_on');
+  return resolveInsight(id, 'acted_on');
 }
 
 export async function markNotified(id: string) {
