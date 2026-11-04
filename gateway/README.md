@@ -112,6 +112,8 @@ Admin routes, user management, node configuration, backup/restore, and internal 
 
 WebSocket client that connects to the backend to receive transaction events. Insight and consolidation push events (`ai_insight`, `consolidation_suggestion`) also arrive over it, forwarded by the API from the gateway-only Redis channel with their recipients already resolved.
 
+Only `transaction`, `confirmation`, `ai_insight` and `consolidation_suggestion` events produce pushes. That list is `GATEWAY_NOTIFIED_EVENT_TYPES` in `shared/constants/gatewayEvents.ts`, shared with the server. Other forwarded events (such as `balance` and `sync`) are ignored.
+
 **Event Flow:**
 1. Backend detects new transaction via Electrum
 2. Backend emits WebSocket event: `{ type: 'transaction', walletId, userId, data }`

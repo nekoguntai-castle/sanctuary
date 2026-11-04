@@ -206,7 +206,7 @@ describe('Backend Events Service transaction notifications', () => {
     );
   });
 
-  it('should handle broadcast_success event', async () => {
+  it('should use default wallet name when not provided', async () => {
     startBackendEvents();
     const ws = wsInstances[0];
     ws.simulateOpen();
@@ -214,27 +214,28 @@ describe('Backend Events Service transaction notifications', () => {
     ws.simulateMessage({
       type: 'event',
       event: {
-        type: 'broadcast_success',
+        type: 'transaction',
         walletId: 'wallet-1',
-        walletName: 'Main Wallet',
         userId: 'user-123',
         data: {
           txid: 'tx123',
+          type: 'received',
+          amount: 1000,
         },
       },
     });
 
     await vi.runAllTimersAsync();
 
-    expect(push.formatBroadcastNotification).toHaveBeenCalledWith(
-      true,
-      'Main Wallet',
+    expect(push.formatTransactionNotification).toHaveBeenCalledWith(
+      'received',
+      'Wallet',
+      1000,
       'tx123'
     );
-    expect(push.sendToDevices).toHaveBeenCalled();
   });
 
-  it('should handle broadcast_failed event', async () => {
+  it('should ignore draft_created events, which the server never produces', async () => {
     startBackendEvents();
     const ws = wsInstances[0];
     ws.simulateOpen();
@@ -242,25 +243,16 @@ describe('Backend Events Service transaction notifications', () => {
     ws.simulateMessage({
       type: 'event',
       event: {
-        type: 'broadcast_failed',
+        type: 'draft_created',
         walletId: 'wallet-1',
-        walletName: 'Main Wallet',
+        walletName: 'Multisig Vault',
         userId: 'user-123',
-        data: {
-          txid: 'tx456',
-          error: 'Insufficient funds',
-        },
+        data: { draftId: 'draft-1', amount: 5000, creatorName: 'Alice' },
       },
     });
 
     await vi.runAllTimersAsync();
 
-    expect(push.formatBroadcastNotification).toHaveBeenCalledWith(
-      false,
-      'Main Wallet',
-      'tx456',
-      'Insufficient funds'
-    );
-    expect(push.sendToDevices).toHaveBeenCalled();
+    expect(push.sendToDevices).not.toHaveBeenCalled();
   });
 });

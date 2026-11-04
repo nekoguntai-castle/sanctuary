@@ -81,10 +81,6 @@ vi.mock('../../../src/services/backendEvents/deviceTokens', () => ({
 vi.mock('../../../src/services/push', () => ({
   sendToDevices: mocks.sendToDevices,
   formatTransactionNotification: mocks.formatTransactionNotification,
-  formatBroadcastNotification: vi.fn(),
-  formatPsbtSigningNotification: vi.fn(),
-  formatDraftCreatedNotification: vi.fn(),
-  formatDraftApprovedNotification: vi.fn(),
 }));
 
 import { GatewayWebSocketServer } from '../../../../server/src/websocket/gatewayServer';

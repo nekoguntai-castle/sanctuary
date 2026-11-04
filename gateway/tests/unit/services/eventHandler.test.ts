@@ -30,15 +30,7 @@ vi.mock('../../../src/services/backendEvents/deviceTokens', () => ({
 
 const mockFormatNotificationForEvent = vi.fn();
 vi.mock('../../../src/services/backendEvents/notifications', () => ({
-  PUSH_EVENT_TYPES: [
-    'transaction',
-    'confirmation',
-    'broadcast_success',
-    'broadcast_failed',
-    'psbt_signing_required',
-    'draft_created',
-    'draft_approved',
-  ],
+  PUSH_EVENT_TYPES: ['transaction', 'confirmation', 'ai_insight', 'consolidation_suggestion'],
   formatNotificationForEvent: (...args: unknown[]) => mockFormatNotificationForEvent(...args),
 }));
 
@@ -202,10 +194,10 @@ describe('handleEvent', () => {
     mockSendToDevices.mockResolvedValue({ success: 1, failed: 0, invalidTokens: [] });
 
     await handleEvent({
-      type: 'broadcast_success',
+      type: 'confirmation',
       walletId: 'w1',
       userId: 'u1',
-      data: { txid: 'tx1' },
+      data: { txid: 'tx1', confirmations: 1 },
     });
 
     const pushDevices = mockSendToDevices.mock.calls[0][0];
@@ -254,10 +246,10 @@ describe('handleEvent', () => {
     mockRemoveInvalidDevice.mockResolvedValue(undefined);
 
     await handleEvent({
-      type: 'draft_created',
+      type: 'ai_insight',
       walletId: 'w1',
       userId: 'u1',
-      data: { draftId: 'dr1', amount: 100000, creatorName: 'Alice' },
+      data: { insightId: 'ins1', insightType: 'utxo_health', severity: 'warning' },
     });
 
     expect(mockRemoveInvalidDevice).toHaveBeenCalledTimes(2);
@@ -297,10 +289,10 @@ describe('handleEvent', () => {
     mockSendToDevices.mockResolvedValue({ success: 1, failed: 0, invalidTokens: [] });
 
     await handleEvent({
-      type: 'draft_approved',
+      type: 'consolidation_suggestion',
       walletId: 'w1',
       userId: 'u1',
-      data: { draftId: 'dr1', signerName: 'Bob' },
+      data: { feeRate: 2 },
     });
 
     expect(mockRemoveInvalidDevice).not.toHaveBeenCalled();
@@ -310,11 +302,8 @@ describe('handleEvent', () => {
     const pushTypes = [
       'transaction',
       'confirmation',
-      'broadcast_success',
-      'broadcast_failed',
-      'psbt_signing_required',
-      'draft_created',
-      'draft_approved',
+      'ai_insight',
+      'consolidation_suggestion',
     ] as const;
 
     for (const type of pushTypes) {
@@ -338,16 +327,14 @@ describe('handleEvent', () => {
 
   it('should pass the full event to formatNotificationForEvent', async () => {
     const event: BackendEvent = {
-      type: 'psbt_signing_required',
+      type: 'ai_insight',
       walletId: 'w1',
       walletName: 'Vault',
       userId: 'u1',
       data: {
-        draftId: 'dr1',
-        creatorName: 'Alice',
-        amount: 500000,
-        requiredSignatures: 3,
-        currentSignatures: 1,
+        insightId: 'ins1',
+        insightType: 'utxo_health',
+        severity: 'critical',
       },
     };
 

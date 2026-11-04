@@ -1,69 +1,48 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const {
-  mockFormatTransactionNotification,
-  mockFormatBroadcastNotification,
-  mockFormatPsbtSigningNotification,
-  mockFormatDraftCreatedNotification,
-  mockFormatDraftApprovedNotification,
-} = vi.hoisted(() => ({
+import { GATEWAY_NOTIFIED_EVENT_TYPES } from '@sanctuary/shared/constants/gatewayEvents';
+
+const { mockFormatTransactionNotification } = vi.hoisted(() => ({
   mockFormatTransactionNotification: vi.fn((_type, walletName, amount, txid) => ({
     title: `tx:${walletName}`,
     body: `${amount}`,
     data: { txid },
   })),
-  mockFormatBroadcastNotification: vi.fn((_success, walletName, txid, error) => ({
-    title: `broadcast:${walletName}`,
-    body: error || '',
-    data: { txid },
-  })),
-  mockFormatPsbtSigningNotification: vi.fn((_walletName, draftId) => ({
-    title: 'psbt',
-    body: '',
-    data: { draftId },
-  })),
-  mockFormatDraftCreatedNotification: vi.fn((_walletName, draftId) => ({
-    title: 'draft-created',
-    body: '',
-    data: { draftId },
-  })),
-  mockFormatDraftApprovedNotification: vi.fn((_walletName, draftId) => ({
-    title: 'draft-approved',
-    body: '',
-    data: { draftId },
-  })),
 }));
 
 vi.mock('../../../src/services/push', () => ({
   formatTransactionNotification: mockFormatTransactionNotification,
-  formatBroadcastNotification: mockFormatBroadcastNotification,
-  formatPsbtSigningNotification: mockFormatPsbtSigningNotification,
-  formatDraftCreatedNotification: mockFormatDraftCreatedNotification,
-  formatDraftApprovedNotification: mockFormatDraftApprovedNotification,
 }));
 
 import {
   formatNotificationForEvent,
   PUSH_EVENT_TYPES,
 } from '../../../src/services/backendEvents/notifications';
+import type { BackendEvent } from '../../../src/services/backendEvents/types';
 
 describe('backendEvents notifications formatter', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('exports the expected push-capable backend event list', () => {
+  it('pushes exactly the shared gateway-notified event vocabulary', () => {
+    expect(PUSH_EVENT_TYPES).toEqual(GATEWAY_NOTIFIED_EVENT_TYPES);
     expect(PUSH_EVENT_TYPES).toEqual([
       'transaction',
       'confirmation',
-      'broadcast_success',
-      'broadcast_failed',
-      'psbt_signing_required',
-      'draft_created',
-      'draft_approved',
       'ai_insight',
       'consolidation_suggestion',
     ]);
+  });
+
+  it('ignores event types the server never produces, such as draft_created', () => {
+    const retiredType = 'draft_created';
+    expect(PUSH_EVENT_TYPES).not.toContain(retiredType);
+    expect(formatNotificationForEvent({
+      type: retiredType as unknown as BackendEvent['type'],
+      walletId: 'wallet-1',
+      data: { amount: 5000 },
+    })).toBeNull();
   });
 
   it('formats transaction event and maps consolidation to sent', () => {
@@ -148,104 +127,9 @@ describe('backendEvents notifications formatter', () => {
     expect(notification).not.toBeNull();
   });
 
-  it('formats broadcast success/failure with defaults', () => {
-    const success = formatNotificationForEvent({
-      type: 'broadcast_success',
-      walletId: 'wallet-1',
-      walletName: 'Main Wallet',
-      data: { txid: 'tx-ok' },
-    });
-    const failed = formatNotificationForEvent({
-      type: 'broadcast_failed',
-      walletId: 'wallet-1',
-      data: { error: 'rejected by mempool' }, // txid intentionally missing
-    });
-
-    expect(success).not.toBeNull();
-    expect(mockFormatBroadcastNotification).toHaveBeenCalledWith(
-      false,
-      'Wallet',
-      '',
-      'rejected by mempool'
-    );
-    expect(failed).not.toBeNull();
-  });
-
-  it('returns null for broadcast success events missing txid', () => {
+  it('returns null for forwarded events that are not pushed', () => {
     const notification = formatNotificationForEvent({
-      type: 'broadcast_success',
-      walletId: 'wallet-1',
-      walletName: 'Main Wallet',
-      data: {},
-    });
-
-    expect(notification).toBeNull();
-    expect(mockFormatBroadcastNotification).not.toHaveBeenCalledWith(
-      true,
-      expect.any(String),
-      expect.any(String)
-    );
-  });
-
-  it('formats PSBT signing requests with default signer counts and creator', () => {
-    const notification = formatNotificationForEvent({
-      type: 'psbt_signing_required',
-      walletId: 'wallet-1',
-      walletName: 'Treasury',
-      data: {
-        draftId: 'draft-1',
-        amount: 25_000,
-      },
-    });
-
-    expect(mockFormatPsbtSigningNotification).toHaveBeenCalledWith(
-      'Treasury',
-      'draft-1',
-      'Someone',
-      25_000,
-      2,
-      1
-    );
-    expect(notification).not.toBeNull();
-  });
-
-  it('formats draft created and approved events with defaults', () => {
-    const created = formatNotificationForEvent({
-      type: 'draft_created',
-      walletId: 'wallet-1',
-      data: {
-        draftId: 'draft-a',
-        amount: 5000,
-      },
-    });
-    const approved = formatNotificationForEvent({
-      type: 'draft_approved',
-      walletId: 'wallet-1',
-      data: {
-        draftId: 'draft-a',
-      },
-    });
-
-    expect(mockFormatDraftCreatedNotification).toHaveBeenCalledWith(
-      'Wallet',
-      'draft-a',
-      'Someone',
-      5000
-    );
-    expect(mockFormatDraftApprovedNotification).toHaveBeenCalledWith(
-      'Wallet',
-      'draft-a',
-      'Someone',
-      0,
-      0
-    );
-    expect(created).not.toBeNull();
-    expect(approved).not.toBeNull();
-  });
-
-  it('returns null for unknown event types', () => {
-    const notification = formatNotificationForEvent({
-      type: 'balance' as any,
+      type: 'balance',
       walletId: 'wallet-1',
       data: {},
     });

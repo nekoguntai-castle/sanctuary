@@ -85,26 +85,6 @@ vi.mock('../../../../src/services/push', () => ({
     body: `${walletName}: ${amount} sats`,
     data: { type: type === 'confirmed' ? 'confirmation' : 'transaction', txid },
   })),
-  formatBroadcastNotification: vi.fn((success, walletName, txid, error) => ({
-    title: success ? 'Transaction Broadcast' : 'Broadcast Failed',
-    body: success ? `Transaction sent from ${walletName}` : `Failed: ${error || 'Unknown'}`,
-    data: { type: success ? 'broadcast_success' : 'broadcast_failed', txid },
-  })),
-  formatPsbtSigningNotification: vi.fn((walletName, draftId, creatorName, amount, required, current) => ({
-    title: 'Signature Required',
-    body: `${creatorName} needs your signature on ${walletName}`,
-    data: { type: 'psbt_signing_required', draftId },
-  })),
-  formatDraftCreatedNotification: vi.fn((walletName, draftId, creatorName, amount) => ({
-    title: 'New Draft Transaction',
-    body: `${creatorName} created a draft on ${walletName}`,
-    data: { type: 'draft_created', draftId },
-  })),
-  formatDraftApprovedNotification: vi.fn((walletName, draftId, signerName, current, required) => ({
-    title: current >= required ? 'Transaction Ready' : 'Draft Signed',
-    body: `${signerName} signed the draft on ${walletName}`,
-    data: { type: 'draft_approved', draftId },
-  })),
   sendToDevices: vi.fn().mockResolvedValue({
     success: 1,
     failed: 0,

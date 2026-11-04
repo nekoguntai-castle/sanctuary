@@ -6,6 +6,10 @@
 
 import { WebSocket } from 'ws';
 import type { BroadcastEvent, ClientMessage } from '@sanctuary/shared/types/websocket';
+import {
+  GATEWAY_PUSH_EVENT_TYPES,
+  type GatewayPushEventType,
+} from '@sanctuary/shared/constants/gatewayEvents';
 import type { JWTPayload } from '../utils/jwt';
 
 // ============================================================================
@@ -142,16 +146,14 @@ export interface WebSocketEvent {
 }
 
 /**
- * Wallet-level push events that only the push gateway consumes.
+ * Wallet-level push events that only the push gateway consumes (event types:
+ * `GATEWAY_PUSH_EVENT_TYPES` in `@sanctuary/shared/constants/gatewayEvents`).
  *
- * Server-only on purpose: they carry a private recipient list (`userIds`), so
+ * The payloads are server-only on purpose: they carry a private recipient list (`userIds`), so
  * they are never part of the shared, frontend-visible `BroadcastEvent` union
  * and never reach browser clients. Payloads stay minimal (decision D-4): no AI
  * summary text, amounts or UTXO counts.
  */
-export const GATEWAY_PUSH_EVENT_TYPES = ['ai_insight', 'consolidation_suggestion'] as const;
-export type GatewayPushEventType = (typeof GATEWAY_PUSH_EVENT_TYPES)[number];
-
 export interface AIInsightGatewayPushEvent {
   type: 'ai_insight';
   walletId: string;
