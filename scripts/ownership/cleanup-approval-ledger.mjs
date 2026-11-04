@@ -1,9 +1,10 @@
 import {
   closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync,
-  readFileSync, readdirSync, realpathSync, renameSync, unlinkSync, writeSync,
+  readFileSync, readdirSync, realpathSync,
 } from 'node:fs';
 import path from 'node:path';
 import { canonicalJson, canonicalSha256, parseStrictJson } from './canonical-json.mjs';
+import { TEMPORARY_STATE_FILE, writeAtomic, writeCreateOnly } from './deployment-store-io.mjs';
 
 const DIGEST = /^[a-f0-9]{64}$/;
 const ID = /^[a-z0-9][a-z0-9._:-]{0,127}$/;
@@ -58,21 +59,6 @@ function fsyncDirectory(directory) {
   try { fsyncSync(descriptor); } finally { closeSync(descriptor); }
 }
 
-function writeAll(descriptor, bytes) {
-  let offset = 0;
-  while (offset < bytes.length) {
-    const written = writeSync(descriptor, bytes, offset, bytes.length - offset);
-    if (written === 0) throw new Error('cleanup ledger write made no progress');
-    offset += written;
-  }
-}
-
-function writeCreateOnly(filePath, bytes) {
-  const descriptor = openSync(filePath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
-  try { writeAll(descriptor, bytes); fsyncSync(descriptor); } finally { closeSync(descriptor); }
-  fsyncDirectory(path.dirname(filePath));
-}
-
 function stableRead(filePath) {
   const before = lstatSync(filePath);
   if (!before.isFile() || before.isSymbolicLink()) throw new Error('cleanup ledger file must be a regular non-symlink file');
@@ -105,15 +91,7 @@ function readOptional(filePath) {
 }
 
 function atomicReplace(filePath, bytes) {
-  const temporary = `${filePath}.tmp-${process.pid}-${Date.now()}`;
-  writeCreateOnly(temporary, bytes);
-  try { renameSync(temporary, filePath); } catch (error) {
-    try { unlinkSync(temporary); } catch (cleanupError) {
-      if (cleanupError.code !== 'ENOENT') throw cleanupError;
-    }
-    throw error;
-  }
-  fsyncDirectory(path.dirname(filePath));
+  writeAtomic(filePath, bytes);
 }
 
 function exactKeys(value, keys, label) {
@@ -302,7 +280,8 @@ export function readActiveCleanupPointer(ledger) {
 
 export function inspectCleanupTransitions(ledger, kind) {
   const directory = kind === 'approval' ? ledger.approvalTransitions : ledger.pointerTransitions;
-  const names = readdirSync(directory).sort();
+  // A crash mid-writeCreateOnly can leave a temporary sibling; it was never linked.
+  const names = readdirSync(directory).filter((name) => !TEMPORARY_STATE_FILE.test(name)).sort();
   if (!['approval', 'pointer'].includes(kind)
       || names.some((name) => !/^\d{6}\.json$/.test(name))) {
     throw new Error('cleanup transition directory contains an unexpected entry');

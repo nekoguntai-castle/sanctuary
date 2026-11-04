@@ -1,4 +1,5 @@
 import { lstatSync, readdirSync, realpathSync } from 'node:fs';
+import { TEMPORARY_STATE_FILE } from './deployment-store-io.mjs';
 import path from 'node:path';
 import { readActiveCleanupPointer } from './cleanup-approval-ledger.mjs';
 
@@ -40,7 +41,8 @@ function inspectionLedger(runtimeDirectory, deploymentId) {
 
 function transitionNames(directory) {
   if (!directory) return [];
-  const names = readdirSync(directory);
+  // A crashed ledger write can leave an unlinked temporary sibling; skip it.
+  const names = readdirSync(directory).filter((name) => !TEMPORARY_STATE_FILE.test(name));
   if (names.some((name) => !/^\d{6}\.json$/.test(name))) {
     throw new Error('cleanup pointer transition directory contains an unexpected entry');
   }

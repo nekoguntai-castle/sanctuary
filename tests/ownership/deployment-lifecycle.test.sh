@@ -197,6 +197,15 @@ for stage in build_started build_completed postgres_started password_reconciled 
   deployment_transition "$stage"
 done
 deployment_verify_legacy_upgrade
+# A crash after the store recorded 'activating' resumes past every operator
+# stage: 'activating' must rank after health_verified, not compare as empty.
+(
+  SANCTUARY_DEPLOYMENT_STATE=pending SANCTUARY_DEPLOYMENT_STAGE=activating
+  [ "$(deployment_stage_rank activating)" = 7 ]
+  if deployment_stage_before health_verified; then echo 'activating replays health_verified' >&2; exit 1; fi
+  SANCTUARY_DEPLOYMENT_STAGE=stack_started
+  deployment_stage_before health_verified
+)
 deployment_activate
 deployment_lock_release
 

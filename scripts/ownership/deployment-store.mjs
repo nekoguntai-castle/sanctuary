@@ -8,7 +8,7 @@ import {
 } from './deployment-ephemeral-retirement.mjs';
 import {
   ensureOwnerDirectory, fsyncDirectory, readCanonical, readOptional, readStableBytes,
-  writeAtomic, writeCreateOnly,
+  TEMPORARY_STATE_FILE, writeAtomic, writeCreateOnly,
 } from './deployment-store-io.mjs';
 import {
   assertDeploymentId, assertDigest, assertPointer, deploymentIdentityRecord,
@@ -428,7 +428,10 @@ export class DeploymentStore {
 
   readRetired() {
     if (!existsSync(this.retiredRevisions)) return [];
-    return readdirSync(this.retiredRevisions, { withFileTypes: true }).map((entry) => {
+    // A crashed writeCreateOnly can leave an unlinked temporary; it was never a record.
+    const entries = readdirSync(this.retiredRevisions, { withFileTypes: true })
+      .filter((entry) => !TEMPORARY_STATE_FILE.test(entry.name));
+    return entries.map((entry) => {
       if (!entry.isFile() || !/^[1-9][0-9]*\.json$/.test(entry.name)) {
         throw new Error(`ambiguous retired revision entry: ${entry.name}`);
       }

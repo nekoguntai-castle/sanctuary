@@ -10,6 +10,7 @@ import {
 import { assertLocalPrivateSafe } from './privacy.mjs';
 import { validateCheckpointPayload, validateJournalProtocol } from './cleanup-journal-protocol.mjs';
 import { MAX_CLEANUP_JOURNAL_BYTES } from './cleanup-schema-contract.mjs';
+import { writeCreateOnly } from './deployment-store-io.mjs';
 
 const DIGEST = /^[a-f0-9]{64}$/;
 const ID = /^[a-z0-9][a-z0-9._:-]{0,127}$/;
@@ -274,9 +275,9 @@ export function createCleanupJournal({
   };
   assertCheckpoint(checkpoint, { expectedSequence: 0, expectedPreviousDigest: null });
   const record = recordBytes(checkpoint, privateKey);
-  let descriptor;
   try {
-    descriptor = openSync(journalPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+    // Written aside and linked into place, so a crash can't leave a torn genesis.
+    writeCreateOnly(journalPath, Buffer.concat([record.bytes, Buffer.from('\n')]));
   } catch (error) {
     if (error.code !== 'EEXIST') throw error;
     const existing = verifyCleanupJournal({
@@ -294,8 +295,6 @@ export function createCleanupJournal({
       checkpoint: existing.records[0].checkpoint,
     };
   }
-  try { writeAll(descriptor, Buffer.concat([record.bytes, Buffer.from('\n')])); fsyncSync(descriptor); } finally { closeSync(descriptor); }
-  fsyncDirectory(directory);
   return {
     journalPath, genesisDigest: record.digest, headDigest: record.digest,
     recordCount: 1, bytes: record.bytes.length + 1, checkpoint,

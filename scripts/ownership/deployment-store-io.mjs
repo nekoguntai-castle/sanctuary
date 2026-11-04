@@ -1,7 +1,8 @@
 import {
   closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync,
-  readFileSync, realpathSync, renameSync, unlinkSync, writeSync,
+  linkSync, readFileSync, readdirSync, realpathSync, renameSync, unlinkSync, writeSync,
 } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { canonicalJson, canonicalSha256, parseStrictJson } from './canonical-json.mjs';
 
@@ -61,21 +62,64 @@ export function readStableBytes(filePath) {
   } finally { closeSync(descriptor); }
 }
 
-export function writeCreateOnly(filePath, bytes) {
+/**
+ * Matches the never-linked temporary sibling a crashed state write can leave
+ * (`<name>.tmp-<pid>-<uuid>`, or the older `<name>.tmp-<pid>-<ms>`).
+ */
+export const TEMPORARY_STATE_FILE = /\.tmp-\d+-[0-9a-f-]+$/;
+
+export function temporarySiblingPath(filePath) {
+  return `${filePath}.tmp-${process.pid}-${randomUUID()}`;
+}
+
+function removeTemporary(temporary) {
+  try { unlinkSync(temporary); } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+}
+
+/** Remove temporaries a crashed write left in `directory` (before rmdir). */
+export function removeTemporarySiblings(directory) {
+  for (const name of readdirSync(directory)) {
+    if (TEMPORARY_STATE_FILE.test(name)) removeTemporary(path.join(directory, name));
+  }
+}
+
+function writeTemporarySibling(filePath, bytes) {
+  const temporary = temporarySiblingPath(filePath);
   const descriptor = openSync(
-    filePath,
+    temporary,
     constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
     0o600,
   );
-  try { writeAll(descriptor, bytes); fsyncSync(descriptor); } finally { closeSync(descriptor); }
+  try {
+    writeAll(descriptor, bytes);
+    fsyncSync(descriptor);
+  } catch (error) {
+    closeSync(descriptor);
+    removeTemporary(temporary);
+    throw error;
+  }
+  closeSync(descriptor);
+  return temporary;
+}
+
+/**
+ * Create `filePath` with exactly `bytes`, failing with EEXIST when it already
+ * exists. The bytes are written and fsynced to a temporary sibling first and
+ * then hard-linked into place, so a crash or ENOSPC can never leave a torn file
+ * under the final name (only a stray temporary sibling).
+ */
+export function writeCreateOnly(filePath, bytes) {
+  const temporary = writeTemporarySibling(filePath, bytes);
+  try { linkSync(temporary, filePath); } finally { removeTemporary(temporary); }
   fsyncDirectory(path.dirname(filePath));
 }
 
 export function writeAtomic(filePath, bytes) {
-  const temporary = `${filePath}.tmp-${process.pid}-${Date.now()}`;
-  writeCreateOnly(temporary, bytes);
+  const temporary = writeTemporarySibling(filePath, bytes);
   try { renameSync(temporary, filePath); } catch (error) {
-    try { unlinkSync(temporary); } catch {}
+    removeTemporary(temporary);
     throw error;
   }
   fsyncDirectory(path.dirname(filePath));

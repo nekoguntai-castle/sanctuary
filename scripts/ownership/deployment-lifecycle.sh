@@ -153,6 +153,7 @@ deployment_stage_rank() {
     password_reconciled) echo 4 ;;
     stack_started) echo 5 ;;
     health_verified) echo 6 ;;
+    activating) echo 7 ;;
     *) echo "unknown deployment stage: $1" >&2; return 1 ;;
   esac
 }

@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { canonicalJson, canonicalSha256, parseStrictJson } from './canonical-json.mjs';
 import { sha256 } from './crypto.mjs';
+import { removeTemporarySiblings, temporarySiblingPath, writeCreateOnly } from './deployment-store-io.mjs';
 
 export class DeploymentLockConflict extends Error {
   constructor(message, inspection) {
@@ -71,7 +72,7 @@ function ownerPath(lockPath) { return path.join(lockPath, 'owner.json'); }
 
 function writeOwnerAtomic(lockPath, owner) {
   const target = ownerPath(lockPath);
-  const temporary = `${target}.tmp-${process.pid}-${randomUUID()}`;
+  const temporary = temporarySiblingPath(target);
   writeFileSync(temporary, canonicalJson(owner), { flag: 'wx', mode: 0o600 });
   const descriptor = openSync(temporary, constants.O_RDONLY);
   try { fsyncSync(descriptor); } finally { closeSync(descriptor); }
@@ -145,14 +146,12 @@ export function acquireDeploymentLock(lockPath, {
     heartbeatAt: now().toISOString(),
   };
   try {
-    writeFileSync(ownerPath(lockPath), canonicalJson(owner), { flag: 'wx', mode: 0o600 });
-    const descriptor = openSync(ownerPath(lockPath), constants.O_RDONLY);
-    try { fsyncSync(descriptor); } finally { closeSync(descriptor); }
-    fsyncDirectory(lockPath);
+    // Written aside and linked into place: a torn owner.json can't be reclaimed.
+    writeCreateOnly(ownerPath(lockPath), canonicalJson(owner));
     fsyncDirectory(path.dirname(lockPath));
   } catch (error) {
     try { unlinkSync(ownerPath(lockPath)); } catch {}
-    try { rmdirSync(lockPath); } catch {}
+    try { removeTemporarySiblings(lockPath); rmdirSync(lockPath); } catch {}
     throw error;
   }
   return owner;
@@ -186,6 +185,7 @@ export function heartbeatDeploymentLock(lockPath, token, operationRunId, {
 export function releaseDeploymentLock(lockPath, token, operationRunId) {
   assertDeploymentLock(lockPath, token, operationRunId);
   unlinkSync(ownerPath(lockPath));
+  removeTemporarySiblings(lockPath);
   fsyncDirectory(lockPath);
   rmdirSync(lockPath);
   fsyncDirectory(path.dirname(lockPath));
@@ -209,6 +209,8 @@ export function recoverStaleDeploymentLock(lockPath, expectedOwnerDigest) {
     throw new Error('deployment lock changed during recovery');
   }
   try { unlinkSync(ownerPath(recoveryPath)); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  // An owner write cut off by the crash being recovered can leave its temporary.
+  removeTemporarySiblings(recoveryPath);
   rmdirSync(recoveryPath);
   fsyncDirectory(path.dirname(lockPath));
 }
