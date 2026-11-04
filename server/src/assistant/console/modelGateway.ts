@@ -1,5 +1,6 @@
 import { ServiceUnavailableError } from "../../errors/ApiError";
 import {
+  fetchLlmEgressProxy,
   ensureLlmProxyConfigured,
   getLlmEgressProxyUrl,
 } from "../../services/ai/config";
@@ -111,7 +112,7 @@ async function fetchConsoleGateway<TResponse>(
   userId: string,
 ): Promise<TResponse> {
   try {
-    const response = await fetch(`${LLM_EGRESS_PROXY_URL}${path}`, {
+    const response = await fetchLlmEgressProxy(`${LLM_EGRESS_PROXY_URL}${path}`, {
       method: "POST",
       headers: buildLlmEgressProxyJsonHeaders({ rateLimitKey: userRateKey(userId) }),
       body: JSON.stringify(body),

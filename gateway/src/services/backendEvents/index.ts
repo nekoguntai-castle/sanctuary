@@ -37,6 +37,27 @@ import type { BackendEvent } from './types';
 const log = createLogger('BACKEND_EVENTS');
 
 let ws: WebSocket | null = null;
+// The backend pings the gateway every 30s (gatewayServer heartbeat). Without one
+// for this long the connection is half-open: drop it so reconnect takes over.
+export const BACKEND_HEARTBEAT_TIMEOUT_MS = 75_000;
+let heartbeatWatchdog: NodeJS.Timeout | null = null;
+
+function clearHeartbeatWatchdog(): void {
+  if (heartbeatWatchdog) {
+    clearTimeout(heartbeatWatchdog);
+    heartbeatWatchdog = null;
+  }
+}
+
+function armHeartbeatWatchdog(socket: WebSocket): void {
+  clearHeartbeatWatchdog();
+  heartbeatWatchdog = setTimeout(() => {
+    heartbeatWatchdog = null;
+    if (ws !== socket) return;
+    log.warn('No heartbeat from backend WebSocket; reconnecting');
+    socket.terminate();
+  }, BACKEND_HEARTBEAT_TIMEOUT_MS);
+}
 let reconnectTimer: NodeJS.Timeout | null = null;
 let isShuttingDown = false;
 // A stop owns the drain promise. A start during that drain records one deferred
@@ -71,6 +92,11 @@ function connect(): void {
 
   socket.on('open', () => {
     log.info('Connected to backend WebSocket, waiting for auth challenge');
+    armHeartbeatWatchdog(socket);
+  });
+
+  socket.on('ping', () => {
+    if (ws === socket) armHeartbeatWatchdog(socket);
   });
 
   socket.on('message', (data) => {
@@ -135,6 +161,7 @@ function connect(): void {
       return;
     }
     ws = null;
+    clearHeartbeatWatchdog();
     scheduleReconnect();
   });
 
@@ -192,6 +219,7 @@ export function stopBackendEvents(): Promise<void> {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
   }
+  clearHeartbeatWatchdog();
 
   if (ws) {
     const socket = ws;

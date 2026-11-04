@@ -11,6 +11,7 @@ import { getRedisClient, isRedisConnected } from "../../infrastructure";
 import { createLogger } from "../../utils/logger";
 import { getErrorMessage } from "../../utils/errors";
 import {
+  fetchLlmEgressProxy,
   ensureLlmProxyConfigured,
   getLlmEgressProxyUrl,
 } from "../ai/config";
@@ -364,7 +365,7 @@ async function callAnalysis(
   context: AnalysisContext,
 ): Promise<AnalysisResult | null> {
   try {
-    const response = await fetch(`${LLM_EGRESS_PROXY_URL}/analyze`, {
+    const response = await fetchLlmEgressProxy(`${LLM_EGRESS_PROXY_URL}/analyze`, {
       method: "POST",
       headers: buildLlmEgressProxyJsonHeaders({ rateLimitKey: WORKER_INTELLIGENCE_RATE_KEY }),
       body: JSON.stringify({ type, context }),
@@ -407,7 +408,7 @@ async function fetchProviderCheck(): Promise<{
   reason?: string;
 } | null> {
   try {
-    const response = await fetch(`${LLM_EGRESS_PROXY_URL}/check-provider`, {
+    const response = await fetchLlmEgressProxy(`${LLM_EGRESS_PROXY_URL}/check-provider`, {
       method: "POST",
       headers: buildLlmEgressProxyJsonHeaders({ rateLimitKey: WORKER_INTELLIGENCE_RATE_KEY }),
       signal: AbortSignal.timeout(10000),

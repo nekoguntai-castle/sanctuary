@@ -22,7 +22,6 @@ function createHarness(overrides: Partial<GatewayShutdownDependencies> = {}) {
     closeHttpServer: vi.fn(async () => { events.push('http-drained'); }),
     stopBackendEvents: vi.fn(async () => { events.push('events-drained'); }),
     shutdownPushServices: vi.fn(() => { events.push('push-stopped'); }),
-    clearBackoffCleanup: vi.fn(() => { events.push('backoff-stopped'); }),
     exitNow: vi.fn((code: 0 | 1) => { events.push(`exit:${code}`); }),
     timeoutMs: 100,
     ...overrides,
@@ -98,7 +97,6 @@ describe('gateway graceful shutdown', () => {
       stopBackendEvents: vi.fn(() => { throw new Error('event drain failed'); }),
       closeHttpServer: vi.fn(() => Promise.reject('http drain failed')),
       shutdownPushServices: vi.fn(() => { throw new Error('push cleanup failed'); }),
-      clearBackoffCleanup: vi.fn(() => { throw new Error('backoff cleanup failed'); }),
     });
 
     await createGatewayShutdownHandler(dependencies)('SIGTERM');
@@ -111,9 +109,6 @@ describe('gateway graceful shutdown', () => {
     });
     expect(dependencies.log.error).toHaveBeenCalledWith('Error cleaning up gateway services', {
       error: 'push cleanup failed',
-    });
-    expect(dependencies.log.error).toHaveBeenCalledWith('Error cleaning up gateway services', {
-      error: 'backoff cleanup failed',
     });
     expect(dependencies.exitNow).toHaveBeenCalledWith(1);
   });

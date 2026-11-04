@@ -246,6 +246,80 @@ describe("aiService", () => {
     );
   });
 
+  it("re-pushes the config after the proxy answers 503 (restarted, lost its runtime config)", async () => {
+    mocks.fetch.mockResolvedValue(okJson({ synced: true }));
+    const { syncConfigToLlmEgressProxy, fetchLlmEgressProxy } =
+      await import("../../../src/services/ai/config");
+    const config: AIConfig = {
+      enabled: true,
+      endpoint: "https://llm.example.local/v1",
+      model: "qwen3",
+      providerProfileId: "hosted",
+      providerType: "openai-compatible",
+      apiKey: "key",
+    };
+
+    await expect(syncConfigToLlmEgressProxy(config)).resolves.toBe(true);
+    await expect(syncConfigToLlmEgressProxy(config)).resolves.toBe(true);
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+
+    mocks.fetch.mockResolvedValueOnce(errJson(503, { error: "AI is not enabled" }));
+    await expect(fetchLlmEgressProxy("http://llm-egress-proxy:3100/query")).resolves.toHaveProperty("status", 503);
+
+    // The cached sync is no longer trusted, so the next call pushes again.
+    await expect(syncConfigToLlmEgressProxy(config)).resolves.toBe(true);
+    expect(mocks.fetch).toHaveBeenCalledTimes(3);
+    expect(mocks.fetch).toHaveBeenLastCalledWith("http://llm-egress-proxy:3100/config", expect.anything());
+  });
+
+  it("keeps the cached sync for other proxy responses", async () => {
+    mocks.fetch.mockResolvedValue(okJson({ synced: true }));
+    const { syncConfigToLlmEgressProxy, fetchLlmEgressProxy } =
+      await import("../../../src/services/ai/config");
+    const config: AIConfig = {
+      enabled: true,
+      endpoint: "https://llm.example.local/v1",
+      model: "qwen3",
+      providerProfileId: "hosted",
+      providerType: "openai-compatible",
+      apiKey: "key",
+    };
+
+    await syncConfigToLlmEgressProxy(config);
+    await fetchLlmEgressProxy("http://llm-egress-proxy:3100/query");
+    // An upstream outage is a 503 too, but the proxy still has its config.
+    mocks.fetch.mockResolvedValueOnce(errJson(503, { error: "AI endpoint not available" }));
+    await fetchLlmEgressProxy("http://llm-egress-proxy:3100/query");
+    mocks.fetch.mockResolvedValueOnce({ ok: false, status: 503, json: vi.fn().mockRejectedValue(new Error("not json")) });
+    await fetchLlmEgressProxy("http://llm-egress-proxy:3100/query");
+    await syncConfigToLlmEgressProxy(config);
+
+    expect(mocks.fetch).toHaveBeenCalledTimes(4);
+  });
+
+  it("recognises the console route's provider_not_configured reason", async () => {
+    mocks.fetch.mockResolvedValue(okJson({ synced: true }));
+    const { syncConfigToLlmEgressProxy, fetchLlmEgressProxy } =
+      await import("../../../src/services/ai/config");
+    const config: AIConfig = {
+      enabled: true,
+      endpoint: "https://llm.example.local/v1",
+      model: "qwen3",
+      providerProfileId: "hosted",
+      providerType: "openai-compatible",
+      apiKey: "key",
+    };
+
+    await syncConfigToLlmEgressProxy(config);
+    mocks.fetch.mockResolvedValueOnce(errJson(503, { error: "AI is not enabled", reason: "provider_not_configured" }));
+    await fetchLlmEgressProxy("http://llm-egress-proxy:3100/console/plan");
+    mocks.fetch.mockResolvedValueOnce({ ok: false, status: 503, clone: () => ({ json: async () => ({ reason: "provider_not_configured" }) }), json: vi.fn() });
+    await fetchLlmEgressProxy("http://llm-egress-proxy:3100/console/plan");
+    await syncConfigToLlmEgressProxy(config);
+
+    expect(mocks.fetch).toHaveBeenLastCalledWith("http://llm-egress-proxy:3100/config", expect.anything());
+  });
+
   it("returns disabled when settings lookup fails", async () => {
     mocks.systemSettingFindMany.mockRejectedValue(new Error("db down"));
 

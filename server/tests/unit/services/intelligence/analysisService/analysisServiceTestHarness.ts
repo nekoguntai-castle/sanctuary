@@ -39,6 +39,7 @@ vi.mock('../../../../../src/infrastructure', () => ({
 }));
 
 vi.mock('../../../../../src/services/ai/config', () => ({
+  fetchLlmEgressProxy: (input: string, init?: RequestInit) => fetch(input, init),
   getAIConfig: analysisServiceMocks.mockGetAIConfig,
   syncConfigToLlmEgressProxy: analysisServiceMocks.mockSyncConfigToLlmEgressProxy,
   getLlmEgressProxyUrl: analysisServiceMocks.mockGetLlmEgressProxyUrl,

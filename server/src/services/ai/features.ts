@@ -16,6 +16,7 @@
 import { createLogger } from "../../utils/logger";
 import { getErrorMessage } from "../../utils/errors";
 import {
+  fetchLlmEgressProxy,
   describeConfigSyncFailure,
   ensureLlmProxyConfigured,
   getAIConfig,
@@ -62,7 +63,7 @@ export async function suggestTransactionLabel(
   }
 
   try {
-    const response = await fetch(`${LLM_EGRESS_PROXY_URL}/suggest-label`, {
+    const response = await fetchLlmEgressProxy(`${LLM_EGRESS_PROXY_URL}/suggest-label`, {
       method: "POST",
       headers: buildLlmEgressProxyJsonHeaders({
         authorization: `Bearer ${authToken}`,
@@ -120,7 +121,7 @@ export async function executeNaturalQuery(
   }
 
   try {
-    const response = await fetch(`${LLM_EGRESS_PROXY_URL}/query`, {
+    const response = await fetchLlmEgressProxy(`${LLM_EGRESS_PROXY_URL}/query`, {
       method: "POST",
       headers: buildLlmEgressProxyJsonHeaders({
         authorization: `Bearer ${authToken}`,
@@ -168,7 +169,7 @@ export async function detectOllama(): Promise<{
   message?: string;
 }> {
   try {
-    const response = await fetch(`${LLM_EGRESS_PROXY_URL}/detect-ollama`, {
+    const response = await fetchLlmEgressProxy(`${LLM_EGRESS_PROXY_URL}/detect-ollama`, {
       method: "POST",
       headers: buildLlmEgressProxyJsonHeaders({ rateLimitKey: ADMIN_SYSTEM_RATE_KEY }),
       signal: AbortSignal.timeout(15000),
@@ -202,7 +203,7 @@ export async function detectProviderEndpoint(input: {
   apiKey?: string;
 }): Promise<AIDetectProviderResponse> {
   try {
-    const response = await fetch(`${LLM_EGRESS_PROXY_URL}/detect-provider`, {
+    const response = await fetchLlmEgressProxy(`${LLM_EGRESS_PROXY_URL}/detect-provider`, {
       method: "POST",
       headers: buildLlmEgressProxyJsonHeaders({ rateLimitKey: ADMIN_SYSTEM_RATE_KEY }),
       body: JSON.stringify(input),
@@ -249,7 +250,7 @@ export async function listModels(): Promise<{
   }
 
   try {
-    const response = await fetch(`${LLM_EGRESS_PROXY_URL}/list-models`, {
+    const response = await fetchLlmEgressProxy(`${LLM_EGRESS_PROXY_URL}/list-models`, {
       method: "GET",
       headers: buildLlmEgressProxyAuthHeaders({ rateLimitKey: ADMIN_SYSTEM_RATE_KEY }),
       signal: AbortSignal.timeout(10000),

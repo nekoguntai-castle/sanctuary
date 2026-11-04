@@ -11,7 +11,6 @@ export interface GatewayShutdownDependencies {
   closeHttpServer: () => Promise<void>;
   stopBackendEvents: () => Promise<void>;
   shutdownPushServices: () => void;
-  clearBackoffCleanup: () => void;
   exitNow: (code: ExitCode) => void;
   timeoutMs?: number;
 }
@@ -84,14 +83,6 @@ export function createGatewayShutdownHandler(
 
     try {
       dependencies.shutdownPushServices();
-    } catch (error) {
-      finalExitCode = 1;
-      dependencies.log.error('Error cleaning up gateway services', {
-        error: errorMessage(error),
-      });
-    }
-    try {
-      dependencies.clearBackoffCleanup();
     } catch (error) {
       finalExitCode = 1;
       dependencies.log.error('Error cleaning up gateway services', {

@@ -271,12 +271,9 @@ describe('Gateway Config', () => {
         expect(config.rateLimit.maxRequests).toBe(100);
       });
 
-      it('should have exponential backoff config', async () => {
+      it('does not configure an exponential backoff the limiter never enforced', async () => {
         const { config } = await import('../../src/config');
-        expect(config.rateLimit.backoff).toBeDefined();
-        expect(config.rateLimit.backoff.baseRetryAfter).toBe(60);
-        expect(config.rateLimit.backoff.maxRetryAfter).toBe(3600);
-        expect(config.rateLimit.backoff.multiplier).toBe(2);
+        expect(config.rateLimit).not.toHaveProperty('backoff');
       });
     });
 

@@ -113,6 +113,25 @@ describe('backendEvents notifications formatter', () => {
     expect(second).toBeNull();
   });
 
+  it('uses the server milestone rule when previousConfirmations is present', () => {
+    const format = (previousConfirmations: number, confirmations: number) => formatNotificationForEvent({
+      type: 'confirmation',
+      walletId: 'wallet-1',
+      data: { previousConfirmations, confirmations, txid: 'tx-1', amount: 1000 },
+    });
+
+    // A block can jump 0 -> 2; that is still the first confirmation.
+    expect(format(0, 2)).not.toBeNull();
+    expect(format(0, 1)).not.toBeNull();
+    expect(format(1, 2)).toBeNull();
+    expect(format(2, 1)).toBeNull();
+    expect(formatNotificationForEvent({
+      type: 'confirmation',
+      walletId: 'wallet-1',
+      data: { previousConfirmations: 0, txid: 'tx-1' },
+    })).toBeNull();
+  });
+
   it('uses zero-amount fallback for first confirmation when amount is missing', () => {
     const notification = formatNotificationForEvent({
       type: 'confirmation',

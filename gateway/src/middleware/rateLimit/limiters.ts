@@ -5,7 +5,7 @@
  *
  * ## Rate Limit Tiers
  *
- * 1. **Default** (60/min) - Normal API requests with exponential backoff
+ * 1. **Default** (60/min) - Normal API requests
  * 2. **Strict** (10/hour) - Sensitive operations like device registration
  * 3. **Auth** (15/15min) - Login attempts to prevent brute force
  *
@@ -18,16 +18,27 @@
  * - User agent
  */
 
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { config } from '../../config';
 import { logSecurityEvent } from '../requestLogger';
 import { AuthenticatedRequest } from '../auth';
-import { calculateBackoff, backoffTracker } from './backoff';
 
 const getIpKey = (req: Request): string => {
   return req.ip ? ipKeyGenerator(req.ip) : 'unknown';
 };
+
+/**
+ * Seconds until the client's window resets, when it is admitted again. With
+ * standardHeaders the limiter has already set Retry-After for this response.
+ * (An exponential backoff used to be advertised here but was never enforced.)
+ */
+function retryAfterSeconds(res: Response, windowMs: number): number {
+  const fromHeader = Number(res.getHeader('Retry-After'));
+  /* v8 ignore next -- standardHeaders always sets Retry-After; the window is a fallback if that changes */
+  if (!fromHeader) return Math.ceil(windowMs / 1000);
+  return fromHeader;
+}
 
 const getClientKey = (req: Request): string => {
   const authReq = req as AuthenticatedRequest;
@@ -36,7 +47,6 @@ const getClientKey = (req: Request): string => {
 
 /**
  * Default rate limiter - applies to all authenticated routes
- * Uses exponential backoff: retry-after doubles with each violation
  */
 export const defaultRateLimiter = rateLimit({
   windowMs: config.rateLimit.windowMs,
@@ -44,10 +54,9 @@ export const defaultRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => getClientKey(req),
-  handler: (req, res) => {
+  handler: (req, res, _next, options) => {
     const authReq = req as AuthenticatedRequest;
-    const key = getClientKey(req);
-    const retryAfter = calculateBackoff(key);
+    const retryAfter = retryAfterSeconds(res, options.windowMs);
 
     logSecurityEvent('RATE_LIMIT_EXCEEDED', {
       tier: 'default',
@@ -56,7 +65,6 @@ export const defaultRateLimiter = rateLimit({
       path: req.path,
       userAgent: req.headers['user-agent'],
       retryAfter,
-      backoffViolations: backoffTracker.get(key)?.violations || 1,
     });
 
     res.status(429).json({
@@ -95,7 +103,6 @@ export const strictRateLimiter = rateLimit({
 
 /**
  * Auth rate limiter - for login attempts
- * Uses exponential backoff: retry-after doubles with each violation
  *
  * SECURITY: This is critical for preventing brute force attacks.
  * Monitor logs for repeated violations from the same IP.
@@ -106,9 +113,8 @@ export const authRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => getIpKey(req),
-  handler: (req, res) => {
-    const key = `auth:${getIpKey(req)}`;
-    const retryAfter = calculateBackoff(key);
+  handler: (req, res, _next, options) => {
+    const retryAfter = retryAfterSeconds(res, options.windowMs);
 
     logSecurityEvent('AUTH_RATE_LIMIT_EXCEEDED', {
       tier: 'auth',
@@ -116,7 +122,6 @@ export const authRateLimiter = rateLimit({
       path: req.path,
       userAgent: req.headers['user-agent'],
       retryAfter,
-      backoffViolations: backoffTracker.get(key)?.violations || 1,
       // This is a potential brute force attack
       severity: 'high',
     });

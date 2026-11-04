@@ -24,7 +24,7 @@ import { exitNow } from './utils/processExit';
 import { registerFatalProcessHandlers } from './utils/fatalProcessHandlers';
 import { createGatewayShutdownHandler } from './utils/gracefulShutdown';
 import { requestLogger } from './middleware/requestLogger';
-import { authRateLimiter, cleanupBackoffTracker } from './middleware/rateLimit';
+import { authRateLimiter } from './middleware/rateLimit';
 import { normalizeTrailingSlash } from './middleware/trailingSlash';
 import { createGatewayCorsOriginGuard } from './middleware/corsOrigin';
 import proxyRoutes from './routes/proxy';
@@ -185,9 +185,6 @@ function loadTlsCertificates(): https.ServerOptions | null {
 let server: http.Server | https.Server;
 const tlsOptions = loadTlsCertificates();
 
-// Periodic cleanup interval for rate limit backoff tracker
-let backoffCleanupInterval: NodeJS.Timeout | null = null;
-
 if (tlsOptions) {
   // HTTPS server
   server = https.createServer(tlsOptions, app);
@@ -202,9 +199,6 @@ if (tlsOptions) {
 
     // Connect to backend for events
     startBackendEvents();
-
-    // Start periodic cleanup of rate limit backoff tracker (every 5 minutes)
-    backoffCleanupInterval = setInterval(cleanupBackoffTracker, 5 * 60 * 1000);
   });
 } else {
   // HTTP server (development or TLS disabled)
@@ -221,9 +215,6 @@ if (tlsOptions) {
 
     // Connect to backend for events
     startBackendEvents();
-
-    // Start periodic cleanup of rate limit backoff tracker (every 5 minutes)
-    backoffCleanupInterval = setInterval(cleanupBackoffTracker, 5 * 60 * 1000);
   });
 }
 
@@ -240,12 +231,6 @@ const shutdown = createGatewayShutdownHandler({
   }),
   stopBackendEvents,
   shutdownPushServices,
-  clearBackoffCleanup: () => {
-    if (backoffCleanupInterval) {
-      clearInterval(backoffCleanupInterval);
-      backoffCleanupInterval = null;
-    }
-  },
   exitNow,
 });
 

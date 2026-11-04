@@ -38,6 +38,9 @@ import { mapGatewayEvent, refilterPushAudience, type GatewayEvent } from './gate
 
 const log = createLogger('WS:GATEWAY');
 
+/** How often the backend pings the gateway; one missed pong drops it. */
+const GATEWAY_HEARTBEAT_INTERVAL_MS = 30_000;
+
 /**
  * Gateway WebSocket Server
  *
@@ -50,6 +53,7 @@ export class GatewayWebSocketServer {
   // Serialize enrichment to preserve accepted event order. Catching on the tail
   // keeps one failed lookup from poisoning every event accepted after it.
   private sendTail: Promise<void> = Promise.resolve();
+  private heartbeat: NodeJS.Timeout;
 
   constructor() {
     this.wss = new WebSocketServer({
@@ -58,8 +62,28 @@ export class GatewayWebSocketServer {
     });
 
     this.wss.on('connection', this.handleConnection.bind(this));
+    this.heartbeat = setInterval(() => this.checkGatewayHeartbeat(), GATEWAY_HEARTBEAT_INTERVAL_MS);
+    this.heartbeat.unref();
 
     log.debug('Gateway WebSocket server initialized');
+  }
+
+  /**
+   * Detect a half-open gateway connection. Without this, a dropped TCP link
+   * kept isGatewayConnected() true and every push was silently lost until the
+   * OS timed the socket out. Terminating it runs the close handler, which
+   * clears the gateway so it reconnects.
+   */
+  private checkGatewayHeartbeat(): void {
+    const gateway = this.gateway;
+    if (!gateway) return;
+    if (gateway.isAlive === false) {
+      log.warn('Gateway missed a heartbeat; terminating connection');
+      gateway.terminate();
+      return;
+    }
+    gateway.isAlive = false;
+    gateway.ping();
   }
 
   /**
@@ -77,6 +101,10 @@ export class GatewayWebSocketServer {
   private handleConnection(ws: WebSocket, _request: IncomingMessage) {
     const client = ws as GatewayWebSocket;
     client.isAuthenticated = false;
+    client.isAlive = true;
+    client.on('pong', () => {
+      client.isAlive = true;
+    });
 
     // Attach before any early return (see clientServer.handleConnection)
     client.on('error', (error) => {
@@ -300,6 +328,7 @@ export class GatewayWebSocketServer {
    * Close server
    */
   public close() {
+    clearInterval(this.heartbeat);
     if (this.gateway) {
       this.gateway.close(1000, 'Server closing');
       this.gateway = null;

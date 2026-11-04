@@ -33,6 +33,55 @@ describe('Backend Events Service lifecycle', () => {
     });
   });
 
+  describe('backend heartbeat', () => {
+    it('drops a connection the backend has stopped pinging', () => {
+      startBackendEvents();
+      const ws = wsInstances[0];
+      ws.simulateOpen();
+
+      vi.advanceTimersByTime(74_000);
+      expect(ws.terminate).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1_000);
+      // Half-open TCP: terminate so the close handler reconnects.
+      expect(ws.terminate).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps a connection alive while pings arrive', () => {
+      startBackendEvents();
+      const ws = wsInstances[0];
+      ws.simulateOpen();
+
+      for (let i = 0; i < 4; i++) {
+        vi.advanceTimersByTime(30_000);
+        ws.emit('ping');
+      }
+
+      expect(ws.terminate).not.toHaveBeenCalled();
+    });
+
+    it('ignores the watchdog of a socket that was already replaced', () => {
+      startBackendEvents();
+      const ws = wsInstances[0];
+      ws.simulateOpen();
+      ws.simulateClose();
+
+      vi.advanceTimersByTime(80_000);
+
+      expect(ws.terminate).not.toHaveBeenCalled();
+    });
+
+    it('stops the watchdog on shutdown', () => {
+      startBackendEvents();
+      const ws = wsInstances[0];
+      ws.simulateOpen();
+      stopBackendEvents();
+
+      vi.advanceTimersByTime(80_000);
+
+      expect(ws.terminate).not.toHaveBeenCalled();
+    });
+  });
+
   describe('stopBackendEvents', () => {
     it('should close WebSocket connection', () => {
       startBackendEvents();

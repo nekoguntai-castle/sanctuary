@@ -42,9 +42,21 @@ const formatTransactionEvent = (event: BackendEvent): Notification => {
   );
 };
 
+/**
+ * The server's first-confirmation milestone (previous 0 -> now >= 1), so a
+ * block that lands 0 -> 2 still notifies. Without previousConfirmations (older
+ * servers) only an exact 1 counts.
+ */
+const isFirstConfirmation = ({ confirmations, previousConfirmations }: BackendEvent['data']): boolean => {
+  if (confirmations === undefined) return false;
+  return previousConfirmations === undefined
+    ? confirmations === 1
+    : previousConfirmations === 0 && confirmations >= 1;
+};
+
 const formatConfirmationEvent = (event: BackendEvent): Notification => {
   const { data } = event;
-  if (data.confirmations !== 1 || !data.txid) return null;
+  if (!isFirstConfirmation(data) || !data.txid) return null;
 
   return push.formatTransactionNotification(
     'confirmed',

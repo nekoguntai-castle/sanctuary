@@ -250,6 +250,32 @@ export async function getAIConfig(): Promise<AIConfig> {
   }
 }
 
+/** The proxy's 503 replies when it has no provider config (e.g. after a restart). */
+async function isProxyUnconfiguredResponse(response: Response): Promise<boolean> {
+  if (response.status !== 503) return false;
+  const probe = typeof response.clone === "function" ? response.clone() : response;
+  const body: unknown = await probe.json().catch(() => null);
+  if (!body || typeof body !== "object") return false;
+  const { reason, error } = body as { reason?: unknown; error?: unknown };
+  return reason === "provider_not_configured" || error === "AI is not enabled";
+}
+
+/**
+ * fetch() for calls to the LLM egress proxy. The proxy keeps its provider
+ * config in memory and boots disabled, so after a restart it answers "not
+ * configured" until the server pushes the config again. That reply forgets the
+ * cached successful sync, so the next ensureLlmProxyConfigured re-pushes at
+ * once instead of trusting the cache for up to CONFIG_RESYNC_INTERVAL_MS.
+ * Other 503s (the upstream provider is down) leave the cache alone.
+ */
+export async function fetchLlmEgressProxy(input: string, init?: RequestInit): Promise<Response> {
+  const response = await fetch(input, init);
+  if (await isProxyUnconfiguredResponse(response)) {
+    configSyncState.syncSuccess = false;
+  }
+  return response;
+}
+
 /**
  * Sync configuration to LLM egress proxy
  * SECURITY: Only syncs when config actually changes (hash-based detection)

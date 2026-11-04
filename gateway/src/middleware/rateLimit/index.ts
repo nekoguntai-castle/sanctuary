@@ -5,7 +5,6 @@
  * All rate limit violations are logged as security events for auditing.
  */
 
-export { backoffTracker, calculateBackoff, resetBackoff, cleanupBackoffTracker } from './backoff';
 export {
   defaultRateLimiter,
   strictRateLimiter,

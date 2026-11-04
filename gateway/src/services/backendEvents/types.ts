@@ -42,6 +42,8 @@ export interface BackendEvent {
     type?: 'received' | 'sent' | 'consolidation';
     amount?: number;
     confirmations?: number;
+    // Sent by the server with confirmation events (milestone detection)
+    previousConfirmations?: number;
     // Broadcast events
     error?: string;
     // Draft/PSBT events

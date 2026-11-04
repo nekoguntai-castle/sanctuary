@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../../src/services/ai/config", () => ({
+  fetchLlmEgressProxy: (input: string, init?: RequestInit) => fetch(input, init),
   getAIConfig: mocks.getAIConfig,
   getLlmEgressProxyUrl: mocks.getLlmEgressProxyUrl,
   syncConfigToLlmEgressProxy: mocks.syncConfigToLlmEgressProxy,

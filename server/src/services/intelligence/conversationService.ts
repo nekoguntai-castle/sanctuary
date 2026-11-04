@@ -7,6 +7,7 @@
 import { createLogger } from "../../utils/logger";
 import { getErrorMessage } from "../../utils/errors";
 import {
+  fetchLlmEgressProxy,
   ensureLlmProxyConfigured,
   getLlmEgressProxyUrl,
 } from "../ai/config";
@@ -133,7 +134,7 @@ export async function sendMessage(
   }
 
   try {
-    const response = await fetch(`${LLM_EGRESS_PROXY_URL}/chat`, {
+    const response = await fetchLlmEgressProxy(`${LLM_EGRESS_PROXY_URL}/chat`, {
       method: "POST",
       headers: buildLlmEgressProxyJsonHeaders({ rateLimitKey: userRateKey(userId) }),
       body: JSON.stringify({

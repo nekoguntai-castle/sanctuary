@@ -117,6 +117,58 @@ describe('GatewayWebSocketServer', () => {
     mocks.mapGatewayEvent.mockImplementation(async (event) => event);
   });
 
+  describe('heartbeat', () => {
+    function heartbeatClient() {
+      return Object.assign(createClient(), { isAlive: true, ping: vi.fn(), terminate: vi.fn() });
+    }
+
+    it('pings the gateway and drops it after a missed pong', () => {
+      vi.useFakeTimers();
+      const server = new GatewayWebSocketServer();
+      const client = heartbeatClient();
+      (server as any).gateway = client;
+
+      vi.advanceTimersByTime(30_000);
+      expect(client.ping).toHaveBeenCalledTimes(1);
+      expect(client.terminate).not.toHaveBeenCalled();
+
+      // No pong: the link is half-open and pushes would be lost silently.
+      vi.advanceTimersByTime(30_000);
+      expect(client.terminate).toHaveBeenCalledTimes(1);
+      server.close();
+    });
+
+    it('keeps a gateway that answers pings', () => {
+      vi.useFakeTimers();
+      const server = new GatewayWebSocketServer();
+      const client = heartbeatClient();
+      (server as any).handleConnection(client, {} as any);
+      (server as any).gateway = client;
+
+      for (let i = 0; i < 3; i++) {
+        vi.advanceTimersByTime(30_000);
+        client.emit('pong');
+      }
+
+      expect(client.ping).toHaveBeenCalledTimes(3);
+      expect(client.terminate).not.toHaveBeenCalled();
+      server.close();
+    });
+
+    it('idles without a gateway and stops on close', () => {
+      vi.useFakeTimers();
+      const server = new GatewayWebSocketServer();
+      vi.advanceTimersByTime(30_000);
+
+      const client = heartbeatClient();
+      server.close();
+      (server as any).gateway = client;
+      vi.advanceTimersByTime(60_000);
+
+      expect(client.ping).not.toHaveBeenCalled();
+    });
+  });
+
   it('rejects connections when gateway secret is not configured', () => {
     mocks.config.gatewaySecret = '';
     const server = new GatewayWebSocketServer();

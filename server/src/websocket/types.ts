@@ -239,6 +239,8 @@ export function parseGatewayPushEvent(value: unknown): GatewayPushEvent | null {
 /** Gateway WebSocket with HMAC authentication state */
 export interface GatewayWebSocket extends WebSocket {
   isAuthenticated: boolean;
+  /** Cleared before each heartbeat ping, set again by the gateway's pong. */
+  isAlive?: boolean;
   authTimeout?: NodeJS.Timeout;
   challenge?: string;
 }

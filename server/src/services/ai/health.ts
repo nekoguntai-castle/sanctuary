@@ -6,6 +6,7 @@
 
 import { createLogger } from "../../utils/logger";
 import {
+  fetchLlmEgressProxy,
   describeConfigSyncFailure,
   getAIConfig,
   getLlmEgressProxyUrl,
@@ -50,7 +51,7 @@ export async function isEnabled(): Promise<boolean> {
  */
 export async function isLlmEgressProxyAvailable(): Promise<boolean> {
   try {
-    const response = await fetch(`${LLM_EGRESS_PROXY_URL}/health`, {
+    const response = await fetchLlmEgressProxy(`${LLM_EGRESS_PROXY_URL}/health`, {
       method: "GET",
       signal: AbortSignal.timeout(5000),
     });
@@ -112,7 +113,7 @@ export async function checkHealth(): Promise<{
   }
 
   try {
-    const response = await fetch(`${LLM_EGRESS_PROXY_URL}/test`, {
+    const response = await fetchLlmEgressProxy(`${LLM_EGRESS_PROXY_URL}/test`, {
       method: "POST",
       headers: buildLlmEgressProxyJsonHeaders({ rateLimitKey: ADMIN_SYSTEM_RATE_KEY }),
       signal: AbortSignal.timeout(15000),
