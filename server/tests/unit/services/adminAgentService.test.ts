@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
     findAgentByIdWithDetails: vi.fn(),
     createFundingOverride: vi.fn(),
     createApiKey: vi.fn(),
+    updateAgent: vi.fn(),
+    revokeAgentWithApiKeys: vi.fn(),
   },
   userRepository: {
     findById: vi.fn(),
@@ -45,7 +47,11 @@ import {
   createAgentApiKey,
   createAgentFundingOverride,
   createWalletAgent,
+  revokeWalletAgent,
+  updateWalletAgent,
 } from '../../../src/services/adminAgentService';
+import { ConflictError, NotFoundError } from '../../../src/errors';
+import { Prisma } from '../../../src/generated/prisma/client';
 
 const activeAgent = {
   id: 'agent-1',
@@ -250,6 +256,108 @@ describe('adminAgentService', () => {
 
       await expect(createWalletAgent(linkInput)).rejects.toThrow(`User does not have access to the ${wallet} wallet`);
       expect(mocks.agentRepository.createAgent).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('revocation is terminal', () => {
+    const revokedAgent = { ...activeAgent, status: 'revoked', revokedAt: new Date('2026-11-01T00:00:00.000Z') };
+
+    it('refuses to reactivate a revoked agent', async () => {
+      mocks.agentRepository.findAgentById.mockResolvedValue(revokedAgent);
+
+      await expect(updateWalletAgent('agent-1', { status: 'active' })).rejects.toThrow(ConflictError);
+      await expect(updateWalletAgent('agent-1', { name: 'renamed' })).rejects.toThrow(ConflictError);
+      expect(mocks.agentRepository.updateAgent).not.toHaveBeenCalled();
+      expect(mocks.agentRepository.revokeAgentWithApiKeys).not.toHaveBeenCalled();
+    });
+
+    it('treats a status-only revoke of a revoked agent as idempotent and sweeps leftover keys', async () => {
+      mocks.agentRepository.findAgentById.mockResolvedValue(revokedAgent);
+      mocks.agentRepository.revokeAgentWithApiKeys.mockResolvedValue({ agent: revokedAgent, alreadyRevoked: true });
+
+      await expect(updateWalletAgent('agent-1', { status: 'revoked' })).resolves.toMatchObject({ hydrated: true });
+      expect(mocks.agentRepository.revokeAgentWithApiKeys).toHaveBeenCalledWith('agent-1');
+      expect(mocks.agentRepository.updateAgent).not.toHaveBeenCalled();
+    });
+
+    it('refuses field edits sent alongside a revoked status for a revoked agent', async () => {
+      mocks.agentRepository.findAgentById.mockResolvedValue(revokedAgent);
+
+      await expect(updateWalletAgent('agent-1', { status: 'revoked', name: 'renamed' })).rejects.toThrow(ConflictError);
+    });
+
+    it('treats a revoked status without revokedAt as revoked', async () => {
+      mocks.agentRepository.findAgentById.mockResolvedValue({ ...activeAgent, status: 'revoked', revokedAt: null });
+
+      await expect(updateWalletAgent('agent-1', { status: 'active' })).rejects.toThrow(ConflictError);
+    });
+
+    it('revokes through the key-revoking path after applying other fields', async () => {
+      mocks.agentRepository.updateAgent.mockResolvedValue({ ...activeAgent, name: 'final' });
+      mocks.agentRepository.revokeAgentWithApiKeys.mockResolvedValue({ agent: revokedAgent, alreadyRevoked: false });
+
+      await updateWalletAgent('agent-1', { name: ' final ', status: 'revoked' });
+
+      expect(mocks.agentRepository.updateAgent).toHaveBeenCalledWith('agent-1', { name: 'final' });
+      expect(mocks.agentRepository.revokeAgentWithApiKeys).toHaveBeenCalledWith('agent-1');
+      expect(mocks.agentRepository.updateAgent.mock.invocationCallOrder[0])
+        .toBeLessThan(mocks.agentRepository.revokeAgentWithApiKeys.mock.invocationCallOrder[0]);
+    });
+
+    it('revokes without a field update when only the status changes', async () => {
+      mocks.agentRepository.revokeAgentWithApiKeys.mockResolvedValue({ agent: revokedAgent, alreadyRevoked: false });
+      mocks.agentRepository.findAgentByIdWithDetails.mockResolvedValueOnce(null);
+
+      await expect(updateWalletAgent('agent-1', { status: 'revoked' })).resolves.toBe(revokedAgent);
+      expect(mocks.agentRepository.updateAgent).not.toHaveBeenCalled();
+    });
+
+    const recordNotFound = () =>
+      new Prisma.PrismaClientKnownRequestError('No record found', { code: 'P2025', clientVersion: 'test' });
+
+    it('reports a revoke that lands mid-update as a conflict', async () => {
+      mocks.agentRepository.updateAgent.mockRejectedValue(recordNotFound());
+
+      await expect(updateWalletAgent('agent-1', { status: 'paused' })).rejects.toThrow(ConflictError);
+    });
+
+    it('reports an agent deleted mid-update as not found', async () => {
+      mocks.agentRepository.findAgentById.mockResolvedValueOnce(activeAgent).mockResolvedValueOnce(null);
+      mocks.agentRepository.updateAgent.mockRejectedValue(recordNotFound());
+
+      await expect(updateWalletAgent('agent-1', { status: 'paused' })).rejects.toThrow(NotFoundError);
+    });
+
+    it('rethrows other repository failures', async () => {
+      mocks.agentRepository.updateAgent.mockRejectedValue(new Error('db down'));
+
+      await expect(updateWalletAgent('agent-1', { status: 'paused' })).rejects.toThrow('db down');
+    });
+
+    it('falls back to the stored rows when no detailed record is available', async () => {
+      mocks.agentRepository.findAgentById.mockResolvedValueOnce(revokedAgent);
+      mocks.agentRepository.findAgentByIdWithDetails.mockResolvedValue(null);
+      mocks.agentRepository.revokeAgentWithApiKeys.mockResolvedValueOnce({ agent: null, alreadyRevoked: true });
+      await expect(updateWalletAgent('agent-1', { status: 'revoked' })).resolves.toBe(revokedAgent);
+
+      // The agent vanished between the update and the revoke.
+      const renamed = { ...activeAgent, name: 'final' };
+      mocks.agentRepository.updateAgent.mockResolvedValue(renamed);
+      mocks.agentRepository.revokeAgentWithApiKeys.mockResolvedValue({ agent: null, alreadyRevoked: true });
+      await expect(updateWalletAgent('agent-1', { name: 'final', status: 'revoked' })).resolves.toBe(renamed);
+    });
+
+    it('revokes the agent and its API keys on DELETE', async () => {
+      mocks.agentRepository.revokeAgentWithApiKeys.mockResolvedValue({ agent: revokedAgent, alreadyRevoked: false });
+
+      await expect(revokeWalletAgent('agent-1')).resolves.toEqual({ agent: revokedAgent, alreadyRevoked: false });
+      expect(mocks.agentRepository.revokeAgentWithApiKeys).toHaveBeenCalledWith('agent-1');
+    });
+
+    it('reports an unknown agent on DELETE', async () => {
+      mocks.agentRepository.revokeAgentWithApiKeys.mockResolvedValue({ agent: null, alreadyRevoked: true });
+
+      await expect(revokeWalletAgent('agent-1')).rejects.toThrow(NotFoundError);
     });
   });
 });

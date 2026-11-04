@@ -6,6 +6,7 @@ const mockPrisma = vi.hoisted(() => ({
     findMany: vi.fn(),
     findUnique: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
   },
   agentApiKey: {
     create: vi.fn(),

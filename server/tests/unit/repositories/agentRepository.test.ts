@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Prisma } from '../../../src/generated/prisma/client';
 import {
   agentRepository,
@@ -218,7 +218,7 @@ describe('agentRepository', () => {
     });
 
     expect(prisma.walletAgent.update).toHaveBeenCalledWith({
-      where: { id: 'agent-1' },
+      where: { id: 'agent-1', revokedAt: null, status: { not: 'revoked' } },
       data: expect.objectContaining({
         status: 'paused',
         maxFundingAmountSats: 100000n,
@@ -261,12 +261,11 @@ describe('agentRepository', () => {
   });
 
   it('updates every wallet agent field when explicit values are provided', async () => {
-    const revokedAt = new Date('2026-04-16T00:00:00.000Z');
     prisma.walletAgent.update.mockResolvedValue({ id: 'agent-1' });
 
     await agentRepository.updateAgent('agent-1', {
       name: 'Updated Agent',
-      status: 'revoked',
+      status: 'active',
       maxFundingAmountSats: 200000n,
       maxOperationalBalanceSats: 300000n,
       dailyFundingLimitSats: 400000n,
@@ -281,14 +280,13 @@ describe('agentRepository', () => {
       requireHumanApproval: false,
       notifyOnOperationalSpend: false,
       pauseOnUnexpectedSpend: true,
-      revokedAt,
     });
 
     expect(prisma.walletAgent.update).toHaveBeenCalledWith({
-      where: { id: 'agent-1' },
+      where: { id: 'agent-1', revokedAt: null, status: { not: 'revoked' } },
       data: {
         name: 'Updated Agent',
-        status: 'revoked',
+        status: 'active',
         maxFundingAmountSats: 200000n,
         maxOperationalBalanceSats: 300000n,
         dailyFundingLimitSats: 400000n,
@@ -303,9 +301,45 @@ describe('agentRepository', () => {
         requireHumanApproval: false,
         notifyOnOperationalSpend: false,
         pauseOnUnexpectedSpend: true,
-        revokedAt,
       },
     });
+  });
+
+  it('revokes an agent and every unrevoked API key in one transaction', async () => {
+    const tx = {
+      $executeRaw: vi.fn().mockResolvedValue(1),
+      walletAgent: { updateMany: vi.fn().mockResolvedValue({ count: 1 }), findUnique: vi.fn().mockResolvedValue({ id: 'agent-1', status: 'revoked' }) },
+      agentApiKey: { updateMany: vi.fn().mockResolvedValue({ count: 2 }) },
+    };
+    prisma.$transaction.mockImplementation(async (fn: (client: typeof tx) => unknown) => fn(tx));
+
+    await expect(agentRepository.revokeAgentWithApiKeys('agent-1')).resolves.toEqual({
+      agent: { id: 'agent-1', status: 'revoked' },
+      alreadyRevoked: false,
+    });
+
+    expect(tx.walletAgent.updateMany).toHaveBeenCalledWith({
+      where: { id: 'agent-1', revokedAt: null },
+      data: { status: 'revoked', revokedAt: expect.any(Date) },
+    });
+    expect(tx.agentApiKey.updateMany).toHaveBeenCalledWith({
+      where: { agentId: 'agent-1', revokedAt: null },
+      data: { revokedAt: expect.any(Date) },
+    });
+    // Serialized against funding requests, which re-check the agent under this lock.
+    expect(tx.$executeRaw).toHaveBeenCalled();
+  });
+
+  it('still revokes leftover API keys when the agent was already revoked', async () => {
+    const tx = {
+      $executeRaw: vi.fn().mockResolvedValue(1),
+      walletAgent: { updateMany: vi.fn().mockResolvedValue({ count: 0 }), findUnique: vi.fn().mockResolvedValue({ id: 'agent-1', status: 'revoked' }) },
+      agentApiKey: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    };
+    prisma.$transaction.mockImplementation(async (fn: (client: typeof tx) => unknown) => fn(tx));
+
+    await expect(agentRepository.revokeAgentWithApiKeys('agent-1')).resolves.toMatchObject({ alreadyRevoked: true });
+    expect(tx.agentApiKey.updateMany).toHaveBeenCalled();
   });
 
   it('creates, finds, revokes, and updates agent API keys', async () => {

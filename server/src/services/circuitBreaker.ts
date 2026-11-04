@@ -197,6 +197,11 @@ export class CircuitBreaker<T = unknown> {
     if (newState === 'open') {
       this.openedAt = new Date();
     }
+    if (newState === 'half-open') {
+      // Successes from before the trip must not count toward closing again;
+      // successThreshold applies to recovery probes only.
+      this.successes = 0;
+    }
 
     log.info(`[${this.name}] Circuit state: ${previousState} → ${newState}`);
 

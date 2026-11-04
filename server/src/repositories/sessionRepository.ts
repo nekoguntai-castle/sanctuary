@@ -6,9 +6,9 @@
 
 import prisma from '../models/prisma';
 import crypto from 'crypto';
-import { Prisma, type RefreshToken, type RevokedToken } from '../generated/prisma/client';
+import type { RefreshToken, RevokedToken } from '../generated/prisma/client';
 import { createLogger } from '../utils/logger';
-import { isPrismaError } from '../utils/errors';
+import { isPrismaError, isRecordNotFoundError } from '../utils/errors';
 import {
   consumeAndReplaceRefreshTokenWithClient,
   type RotateRefreshTokenInput,
@@ -42,10 +42,6 @@ export interface CreateRefreshTokenInput {
  */
 function hashToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
-}
-
-function isRecordNotFoundError(error: unknown): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025';
 }
 
 /**

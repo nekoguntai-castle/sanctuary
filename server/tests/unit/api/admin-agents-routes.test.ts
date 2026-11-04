@@ -482,25 +482,27 @@ describe("Admin wallet agent routes", () => {
         status: "paused",
         maxFundingAmountSats: null,
         minOperationalBalanceSats: null,
-        revokedAt: null,
       }),
     );
 
-    mocks.agentRepository.findAgentById.mockResolvedValueOnce(agentFixture());
-    mocks.agentRepository.updateAgent.mockResolvedValueOnce(
-      agentFixture({
-        status: "revoked",
-        revokedAt: now,
-      }),
-    );
+    mocks.agentRepository.revokeAgentWithApiKeys.mockResolvedValueOnce({
+      agent: agentFixture({ status: "revoked", revokedAt: now }),
+      alreadyRevoked: false,
+    });
     await request(app).delete(`/api/v1/admin/agents/${agentId}`).expect(200);
-    expect(mocks.agentRepository.updateAgent).toHaveBeenCalledWith(
-      agentId,
-      expect.objectContaining({
-        status: "revoked",
-        revokedAt: expect.any(Date),
-      }),
+    expect(mocks.agentRepository.revokeAgentWithApiKeys).toHaveBeenCalledWith(agentId);
+  });
+
+  it("refuses to reactivate a revoked agent", async () => {
+    mocks.agentRepository.findAgentById.mockResolvedValue(
+      agentFixture({ status: "revoked", revokedAt: now }),
     );
+
+    await request(app)
+      .patch(`/api/v1/admin/agents/${agentId}`)
+      .send({ status: "active" })
+      .expect(409);
+    expect(mocks.agentRepository.updateAgent).not.toHaveBeenCalled();
   });
 
   it("updates every mutable policy field and rejects invalid agent ids", async () => {
@@ -561,7 +563,6 @@ describe("Admin wallet agent routes", () => {
         requireHumanApproval: false,
         notifyOnOperationalSpend: false,
         pauseOnUnexpectedSpend: true,
-        revokedAt: null,
       }),
     );
     expect(mocks.logFromRequest).toHaveBeenCalledWith(
@@ -592,33 +593,23 @@ describe("Admin wallet agent routes", () => {
       .expect(404);
 
     mocks.agentRepository.findAgentById.mockResolvedValueOnce(agentFixture());
-    mocks.agentRepository.updateAgent.mockResolvedValueOnce(
-      agentFixture({
-        status: "revoked",
-        revokedAt: now,
-      }),
-    );
+    mocks.agentRepository.revokeAgentWithApiKeys.mockResolvedValueOnce({
+      agent: agentFixture({ status: "revoked", revokedAt: now }),
+      alreadyRevoked: false,
+    });
     await request(app)
       .patch(`/api/v1/admin/agents/${agentId}`)
       .send({ status: "revoked" })
       .expect(200);
-    expect(mocks.agentRepository.updateAgent).toHaveBeenLastCalledWith(
-      agentId,
-      expect.objectContaining({
-        status: "revoked",
-        revokedAt: expect.any(Date),
-      }),
-    );
+    expect(mocks.agentRepository.revokeAgentWithApiKeys).toHaveBeenLastCalledWith(agentId);
 
-    mocks.agentRepository.findAgentById.mockResolvedValueOnce(null);
+    mocks.agentRepository.revokeAgentWithApiKeys.mockResolvedValueOnce({ agent: null, alreadyRevoked: true });
     await request(app).delete(`/api/v1/admin/agents/${agentId}`).expect(404);
 
-    mocks.agentRepository.findAgentById.mockResolvedValueOnce(
-      agentFixture({
-        status: "revoked",
-        revokedAt: now,
-      }),
-    );
+    mocks.agentRepository.revokeAgentWithApiKeys.mockResolvedValueOnce({
+      agent: agentFixture({ status: "revoked", revokedAt: now }),
+      alreadyRevoked: true,
+    });
     await request(app).delete(`/api/v1/admin/agents/${agentId}`).expect(200);
   });
 

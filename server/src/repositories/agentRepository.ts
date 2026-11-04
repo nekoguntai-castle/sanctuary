@@ -129,6 +129,7 @@ export type AgentFundingDbClient = Pick<
 export type AgentFundingTransactionClient = Pick<
   typeof prisma,
   | '$queryRaw'
+  | 'agentApiKey'
   | 'agentFundingAttempt'
   | 'agentFundingOverride'
   | 'approvalRequest'
@@ -196,7 +197,8 @@ export interface FindAgentFundingOverridesFilter {
 
 export interface UpdateWalletAgentInput {
   name?: string;
-  status?: WalletAgentStatus;
+  /** Revocation goes through revokeAgentWithApiKeys, never through an update. */
+  status?: Exclude<WalletAgentStatus, 'revoked'>;
   maxFundingAmountSats?: bigint | null;
   maxOperationalBalanceSats?: bigint | null;
   dailyFundingLimitSats?: bigint | null;
@@ -211,7 +213,6 @@ export interface UpdateWalletAgentInput {
   requireHumanApproval?: boolean;
   notifyOnOperationalSpend?: boolean;
   pauseOnUnexpectedSpend?: boolean;
-  revokedAt?: Date | null;
 }
 
 function nullableBigInt(value?: bigint | null): bigint | null {
@@ -411,12 +412,38 @@ export async function updateAgent(agentId: string, input: UpdateWalletAgentInput
     ...(input.pauseOnUnexpectedSpend !== undefined && {
       pauseOnUnexpectedSpend: input.pauseOnUnexpectedSpend,
     }),
-    ...(input.revokedAt !== undefined && { revokedAt: input.revokedAt }),
   };
 
+  // Revocation is terminal: a revoked agent matches no row, so Prisma throws
+  // P2025 and a racing update can never resurrect or repause it.
   return prisma.walletAgent.update({
-    where: { id: agentId },
+    where: { id: agentId, revokedAt: null, status: { not: 'revoked' } },
     data,
+  });
+}
+
+/**
+ * Revoke an agent and every API key it still holds, in one transaction. Keys are
+ * revoked even when the agent already was, so agents revoked before keys were
+ * revoked with them get cleaned up on a repeat revoke. Holding the funding lock
+ * orders the revoke against in-flight funding requests, which re-check the agent
+ * under the same lock.
+ */
+export async function revokeAgentWithApiKeys(
+  agentId: string
+): Promise<{ agent: WalletAgent | null; alreadyRevoked: boolean }> {
+  return withAgentFundingTransaction(agentId, async (tx) => {
+    const revokedAt = new Date();
+    const { count } = await tx.walletAgent.updateMany({
+      where: { id: agentId, revokedAt: null },
+      data: { status: 'revoked', revokedAt },
+    });
+    await tx.agentApiKey.updateMany({
+      where: { agentId, revokedAt: null },
+      data: { revokedAt },
+    });
+    const agent = await tx.walletAgent.findUnique({ where: { id: agentId } });
+    return { agent, alreadyRevoked: count === 0 };
   });
 }
 
@@ -783,6 +810,7 @@ export const agentRepository = {
   findAgentByIdWithDetails,
   findActiveAgentsByOperationalWalletId,
   updateAgent,
+  revokeAgentWithApiKeys,
   markAgentFundingDraftCreated,
   sumAcceptedFundingAmountsSince,
   countRejectedFundingAttemptsSince,

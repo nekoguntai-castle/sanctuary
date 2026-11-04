@@ -2,7 +2,8 @@ import type { Prisma } from '../generated/prisma/client';
 import type { WalletAgentStatus } from '@sanctuary/shared/constants/adminAgents';
 import { WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import { buildAgentKeyScope, generateAgentApiKey, getAgentApiKeyPrefix, hashAgentApiKey } from '../agent/auth';
-import { InvalidInputError, NotFoundError } from '../errors/ApiError';
+import { ConflictError, InvalidInputError, NotFoundError } from '../errors/ApiError';
+import { isRecordNotFoundError } from '../utils/errors';
 import {
   agentRepository,
   userRepository,
@@ -164,11 +165,11 @@ async function validateAgentLink(input: {
 
 function toAgentUpdateInput(
   input: UpdateWalletAgentServiceInput,
-  existingRevokedAt: Date | null
+  status: UpdateWalletAgentInput['status']
 ): UpdateWalletAgentInput {
   return {
     ...(input.name !== undefined && { name: input.name.trim() }),
-    ...(input.status !== undefined && { status: input.status }),
+    ...(status !== undefined && { status }),
     ...(input.maxFundingAmountSats !== undefined && {
       maxFundingAmountSats: input.maxFundingAmountSats,
     }),
@@ -211,8 +212,6 @@ function toAgentUpdateInput(
     ...(input.pauseOnUnexpectedSpend !== undefined && {
       pauseOnUnexpectedSpend: input.pauseOnUnexpectedSpend,
     }),
-    ...(input.status === 'revoked' && !existingRevokedAt && { revokedAt: new Date() }),
-    ...(input.status && input.status !== 'revoked' && { revokedAt: null }),
   };
 }
 
@@ -374,34 +373,54 @@ export async function createWalletAgent(input: CreateWalletAgentServiceInput) {
   return created ?? agent;
 }
 
+const REVOKED_AGENT_CONFLICT = 'A revoked agent cannot be changed or reactivated; link a new agent instead';
+
+const isRevoked = (agent: { revokedAt: Date | null; status: string }): boolean =>
+  agent.revokedAt !== null || agent.status === 'revoked';
+
+async function applyAgentUpdate(agentId: string, update: UpdateWalletAgentInput) {
+  try {
+    return await agentRepository.updateAgent(agentId, update);
+  } catch (error) {
+    // The update only matches an unrevoked agent; P2025 means it was revoked or deleted first.
+    if (!isRecordNotFoundError(error)) throw error;
+    if (await agentRepository.findAgentById(agentId)) throw new ConflictError(REVOKED_AGENT_CONFLICT);
+    throw new NotFoundError('Wallet agent not found');
+  }
+}
+
+/**
+ * Revocation is terminal. A revoked agent accepts no further changes; a status of
+ * 'revoked' goes through revokeAgentWithApiKeys, after any other field changes.
+ */
 export async function updateWalletAgent(agentId: string, input: UpdateWalletAgentServiceInput) {
   const existing = await agentRepository.findAgentById(agentId);
   if (!existing) {
     throw new NotFoundError('Wallet agent not found');
   }
 
-  const updated = await agentRepository.updateAgent(agentId, toAgentUpdateInput(input, existing.revokedAt));
+  const status = input.status === 'revoked' ? undefined : input.status;
+  const update = toAgentUpdateInput(input, status);
+  const hasFieldChanges = Object.keys(update).length > 0;
+  if (isRevoked(existing) && (input.status !== 'revoked' || hasFieldChanges)) {
+    throw new ConflictError(REVOKED_AGENT_CONFLICT);
+  }
+
+  let latest = hasFieldChanges ? await applyAgentUpdate(agentId, update) : existing;
+  if (input.status === 'revoked') {
+    latest = (await agentRepository.revokeAgentWithApiKeys(agentId)).agent ?? latest;
+  }
   const detailed = await agentRepository.findAgentByIdWithDetails(agentId);
-  return detailed ?? updated;
+  return detailed ?? latest;
 }
 
 export async function revokeWalletAgent(agentId: string) {
-  const existing = await agentRepository.findAgentById(agentId);
-  if (!existing) {
+  const { agent, alreadyRevoked } = await agentRepository.revokeAgentWithApiKeys(agentId);
+  if (!agent) {
     throw new NotFoundError('Wallet agent not found');
   }
 
-  const revoked = existing.revokedAt
-    ? existing
-    : await agentRepository.updateAgent(agentId, {
-        status: 'revoked',
-        revokedAt: new Date(),
-      });
-
-  return {
-    agent: revoked,
-    alreadyRevoked: Boolean(existing.revokedAt),
-  };
+  return { agent, alreadyRevoked };
 }
 
 export async function listAgentAlerts(filter: FindAgentAlertsFilter) {

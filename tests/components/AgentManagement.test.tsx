@@ -271,6 +271,18 @@ describe('AgentManagement', () => {
     expect(screen.getByText(/Runtime/)).toBeInTheDocument();
   });
 
+  it('disables every action, including Edit, for a revoked agent', async () => {
+    vi.mocked(adminApi.getWalletAgents).mockResolvedValue([
+      { ...agent, status: 'revoked', revokedAt: '2026-04-16T01:00:00.000Z' },
+    ]);
+    renderAgentManagement();
+
+    expect(await screen.findByText('Treasury Agent')).toBeInTheDocument();
+    // Revocation is terminal on the server; an edit would only return 409.
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Issue Key' })).toBeDisabled();
+  });
+
   it('renders empty and recoverable load-error states', async () => {
     const user = userEvent.setup();
     vi.mocked(adminApi.getWalletAgents).mockRejectedValueOnce(new Error('network down'));

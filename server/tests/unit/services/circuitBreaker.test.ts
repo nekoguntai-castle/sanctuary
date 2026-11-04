@@ -134,7 +134,7 @@ describe('CircuitBreaker', () => {
       // Next call should be allowed (circuit transitions to half-open)
       const result = await circuit.execute(async () => 'success');
       expect(result).toBe('success');
-      // With successThreshold: 2, first success puts it in half-open
+      // The recovery probe opens half-open; successThreshold (2) counts probes from here
       expect(circuit.getHealth().state).toBe('half-open');
     });
 
@@ -204,6 +204,25 @@ describe('CircuitBreaker', () => {
       ).rejects.toThrow('fail');
 
       expect(testCircuit.getHealth().state).toBe('open');
+    });
+  });
+
+  describe('success threshold', () => {
+    it('counts only half-open probe successes toward closing', async () => {
+      for (let i = 0; i < 5; i++) {
+        await circuit.execute(async () => 'ok');
+      }
+      for (let i = 0; i < 3; i++) {
+        await expect(circuit.execute(async () => { throw new Error('fail'); })).rejects.toThrow('fail');
+      }
+      expect(circuit.getHealth().state).toBe('open');
+
+      vi.advanceTimersByTime(1100);
+      await circuit.execute(async () => 'probe');
+      expect(circuit.getHealth().state).toBe('half-open');
+
+      await circuit.execute(async () => 'probe');
+      expect(circuit.getHealth().state).toBe('closed');
     });
   });
 

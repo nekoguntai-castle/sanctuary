@@ -81,6 +81,13 @@ export function isPrismaValidationError(
 }
 
 /**
+ * Check if error is Prisma's "record to update/delete not found" (P2025).
+ */
+export function isRecordNotFoundError(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025';
+}
+
+/**
  * Check if error is a Prisma unique constraint violation (P2002).
  * Covers both typed PrismaClientKnownRequestError and string-based fallback.
  */

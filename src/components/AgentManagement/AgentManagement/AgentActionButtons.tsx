@@ -40,7 +40,7 @@ export function AgentActionButtons({
 }: AgentActionButtonsProps) {
   return (
     <div className="flex flex-wrap gap-2 lg:justify-end">
-      <EditAgentButton agent={agent} onEdit={onEdit} />
+      <EditAgentButton agent={agent} disabled={disabled} onEdit={onEdit} />
       <IssueKeyButton agent={agent} disabled={disabled} onOpenKeys={onOpenKeys} />
       <OverridesButton agent={agent} disabled={disabled} onOpenOverrides={onOpenOverrides} />
       <RevokeAgentButton agent={agent} busyAction={busyAction} disabled={disabled} onRevoke={onRevoke} />
@@ -50,13 +50,13 @@ export function AgentActionButtons({
 
 function EditAgentButton({
   agent,
+  disabled,
   onEdit,
-}: {
-  agent: WalletAgentMetadata;
+}: AgentActionButtonProps & {
   onEdit: (agent: WalletAgentMetadata) => void;
 }) {
   return (
-    <Button variant="secondary" size="sm" onClick={() => onEdit(agent)}>
+    <Button variant="secondary" size="sm" onClick={() => onEdit(agent)} disabled={disabled}>
       Edit
     </Button>
   );

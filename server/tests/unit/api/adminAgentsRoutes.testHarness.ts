@@ -10,6 +10,7 @@ const mockState = vi.hoisted(() => ({
     findAgentById: vi.fn(),
     findAgentByIdWithDetails: vi.fn(),
     updateAgent: vi.fn(),
+    revokeAgentWithApiKeys: vi.fn(),
     findDashboardRows: vi.fn(),
     findAlerts: vi.fn(),
     findFundingOverrides: vi.fn(),

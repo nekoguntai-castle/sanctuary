@@ -98,7 +98,7 @@ export const adminAgentPaths = {
     patch: {
       tags: ['Admin'],
       summary: 'Update wallet agent',
-      description: 'Update wallet agent status and funding policy settings.',
+      description: 'Update wallet agent status and funding policy settings. Revocation is terminal: a revoked agent returns 409 for any change, and revoking also revokes its API keys.',
       security: bearerAuth,
       parameters: [adminAgentIdParameter],
       requestBody: jsonRequestBody('#/components/schemas/AdminUpdateWalletAgentRequest'),
@@ -108,12 +108,13 @@ export const adminAgentPaths = {
         401: apiErrorResponse,
         403: apiErrorResponse,
         404: apiErrorResponse,
+        409: apiErrorResponse,
       },
     },
     delete: {
       tags: ['Admin'],
       summary: 'Revoke wallet agent',
-      description: 'Soft-revoke a linked wallet agent profile.',
+      description: 'Soft-revoke a linked wallet agent profile and all of its API keys.',
       security: bearerAuth,
       parameters: [adminAgentIdParameter],
       responses: {
