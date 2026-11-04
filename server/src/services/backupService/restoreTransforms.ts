@@ -231,8 +231,12 @@ function normalizeRestoredSyncAuthority(record: BackupRecord): BackupRecord {
     syncInProgress: false,
     syncExecutionOwner: null,
     syncStartedAt: null,
+    // Interrupted work becomes a worker-owned retry (the restore re-requested a
+    // generation for the worker to claim), matching the worker's own retry
+    // release. A null owner would be demoted to 'failed' by the startup
+    // inline-retry reaper (walletRepository.demoteStrandedInlineRetries).
     ...(hadExecutionAuthority && record.syncActionRequiredAt == null
-      ? { lastSyncStatus: 'retrying' }
+      ? { lastSyncStatus: 'retrying', syncExecutionOwner: 'worker' }
       : {}),
   };
 }

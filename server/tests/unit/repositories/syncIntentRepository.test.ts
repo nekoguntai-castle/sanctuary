@@ -36,6 +36,7 @@ import {
   findActionableIncrementalSyncIntents,
   findExpiredIncrementalSyncClaims,
   findIncrementalSyncIntent,
+  recordLockContentionIfIdle,
   releaseIncrementalSyncAsActionRequired,
   releaseIncrementalSyncForRetry,
   resetIncrementalSyncAttempt,
@@ -807,5 +808,28 @@ describe('syncIntentRepository', () => {
       snapshot.syncStateVersion, snapshot.syncExecutionOwner, snapshot.syncStartedAt,
     ]));
     await expect(resetIncrementalSyncAttempt('missing')).resolves.toBeNull();
+  });
+
+  describe('recordLockContentionIfIdle', () => {
+    it('only records contention on a wallet no sync has claimed', async () => {
+      mocks.queryRaw.mockResolvedValueOnce([lifecycleState({ lastSyncStatus: 'failed' })]);
+
+      await expect(recordLockContentionIfIdle('wallet-1', 'lock held')).resolves.toMatchObject({
+        lastSyncStatus: 'failed',
+      });
+
+      const sql = mocks.queryRaw.mock.calls[0][0] as { strings: string[]; values: unknown[] };
+      const text = sql.strings.join('?');
+      expect(text).toContain('"syncInProgress" = FALSE');
+      expect(text).toContain('"incrementalSyncLeaseToken" IS NULL');
+      expect(text).not.toMatch(/"syncInProgress" = (TRUE|FALSE),/);
+      expect(sql.values).toEqual(expect.arrayContaining(['lock held', 'wallet-1']));
+    });
+
+    it('reports a wallet another sync claimed first', async () => {
+      mocks.queryRaw.mockResolvedValueOnce([]);
+
+      await expect(recordLockContentionIfIdle('wallet-1', 'lock held')).resolves.toBeNull();
+    });
   });
 });

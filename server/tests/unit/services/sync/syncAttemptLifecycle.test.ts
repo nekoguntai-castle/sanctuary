@@ -644,38 +644,38 @@ describe('runSyncAttemptWithTimeout', () => {
     expect(parentSignal.removeEventListener).toHaveBeenCalled();
   });
 
-  it('records only final lock-contention exhaustion without clearing another holder flag', async () => {
-    const writer = createWriter();
-    const persist = vi.fn().mockResolvedValue(persistedState);
+  it('records only final lock-contention exhaustion through the idle-only writer', async () => {
+    const writeIfIdle = vi.fn().mockResolvedValue(persistedState);
 
     await expect(recordSyncLockContention(
       'wallet-1',
       { error: 'lock budget exhausted', isFinalAttempt: false },
-      writer,
-      persist,
+      writeIfIdle,
     )).resolves.toBeNull();
-    expect(persist).not.toHaveBeenCalled();
+    expect(writeIfIdle).not.toHaveBeenCalled();
 
     await expect(recordSyncLockContention(
       'wallet-1',
       { error: 'lock budget exhausted', isFinalAttempt: true },
-      writer,
-      persist,
+      writeIfIdle,
     )).resolves.toEqual({
       walletId: 'wallet-1',
       transition: 'failed',
       state: persistedState,
     });
-    expect(persist).toHaveBeenCalledWith('wallet-1', {
-      lastSyncStatus: 'failed',
-      lastSyncError: 'lock budget exhausted',
-      lastSyncFailureClass: 'lock_contention',
-      syncExecutionOwner: null,
-      syncRetryCount: 0,
-      syncNextRetryAt: null,
-      syncStartedAt: null,
-    }, writer);
-    expect(vi.mocked(persist).mock.calls[0]?.[1]).not.toHaveProperty('syncInProgress');
+    expect(writeIfIdle).toHaveBeenCalledWith('wallet-1', 'lock budget exhausted');
+  });
+
+  it('publishes nothing when a running sync owns the row', async () => {
+    const writeIfIdle = vi.fn().mockResolvedValue(null);
+
+    await expect(recordSyncLockContention(
+      'wallet-1',
+      { error: 'lock budget exhausted', isFinalAttempt: true },
+      writeIfIdle,
+    )).resolves.toBeNull();
+    // A lost CAS is a decision, not a transient failure: no retry.
+    expect(writeIfIdle).toHaveBeenCalledTimes(1);
   });
 
   it('ignores the duration timer after parent cancellation already won', async () => {

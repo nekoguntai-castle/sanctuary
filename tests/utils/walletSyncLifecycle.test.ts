@@ -42,6 +42,16 @@ describe('classifyWalletSyncLifecycle', () => {
     ['persisted retry status with durable intent is retrying', pending({
       lastSyncStatus: 'retrying',
     }), 'retrying'],
+    // The server's own released retry (and restored interrupted work) keeps the
+    // worker as owner with no lease; that is not execution evidence.
+    ['released worker-owned retry is retrying', pending({
+      lastSyncStatus: 'retrying',
+      syncExecutionOwner: 'worker',
+      syncNextRetryAt: '2026-08-26T12:02:00.000Z',
+    }), 'retrying'],
+    ['worker owner without a retry or lease is still attention', pending({
+      syncExecutionOwner: 'worker',
+    }), 'attention'],
     ['coherent unclaimed intent is pending', pending(), 'pending'],
     ['expired lease is attention, not pending', running({
       incrementalSyncLeaseExpiresAt: '2026-08-26T12:00:00.000Z',

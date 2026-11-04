@@ -16,6 +16,7 @@ import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 import type {
   SyncExecutionOwner,
   WalletSyncFailureClass,
+  WalletSyncStatus,
 } from '@sanctuary/shared/constants/sync';
 import type { TransactionFilterType } from '@sanctuary/shared/constants/transactions';
 
@@ -294,7 +295,10 @@ export type SubscriptionEnrollmentCompletionResult =
   | { status: 'generation_exhausted' | 'not_applied' };
 
 /** Repository-managed patches; callers cannot set the monotonic version. */
-export type WalletSyncStatePatch = Partial<Omit<WalletSyncState, 'syncStateVersion'>>;
+export type WalletSyncStatePatch = Partial<Omit<WalletSyncState, 'syncStateVersion' | 'lastSyncStatus'>> & {
+  // Writes are limited to the shared vocabulary; reads stay `string` for legacy rows.
+  lastSyncStatus?: WalletSyncStatus | null;
+};
 
 // Transaction repository specific types
 export interface TransactionFilter {

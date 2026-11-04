@@ -12,6 +12,13 @@ export type SyncPriority = (typeof SYNC_PRIORITY_VALUES)[number];
 export const SYNC_EXECUTION_OWNER_VALUES = ['inline', 'worker'] as const;
 export type SyncExecutionOwner = (typeof SYNC_EXECUTION_OWNER_VALUES)[number];
 
+/**
+ * Values the server writes to `Wallet.lastSyncStatus` (a free-text column).
+ * Readers must still tolerate older values such as the legacy 'partial'.
+ */
+export const WALLET_SYNC_STATUS_VALUES = ['syncing', 'success', 'retrying', 'failed', 'resyncing'] as const;
+export type WalletSyncStatus = (typeof WALLET_SYNC_STATUS_VALUES)[number];
+
 /** Persisted lifecycle transitions that may be published to sync observers. */
 export const SYNC_LIFECYCLE_TRANSITION_VALUES = [
   'requested',

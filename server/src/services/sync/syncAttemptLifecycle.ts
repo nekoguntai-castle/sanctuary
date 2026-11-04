@@ -49,6 +49,15 @@ export interface SyncAttemptWriter {
   ) => Promise<WalletSyncStateRecord>;
 }
 
+/**
+ * Writes lock contention only while no sync holds the wallet, returning null
+ * when one does (see syncIntentRepository.recordLockContentionIfIdle).
+ */
+export type LockContentionWriter = (
+  walletId: string,
+  errorMessage: string,
+) => Promise<WalletSyncStateRecord | null>;
+
 export type SyncStatePersister = (
   walletId: string,
   state: WalletSyncStatePatch,
@@ -292,13 +301,27 @@ export async function persistSyncStateWithRetry(
   state: WalletSyncStatePatch,
   writer: SyncAttemptWriter,
 ): Promise<IncrementalSyncLifecycleState | null> {
+  return persistLifecycleWrite(walletId, state, () => writer.updateSyncState(walletId, state));
+}
+
+/**
+ * Retry one lifecycle write through transient failures. A write that resolves
+ * to null lost its compare-and-set; that is a decision, not a failure, so it is
+ * returned as null without retrying. Never throws (see persistSyncStateWithRetry).
+ */
+async function persistLifecycleWrite(
+  walletId: string,
+  intended: WalletSyncStatePatch,
+  write: () => Promise<WalletSyncStateRecord | null>,
+): Promise<IncrementalSyncLifecycleState | null> {
   for (
     let attempt = 0;
     attempt <= PERSISTENCE_RETRY_BACKOFF_MS.length;
     attempt += 1
   ) {
     try {
-      const record = await writer.updateSyncState(walletId, state);
+      const record = await write();
+      if (record === null) return null;
       const validationError = persistedSyncStateError(record);
       if (validationError) {
         log.error(`Could not use recorded sync state for wallet ${walletId}`, {
@@ -320,7 +343,7 @@ export async function persistSyncStateWithRetry(
           {
             error: getErrorMessage(error),
             attempts: attempt + 1,
-            intended: state,
+            intended,
           },
         );
         return null;
@@ -436,26 +459,27 @@ export async function recordSyncFailure(
  * Record terminal pre-attempt lock contention without clearing another
  * holder's `syncInProgress` flag. A non-final BullMQ attempt has another chance
  * to acquire the lock and therefore must not publish durable terminal state.
+ * Returns null when a running sync owns the row (the write is a CAS).
  */
 export async function recordSyncLockContention(
   walletId: string,
   input: SyncLockContentionInput,
-  writer: SyncAttemptWriter,
-  persist: SyncStatePersister = persistSyncStateWithRetry,
+  writeIfIdle: LockContentionWriter,
 ): Promise<PersistedSyncTransition | null> {
   if (!input.isFinalAttempt) return null;
-  const state = await persist(
+  const errorMessage = getErrorMessage(input.error, 'Sync lock contention');
+  const state = await persistLifecycleWrite(
     walletId,
     {
       lastSyncStatus: 'failed',
-      lastSyncError: getErrorMessage(input.error, 'Sync lock contention'),
+      lastSyncError: errorMessage,
       lastSyncFailureClass: 'lock_contention',
       syncExecutionOwner: null,
       syncRetryCount: 0,
       syncNextRetryAt: null,
       syncStartedAt: null,
     },
-    writer,
+    () => writeIfIdle(walletId, errorMessage),
   );
   return state && persistedTransition(walletId, 'failed', state);
 }

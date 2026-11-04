@@ -68,6 +68,42 @@ vi.mock('../../../../src/repositories', () => ({
   resyncRepository: {
     resetWalletForFullResync: vi.fn(),
   },
+  syncIntentRepository: {
+    // Mirrors the repository CAS: null when a running sync owns the row.
+    recordLockContentionIfIdle: async (walletId: string, errorMessage: string) => {
+      const current = await mockFindByIdWithSelect(walletId);
+      if (current?.syncInProgress !== false) return null;
+      await mockUpdate(walletId, {
+        lastSyncStatus: 'failed',
+        lastSyncError: errorMessage,
+        lastSyncFailureClass: 'lock_contention',
+      });
+      return {
+        id: walletId,
+        requestedIncrementalSyncGeneration: 1,
+        claimedIncrementalSyncGeneration: 0,
+        processedIncrementalSyncGeneration: 0,
+        incrementalSyncLeaseToken: null,
+        incrementalSyncClaimedAt: null,
+        incrementalSyncLeaseExpiresAt: null,
+        syncActionRequiredAt: null,
+        requestedFullResyncGeneration: 0,
+        preparedFullResyncGeneration: 0,
+        processedFullResyncGeneration: 0,
+        syncInProgress: false,
+        lastSyncedAt: null,
+        lastSyncedBlockHeight: null,
+        lastSyncStatus: 'failed',
+        lastSyncError: errorMessage,
+        lastSyncFailureClass: 'lock_contention',
+        syncExecutionOwner: null,
+        syncRetryCount: 0,
+        syncNextRetryAt: null,
+        syncStartedAt: null,
+        syncStateVersion: 2,
+      };
+    },
+  },
 }));
 
 vi.mock('../../../../src/websocket/notifications/broadcasts', () => ({
@@ -339,13 +375,20 @@ describe('sync lock contention is never a silent success', () => {
       expect(mockUpdate).not.toHaveBeenCalled();
     });
 
-    it('fails closed when the liveness lookup itself fails', async () => {
-      mockFindByIdWithSelect.mockRejectedValue(new Error('db down'));
+    it('fails closed when the durable write keeps failing', async () => {
+      vi.useFakeTimers();
+      try {
+        mockFindByIdWithSelect.mockRejectedValue(new Error('db down'));
 
-      await syncWalletJob.lockOptions?.onLockRetryBudgetExhausted?.({ walletId: 'w6' }, detail);
+        const pending = syncWalletJob.lockOptions?.onLockRetryBudgetExhausted?.({ walletId: 'w6' }, detail);
+        await vi.runAllTimersAsync();
+        await expect(pending).resolves.toBeUndefined();
 
-      expect(mockUpdate).not.toHaveBeenCalled();
-      expect(mockPublishLifecycle).not.toHaveBeenCalled();
+        expect(mockUpdate).not.toHaveBeenCalled();
+        expect(mockPublishLifecycle).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('publishes only after a transient durable-write failure recovers', async () => {
@@ -354,7 +397,7 @@ describe('sync lock contention is never a silent success', () => {
         mockFindByIdWithSelect.mockResolvedValue({ syncInProgress: false });
         mockUpdate
           .mockRejectedValueOnce(new Error('database down'))
-          .mockResolvedValueOnce({});
+          .mockResolvedValueOnce(undefined);
 
         const pending = syncWalletJob.lockOptions?.onLockRetryBudgetExhausted?.(
           { walletId: 'w5' },

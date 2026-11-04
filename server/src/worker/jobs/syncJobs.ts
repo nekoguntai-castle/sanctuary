@@ -49,7 +49,7 @@ import {
   UPDATE_ALL_CONFIRMATIONS_JOB_NAME,
   UPDATE_CONFIRMATIONS_JOB_NAME,
 } from '../../jobs/syncJobContract';
-import { walletRepository } from '../../repositories';
+import { syncIntentRepository, walletRepository } from '../../repositories';
 import { syncWallet } from '../../services/bitcoin/blockchain';
 import {
   refreshAllPendingConfirmations,
@@ -194,27 +194,22 @@ async function recordLockRetryBudgetExhausted(
   const walletId = (data as SyncWalletJobData | undefined)?.walletId;
   if (typeof walletId !== 'string' || walletId.length === 0) return;
 
-  // Distinguish the two shapes of contention, because only one is a fault:
-  //  - syncInProgress=true: another holder is genuinely mid-sync and will write
-  //    its own terminal status. Marking failed here would be a false negative.
-  //  - syncInProgress=false: the lock outlived its holder - a tombstone from an
-  //    unconfirmed release. Nothing else will ever write a status for this
-  //    wallet, so this is the only chance to stop it rendering a green badge.
-  let current: { syncInProgress?: boolean } | null;
-  try {
-    current = await walletRepository.findByIdWithSelect(
-      walletId,
-      { syncInProgress: true },
-    );
-  } catch (error) {
-    log.warn(`Could not verify sync liveness for wallet ${walletId}; leaving its status alone`, {
-      error: getErrorMessage(error),
-      lockKey: detail.lockKey,
-    });
-    return;
-  }
-  if (current?.syncInProgress !== false) {
-    log.warn(`Sync lock for wallet ${walletId} is held by a running sync; leaving its status alone`, {
+  if (!detail.isFinalAttempt) return;
+
+  // Only one shape of contention is a fault. If another holder is mid-sync it
+  // will write its own terminal status, and marking failed would be a false
+  // negative. If the lock outlived its holder (a tombstone from an unconfirmed
+  // release) nothing else will ever write a status, so record the failure. The
+  // write is a CAS on "no sync holds the row", so a sync that claims while this
+  // runs keeps its state instead of losing a read-then-write race.
+  const transition = await recordSyncLockContention(walletId, {
+    error: detail.message,
+    isFinalAttempt: detail.isFinalAttempt,
+  }, syncIntentRepository.recordLockContentionIfIdle);
+  if (!transition) {
+    // Either a running sync owns the row (the CAS missed) or the write failed
+    // after retries, which persistLifecycleWrite has already logged as an error.
+    log.warn(`Did not record lock contention for wallet ${walletId}; a running sync holds it or the write failed`, {
       lockKey: detail.lockKey,
       retryWindowMs: detail.retryWindowMs,
     });
@@ -224,14 +219,7 @@ async function recordLockRetryBudgetExhausted(
   log.error(`Gave up queueing sync for wallet ${walletId}`, {
     lockKey: detail.lockKey,
     retryWindowMs: detail.retryWindowMs,
-    holderSyncInProgress: false,
   });
-
-  const transition = await recordSyncLockContention(walletId, {
-    error: detail.message,
-    isFinalAttempt: detail.isFinalAttempt,
-  }, walletRepository);
-  if (!transition) return;
 
   await syncLifecyclePublisher.publish(transition);
   runWorkerSideEffect('Lock contention log publication', () => {

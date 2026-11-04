@@ -708,6 +708,35 @@ export async function resetIncrementalSyncAttempt(
 }
 
 /**
+ * Record terminal lock contention only while no sync holds the wallet: not
+ * running and no claimed lease. A sync that claimed between the caller's lock
+ * attempt and this write keeps its state; the result is then null. Leaves
+ * `syncInProgress` alone, as it belongs to whoever holds the lock.
+ */
+export async function recordLockContentionIfIdle(
+  walletId: string,
+  errorMessage: string,
+): Promise<IncrementalSyncLifecycleState | null> {
+  const rows = await prisma.$queryRaw<IncrementalSyncLifecycleState[]>(Prisma.sql`
+    UPDATE "wallets"
+    SET "lastSyncStatus" = 'failed',
+        "lastSyncError" = ${errorMessage},
+        "lastSyncFailureClass" = 'lock_contention',
+        "syncExecutionOwner" = NULL,
+        "syncRetryCount" = 0,
+        "syncNextRetryAt" = NULL,
+        "syncStartedAt" = NULL,
+        "syncStateVersion" = "syncStateVersion" + 1,
+        "updatedAt" = CURRENT_TIMESTAMP
+    WHERE "id" = ${walletId}
+      AND "syncInProgress" = FALSE
+      AND "incrementalSyncLeaseToken" IS NULL
+    RETURNING ${lifecycleReturningColumns}
+  `);
+  return rows[0] ?? null;
+}
+
+/**
  * Read one bounded, due-time ordered page of exact expired claim identities.
  * This reader never probes execution locks or rotates a lease; those authority
  * checks remain in admission and the lock-owning canonical consumer. The
@@ -793,6 +822,7 @@ export async function findActionableIncrementalSyncIntents(options: {
 }
 
 export const syncIntentRepository = {
+  recordLockContentionIfIdle,
   findIncrementalSyncIntent,
   requestIncrementalSync,
   requestRetainedStaleIncrementalSync,

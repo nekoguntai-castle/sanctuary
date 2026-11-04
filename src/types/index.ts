@@ -104,6 +104,7 @@ export type LoadBalancingStrategy = NodePoolLoadBalancing;
 import type {
   SyncExecutionOwner,
   WalletSyncFailureClass,
+  WalletSyncStatus,
 } from "@sanctuary/shared/constants/sync";
 import type { SyncEvent } from "@sanctuary/shared/types/websocket";
 
@@ -517,11 +518,8 @@ export interface Wallet {
   // one of these is handled by `utils/walletSyncPresentation`; `'partial'` is
   // legacy and has no current server writer.
   lastSyncStatus?:
-    | "success"
-    | "failed"
+    | WalletSyncStatus
     | "partial"
-    | "retrying"
-    | "resyncing"
     | string
     | null;
   lastSyncError?: string | null;

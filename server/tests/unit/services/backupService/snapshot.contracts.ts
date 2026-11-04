@@ -285,7 +285,8 @@ export function registerBackupSnapshotTests(): void {
         requestedFullResyncGeneration: 2,
         processedFullResyncGeneration: 1,
         syncInProgress: false,
-        syncExecutionOwner: null,
+        // A worker-owned retry: the startup reaper only demotes null/inline owners.
+        syncExecutionOwner: 'worker',
         syncStartedAt: null,
         lastSyncStatus: 'retrying',
       });
@@ -335,7 +336,7 @@ export function registerBackupSnapshotTests(): void {
           processedIncrementalSyncGeneration: 0,
           incrementalSyncLeaseToken: null,
           syncInProgress: false,
-          syncExecutionOwner: null,
+          syncExecutionOwner: 'worker',
           syncStartedAt: null,
           lastSyncStatus: 'retrying',
         });

@@ -4,6 +4,7 @@ import type { PrismaClient } from '../../../src/generated/prisma/client';
 import {
   claimIncrementalSync,
   completeIncrementalSync,
+  recordLockContentionIfIdle,
   releaseIncrementalSyncAsActionRequired,
   releaseIncrementalSyncForRetry,
   resetIncrementalSyncAttempt,
@@ -390,6 +391,32 @@ describeWithDatabase('sync intent lifecycle', () => {
       expectedRequestedGeneration: 1,
       fullResyncGeneration: 1,
     })).resolves.toMatchObject({ status: 'claimed' });
+  });
+
+  it('does not record lock contention over a sync that claimed the wallet', async () => {
+    const walletId = await createWallet();
+    await requestIncrementalSync(walletId);
+    const claim = await claimIncrementalSync(walletId, {
+      leaseToken: randomUUID(),
+      claimedAt: NOW,
+      leaseExpiresAt: LEASE_END,
+      expectedRequestedGeneration: 1,
+    });
+    expect(claim.status).toBe('claimed');
+
+    await expect(recordLockContentionIfIdle(walletId, 'lock held')).resolves.toBeNull();
+    const row = await prisma.wallet.findUniqueOrThrow({ where: { id: walletId } });
+    expect(row).toMatchObject({ syncInProgress: true, syncExecutionOwner: 'worker', lastSyncStatus: 'syncing' });
+  });
+
+  it('records lock contention on an idle wallet', async () => {
+    const walletId = await createWallet();
+
+    await expect(recordLockContentionIfIdle(walletId, 'lock held')).resolves.toMatchObject({
+      lastSyncStatus: 'failed',
+      lastSyncFailureClass: 'lock_contention',
+      syncInProgress: false,
+    });
   });
 
   it('admits exactly one concurrent claim', async () => {

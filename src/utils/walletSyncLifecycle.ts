@@ -219,6 +219,19 @@ function invalidLeaseOrder(timestamps: TimestampEvidence): boolean {
   return timestamps.leaseExpiresAt <= timestamps.claimedAt;
 }
 
+/**
+ * The worker's released retry keeps `syncExecutionOwner = 'worker'` with no
+ * lease and not running (also what a restore writes for interrupted work). The
+ * owner then names who retries, not a running execution.
+ */
+function isReleasedWorkerRetry(subject: WalletSyncSubject, timestamps: TimestampEvidence): boolean {
+  return subject.syncExecutionOwner === 'worker'
+    && subject.lastSyncStatus === 'retrying'
+    && subject.syncInProgress !== true
+    && timestamps.claimedAt === null
+    && timestamps.leaseExpiresAt === null;
+}
+
 function hasExecutionEvidence(
   subject: WalletSyncSubject,
   generations: GenerationEvidence,
@@ -226,7 +239,7 @@ function hasExecutionEvidence(
 ): boolean {
   return [
     subject.syncInProgress === true,
-    hasValue(subject.syncExecutionOwner),
+    hasValue(subject.syncExecutionOwner) && !isReleasedWorkerRetry(subject, timestamps),
     hasValue(subject.syncStartedAt),
     generations.claimAhead,
     timestamps.claimedAt !== null,

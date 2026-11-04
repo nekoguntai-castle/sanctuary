@@ -270,7 +270,8 @@ describe('restoreFromBackup', () => {
         requestedFullResyncGeneration: 3,
         processedFullResyncGeneration: 2,
         syncInProgress: false,
-        syncExecutionOwner: null,
+        // A worker-owned retry: the startup reaper only demotes null/inline owners.
+        syncExecutionOwner: 'worker',
         syncStartedAt: null,
         lastSyncStatus: 'retrying',
       });
