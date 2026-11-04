@@ -8,17 +8,20 @@ import {
   PolicyPanel,
   SpendPanel,
 } from './AgentWalletDetailPanels';
+import type { AgentAlertTransitionHandler } from './agentWalletDashboardModel';
 
 export function AgentWalletRowDetails({
   row,
   activeKeys,
   busyAction,
   onRevokeKey,
+  onAlertTransition,
 }: {
   row: AgentWalletDashboardRow;
   activeKeys: AgentApiKeyMetadata[];
   busyAction: string | null;
   onRevokeKey: (row: AgentWalletDashboardRow, keyId: string) => Promise<void>;
+  onAlertTransition: AgentAlertTransitionHandler;
 }) {
   return (
     <details className="mt-4 rounded-lg border border-sanctuary-100 bg-sanctuary-50/50 p-3 dark:border-sanctuary-800 dark:bg-sanctuary-950/40">
@@ -35,6 +38,7 @@ export function AgentWalletRowDetails({
           busyAction={busyAction}
           row={row}
           onRevokeKey={onRevokeKey}
+          onAlertTransition={onAlertTransition}
         />
       </div>
     </details>

@@ -34,6 +34,7 @@ const mockPrisma = vi.hoisted(() => ({
     findFirst: vi.fn(),
     findMany: vi.fn(),
     groupBy: vi.fn(),
+    updateMany: vi.fn(),
   },
   draftTransaction: {
     aggregate: vi.fn(),

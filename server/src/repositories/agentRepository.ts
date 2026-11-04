@@ -7,11 +7,12 @@
  */
 
 import prisma from '../models/prisma';
-import type {
-  AgentAlertSeverity,
-  AgentAlertStatus,
-  AgentFundingOverrideStatus,
-  WalletAgentStatus,
+import {
+  AGENT_ALERT_STATUSES,
+  type AgentAlertSeverity,
+  type AgentAlertStatus,
+  type AgentFundingOverrideStatus,
+  type WalletAgentStatus,
 } from '@sanctuary/shared/constants/adminAgents';
 import { InvalidInputError, NotFoundError } from '../errors';
 import {
@@ -573,6 +574,53 @@ export async function findAlerts(filter: FindAgentAlertsFilter): Promise<AgentAl
   });
 }
 
+const [ALERT_OPEN, ALERT_ACKNOWLEDGED, ALERT_RESOLVED] = AGENT_ALERT_STATUSES;
+
+export type AgentAlertTransition = 'acknowledge' | 'resolve';
+
+export interface AgentAlertTransitionResult {
+  /** The row as stored after the attempt; null when no such alert belongs to the agent. */
+  alert: AgentAlert | null;
+  /** True only when this call moved the alert into the target status. */
+  changed: boolean;
+}
+
+const AGENT_ALERT_TRANSITIONS: Record<
+  AgentAlertTransition,
+  { from: AgentAlertStatus[]; to: AgentAlertStatus; stampField: 'acknowledgedAt' | 'resolvedAt' }
+> = {
+  acknowledge: { from: [ALERT_OPEN], to: ALERT_ACKNOWLEDGED, stampField: 'acknowledgedAt' },
+  resolve: { from: [ALERT_OPEN, ALERT_ACKNOWLEDGED], to: ALERT_RESOLVED, stampField: 'resolvedAt' },
+};
+
+export const AGENT_ALERT_TRANSITION_TARGETS: Readonly<Record<AgentAlertTransition, AgentAlertStatus>> = {
+  acknowledge: AGENT_ALERT_TRANSITIONS.acknowledge.to,
+  resolve: AGENT_ALERT_TRANSITIONS.resolve.to,
+};
+
+/**
+ * Compare-and-set an alert's status: the update only matches the agent's alert
+ * while it is still in an allowed source status, so concurrent admins cannot
+ * move a resolved alert back or stamp it twice. The row is re-read afterwards so
+ * callers can tell "already in the target status" from "in a conflicting status".
+ *
+ * Resolving leaves acknowledgedAt as it was: it records an explicit human
+ * acknowledgement, so an alert resolved straight from open keeps it null.
+ */
+export async function transitionAlertStatus(
+  agentId: string,
+  alertId: string,
+  transition: AgentAlertTransition
+): Promise<AgentAlertTransitionResult> {
+  const { from, to, stampField } = AGENT_ALERT_TRANSITIONS[transition];
+  const { count } = await prisma.agentAlert.updateMany({
+    where: { id: alertId, agentId, status: { in: from } },
+    data: { status: to, [stampField]: new Date() },
+  });
+  const alert = await prisma.agentAlert.findFirst({ where: { id: alertId, agentId } });
+  return { alert, changed: count > 0 };
+}
+
 export async function createFundingOverride(input: CreateAgentFundingOverrideInput): Promise<AgentFundingOverride> {
   return prisma.agentFundingOverride.create({
     data: {
@@ -829,6 +877,7 @@ export const agentRepository = {
   createAlert,
   createAlertIfNotDuplicate,
   findAlerts,
+  transitionAlertStatus,
   findDashboardRows,
   createApiKey,
   findApiKeyByHash,

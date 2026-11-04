@@ -5,8 +5,10 @@ import { buildAgentKeyScope, generateAgentApiKey, getAgentApiKeyPrefix, hashAgen
 import { ConflictError, InvalidInputError, NotFoundError } from '../errors/ApiError';
 import { isRecordNotFoundError } from '../utils/errors';
 import {
+  AGENT_ALERT_TRANSITION_TARGETS,
   agentRepository,
   userRepository,
+  type AgentAlertTransition,
   walletRepository,
   type FindAgentAlertsFilter,
   type FindAgentFundingOverridesFilter,
@@ -429,6 +431,32 @@ export async function listAgentAlerts(filter: FindAgentAlertsFilter) {
     throw new NotFoundError('Wallet agent not found');
   }
   return agentRepository.findAlerts(filter);
+}
+
+/**
+ * Move an agent alert to acknowledged or resolved. A repeated request that finds
+ * the alert already in the target status succeeds unchanged (idempotent); one that
+ * finds it in another status, such as acknowledging a resolved alert, conflicts.
+ */
+async function transitionAgentAlert(agentId: string, alertId: string, transition: AgentAlertTransition) {
+  const { alert, changed } = await agentRepository.transitionAlertStatus(agentId, alertId, transition);
+  if (!alert) {
+    throw new NotFoundError('Agent alert not found');
+  }
+  const target = AGENT_ALERT_TRANSITION_TARGETS[transition];
+  if (!changed && alert.status !== target) {
+    throw new ConflictError(`Cannot ${transition} an alert that is ${alert.status}`);
+  }
+
+  return { alert, alreadyInTargetStatus: !changed };
+}
+
+export async function acknowledgeAgentAlert(agentId: string, alertId: string) {
+  return transitionAgentAlert(agentId, alertId, 'acknowledge');
+}
+
+export async function resolveAgentAlert(agentId: string, alertId: string) {
+  return transitionAgentAlert(agentId, alertId, 'resolve');
 }
 
 export async function listAgentFundingOverrides(filter: FindAgentFundingOverridesFilter) {

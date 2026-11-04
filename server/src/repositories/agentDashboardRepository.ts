@@ -347,7 +347,8 @@ export async function findDashboardRows(
                ROW_NUMBER() OVER (PARTITION BY "agentId" ORDER BY "createdAt" DESC) AS rn
         FROM "agent_alerts"
         WHERE "agentId" = ANY(${agentIds}::text[])
-          AND status = 'open'
+          -- Acknowledged alerts stay listed until resolved; only open ones are counted.
+          AND status IN ('open', 'acknowledged')
       ) ranked
       WHERE rn <= ${DASHBOARD_RECENT_LIMIT}
       ORDER BY "createdAt" DESC

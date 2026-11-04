@@ -13,12 +13,15 @@ import {
   EmptyDetail,
 } from './DashboardPrimitives';
 import {
+  agentAlertActionKey,
   findSpendDestinationClassification,
   formatDateTime,
   formatDestinationClassification,
   formatSats,
   formatTxid,
   formatUnknownDestinationHandling,
+  isAlertOpen,
+  type AgentAlertTransitionHandler,
 } from './agentWalletDashboardModel';
 
 export function PolicyPanel({ agent }: { agent: WalletAgentMetadata }) {
@@ -106,16 +109,18 @@ export function AlertAndKeyPanel({
   busyAction,
   row,
   onRevokeKey,
+  onAlertTransition,
 }: {
   alerts: AgentWalletDashboardRow['recentAlerts'];
   activeKeys: AgentApiKeyMetadata[];
   busyAction: string | null;
   row: AgentWalletDashboardRow;
   onRevokeKey: (row: AgentWalletDashboardRow, keyId: string) => Promise<void>;
+  onAlertTransition: AgentAlertTransitionHandler;
 }) {
   return (
     <DetailPanel title="Alerts And Keys">
-      <AlertList alerts={alerts} />
+      <AlertList alerts={alerts} busyAction={busyAction} row={row} onAlertTransition={onAlertTransition} />
       <ActiveKeyList
         activeKeys={activeKeys}
         busyAction={busyAction}
@@ -126,28 +131,67 @@ export function AlertAndKeyPanel({
   );
 }
 
-function AlertList({ alerts }: { alerts: AgentWalletDashboardRow['recentAlerts'] }) {
+interface AlertActionProps {
+  busyAction: string | null;
+  row: AgentWalletDashboardRow;
+  onAlertTransition: AgentAlertTransitionHandler;
+}
+
+function AlertList({ alerts, ...actionProps }: { alerts: AgentWalletDashboardRow['recentAlerts'] } & AlertActionProps) {
   if (alerts.length === 0) {
     return <EmptyDetail text="No open alerts." />;
   }
 
   return (
     <>
-      {alerts.map(alert => <AlertDetail key={alert.id} alert={alert} />)}
+      {alerts.map(alert => <AlertDetail key={alert.id} alert={alert} {...actionProps} />)}
     </>
   );
 }
 
-function AlertDetail({ alert }: { alert: AgentWalletDashboardRow['recentAlerts'][number] }) {
+function AlertDetail({
+  alert,
+  busyAction,
+  row,
+  onAlertTransition,
+}: { alert: AgentWalletDashboardRow['recentAlerts'][number] } & AlertActionProps) {
   const destinationClassification = formatDestinationClassification(alert.metadata);
   const handlingMode = formatUnknownDestinationHandling(alert.metadata);
+  const acknowledgeKey = agentAlertActionKey(alert.id, 'acknowledge');
+  const resolveKey = agentAlertActionKey(alert.id, 'resolve');
+  const isOpen = isAlertOpen(alert);
 
   return (
     <div className="rounded-md border border-warning-200 bg-warning-50 p-2 text-xs text-warning-800 dark:border-warning-800 dark:bg-warning-900/20">
-      <div className="font-medium">{alert.type}</div>
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-medium">{alert.type}</span>
+        {!isOpen && <span className="text-sanctuary-500 dark:text-sanctuary-400">Acknowledged</span>}
+      </div>
       <div>{alert.message}</div>
       {destinationClassification && <div>Destination: {destinationClassification}</div>}
       {handlingMode && <div>Handling: {handlingMode}</div>}
+      <div className="mt-2 flex flex-wrap gap-2">
+        {isOpen && (
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => onAlertTransition(row, alert.id, 'acknowledge')}
+            isLoading={busyAction === acknowledgeKey}
+            disabled={busyAction === resolveKey}
+          >
+            Acknowledge
+          </Button>
+        )}
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => onAlertTransition(row, alert.id, 'resolve')}
+          isLoading={busyAction === resolveKey}
+          disabled={busyAction === acknowledgeKey}
+        >
+          Resolve
+        </Button>
+      </div>
     </div>
   );
 }

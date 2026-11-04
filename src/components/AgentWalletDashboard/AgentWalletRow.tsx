@@ -8,6 +8,7 @@ import { AgentWalletMetricGrid } from './AgentWalletRowMetrics';
 import {
   getActiveApiKeys,
   isAgentRevoked,
+  type AgentAlertTransitionHandler,
 } from './agentWalletDashboardModel';
 
 export interface AgentWalletRowProps {
@@ -15,6 +16,7 @@ export interface AgentWalletRowProps {
   busyAction: string | null;
   onStatusChange: (row: AgentWalletDashboardRow, status: WalletAgentToggleStatus) => Promise<void>;
   onRevokeKey: (row: AgentWalletDashboardRow, keyId: string) => Promise<void>;
+  onAlertTransition: AgentAlertTransitionHandler;
 }
 
 export function AgentWalletRow({
@@ -22,6 +24,7 @@ export function AgentWalletRow({
   busyAction,
   onStatusChange,
   onRevokeKey,
+  onAlertTransition,
 }: AgentWalletRowProps) {
   const { agent } = row;
   const activeKeys = getActiveApiKeys(agent);
@@ -49,6 +52,7 @@ export function AgentWalletRow({
         activeKeys={activeKeys}
         busyAction={busyAction}
         onRevokeKey={onRevokeKey}
+        onAlertTransition={onAlertTransition}
       />
     </div>
   );

@@ -296,6 +296,11 @@ export const AgentFundingOverrideIdParamSchema = z.object({
   overrideId: UuidSchema,
 });
 
+export const AgentAlertIdParamSchema = z.object({
+  agentId: UuidSchema,
+  alertId: UuidSchema,
+});
+
 // =============================================================================
 // Feature Flags
 // =============================================================================

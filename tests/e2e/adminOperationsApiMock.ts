@@ -12,7 +12,14 @@ import {
 } from "./adminOperationsApiState";
 import { getFailClosedWalletRemediationResponse, json, registerApiRoutes, unmocked } from "./helpers";
 
-type AgentDashboardRow = (typeof AGENT_WALLET_DASHBOARD_ROWS)[number];
+type AgentDashboardFixtureRow = (typeof AGENT_WALLET_DASHBOARD_ROWS)[number];
+type AgentDashboardAlert = Omit<
+  AgentDashboardFixtureRow["recentAlerts"][number],
+  "acknowledgedAt" | "resolvedAt"
+> & { acknowledgedAt: string | null; resolvedAt: string | null };
+type AgentDashboardRow = Omit<AgentDashboardFixtureRow, "recentAlerts"> & {
+  recentAlerts: AgentDashboardAlert[];
+};
 
 type ParsedApiRoute = {
   method: string;
@@ -52,6 +59,70 @@ async function maybeFulfillFailure(
 
 function finalPathSegment(path: string) {
   return path.split("/").pop();
+}
+
+const AGENT_ALERT_TRANSITION_PATH =
+  /^\/admin\/agents\/([^/]+)\/alerts\/([^/]+)\/(acknowledge|resolve)$/;
+
+type AgentAlertTransitionResult = {
+  rows: AgentDashboardRow[];
+  status: number;
+  body: unknown;
+};
+
+/**
+ * Mirror the server's alert compare-and-set on the stateful dashboard rows:
+ * acknowledge only moves an open alert, resolve moves open or acknowledged,
+ * a repeat in the target status is a no-op, anything else is a 409.
+ */
+function transitionAgentDashboardAlert(
+  rows: AgentDashboardRow[],
+  path: string,
+): AgentAlertTransitionResult | null {
+  const match = AGENT_ALERT_TRANSITION_PATH.exec(path);
+  if (!match) {
+    return null;
+  }
+  const [, agentId, alertId, action] = match;
+  const row = rows.find((candidate) => candidate.agent.id === agentId);
+  const alert = row?.recentAlerts.find((candidate) => candidate.id === alertId);
+  if (!row || !alert) {
+    return { rows, status: 404, body: { message: "Agent alert not found" } };
+  }
+
+  const target = action === "acknowledge" ? "acknowledged" : "resolved";
+  const allowedFrom = action === "acknowledge" ? ["open"] : ["open", "acknowledged"];
+  if (alert.status === target) {
+    return { rows, status: 200, body: alert };
+  }
+  if (!allowedFrom.includes(alert.status)) {
+    return {
+      rows,
+      status: 409,
+      body: { message: `Cannot ${action} an alert that is ${alert.status}` },
+    };
+  }
+
+  const now = new Date().toISOString();
+  const updated = {
+    ...alert,
+    status: target,
+    ...(target === "acknowledged" ? { acknowledgedAt: now } : { resolvedAt: now }),
+  };
+  const nextRows = rows.map((candidate) => {
+    if (candidate !== row) {
+      return candidate;
+    }
+    return {
+      ...candidate,
+      openAlertCount: candidate.openAlertCount - (alert.status === "open" ? 1 : 0),
+      recentAlerts:
+        target === "resolved"
+          ? candidate.recentAlerts.filter((item) => item.id !== alertId)
+          : candidate.recentAlerts.map((item) => (item.id === alertId ? updated : item)),
+    };
+  });
+  return { rows: nextRows, status: 200, body: updated };
 }
 
 const cloneAgentDashboardRows = (
@@ -308,6 +379,16 @@ function createAdminApiRouteHandler(options: {
         updatedAgent ?? { message: "Agent not found" },
         updatedAgent ? 200 : 404,
       );
+      return;
+    }
+
+    const alertTransition =
+      agentDashboardRows && method === "POST"
+        ? transitionAgentDashboardAlert(agentDashboardRows, path)
+        : null;
+    if (alertTransition) {
+      agentDashboardRows = alertTransition.rows;
+      await json(route, alertTransition.body, alertTransition.status);
       return;
     }
 

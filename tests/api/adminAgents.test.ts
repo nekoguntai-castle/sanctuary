@@ -40,6 +40,8 @@ describe('admin wallet agents API', () => {
     await adminAgentsApi.updateWalletAgent('agent-1', { status: 'paused' });
     await adminAgentsApi.revokeWalletAgent('agent-1');
     await adminAgentsApi.getAgentAlerts('agent-1', { status: 'open', type: 'large_operational_spend', limit: 10 });
+    await adminAgentsApi.acknowledgeAgentAlert('agent-1', 'alert-1');
+    await adminAgentsApi.resolveAgentAlert('agent-1', 'alert-1');
     await adminAgentsApi.getAgentFundingOverrides('agent-1', { status: 'active' });
     await adminAgentsApi.createAgentFundingOverride('agent-1', {
       maxAmountSats: '250000',
@@ -57,6 +59,8 @@ describe('admin wallet agents API', () => {
       type: 'large_operational_spend',
       limit: 10,
     });
+    expect(mockPost).toHaveBeenCalledWith('/admin/agents/agent-1/alerts/alert-1/acknowledge');
+    expect(mockPost).toHaveBeenCalledWith('/admin/agents/agent-1/alerts/alert-1/resolve');
     expect(mockGet).toHaveBeenCalledWith('/admin/agents/agent-1/overrides', { status: 'active' });
     expect(mockPost).toHaveBeenCalledWith('/admin/agents', {
       userId: 'user-1',

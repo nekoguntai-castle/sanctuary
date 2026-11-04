@@ -13,6 +13,9 @@ export type {
   WalletAgentStatus,
 };
 
+/** Admin actions that move an agent alert out of the open status. */
+export type AgentAlertTransition = 'acknowledge' | 'resolve';
+
 export interface AgentApiKeyScope {
   allowedActions?: string[];
 }

@@ -3,7 +3,8 @@
  *
  * withAgentFundingTransaction and createAlertIfNotDuplicate take
  * pg_advisory_xact_lock, whose `void` result the Prisma pg adapter cannot
- * deserialize through $queryRaw.
+ * deserialize through $queryRaw. The alert status compare-and-set is covered
+ * here too, since it shares the alert fixtures.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -15,7 +16,9 @@ import {
   getTestPrisma,
 } from './setup';
 import {
+  createAlert,
   createAlertIfNotDuplicate,
+  transitionAlertStatus,
   withAgentFundingTransaction,
 } from '../../../src/repositories/agentRepository';
 
@@ -84,5 +87,45 @@ describeIfDatabase('agentRepository advisory locks integration', () => {
 
     expect(results.filter(r => r !== null)).toHaveLength(1);
     await expect(client.agentAlert.count({ where: { dedupeKey: key } })).resolves.toBe(1);
+  });
+
+  it('moves an alert through acknowledge and resolve exactly once', async () => {
+    const { agent } = await createAgentFixture();
+    const created = await createAlert(alertInput(agent.id, `k-${randomUUID()}`));
+
+    const acknowledged = await transitionAlertStatus(agent.id, created.id, 'acknowledge');
+    expect(acknowledged.changed).toBe(true);
+    expect(acknowledged.alert?.status).toBe('acknowledged');
+    expect(acknowledged.alert?.acknowledgedAt).toBeInstanceOf(Date);
+
+    const repeated = await transitionAlertStatus(agent.id, created.id, 'acknowledge');
+    expect(repeated).toEqual({ alert: acknowledged.alert, changed: false });
+
+    const concurrentResolves = await Promise.all([
+      transitionAlertStatus(agent.id, created.id, 'resolve'),
+      transitionAlertStatus(agent.id, created.id, 'resolve'),
+    ]);
+    expect(concurrentResolves.filter(result => result.changed)).toHaveLength(1);
+    expect(concurrentResolves[0].alert?.status).toBe('resolved');
+    expect(concurrentResolves[0].alert?.acknowledgedAt).toEqual(acknowledged.alert?.acknowledgedAt);
+
+    const lateAcknowledge = await transitionAlertStatus(agent.id, created.id, 'acknowledge');
+    expect(lateAcknowledge.changed).toBe(false);
+    expect(lateAcknowledge.alert?.status).toBe('resolved');
+  });
+
+  it('does not transition an alert through another agent', async () => {
+    const { client, agent } = await createAgentFixture();
+    const { agent: otherAgent } = await createAgentFixture();
+    const created = await createAlert(alertInput(agent.id, `k-${randomUUID()}`));
+
+    await expect(transitionAlertStatus(otherAgent.id, created.id, 'resolve')).resolves.toEqual({
+      alert: null,
+      changed: false,
+    });
+    await expect(client.agentAlert.findUnique({ where: { id: created.id } })).resolves.toMatchObject({
+      status: 'open',
+      resolvedAt: null,
+    });
   });
 });

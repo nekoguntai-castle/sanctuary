@@ -128,6 +128,8 @@ export enum AuditAction {
   AGENT_OVERRIDE_CREATE = 'wallet.agent_override_create',
   AGENT_OVERRIDE_REVOKE = 'wallet.agent_override_revoke',
   AGENT_OVERRIDE_USE = 'wallet.agent_override_use',
+  AGENT_ALERT_ACKNOWLEDGE = 'wallet.agent_alert_acknowledge',
+  AGENT_ALERT_RESOLVE = 'wallet.agent_alert_resolve',
   MOBILE_AGENT_DRAFT_APPROVE = 'wallet.mobile_agent_draft_approve',
   MOBILE_AGENT_DRAFT_COMMENT = 'wallet.mobile_agent_draft_comment',
   MOBILE_AGENT_DRAFT_REJECT = 'wallet.mobile_agent_draft_reject',

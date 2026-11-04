@@ -343,6 +343,39 @@ test.describe("Admin operations", () => {
     expect(unhandledRequests).toEqual([]);
   });
 
+  test("agent wallets page acknowledges and resolves an open alert", async ({
+    page,
+  }) => {
+    const unhandledRequests = await mockAdminApi(page, {
+      agentDashboardRows: AGENT_WALLET_DASHBOARD_ROWS,
+    });
+    const main = page.getByRole("main");
+
+    await page.goto("/#/admin/agent-wallets");
+
+    await expect(main.getByText("Treasury Agent")).toBeVisible();
+    await main.getByText("Review details").click();
+    await expect(
+      main.getByText("Operational balance is below threshold"),
+    ).toBeVisible();
+
+    await main.getByRole("button", { name: "Acknowledge" }).click();
+
+    await expect(main.getByText("Acknowledged", { exact: true })).toBeVisible();
+    await expect(
+      main.getByRole("button", { name: "Acknowledge" }),
+    ).toHaveCount(0);
+
+    await main.getByRole("button", { name: "Resolve" }).click();
+
+    await expect(main.getByText("No open alerts.")).toBeVisible();
+    await expect(
+      main.getByText("Operational balance is below threshold"),
+    ).toHaveCount(0);
+
+    expect(unhandledRequests).toEqual([]);
+  });
+
   test("wallet agents page renders empty agent registry", async ({ page }) => {
     const unhandledRequests = await mockAdminApi(page);
     const main = page.getByRole("main");

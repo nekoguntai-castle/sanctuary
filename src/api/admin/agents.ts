@@ -62,6 +62,14 @@ export async function getAgentAlerts(
   return apiClient.get<AgentAlertMetadata[]>(`/admin/agents/${agentId}/alerts`, params);
 }
 
+export async function acknowledgeAgentAlert(agentId: string, alertId: string): Promise<AgentAlertMetadata> {
+  return apiClient.post<AgentAlertMetadata>(`/admin/agents/${agentId}/alerts/${alertId}/acknowledge`);
+}
+
+export async function resolveAgentAlert(agentId: string, alertId: string): Promise<AgentAlertMetadata> {
+  return apiClient.post<AgentAlertMetadata>(`/admin/agents/${agentId}/alerts/${alertId}/resolve`);
+}
+
 export async function getAgentFundingOverrides(
   agentId: string,
   params?: { status?: AgentFundingOverrideStatus; limit?: number }

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentWalletDashboardRow, WalletAgentMetadata } from '../../../src/api/admin';
 import {
+  agentAlertActionKey,
+  applyAgentAlertUpdate,
   buildDashboardTotals,
   canSpendNow,
   findSpendDestinationClassification,
@@ -170,6 +172,65 @@ describe('agentWalletDashboardModel', () => {
       pendingDrafts: 2,
       openAlerts: 3,
       operationalBalance: 500n,
+    });
+  });
+
+  describe('applyAgentAlertUpdate', () => {
+    const alert = (id: string, status: string) =>
+      ({ id, agentId: 'agent-1', status }) as AgentWalletDashboardRow['recentAlerts'][number];
+
+    it('keeps an acknowledged alert listed and stops counting it as open', () => {
+      const rows = [
+        makeRow({ openAlertCount: 2, recentAlerts: [alert('a1', 'open'), alert('a2', 'open')] }),
+        makeRow({ agent: { id: 'agent-2' }, openAlertCount: 1, recentAlerts: [alert('a1', 'open')] }),
+      ];
+
+      const [updated, other] = applyAgentAlertUpdate(rows, 'agent-1', alert('a1', 'acknowledged'));
+
+      expect(updated.openAlertCount).toBe(1);
+      expect(updated.recentAlerts.map(item => [item.id, item.status])).toEqual([
+        ['a1', 'acknowledged'],
+        ['a2', 'open'],
+      ]);
+      expect(other).toBe(rows[1]);
+    });
+
+    it('drops a resolved alert and only uncounts it when it was still open', () => {
+      const [fromOpen] = applyAgentAlertUpdate(
+        [makeRow({ openAlertCount: 1, recentAlerts: [alert('a1', 'open')] })],
+        'agent-1',
+        alert('a1', 'resolved'),
+      );
+      expect(fromOpen.openAlertCount).toBe(0);
+      expect(fromOpen.recentAlerts).toEqual([]);
+
+      const [fromAcknowledged] = applyAgentAlertUpdate(
+        [makeRow({ openAlertCount: 1, recentAlerts: [alert('a1', 'acknowledged'), alert('a2', 'open')] })],
+        'agent-1',
+        alert('a1', 'resolved'),
+      );
+      expect(fromAcknowledged.openAlertCount).toBe(1);
+      expect(fromAcknowledged.recentAlerts.map(item => item.id)).toEqual(['a2']);
+    });
+
+    it('leaves the count alone for an alert the row does not list or that never left open', () => {
+      const [unlisted] = applyAgentAlertUpdate(
+        [makeRow({ openAlertCount: 3, recentAlerts: [alert('a2', 'open')] })],
+        'agent-1',
+        alert('a9', 'acknowledged'),
+      );
+      expect(unlisted.openAlertCount).toBe(3);
+
+      const [stillOpen] = applyAgentAlertUpdate(
+        [makeRow({ openAlertCount: 0, recentAlerts: [alert('a1', 'open')] })],
+        'agent-1',
+        alert('a1', 'open'),
+      );
+      expect(stillOpen.openAlertCount).toBe(0);
+    });
+
+    it('builds a per-alert action key', () => {
+      expect(agentAlertActionKey('a1', 'resolve')).toBe('alert-resolve-a1');
     });
   });
 });

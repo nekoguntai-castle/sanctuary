@@ -13,6 +13,7 @@ const mockState = vi.hoisted(() => ({
     revokeAgentWithApiKeys: vi.fn(),
     findDashboardRows: vi.fn(),
     findAlerts: vi.fn(),
+    transitionAlertStatus: vi.fn(),
     findFundingOverrides: vi.fn(),
     createFundingOverride: vi.fn(),
     findFundingOverrideById: vi.fn(),
@@ -49,6 +50,7 @@ vi.mock("../../../src/repositories", () => ({
   agentRepository: mockState.agentRepository,
   userRepository: mockState.userRepository,
   walletRepository: mockState.walletRepository,
+  AGENT_ALERT_TRANSITION_TARGETS: { acknowledge: "acknowledged", resolve: "resolved" },
 }));
 
 vi.mock("../../../src/services/agentWalletAccess", () => ({
@@ -64,6 +66,8 @@ vi.mock("../../../src/services/auditService", () => ({
     AGENT_KEY_REVOKE: "wallet.agent_key_revoke",
     AGENT_OVERRIDE_CREATE: "wallet.agent_override_create",
     AGENT_OVERRIDE_REVOKE: "wallet.agent_override_revoke",
+    AGENT_ALERT_ACKNOWLEDGE: "wallet.agent_alert_acknowledge",
+    AGENT_ALERT_RESOLVE: "wallet.agent_alert_resolve",
   },
   AuditCategory: {
     WALLET: "wallet",

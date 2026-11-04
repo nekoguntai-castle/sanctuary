@@ -138,6 +138,13 @@ describe('agentDashboardRepository', () => {
       && String((part as { sql: unknown }).sql).includes('rbfStatus')
     )) as { sql: string } | undefined;
     expect(livePredicate?.sql).toBe(`"rbfStatus" <> 'replaced'`);
+
+    // Open alerts are counted; acknowledged ones stay listed so they can still be resolved.
+    expect(prisma.agentAlert.groupBy).toHaveBeenCalledWith(expect.objectContaining({
+      where: { agentId: { in: ['agent-1'] }, status: 'open' },
+    }));
+    const alertQuery = (prisma.$queryRaw.mock.calls[2]?.[0] as string[]).join('?');
+    expect(alertQuery).toContain(`AND status IN ('open', 'acknowledged')`);
   });
 
   it('scopes dashboard agents to wallets before applying the row limit', async () => {

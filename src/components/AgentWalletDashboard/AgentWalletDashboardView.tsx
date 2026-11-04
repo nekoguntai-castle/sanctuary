@@ -7,7 +7,7 @@ import { LinkButton } from '../ui/LinkButton';
 import { AgentWalletRow } from './AgentWalletRow';
 import { StatTile } from './DashboardPrimitives';
 import { formatSats } from './agentWalletDashboardModel';
-import type { AgentWalletDashboardTotals } from './agentWalletDashboardModel';
+import type { AgentAlertTransitionHandler, AgentWalletDashboardTotals } from './agentWalletDashboardModel';
 import type { WalletAgentToggleStatus } from '@sanctuary/shared/constants/adminAgents';
 
 export interface AgentWalletDashboardViewProps {
@@ -20,6 +20,7 @@ export interface AgentWalletDashboardViewProps {
   loadData: () => Promise<void>;
   onStatusChange: (row: AgentWalletDashboardRow, status: WalletAgentToggleStatus) => Promise<void>;
   onRevokeKey: (row: AgentWalletDashboardRow, keyId: string) => Promise<void>;
+  onAlertTransition: AgentAlertTransitionHandler;
 }
 
 export function AgentWalletDashboardView(props: AgentWalletDashboardViewProps) {
@@ -62,6 +63,7 @@ function AgentWalletDashboardContent({
   totals,
   onStatusChange,
   onRevokeKey,
+  onAlertTransition,
 }: AgentWalletDashboardViewProps) {
   return (
     <div className="animate-fade-in space-y-6 pb-12">
@@ -73,6 +75,7 @@ function AgentWalletDashboardContent({
         busyAction={busyAction}
         onStatusChange={onStatusChange}
         onRevokeKey={onRevokeKey}
+        onAlertTransition={onAlertTransition}
       />
     </div>
   );
@@ -117,11 +120,13 @@ function AgentWalletDashboardRows({
   busyAction,
   onStatusChange,
   onRevokeKey,
+  onAlertTransition,
 }: {
   rows: AgentWalletDashboardRow[];
   busyAction: string | null;
   onStatusChange: (row: AgentWalletDashboardRow, status: WalletAgentToggleStatus) => Promise<void>;
   onRevokeKey: (row: AgentWalletDashboardRow, keyId: string) => Promise<void>;
+  onAlertTransition: AgentAlertTransitionHandler;
 }) {
   if (rows.length === 0) {
     return <AgentWalletEmptyState />;
@@ -136,6 +141,7 @@ function AgentWalletDashboardRows({
           busyAction={busyAction}
           onStatusChange={onStatusChange}
           onRevokeKey={onRevokeKey}
+          onAlertTransition={onAlertTransition}
         />
       ))}
     </div>

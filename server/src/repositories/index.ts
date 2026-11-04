@@ -50,7 +50,7 @@ export { priceDataRepository, default as priceDataRepo } from './priceDataReposi
 export { mcpApiKeyRepository, default as mcpApiKeyRepo } from './mcpApiKeyRepository';
 export { assistantReadRepository, default as assistantReadRepo } from './assistantReadRepository';
 export { mcpReadRepository, default as mcpReadRepo } from './mcpReadRepository';
-export { agentRepository, default as agentRepo } from './agentRepository';
+export { agentRepository, default as agentRepo, AGENT_ALERT_TRANSITION_TARGETS } from './agentRepository';
 export { consoleRepository, default as consoleRepo } from './consoleRepository';
 export { webhookRepository, default as webhookRepo } from './webhookRepository';
 export { resyncRepository, default as resyncRepo } from './resyncRepository';
@@ -196,6 +196,8 @@ export type {
   AgentDashboardDraftSummary,
   AgentDashboardTransactionSummary,
   AgentWalletDashboardRow,
+  AgentAlertTransition,
+  AgentAlertTransitionResult,
   FindAgentAlertsFilter,
   FindAgentFundingOverridesFilter,
   FindWalletAgentsFilter,

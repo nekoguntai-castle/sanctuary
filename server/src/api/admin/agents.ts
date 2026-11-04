@@ -11,6 +11,7 @@ import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError } from '../../errors/ApiError';
 import { auditService, AuditAction, AuditCategory } from '../../services/auditService';
 import {
+  acknowledgeAgentAlert,
   createAgentApiKey,
   createAgentFundingOverride,
   createWalletAgent,
@@ -20,12 +21,14 @@ import {
   listAgentApiKeys,
   listAgentFundingOverrides,
   listWalletAgents,
+  resolveAgentAlert,
   revokeAgentApiKey,
   revokeAgentFundingOverride,
   revokeWalletAgent,
   updateWalletAgent,
 } from '../../services/adminAgentService';
 import {
+  AgentAlertIdParamSchema,
   AgentApiKeyIdParamSchema,
   AgentFundingOverrideIdParamSchema,
   CreateAgentFundingOverrideSchema,
@@ -69,6 +72,14 @@ function parseAgentOverrideParams(params: unknown): { agentId: string; overrideI
   const parsed = AgentFundingOverrideIdParamSchema.safeParse(params);
   if (!parsed.success) {
     throw new InvalidInputError('Invalid wallet agent or override id');
+  }
+  return parsed.data;
+}
+
+function parseAgentAlertParams(params: unknown): { agentId: string; alertId: string } {
+  const parsed = AgentAlertIdParamSchema.safeParse(params);
+  if (!parsed.success) {
+    throw new InvalidInputError('Invalid wallet agent or alert id');
   }
   return parsed.data;
 }
@@ -182,6 +193,49 @@ router.get('/:agentId/alerts', authenticate, requireAdmin, asyncHandler(async (r
   });
   res.json(alerts.map(toAgentAlertMetadata));
 }));
+
+function agentAlertTransitionHandler(
+  transition: typeof acknowledgeAgentAlert,
+  auditAction: AuditAction
+) {
+  return asyncHandler(async (req, res) => {
+    const { agentId, alertId } = parseAgentAlertParams(req.params);
+    const { alert, alreadyInTargetStatus } = await transition(agentId, alertId);
+
+    await auditService.logFromRequest(req, auditAction, AuditCategory.WALLET, {
+      details: {
+        agentId,
+        alertId: alert.id,
+        alertType: alert.type,
+        alreadyInTargetStatus,
+      },
+    });
+
+    res.json(toAgentAlertMetadata(alert));
+  });
+}
+
+/**
+ * POST /api/v1/admin/agents/:agentId/alerts/:alertId/acknowledge
+ * Mark an open alert as seen by an admin. Repeating it is a no-op; a resolved alert conflicts.
+ */
+router.post(
+  '/:agentId/alerts/:alertId/acknowledge',
+  authenticate,
+  requireAdmin,
+  agentAlertTransitionHandler(acknowledgeAgentAlert, AuditAction.AGENT_ALERT_ACKNOWLEDGE)
+);
+
+/**
+ * POST /api/v1/admin/agents/:agentId/alerts/:alertId/resolve
+ * Close an open or acknowledged alert. Repeating it is a no-op.
+ */
+router.post(
+  '/:agentId/alerts/:alertId/resolve',
+  authenticate,
+  requireAdmin,
+  agentAlertTransitionHandler(resolveAgentAlert, AuditAction.AGENT_ALERT_RESOLVE)
+);
 
 /**
  * GET /api/v1/admin/agents/:agentId/overrides

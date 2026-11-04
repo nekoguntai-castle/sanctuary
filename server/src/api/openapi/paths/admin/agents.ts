@@ -31,6 +31,24 @@ const adminAgentOverrideIdParameter = {
   schema: { type: 'string' },
 } as const;
 
+const adminAgentAlertIdParameter = {
+  name: 'alertId',
+  in: 'path',
+  required: true,
+  schema: { type: 'string' },
+} as const;
+
+function adminAgentAlertTransitionResponses(success: string) {
+  return {
+    200: jsonResponse(success, '#/components/schemas/AdminAgentAlert'),
+    400: apiErrorResponse,
+    401: apiErrorResponse,
+    403: apiErrorResponse,
+    404: apiErrorResponse,
+    409: apiErrorResponse,
+  };
+}
+
 export const adminAgentPaths = {
   '/admin/agents/options': {
     get: {
@@ -49,7 +67,7 @@ export const adminAgentPaths = {
     get: {
       tags: ['Admin'],
       summary: 'List agent wallet dashboard rows',
-      description: 'Return operational dashboard rows with agent status, linked wallets, balances, pending drafts, recent spends, open alerts, and active key counts.',
+      description: 'Return operational dashboard rows with agent status, linked wallets, balances, pending drafts, recent spends, open alert counts, unresolved (open or acknowledged) recent alerts, and active key counts.',
       security: bearerAuth,
       responses: {
         200: jsonArrayResponse('Agent wallet dashboard rows', '#/components/schemas/AdminAgentWalletDashboardRow'),
@@ -160,6 +178,26 @@ export const adminAgentPaths = {
         403: apiErrorResponse,
         404: apiErrorResponse,
       },
+    },
+  },
+  '/admin/agents/{agentId}/alerts/{alertId}/acknowledge': {
+    post: {
+      tags: ['Admin'],
+      summary: 'Acknowledge agent alert',
+      description: 'Mark an open alert as acknowledged. Acknowledging an already acknowledged alert returns it unchanged; a resolved alert returns 409.',
+      security: bearerAuth,
+      parameters: [adminAgentIdParameter, adminAgentAlertIdParameter],
+      responses: adminAgentAlertTransitionResponses('Acknowledged agent alert metadata'),
+    },
+  },
+  '/admin/agents/{agentId}/alerts/{alertId}/resolve': {
+    post: {
+      tags: ['Admin'],
+      summary: 'Resolve agent alert',
+      description: 'Resolve an open or acknowledged alert. Resolving an already resolved alert returns it unchanged.',
+      security: bearerAuth,
+      parameters: [adminAgentIdParameter, adminAgentAlertIdParameter],
+      responses: adminAgentAlertTransitionResponses('Resolved agent alert metadata'),
     },
   },
   '/admin/agents/{agentId}/overrides': {

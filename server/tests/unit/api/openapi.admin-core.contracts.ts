@@ -687,6 +687,10 @@ export function registerOpenApiAdminCoreTests() {
         schema: expect.objectContaining({ enum: AGENT_ALERT_STATUSES }),
       }),
     );
+    for (const action of ['acknowledge', 'resolve'] as const) {
+      const operation = openApiSpec.paths[`/admin/agents/{agentId}/alerts/{alertId}/${action}`].post;
+      expect(Object.keys(operation.responses)).toEqual(expect.arrayContaining(['200', '404', '409']));
+    }
     expect(openApiSpec.components.schemas.AdminAgentFundingOverride.properties.status.enum).toBe(
       AGENT_FUNDING_OVERRIDE_STATUSES,
     );

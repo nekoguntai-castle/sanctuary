@@ -1,15 +1,19 @@
 import type {
+  AgentAlertMetadata,
+  AgentAlertTransition,
   AgentApiKeyMetadata,
   AgentWalletDashboardRow,
   AgentWalletDashboardTransaction,
   WalletAgentMetadata,
 } from '../../api/admin';
-import type { WalletAgentStatus } from '@sanctuary/shared/constants/adminAgents';
+import { AGENT_ALERT_STATUSES, type WalletAgentStatus } from '@sanctuary/shared/constants/adminAgents';
 import { WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import { extractErrorMessage } from '../../utils/errorHandler';
 import { createLogger } from '../../utils/logger';
 
 const log = createLogger('AgentWalletDashboard');
+
+const [ALERT_OPEN, , ALERT_RESOLVED] = AGENT_ALERT_STATUSES;
 
 const DESTINATION_CLASSIFICATION_LABELS: Record<string, string> = {
   external_spend: 'External spend',
@@ -123,6 +127,44 @@ export function orderAgentWalletRows(rows: AgentWalletDashboardRow[]): AgentWall
     const attentionDelta = getAgentAttentionCount(b) - getAgentAttentionCount(a);
     if (attentionDelta !== 0) return attentionDelta;
     return a.agent.name.localeCompare(b.agent.name);
+  });
+}
+
+export type AgentAlertTransitionHandler = (
+  row: AgentWalletDashboardRow,
+  alertId: string,
+  transition: AgentAlertTransition
+) => Promise<void>;
+
+export function isAlertOpen(alert: Pick<AgentAlertMetadata, 'status'>): boolean {
+  return alert.status === ALERT_OPEN;
+}
+
+export function agentAlertActionKey(alertId: string, transition: AgentAlertTransition): string {
+  return `alert-${transition}-${alertId}`;
+}
+
+/**
+ * Patch one agent's row with an alert returned by acknowledge/resolve, without a
+ * full reload. Acknowledged alerts stay listed (they can still be resolved);
+ * resolved ones drop out. The open count only falls when the alert left open.
+ */
+export function applyAgentAlertUpdate(
+  rows: AgentWalletDashboardRow[],
+  agentId: string,
+  updated: AgentAlertMetadata
+): AgentWalletDashboardRow[] {
+  return rows.map(row => {
+    if (row.agent.id !== agentId) return row;
+    const previous = row.recentAlerts.find(alert => alert.id === updated.id);
+    const leftOpen = previous !== undefined && isAlertOpen(previous) && !isAlertOpen(updated);
+    return {
+      ...row,
+      openAlertCount: Math.max(0, row.openAlertCount - (leftOpen ? 1 : 0)),
+      recentAlerts: updated.status === ALERT_RESOLVED
+        ? row.recentAlerts.filter(alert => alert.id !== updated.id)
+        : row.recentAlerts.map(alert => (alert.id === updated.id ? updated : alert)),
+    };
   });
 }
 

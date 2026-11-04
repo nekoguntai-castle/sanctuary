@@ -1,14 +1,17 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AgentWalletDashboard } from '../../src/components/AgentWalletDashboard';
 import * as adminApi from '../../src/api/admin';
+import { ApiError } from '../../src/api/client';
 
 vi.mock('../../src/api/admin', () => ({
   getAgentWalletDashboard: vi.fn(),
   updateWalletAgent: vi.fn(),
   revokeAgentApiKey: vi.fn(),
+  acknowledgeAgentAlert: vi.fn(),
+  resolveAgentAlert: vi.fn(),
 }));
 
 const agent = {
@@ -422,5 +425,100 @@ describe('AgentWalletDashboard', () => {
 
     await waitFor(() => expect(adminApi.revokeAgentApiKey).toHaveBeenCalledWith('agent-1', 'key-1'));
     expect(await screen.findByText('revoke failed')).toBeInTheDocument();
+  });
+
+  describe('alert acknowledge and resolve', () => {
+    const openAlert = dashboardRow.recentAlerts[0];
+
+    async function renderDetails() {
+      const user = userEvent.setup();
+      renderDashboard();
+      expect(await screen.findByText('Treasury Agent')).toBeInTheDocument();
+      await user.click(screen.getByText('Review details'));
+      return user;
+    }
+
+    it('acknowledges then resolves an alert, patching the row and the open alert counts', async () => {
+      vi.mocked(adminApi.acknowledgeAgentAlert).mockResolvedValueOnce({
+        ...openAlert,
+        status: 'acknowledged',
+        acknowledgedAt: '2026-04-16T01:00:00.000Z',
+      });
+      vi.mocked(adminApi.resolveAgentAlert).mockResolvedValueOnce({
+        ...openAlert,
+        status: 'resolved',
+        acknowledgedAt: '2026-04-16T01:00:00.000Z',
+        resolvedAt: '2026-04-16T02:00:00.000Z',
+      });
+      const user = await renderDetails();
+      expect(screen.getAllByText('Open alerts').map(label => label.parentElement?.textContent)).toEqual([
+        'Open alerts1',
+        'Open alerts1',
+      ]);
+
+      await user.click(screen.getByRole('button', { name: 'Acknowledge' }));
+
+      await waitFor(() => expect(adminApi.acknowledgeAgentAlert).toHaveBeenCalledWith('agent-1', 'alert-1'));
+      expect(await screen.findByText('Acknowledged')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Acknowledge' })).not.toBeInTheDocument();
+      expect(screen.getByText('Operational balance is below threshold')).toBeInTheDocument();
+      expect(screen.getAllByText('Open alerts').map(label => label.parentElement?.textContent)).toEqual([
+        'Open alerts0',
+        'Open alerts0',
+      ]);
+
+      await user.click(screen.getByRole('button', { name: 'Resolve' }));
+
+      await waitFor(() => expect(adminApi.resolveAgentAlert).toHaveBeenCalledWith('agent-1', 'alert-1'));
+      expect(await screen.findByText('No open alerts.')).toBeInTheDocument();
+      expect(screen.queryByText('Operational balance is below threshold')).not.toBeInTheDocument();
+      expect(adminApi.getAgentWalletDashboard).toHaveBeenCalledTimes(1);
+    });
+
+    it('disables both alert actions while one is pending', async () => {
+      let finish: (value: typeof openAlert) => void = () => undefined;
+      vi.mocked(adminApi.resolveAgentAlert).mockReturnValueOnce(
+        new Promise(resolve => {
+          finish = resolve;
+        }),
+      );
+      const user = await renderDetails();
+
+      await user.click(screen.getByRole('button', { name: 'Resolve' }));
+
+      const alertCard = screen.getByText('Operational balance is below threshold').parentElement as HTMLElement;
+      expect(within(alertCard).getByRole('button', { name: 'Acknowledge' })).toBeDisabled();
+      expect(within(alertCard).getByRole('button', { name: /Resolve/ })).toBeDisabled();
+
+      finish({ ...openAlert, status: 'resolved', resolvedAt: '2026-04-16T02:00:00.000Z' });
+      expect(await screen.findByText('No open alerts.')).toBeInTheDocument();
+    });
+
+    it('shows the server error and keeps the alert when a transition conflicts', async () => {
+      vi.mocked(adminApi.acknowledgeAgentAlert).mockRejectedValueOnce(
+        new Error('Cannot acknowledge an alert that is resolved'),
+      );
+      const user = await renderDetails();
+
+      await user.click(screen.getByRole('button', { name: 'Acknowledge' }));
+
+      expect(await screen.findByText('Cannot acknowledge an alert that is resolved')).toBeInTheDocument();
+      expect(screen.getByText('Operational balance is below threshold')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Acknowledge' })).toBeEnabled();
+      // Only a 409 means the row is stale; other failures leave the list as loaded.
+      expect(adminApi.getAgentWalletDashboard).toHaveBeenCalledTimes(1);
+    });
+
+    it('reloads the dashboard when another admin already moved the alert (409)', async () => {
+      vi.mocked(adminApi.acknowledgeAgentAlert).mockRejectedValueOnce(
+        new ApiError('Cannot acknowledge an alert that is resolved', 409),
+      );
+      const user = await renderDetails();
+
+      await user.click(screen.getByRole('button', { name: 'Acknowledge' }));
+
+      expect(await screen.findByText('Cannot acknowledge an alert that is resolved')).toBeInTheDocument();
+      await waitFor(() => expect(adminApi.getAgentWalletDashboard).toHaveBeenCalledTimes(2));
+    });
   });
 });

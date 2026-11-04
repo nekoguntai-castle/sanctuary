@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as adminApi from '../../api/admin';
-import type { AgentWalletDashboardRow } from '../../api/admin';
+import { ApiError } from '../../api/client';
+import type { AgentAlertTransition, AgentWalletDashboardRow } from '../../api/admin';
 import type { WalletAgentToggleStatus } from '@sanctuary/shared/constants/adminAgents';
 import { extractErrorMessage } from '../../utils/errorHandler';
 import {
+  agentAlertActionKey,
+  applyAgentAlertUpdate,
   buildDashboardTotals,
   orderAgentWalletRows,
 } from './agentWalletDashboardModel';
@@ -62,6 +65,25 @@ export function useAgentWalletDashboardController() {
     });
   }, [loadData, runAction]);
 
+  const handleAlertTransition = useCallback(async (
+    row: AgentWalletDashboardRow,
+    alertId: string,
+    transition: AgentAlertTransition
+  ) => {
+    await runAction(agentAlertActionKey(alertId, transition), async () => {
+      try {
+        const updated = transition === 'acknowledge'
+          ? await adminApi.acknowledgeAgentAlert(row.agent.id, alertId)
+          : await adminApi.resolveAgentAlert(row.agent.id, alertId);
+        setRows(current => applyAgentAlertUpdate(current, row.agent.id, updated));
+      } catch (error) {
+        // 409: another admin moved the alert first, so this row is stale; show the server's state.
+        if (error instanceof ApiError && error.status === 409) await loadData();
+        throw error;
+      }
+    });
+  }, [loadData, runAction]);
+
   return {
     loading,
     loadError,
@@ -72,5 +94,6 @@ export function useAgentWalletDashboardController() {
     loadData,
     onStatusChange: handleStatusChange,
     onRevokeKey: handleRevokeKey,
+    onAlertTransition: handleAlertTransition,
   };
 }
