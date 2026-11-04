@@ -90,12 +90,20 @@ describe('PayjoinProposalPanel', () => {
 
   it.each([
     ['while broadcasting', { status: 'broadcasting' as const }],
+    ['while the outcome is unknown', { status: 'uncertain' as const }],
     ['while busy', { busy: true }],
   ])('locks both buttons %s', (_label, overrides) => {
     renderPanel(overrides);
 
     expect(screen.getByRole('button', { name: /sign payjoin/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /send without payjoin/i })).toBeDisabled();
+  });
+
+  it('says the broadcast outcome is unknown instead of asking for a signature', () => {
+    renderPanel({ status: 'uncertain' });
+
+    expect(screen.getByText(/outcome of the payjoin broadcast is unknown/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Sign this proposal with your hardware wallet/)).not.toBeInTheDocument();
   });
 
   it('reports a zero net spend when the proposal carries no amount', () => {

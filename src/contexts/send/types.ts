@@ -49,14 +49,17 @@ export type TransactionType = 'standard' | 'consolidation' | 'sweep';
 /**
  * Two-round BIP78 payjoin: `negotiating` (round one, signed original sent),
  * `awaiting-signature` (proposal needs its own signature), `broadcasting`
- * (proposal broadcast), `failed` (only the signed original may be broadcast),
- * `skipped` (a payjoin URL on an ineligible send).
+ * (proposal broadcast), `uncertain` (the proposal's broadcast failed and the
+ * server refused to release the original, so its outcome is unknown: only the
+ * same proposal may be retried), `failed` (only the signed original may be
+ * broadcast), `skipped` (a payjoin URL on an ineligible send).
  */
 export type PayjoinAttemptStatus =
   | 'idle'
   | 'negotiating'
   | 'awaiting-signature'
   | 'broadcasting'
+  | 'uncertain'
   | 'success'
   | 'failed'
   | 'skipped';

@@ -302,6 +302,7 @@ const PAYJOIN_STATUS_SUFFIX: Partial<Record<PayjoinAttemptStatus, string>> = {
   negotiating: " (contacting receiver...)",
   "awaiting-signature": " (sign the payjoin proposal)",
   broadcasting: " (broadcasting payjoin...)",
+  uncertain: " (broadcast outcome unknown)",
   success: " ✓",
   failed: " (fell back to regular send)",
   skipped: " (not used for this send)",

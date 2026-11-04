@@ -32,7 +32,8 @@ export function isPayjoinProposalReview(
   status: string,
   originalTxData: TransactionData | null | undefined
 ): originalTxData is TransactionData {
-  return (status === 'awaiting-signature' || status === 'broadcasting') && Boolean(originalTxData);
+  return (status === 'awaiting-signature' || status === 'broadcasting' || status === 'uncertain')
+    && Boolean(originalTxData);
 }
 
 interface PayjoinProposalPanelProps {
@@ -141,7 +142,8 @@ export function PayjoinProposalPanel({
   if (!isPayjoinProposalReview(status, originalTxData) || !proposalTxData) return null;
 
   const summary = summarizeProposal(originalTxData, proposalTxData);
-  const locked = busy || status === 'broadcasting';
+  const uncertain = status === 'uncertain';
+  const locked = busy || status === 'broadcasting' || uncertain;
   return (
     <div className="surface-secondary rounded-lg p-4 space-y-3" role="region" aria-label="Payjoin proposal">
       <h3 className="text-sm font-medium text-sanctuary-900 dark:text-sanctuary-100">Payjoin proposal</h3>
@@ -157,11 +159,18 @@ export function PayjoinProposalPanel({
       </dl>
       <div className="flex items-start gap-2 text-xs text-warning-800 dark:text-warning-200">
         <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-        <span>
-          Sign this proposal with your hardware wallet by PSBT file or QR code, then broadcast it.
-          The receiver already holds your signed original and may broadcast it if you do not finish;
-          leaving this page broadcasts nothing.
-        </span>
+        {uncertain ? (
+          <span>
+            The outcome of the payjoin broadcast is unknown. Check your wallet activity first;
+            broadcasting again only resends this same proposal, never your original.
+          </span>
+        ) : (
+          <span>
+            Sign this proposal with your hardware wallet by PSBT file or QR code, then broadcast it.
+            The receiver already holds your signed original and may broadcast it if you do not finish;
+            leaving this page broadcasts nothing.
+          </span>
+        )}
       </div>
       <div className="flex flex-wrap gap-2">
         <Button variant="primary" size="sm" onClick={onSignPayjoin} disabled={locked}>

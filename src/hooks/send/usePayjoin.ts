@@ -175,9 +175,9 @@ export function resolvePayjoinRoundOne(inputs: RoundOneInputs): PayjoinRoundOneR
 
 const PAYJOIN_STATUS_GROUPS = {
   /** A proposal awaits or is in its broadcast: only its own signature may be taken. */
-  roundTwo: new Set<PayjoinAttemptStatus>(['awaiting-signature', 'broadcasting']),
+  roundTwo: new Set<PayjoinAttemptStatus>(['awaiting-signature', 'broadcasting', 'uncertain']),
   /** A payjoin intent exists, which can never become a draft (C-D9). */
-  draftLocked: new Set<PayjoinAttemptStatus>(['negotiating', 'awaiting-signature', 'broadcasting']),
+  draftLocked: new Set<PayjoinAttemptStatus>(['negotiating', 'awaiting-signature', 'broadcasting', 'uncertain']),
 } as const;
 
 /** The one place that says which payjoin statuses lock what. */
@@ -375,9 +375,10 @@ export async function broadcastPayjoinProposal(
   if (!payjoin.isRoundCurrent(ctx.token)) return false;
   if (outcome.kind === 'conflict') {
     // The proposal's outcome is unknown or it was accepted: never broadcast the original.
+    // A retry re-broadcasts this same proposal (round two), which is safe to repeat.
     payjoin.claim('proposal');
     ctx.setError(PAYJOIN_PENDING_RECONCILIATION_MESSAGE);
-    return finishRound(ctx, 'broadcasting', false);
+    return finishRound(ctx, 'uncertain', false);
   }
   if (outcome.kind === 'error') return stopOnReleaseRefusal(ctx, outcome);
   log.info('Payjoin proposal was not broadcast; sending the signed original without payjoin');

@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import * as bitcoin from 'bitcoinjs-lib';
 
-import { broadcastPayjoinProposal, usePayjoin } from '../../../src/hooks/send/usePayjoin';
+import { broadcastPayjoinProposal, isPayjoinStatusIn, usePayjoin } from '../../../src/hooks/send/usePayjoin';
 
 import {
   apiFailure,
@@ -89,14 +89,18 @@ export const registerUseSendTransactionActionsPayjoinRoundTwoContracts = () => {
 
       expect(broadcastCalls()).toEqual([proposalBroadcast]);
       expect(result.current.error).toBe('Broadcast pending reconciliation; check wallet activity before retrying');
-      expect(result.current.payjoinStatus).toBe('broadcasting');
+      // Its own state, not a broadcast still in flight: the outcome is unknown.
+      expect(result.current.payjoinStatus).toBe('uncertain');
       expect(result.current.isPayjoinBusy).toBe(false);
+      // Still a payjoin intent: it can never become a draft.
+      expect(isPayjoinStatusIn('draftLocked', 'uncertain')).toBe(true);
 
-      // A retry stays on the proposal; the original is never offered.
+      // A retry stays on the proposal (the same transaction); the original is never offered.
       await act(async () => {
         expect(await result.current.broadcastTransaction()).toBe(true);
       });
       expect(broadcastCalls()).toEqual([proposalBroadcast, proposalBroadcast]);
+      expect(result.current.payjoinStatus).toBe('success');
     });
 
     it('shows a release error and broadcasts nothing else', async () => {
