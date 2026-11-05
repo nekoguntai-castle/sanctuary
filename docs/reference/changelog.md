@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.83] - 2026-11-05
+
+### Changed
+
+- Wallet sync no longer waits out a fresh drain window after every worker restart. Once activation has completed, a clean restart, a crash of an up-to-date worker, or a long stall re-admits sync as soon as the new worker is ready. The wait still applies when the evidence cannot rule out an older worker: an unknown-version or duplicate predecessor (about 68 minutes), lost Redis state, or a raised activation floor (31 minutes). ADR 0004 records the re-admission rule. The first deploy of this release still holds sync once, because the previous worker wrote no fenced restart marker (#1459).
+- The worker container now gets 40 seconds to stop instead of Docker's default 10, so a normal shutdown retires its heartbeat instead of leaving a stale one behind (#1458).
+
+### Added
+
+- A banner tells users when wallet sync is paused after a worker restart, why, and roughly when it will resume, backed by `GET /api/v1/sync/availability`. A manual sync during the pause now returns "Wallet sync is paused until the background worker is ready" instead of a generic failure (#1458).
+
 ## [0.8.82] - 2026-11-04
 
 ### Security
@@ -1210,7 +1221,8 @@ upgrade browser-smoke and 2FA preservation assertions.
 
 - Removed navigation-triggered syncs in favor of worker-driven sync
 
-[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.82...HEAD
+[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.83...HEAD
+[0.8.83]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.82...v0.8.83
 [0.8.82]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.81...v0.8.82
 [0.8.81]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.80...v0.8.81
 [0.8.80]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.79...v0.8.80
