@@ -11,6 +11,7 @@ import { rateLimitByUser } from '../middleware/rateLimit';
 import { requireWalletAccess } from '../middleware/walletAccess';
 import { validate } from '../middleware/validate';
 import { getSyncCoordinator } from '../services/sync/syncCoordinator';
+import { describeWalletSyncAvailability } from '../services/sync/walletSyncAvailability';
 import { asyncHandler } from '../errors/errorHandler';
 import { DEFAULT_SYNC_PRIORITY, SYNC_PRIORITY_VALUES, type SyncPriority } from '@sanctuary/shared/constants/sync';
 
@@ -60,6 +61,14 @@ router.post('/queue/:walletId', rateLimitByUser('sync:trigger'), validate(
 
   res.json(await getSyncCoordinator().queueWalletSync(userId, walletId, priority));
 }));
+
+/**
+ * GET /api/v1/sync/availability
+ * Whether new wallet sync work is currently admitted, and roughly when a hold ends
+ */
+router.get('/availability', (_req, res) => {
+  res.json(describeWalletSyncAvailability());
+});
 
 /**
  * GET /api/v1/sync/status/:walletId

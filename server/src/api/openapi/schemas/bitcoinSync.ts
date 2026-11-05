@@ -96,6 +96,31 @@ export const syncSchemas = {
     required: ["success", "requested", "merged", "rejected", "indeterminate", "outcomes"],
     additionalProperties: false,
   },
+  WalletSyncAvailability: {
+    description:
+      "Whether new wallet sync work is admitted. While paused, resumesAt is an estimate, null when the hold has no bounded end.",
+    oneOf: [
+      {
+        type: "object",
+        properties: { state: { type: "string", enum: ["available"] } },
+        required: ["state"],
+        additionalProperties: false,
+      },
+      {
+        type: "object",
+        properties: {
+          state: { type: "string", enum: ["paused"] },
+          reason: {
+            type: "string",
+            enum: ["restart_recovery", "stabilizing", "worker_unavailable", "gated"],
+          },
+          resumesAt: { type: "string", format: "date-time", nullable: true },
+        },
+        required: ["state", "reason", "resumesAt"],
+        additionalProperties: false,
+      },
+    ],
+  },
   WalletSyncStatus: {
     type: "object",
     properties: {

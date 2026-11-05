@@ -242,6 +242,27 @@ export interface QueueResult {
   syncInProgress: boolean;
 }
 
+/**
+ * Why new wallet sync work is held:
+ * - `restart_recovery`: the worker restarted without retiring its heartbeat.
+ * - `stabilizing`: the fleet is healthy and serving the drain horizon.
+ * - `worker_unavailable`: the API cannot reach the worker.
+ * - `gated`: any other fail-closed activation state.
+ */
+export type WalletSyncPauseReason =
+  | 'restart_recovery'
+  | 'stabilizing'
+  | 'worker_unavailable'
+  | 'gated';
+
+/**
+ * Whether the fleet currently admits new wallet sync work. `resumesAt` is an
+ * estimate (null when the hold has no bounded end), not a guarantee.
+ */
+export type WalletSyncAvailability =
+  | { state: 'available' }
+  | { state: 'paused'; reason: WalletSyncPauseReason; resumesAt: string | null };
+
 /** Authoritative persisted lifecycle state for a wallet sync. */
 export interface WalletSyncStatus {
   lastSyncedAt: string | null;

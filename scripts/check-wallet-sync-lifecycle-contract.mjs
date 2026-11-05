@@ -1407,6 +1407,8 @@ function unexpectedActivationConsumers(sources) {
   ).filter(file => !new Set([
     ACTIVATION_GATE_PATH,
     'server/src/services/sync/syncIntentAdmission.ts',
+    // Read-only UI summary of the published activation state; never gates work.
+    'server/src/services/sync/walletSyncAvailability.ts',
     'server/src/worker/healthServer.ts',
     RECOVERY_RUNTIME_PATH,
     SCHEDULER_RETIREMENT_CUTOVER_PATH,

@@ -238,6 +238,7 @@ const STATIC_IMPORT_API_RESPONSES: Record<string, MockApiResponse> = {
   'GET /transactions/recent': mockResponse([]),
   'GET /transactions/activity-summary': mockResponse({ count: 0, receivedSats: 0, sentSats: 0, latestAt: null }),
   'POST /payjoin/release-original': mockResponse({ restored: false }),
+  'GET /sync/availability': mockResponse({ state: 'available' }),
   'GET /transactions/balance-history': mockResponse(emptyBalanceHistory()),
   'GET /devices/models': mockResponse([]),
   'GET /ai/status': mockResponse({ available: false, proxyAvailable: false }),

@@ -1101,6 +1101,10 @@
             "role": "activation_gate_definition"
           },
           {
+            "file": "server/src/services/sync/walletSyncAvailability.ts",
+            "role": "activation_state_type_consumer"
+          },
+          {
             "file": "server/src/worker/healthServer.ts",
             "role": "activation_state_type_consumer"
           },

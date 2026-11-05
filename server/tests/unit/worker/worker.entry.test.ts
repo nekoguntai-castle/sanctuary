@@ -1362,6 +1362,7 @@ describe('worker entrypoint', () => {
       electrum: true,
       jobQueue: true,
       recurringSchedules: true,
+      startedAt: expect.any(String),
       walletSyncActivation: activation,
     });
     await expect(mocks.getHealthProvider()?.getMetrics()).resolves.toEqual(
@@ -2030,6 +2031,7 @@ describe('worker entrypoint', () => {
       electrum: true,
       jobQueue: true,
       recurringSchedules: true,
+      startedAt: expect.any(String),
       walletSyncActivation: {
         status: 'active',
         requiredFloor: 1,
@@ -2043,6 +2045,7 @@ describe('worker entrypoint', () => {
       electrum: false,
       jobQueue: false,
       recurringSchedules: true,
+      startedAt: expect.any(String),
       walletSyncActivation: {
         status: 'active',
         requiredFloor: 1,
@@ -2286,6 +2289,7 @@ describe('worker entrypoint', () => {
       electrum: true,
       jobQueue: true,
       recurringSchedules: true,
+      startedAt: expect.any(String),
       walletSyncActivation: {
         status: 'active',
         requiredFloor: 1,
@@ -2322,6 +2326,7 @@ describe('worker entrypoint', () => {
       electrum: true,
       jobQueue: false,
       recurringSchedules: false,
+      startedAt: expect.any(String),
       walletSyncActivation: {
         status: 'active',
         requiredFloor: 1,
@@ -2357,6 +2362,7 @@ describe('worker entrypoint', () => {
       electrum: true,
       jobQueue: false,
       recurringSchedules: false,
+      startedAt: expect.any(String),
       walletSyncActivation: {
         status: 'active',
         requiredFloor: 1,

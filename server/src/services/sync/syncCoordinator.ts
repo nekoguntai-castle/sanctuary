@@ -7,6 +7,7 @@ import {
   InvalidInputError,
   ServiceUnavailableError,
   SyncInProgressError,
+  ErrorCodes,
 } from '../../errors/ApiError';
 import {
   ConfirmationLockUnavailableError,
@@ -22,6 +23,7 @@ import {
   type IncrementalSyncAdmissionResult,
   type IncrementalSyncWakeupDisposition,
 } from './syncIntentAdmission';
+import { describeRefusedWalletSync } from './walletSyncAvailability';
 
 const SYNC_NETWORKS = BITCOIN_NON_REGTEST_NETWORKS;
 const SYNC_ADMISSION_BATCH_CONCURRENCY = 5;
@@ -207,10 +209,20 @@ type IncrementalSyncAdmissionFailure = Exclude<
 >;
 
 function admissionFailure(result: IncrementalSyncAdmissionFailure): never {
+  if (result.status === 'blocked') return syncPausedFailure(result.activation);
   if (result.status === 'not_found') throw new NotFoundError('Wallet not found');
-  throw new ServiceUnavailableError(result.status === 'generation_exhausted'
-    ? 'Wallet sync generation limit reached'
-    : 'Wallet sync is temporarily unavailable');
+  throw new ServiceUnavailableError('Wallet sync generation limit reached');
+}
+
+type RefusedActivation = Extract<IncrementalSyncAdmissionResult, { status: 'blocked' }>['activation'];
+
+/** A gated admission persisted nothing; tell the caller why and roughly until when. */
+function syncPausedFailure(activation: RefusedActivation): never {
+  throw new ServiceUnavailableError(
+    'Wallet sync is paused until the background worker is ready',
+    ErrorCodes.SERVICE_UNAVAILABLE,
+    { syncAvailability: describeRefusedWalletSync(activation) },
+  );
 }
 
 async function requestWalletHistory(walletId: string): Promise<WalletSyncResponse> {
@@ -422,11 +434,9 @@ export class SyncCoordinator {
       reason: `manual-wallet-resync:${userId}`,
     });
     if (!('generation' in result)) {
+      if (result.status === 'blocked') return syncPausedFailure(result.activation);
       if (result.status === 'not_found') throw new NotFoundError('Wallet not found');
-      if (result.status === 'generation_exhausted') {
-        throw new ServiceUnavailableError('Wallet full-resync generation limit reached');
-      }
-      throw new ServiceUnavailableError('Wallet sync is temporarily unavailable');
+      throw new ServiceUnavailableError('Wallet full-resync generation limit reached');
     }
     const status = result.status === 'requested' ? 'accepted' : 'deduplicated';
 

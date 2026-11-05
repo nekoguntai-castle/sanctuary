@@ -24,3 +24,19 @@ export const WALLET_SYNC_MAX_EXECUTION_MS = 30 * 60_000;
 // Keep this invariant independent of replica-local configuration.
 export const WALLET_SYNC_ACTIVATION_DRAIN_HORIZON_MS =
   WALLET_SYNC_MAX_EXECUTION_MS + 60_000;
+
+// Worker heartbeat registry lifetimes (owned by services/workerHeartbeatRegistry).
+// A registry member is retained for at least the drain horizon. Restart/collision
+// evidence must outlive both a stale registry member and the maximum pre-floor
+// execution drain; once it expires, a healthy observation still has to begin and
+// complete the durable activation stabilization horizon. This keeps the
+// fail-closed window safety-derived and bounded rather than retaining an
+// arbitrary day-long marker after the exact boot has disappeared.
+export const WORKER_REGISTRY_RETENTION_MS = Math.max(
+  15 * 60_000,
+  WALLET_SYNC_ACTIVATION_DRAIN_HORIZON_MS,
+);
+export const WORKER_RESTART_MARKER_TTL_MS = Math.max(
+  WORKER_REGISTRY_RETENTION_MS,
+  WALLET_SYNC_ACTIVATION_DRAIN_HORIZON_MS,
+);

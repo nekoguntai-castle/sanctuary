@@ -94,6 +94,7 @@ const STATIC_RESPONSES: ApiResponseMap = {
       BASELINE_API_KEYS.bitcoinStatus,
       BASELINE_API_KEYS.activitySummary,
       BASELINE_API_KEYS.balanceHistory,
+      BASELINE_API_KEYS.syncAvailability,
       BASELINE_API_KEYS.aiStatus,
       BASELINE_API_KEYS.intelligenceStatus,
     ],

@@ -56,6 +56,23 @@ export const syncPaths = {
       },
     },
   },
+  "/sync/availability": {
+    get: {
+      tags: ["Sync"],
+      summary: "Get wallet sync availability",
+      description:
+        "Report whether new wallet sync work is currently admitted and, while it is held after a worker restart, roughly when it resumes.",
+      security: bearerAuth,
+      responses: {
+        200: jsonResponse(
+          "Wallet sync availability",
+          "#/components/schemas/WalletSyncAvailability",
+        ),
+        401: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
   "/sync/status/{walletId}": {
     get: {
       tags: ["Sync"],

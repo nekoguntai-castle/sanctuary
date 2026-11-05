@@ -38,6 +38,7 @@ export interface HealthCheckProvider {
     jobQueue: boolean;
     recurringSchedules?: boolean;
     database?: boolean;
+    startedAt?: string;
     walletSyncActivation?: WalletSyncActivationState;
   }>;
   getMetrics?(): Promise<{

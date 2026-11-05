@@ -51,12 +51,15 @@ export const registerBitcoinSyncRouteTests = () => {
 
       it('should return 503 when canonical admission is blocked', async () => {
         mockPrismaClient.wallet.findFirst.mockResolvedValue({ id: 'wallet-1' });
-        mockSyncIntentAdmission.request.mockResolvedValue({ status: 'blocked' });
+        mockSyncIntentAdmission.request.mockResolvedValue({
+          status: 'blocked',
+          activation: { status: 'stabilizing', requiredFloor: 1, candidateReadySince: '2026-11-04T23:00:00.000Z' },
+        });
 
         const response = await request(app).post('/bitcoin/wallet/wallet-1/sync');
 
         expect(response.status).toBe(503);
-        expect(response.body.message).toBe('Wallet sync is temporarily unavailable');
+        expect(response.body.message).toBe('Wallet sync is paused until the background worker is ready');
         expect(mockBlockchain.syncWallet).not.toHaveBeenCalled();
       });
     });

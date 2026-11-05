@@ -324,6 +324,7 @@ describe("Remaining API Modules", () => {
       await syncApi.queueSync("w1");
       await syncApi.queueSync("w1", "high");
       await syncApi.getSyncStatus("w1");
+      await syncApi.getSyncAvailability();
       await syncApi.resyncWallet("w1");
       await syncApi.syncNetworkWallets("mainnet");
       await syncApi.syncNetworkWallets("mainnet", "high");
@@ -338,6 +339,7 @@ describe("Remaining API Modules", () => {
         priority: "high",
       });
       expect(mockGet).toHaveBeenCalledWith("/sync/status/w1");
+      expect(mockGet).toHaveBeenCalledWith("/sync/availability");
       expect(mockPost).toHaveBeenCalledWith("/sync/resync/w1");
       expect(mockPost).toHaveBeenCalledWith("/sync/network/mainnet", {
         priority: "normal",

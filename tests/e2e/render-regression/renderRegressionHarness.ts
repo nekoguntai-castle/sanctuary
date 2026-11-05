@@ -569,6 +569,7 @@ const AUTHENTICATED_API_RESPONSES: Record<string, MockApiResponse> = {
   }),
   'GET /transactions/recent': mockResponse([]),
   'POST /payjoin/release-original': mockResponse({ restored: false }),
+  'GET /sync/availability': mockResponse({ state: 'available' }),
   'GET /transactions/balance-history': mockResponse(flatBalanceHistory(125000000)),
   'GET /transactions/activity-summary': mockResponse({
     count: 3,

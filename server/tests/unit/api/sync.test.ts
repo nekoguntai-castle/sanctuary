@@ -229,11 +229,11 @@ describe('Sync API - Network Endpoints', () => {
     });
 
     it.each([
-      ['blocked', 'Wallet sync is temporarily unavailable'],
+      ['blocked', 'Wallet sync is paused until the background worker is ready'],
       ['generation_exhausted', 'Wallet sync generation limit reached'],
     ])('POST /sync/wallet/:walletId maps %s admission to 503', async (status, message) => {
       mockWalletRepository.findByIdWithAccess.mockResolvedValue({ id: 'wallet-1' });
-      mockSyncIntentAdmission.request.mockResolvedValue({ status });
+      mockSyncIntentAdmission.request.mockResolvedValue({ status, activation: { status: 'stabilizing', requiredFloor: 1, candidateReadySince: '2026-11-04T23:00:00.000Z' } });
 
       const response = await request(app)
         .post('/sync/wallet/wallet-1')
@@ -578,11 +578,11 @@ describe('Sync API - Network Endpoints', () => {
     });
 
     it.each([
-      ['blocked', 'Wallet sync is temporarily unavailable'],
+      ['blocked', 'Wallet sync is paused until the background worker is ready'],
       ['generation_exhausted', 'Wallet full-resync generation limit reached'],
     ])('POST /sync/resync/:walletId maps %s admission to 503', async (status, message) => {
       mockWalletRepository.findByIdWithAccess.mockResolvedValue({ id: 'wallet-1', syncInProgress: false });
-      mockSyncIntentAdmission.requestFullResync.mockResolvedValue({ status });
+      mockSyncIntentAdmission.requestFullResync.mockResolvedValue({ status, activation: { status: 'stabilizing', requiredFloor: 1, candidateReadySince: '2026-11-04T23:00:00.000Z' } });
 
       const response = await request(app)
         .post('/sync/resync/wallet-1')
@@ -865,7 +865,7 @@ describe('Sync API - Network Endpoints', () => {
       mockWalletRepository.findByNetworkWithSyncStatus.mockResolvedValue([
         { id: 'wallet-1', syncInProgress: false },
       ]);
-      mockSyncIntentAdmission.requestFullResync.mockResolvedValue({ status });
+      mockSyncIntentAdmission.requestFullResync.mockResolvedValue({ status, activation: { status: 'stabilizing', requiredFloor: 1, candidateReadySince: '2026-11-04T23:00:00.000Z' } });
 
       const response = await request(app)
         .post('/sync/network/mainnet/resync')

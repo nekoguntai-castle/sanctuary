@@ -4,7 +4,9 @@ import { AlertTriangle, Menu, X } from 'lucide-react';
 import { SanctuaryLogo } from '../ui/CustomIcons';
 import { AboutModal } from './AboutModal';
 import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
+import { LayoutNotice } from './LayoutNotice';
 import { MobileMenuOverlay } from './MobileMenuOverlay';
+import { SyncPausedBanner } from './SyncPausedBanner';
 import type { LayoutController } from './useLayoutController';
 import type { PageContentWidth } from '../../app/appRouteTypes';
 
@@ -72,26 +74,15 @@ const DefaultPasswordWarning: React.FC<{ show: boolean }> = ({ show }) => {
   if (!show) return null;
 
   return (
-    <div className="bg-amber-500 dark:bg-amber-600">
-      <div className="max-w-7xl mx-auto py-2 px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between flex-wrap">
-          <div className="flex-1 flex items-center">
-            <span className="flex p-1 rounded-lg bg-amber-600 dark:bg-amber-700">
-              <AlertTriangle className="h-5 w-5 text-white" />
-            </span>
-            <p className="ml-3 font-medium text-white text-sm">
-              <span>Security Warning: You are using the default password.</span>
-              <Link
-                to="/account"
-                className="ml-2 underline hover:text-amber-100 font-semibold"
-              >
-                Change it now →
-              </Link>
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
+    <LayoutNotice icon={AlertTriangle}>
+      <span>Security Warning: You are using the default password.</span>
+      <Link
+        to="/account"
+        className="ml-2 underline hover:text-amber-100 font-semibold"
+      >
+        Change it now →
+      </Link>
+    </LayoutNotice>
   );
 };
 
@@ -152,6 +143,7 @@ export const LayoutShell: React.FC<LayoutShellProps> = ({
         <DefaultPasswordWarning
           show={!!controller.user?.isAdmin && !!controller.user?.usingDefaultPassword}
         />
+        <SyncPausedBanner />
         <div className={`py-8 px-4 sm:px-6 md:px-8 mx-auto ${CONTENT_WIDTH_CLASS[contentWidth]}`}>
           {children}
         </div>

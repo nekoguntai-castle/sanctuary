@@ -368,6 +368,7 @@ const AUTHENTICATED_STATIC_API_RESPONSES: Record<string, MockApiResponse> = {
       BASELINE_API_KEYS.recentTransactions,
       BASELINE_API_KEYS.activitySummary,
       BASELINE_API_KEYS.balanceHistory,
+      BASELINE_API_KEYS.syncAvailability,
       BASELINE_API_KEYS.aiStatus,
       BASELINE_API_KEYS.intelligenceStatus,
     ],

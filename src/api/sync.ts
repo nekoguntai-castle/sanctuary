@@ -8,7 +8,7 @@ import apiClient from './client';
 import type { NetworkType as BitcoinNetworkType } from '@sanctuary/shared/constants/bitcoin';
 import { DEFAULT_SYNC_PRIORITY, type SyncPriority } from '@sanctuary/shared/constants/sync';
 import type { WalletLogEntry } from '../hooks/websocket';
-import type { WalletSyncStatus } from '@sanctuary/shared/types/api';
+import type { WalletSyncAvailability, WalletSyncStatus } from '@sanctuary/shared/types/api';
 
 export type SyncStatus = WalletSyncStatus;
 
@@ -57,6 +57,13 @@ export async function queueSync(
   priority: SyncPriority = DEFAULT_SYNC_PRIORITY
 ): Promise<WalletSyncRequestResult> {
   return apiClient.post<WalletSyncRequestResult>(`/sync/queue/${walletId}`, { priority });
+}
+
+/**
+ * Whether new wallet sync work is currently admitted, and roughly when a hold ends
+ */
+export async function getSyncAvailability(): Promise<WalletSyncAvailability> {
+  return apiClient.get<WalletSyncAvailability>('/sync/availability');
 }
 
 /**

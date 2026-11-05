@@ -518,6 +518,7 @@ async function startWorker(): Promise<void> {
           electrum: electrumManager?.isConnected() ?? false,
           jobQueue: jobQueueHealthy,
           recurringSchedules: scheduleHealth.healthy,
+          startedAt: new Date(workerStartedAt).toISOString(),
           walletSyncActivation: walletSyncRecoveryRuntime?.getActivationState() ?? {
             status: 'dormant',
             requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,

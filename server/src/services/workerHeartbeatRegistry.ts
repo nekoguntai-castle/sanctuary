@@ -3,9 +3,10 @@ import Redis from "ioredis";
 import { z } from "zod";
 import { getConfig } from "../config";
 import {
-  WALLET_SYNC_ACTIVATION_DRAIN_HORIZON_MS,
   WALLET_SYNC_MUTATION_FENCE_FLOOR,
   WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR,
+  WORKER_REGISTRY_RETENTION_MS,
+  WORKER_RESTART_MARKER_TTL_MS,
 } from "../constants/walletSyncActivation";
 import { NOTIFICATION_RETENTION_CONTRACT_VERSION } from "../internal/notificationRetention";
 import {
@@ -24,19 +25,8 @@ const KEY_PREFIX = `sanctuary:diagnostics:worker-heartbeat:v${HEARTBEAT_VERSION}
 const REGISTRY_KEY = `${KEY_PREFIX}:members`;
 const HEARTBEAT_INTERVAL_MS = 10_000;
 const HEARTBEAT_TTL_MS = 35_000;
-const REGISTRY_RETENTION_MS = Math.max(
-  15 * 60_000,
-  WALLET_SYNC_ACTIVATION_DRAIN_HORIZON_MS,
-);
-// Restart/collision evidence must outlive both a stale registry member and the
-// maximum pre-floor execution drain. Once it expires, a healthy observation
-// still has to begin and complete the durable activation stabilization horizon.
-// This keeps the fail-closed window safety-derived and bounded rather than
-// retaining an arbitrary day-long marker after the exact boot has disappeared.
-const RESTART_MARKER_TTL_MS = Math.max(
-  REGISTRY_RETENTION_MS,
-  WALLET_SYNC_ACTIVATION_DRAIN_HORIZON_MS,
-);
+const REGISTRY_RETENTION_MS = WORKER_REGISTRY_RETENTION_MS;
+const RESTART_MARKER_TTL_MS = WORKER_RESTART_MARKER_TTL_MS;
 const READ_TIMEOUT_MS = 1_000;
 const WRITE_TIMEOUT_MS = 1_000;
 const MAX_REPLICAS = 32;

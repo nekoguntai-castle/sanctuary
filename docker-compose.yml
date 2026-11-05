@@ -424,6 +424,11 @@ services:
     image: sanctuary-backend:${SANCTUARY_IMAGE_TAG:-local}
     pull_policy: never # Reuse image built by backend service
     restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
+    # Outlast the worker's own 30s shutdown deadline (WORKER_SHUTDOWN_TIMEOUT_MS).
+    # Docker's 10s default could SIGKILL a worker still draining a sync before it
+    # retired its heartbeat, and the next boot would then hold wallet sync for a
+    # restart-marker TTL on top of the activation drain horizon (~1 hour).
+    stop_grace_period: 40s
     depends_on:
       postgres:
         condition: service_healthy
