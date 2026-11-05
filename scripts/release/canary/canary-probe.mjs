@@ -229,23 +229,27 @@ const walletIds = initialFleet.wallets.map((w) => w.id);
 // The wallet-sync activation gate blocks in TWO sequential phases after a
 // deployment, and the total is what this deadline has to cover.
 //
-//   1. restart_observed. Every worker restart writes a Redis marker whose TTL is
-//      RESTART_MARKER_TTL_MS = max(REGISTRY_RETENTION_MS,
-//      WALLET_SYNC_ACTIVATION_DRAIN_HORIZON_MS) = 31 min
-//      (WALLET_SYNC_MAX_EXECUTION_MS 30 min + 60s lock slack). While it lives,
-//      workerHeartbeatRegistry returns blockedReadiness("restart_observed").
+//   1. restart_observed. A restart whose predecessor is of unknown floor (such
+//      as a worker killed before it retired while upgrading from a release
+//      without fenced markers) or a live duplicate leaves a blocking Redis
+//      marker whose TTL is WORKER_RESTART_MARKER_TTL_MS =
+//      drain horizon + 35s heartbeat TTL + 5 min clock-skew budget = 36m35s.
+//      While it lives, workerHeartbeatRegistry reports restart_observed.
 //   2. stabilizing. Only once that expires can a healthy observation be
 //      accepted, and that starts the drain horizon -- another 31 min before
 //      drainHorizonSatisfied.
 //
-// So admissions reopen roughly 62 minutes after the worker restart, not 31.
+// So admissions can reopen as late as ~68 minutes after the worker restart.
+// Other taint (Redis data loss, a floor raise) costs phase 2 alone. A clean or
+// fenced restart with an unbroken activation continuity record re-admits at
+// once (ADR 0004, "Re-admission after activation").
 // POST /sync/network/mainnet answers 200 success:true with requested:0 merged:0
 // rejected:<fleet> throughout, which looks like a hung fleet but is the gate
 // failing closed. The old 15-minute default could not survive phase 1 alone and
 // aborted every canary started soon after a deploy -- it cost the v0.8.70-rc8
 // canary and again the v0.8.71-rc7 canary.
 //
-// 90 minutes leaves headroom over the ~62-minute floor without masking a fleet
+// 90 minutes leaves headroom over the ~68-minute worst case without masking a fleet
 // that is genuinely stuck. Check what remains with
 //   redis-cli ttl sanctuary:diagnostics:worker-heartbeat:v1:restart:<bootHash>
 // the marker counts down and is not refreshed.

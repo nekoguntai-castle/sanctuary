@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type Redis from "ioredis";
-import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from "../../../src/constants/walletSyncActivation";
+import {
+  WALLET_SYNC_MUTATION_FENCE_FLOOR,
+  WORKER_REGISTRY_RETENTION_MS,
+} from "../../../src/constants/walletSyncActivation";
 import {
   WorkerHeartbeatReader,
   WorkerHeartbeatWriter,
@@ -122,9 +125,15 @@ describe("privacy-safe worker heartbeat registry", () => {
 
     expect(client.eval).toHaveBeenCalledTimes(2);
     const args = client.eval.mock.calls[0];
-    expect(args[1]).toBe(4);
+    expect(args[1]).toBe(5);
     expect(args[0]).toContain("previous_snapshot and 'collision' or 'restart'");
+    expect(args[0]).toContain("redis.call('SET', KEYS[5], ARGV[10], 'NX')");
     expect(args).toContain(33);
+    // First write of this boot, with floors bound to the boot value.
+    expect(args[9]).toMatch(
+      new RegExp(`^[0-9a-f-]{36}\\|${WALLET_SYNC_MUTATION_FENCE_FLOOR}\\|\\d+$`),
+    );
+    expect(args[15]).toBe("1");
     const serialized = args.find(
       (value: unknown) =>
         typeof value === "string" && value.includes("retentionContractVersion"),
@@ -135,9 +144,35 @@ describe("privacy-safe worker heartbeat registry", () => {
     );
     expect(String(serialized)).not.toMatch(/hostname|"replicaId"|"workerId"/i);
     expect(client.eval.mock.calls[1][0]).toContain(
-      "current_boot ~= ARGV[2]",
+      "parse_boot(current_boot) ~= ARGV[2]",
     );
     expect(client.disconnect).toHaveBeenCalledWith(false);
+  });
+
+  it("marks only the first applied write as able to classify a predecessor", async () => {
+    const client = {
+      status: "ready",
+      eval: vi.fn().mockResolvedValue(1),
+      disconnect: vi.fn(),
+    };
+    const writer = new WorkerHeartbeatWriter(
+      () => snapshot(),
+      () => client as unknown as Redis,
+    );
+
+    await writer.write(50_000);
+    await writer.write(60_000);
+    await writer.stop();
+
+    expect(client.eval.mock.calls[0][15]).toBe("1");
+    expect(client.eval.mock.calls[1][15]).toBe("0");
+    // Every write carries a fresh nonce candidate; Redis keeps only the first.
+    expect(client.eval.mock.calls[0][16]).not.toBe(client.eval.mock.calls[1][16]);
+    // Retirement passes the floors a removable fenced marker must meet.
+    expect(client.eval.mock.calls[2].slice(-2)).toEqual([
+      WALLET_SYNC_MUTATION_FENCE_FLOOR,
+      expect.any(Number),
+    ]);
   });
 
   it("uses a stable configured replica slot while keeping it internal", async () => {
@@ -208,8 +243,11 @@ describe("privacy-safe worker heartbeat registry", () => {
     expect(client.connect).toHaveBeenCalledOnce();
     expect(client.eval).toHaveBeenCalledTimes(3);
     expect(client.eval.mock.calls[2][0]).toContain(
-      "current_boot ~= ARGV[2]",
+      "parse_boot(current_boot) ~= ARGV[2]",
     );
+    // A rejected write was never applied, so the next one is still the first.
+    expect(client.eval.mock.calls[0][15]).toBe("1");
+    expect(client.eval.mock.calls[1][15]).toBe("1");
     expect(client.disconnect).toHaveBeenCalledTimes(2);
     vi.useRealTimers();
   });
@@ -411,14 +449,15 @@ describe("privacy-safe worker heartbeat registry", () => {
     );
     expect(client.zrangebyscore).toHaveBeenCalledWith(
       expect.stringContaining(":members"),
-      now - 31 * 60_000,
+      now - WORKER_REGISTRY_RETENTION_MS,
       "+inf",
       "WITHSCORES",
       "LIMIT",
       0,
       33,
     );
-    expect(client.pipelineHandle.get).toHaveBeenCalledTimes(4);
+    // Two replicas' snapshot and marker, plus the incarnation nonce.
+    expect(client.pipelineHandle.get).toHaveBeenCalledTimes(5);
     expect(client.disconnect).toHaveBeenCalledWith(false);
   });
 
@@ -721,7 +760,7 @@ describe("privacy-safe worker heartbeat registry", () => {
       }),
     );
     expect(connect).toHaveBeenCalledOnce();
-    expect(client.pipelineHandle.get).toHaveBeenCalledTimes(64);
+    expect(client.pipelineHandle.get).toHaveBeenCalledTimes(65);
   });
 
   it("retains stale membership as degraded evidence while malformed reads stay unavailable", async () => {

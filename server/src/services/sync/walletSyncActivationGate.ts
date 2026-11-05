@@ -142,11 +142,14 @@ export function createWalletSyncActivationGate(dependencies: WalletSyncActivatio
     }
   }
 
-  async function inspectReadiness(): Promise<WalletSyncActivationStabilizationResult | null> {
+  async function inspectReadiness(
+    registryIncarnation: string | null,
+  ): Promise<WalletSyncActivationStabilizationResult | null> {
     try {
       return await dependencies.inspectReadiness({
         readyObservationMaxAgeMs: WALLET_SYNC_ACTIVATION_READY_OBSERVATION_MAX_AGE_MS,
         drainHorizonMs: dependencies.drainHorizonMs(),
+        registryIncarnation,
       });
     } catch {
       return null;
@@ -156,10 +159,11 @@ export function createWalletSyncActivationGate(dependencies: WalletSyncActivatio
   async function resetReadiness(
     now: Date,
     status: 'blocked' | 'unavailable',
+    { taint }: { taint: boolean },
   ): Promise<boolean> {
     try {
       return (await observeReadiness({
-        observation: { status },
+        observation: { status, taint },
         evaluatedAt: now,
         readyObservationMaxAgeMs: WALLET_SYNC_ACTIVATION_READY_OBSERVATION_MAX_AGE_MS,
         drainHorizonMs: dependencies.drainHorizonMs(),
@@ -175,38 +179,61 @@ export function createWalletSyncActivationGate(dependencies: WalletSyncActivatio
   ): Promise<WalletSyncActivationState> {
     // `activate` is reserved for the worker runtime: it may extend continuous
     // readiness and persist the immutable policy. Admission uses inspect mode,
-    // which is read-only while healthy. Every unsafe observation resets proof.
+    // which is read-only while healthy. Every unsafe observation resets proof;
+    // tainting evidence also forfeits the completed drain (see `continuityHeld`).
     const policy = await readPolicy();
     if (policy === null) {
-      if (!await resetReadiness(now, 'unavailable')) {
+      if (!await resetReadiness(now, 'unavailable', { taint: false })) {
         return unavailableState('stabilization_unavailable');
       }
       return unavailableState('policy_unavailable');
     }
     const readiness = await readFleet(now);
     if (readiness === null) {
-      if (!await resetReadiness(now, 'unavailable')) {
+      // An unreadable registry is an observation gap, not evidence: Redis data
+      // loss is caught by the incarnation nonce once reads recover.
+      if (!await resetReadiness(now, 'unavailable', { taint: false })) {
         return unavailableState('stabilization_unavailable');
       }
       return unavailableState('fleet_unavailable');
     }
     if (!readiness.ready) {
-      if (!await resetReadiness(now, 'blocked')) {
+      if (!await resetReadiness(now, 'blocked', { taint: readiness.taint })) {
         return unavailableState('stabilization_unavailable');
       }
       return fleetState(readiness);
     }
     const stabilization = activate
       ? await observeReadiness({
-        observation: { status: 'ready', observedAt: now },
+        observation: {
+          status: 'ready',
+          observedAt: now,
+          registryIncarnation: readiness.registryIncarnation,
+        },
         evaluatedAt: now,
         readyObservationMaxAgeMs: WALLET_SYNC_ACTIVATION_READY_OBSERVATION_MAX_AGE_MS,
         drainHorizonMs: dependencies.drainHorizonMs(),
       })
-      : await inspectReadiness();
+      : await inspectReadiness(readiness.registryIncarnation);
     if (stabilization === null || !stabilization.readyObservationAccepted) {
-      await resetReadiness(now, 'unavailable');
+      // A stale or unreadable observation is not evidence about the fleet.
+      await resetReadiness(now, 'unavailable', { taint: false });
       return unavailableState('stabilization_unavailable');
+    }
+    if (stabilization.continuity === 'incarnation_changed') {
+      // Redis lost registry data since the last observation: treat as taint.
+      await resetReadiness(now, 'blocked', { taint: true });
+      return unavailableState('stabilization_unavailable');
+    }
+    // After activation, a completed drain with no tainting evidence since lets
+    // current exact readiness re-admit at once. The policy floor must equal the
+    // binary floor, so a floor raise always drains again.
+    if (
+      policy.mode === 'active'
+      && policy.activation.mutationFenceFloor === WALLET_SYNC_MUTATION_FENCE_FLOOR
+      && stabilization.continuity === 'held'
+    ) {
+      return activeState(policy.activation);
     }
     if (!stabilization.drainHorizonSatisfied) return stabilizingState(stabilization);
     if (policy.mode === 'active') return activeState(policy.activation);
@@ -214,7 +241,7 @@ export function createWalletSyncActivationGate(dependencies: WalletSyncActivatio
     try {
       return activeState(await dependencies.activatePolicy(now));
     } catch {
-      if (!await resetReadiness(now, 'unavailable')) {
+      if (!await resetReadiness(now, 'unavailable', { taint: false })) {
         return unavailableState('stabilization_unavailable');
       }
       return unavailableState('policy_unavailable');

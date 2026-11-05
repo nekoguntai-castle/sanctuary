@@ -1,4 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
+import {
+  WALLET_SYNC_ACTIVATION_DRAIN_HORIZON_MS,
+  WORKER_RESTART_MARKER_TTL_MS,
+} from '../../../../src/constants/walletSyncActivation';
 
 const { mockGetWorkerHealthStatus } = vi.hoisted(() => ({
   mockGetWorkerHealthStatus: vi.fn(),
@@ -13,8 +17,6 @@ import {
   describeWalletSyncAvailability,
 } from '../../../../src/services/sync/walletSyncAvailability';
 import type { WorkerHealthStatus } from '../../../../src/services/workerHealth';
-
-const MINUTE = 60_000;
 
 function health(
   status: WorkerHealthStatus['status'],
@@ -73,7 +75,7 @@ describe('describeWalletSyncAvailability', () => {
     }))).toEqual({
       state: 'paused',
       reason: 'stabilizing',
-      resumesAt: new Date(Date.parse('2026-11-04T23:00:00.000Z') + 31 * MINUTE).toISOString(),
+      resumesAt: new Date(Date.parse('2026-11-04T23:00:00.000Z') + WALLET_SYNC_ACTIVATION_DRAIN_HORIZON_MS).toISOString(),
     });
   });
 
@@ -84,7 +86,7 @@ describe('describeWalletSyncAvailability', () => {
     }))).toEqual({
       state: 'paused',
       reason: 'restart_recovery',
-      resumesAt: new Date(Date.parse('2026-11-04T23:00:00.000Z') + 62 * MINUTE).toISOString(),
+      resumesAt: new Date(Date.parse('2026-11-04T23:00:00.000Z') + WORKER_RESTART_MARKER_TTL_MS + WALLET_SYNC_ACTIVATION_DRAIN_HORIZON_MS).toISOString(),
     });
   });
 
@@ -123,7 +125,7 @@ describe('describeWalletSyncAvailability', () => {
     expect(describeRefusedWalletSync({ status: 'fleet_blocked', requiredFloor: 1, reason: 'restart_observed' })).toEqual({
       state: 'paused',
       reason: 'restart_recovery',
-      resumesAt: new Date(Date.parse('2026-11-04T23:00:00.000Z') + 62 * MINUTE).toISOString(),
+      resumesAt: new Date(Date.parse('2026-11-04T23:00:00.000Z') + WORKER_RESTART_MARKER_TTL_MS + WALLET_SYNC_ACTIVATION_DRAIN_HORIZON_MS).toISOString(),
     });
   });
 

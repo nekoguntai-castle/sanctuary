@@ -94,18 +94,26 @@ binding check.
 
 ### Wait out the activation gate before starting
 
-A deploy restarts the worker, and the wallet-sync activation gate then blocks
-admissions for **two sequential phases** -- the `restart_observed` marker's TTL,
-and then the drain horizon that a fresh healthy observation starts over. With
-`WALLET_SYNC_MAX_EXECUTION_MS` at 30 minutes that is roughly 62 minutes in
-total, during which `POST /sync/network/mainnet` answers `200 success:true` with
-`requested:0 merged:0 rejected:<fleet>`. That reads like a hung fleet; it is the
-gate failing closed.
+A deploy restarts the worker. When the previous worker retired its heartbeat
+cleanly, or crashed while advertising the current fence floor, and the
+activation continuity record holds a completed drain, admissions reopen as soon
+as the restarted worker's first heartbeat makes fleet readiness exact (see ADR
+0004, "Re-admission after activation").
+
+Tainting evidence brings back a drain: Redis data loss or a floor raise costs
+one 31-minute drain. A predecessor of unknown floor or a live duplicate, which
+includes a worker killed before it retired while upgrading to a release with
+continuity tracking, also leaves a blocking restart marker. The hold then has
+two sequential phases: the blocking restart marker's TTL (36 minutes 35
+seconds), then the 31-minute drain horizon that a fresh healthy observation
+starts over. That is roughly 68 minutes, during which `POST
+/sync/network/mainnet` answers `200 success:true` with `requested:0 merged:0
+rejected:<fleet>`. That reads like a hung fleet; it is the gate failing closed.
+`GET /api/v1/sync/availability` reports the hold and its estimated end.
 
 `CANARY_ACTIVATION_TIMEOUT_MS` defaults to 90 minutes so a probe started right
-after a deploy survives the wait rather than aborting with `fleet admission
-never accepted (activation gate)`. Starting the probe about an hour after the
-deploy still costs less wall-clock than letting it idle through the gate.
+after a deploy survives the full hold rather than aborting with `fleet admission
+never accepted (activation gate)`.
 
 ## Canary fleet
 

@@ -37,54 +37,72 @@ function snapshot() {
 }
 
 interface HeartbeatSlotState {
-  bootEpoch: string | null;
+  bootValue: string | null;
   snapshot: string | null;
   member: string | null;
-  restartMarker: "collision" | "restart" | null;
+  restartMarker: string | null;
 }
 
 function emptySlot(): HeartbeatSlotState {
   return {
-    bootEpoch: null,
+    bootValue: null,
     snapshot: null,
     member: null,
     restartMarker: null,
   };
 }
 
+const epochOf = (bootValue: string) => bootValue.split("|")[0];
+
+/** Mirrors WRITE_SCRIPT/RETIRE_SCRIPT for one slot (Lua is covered by Redis integration). */
 function statefulWriterClient(state: HeartbeatSlotState) {
   return {
     status: "ready",
-    eval: vi.fn(
-      async (
-        script: string,
-        _keyCount: number,
-        _snapshotKey: string,
-        _registryKey: string,
-        _bootKey: string,
-        _restartKey: string,
-        replicaId: string,
-        serializedOrBootEpoch: string,
-        maybeBootEpoch?: string,
-      ) => {
-        if (script.includes("local previous_boot")) {
-          if (state.bootEpoch && state.bootEpoch !== maybeBootEpoch) {
+    eval: vi.fn(async (script: string, ...rest: string[]) => {
+      if (script.includes("local previous_boot")) {
+        // rest: key count, five keys, then ARGV[1..].
+        const [, , , , , , replicaId, record, bootValue, , , , , , firstWrite] = rest;
+        const previous = state.bootValue;
+        if (previous && epochOf(previous) !== epochOf(bootValue)) {
+          const floors = /^[^|]+\|(\d+)\|(\d+)$/.exec(previous);
+          if (firstWrite !== "1") {
+            state.restartMarker = "collision";
+          } else if (floors) {
+            const fenced = `fenced|${floors[1]}|${floors[2]}`;
+            const existing = /^fenced\|(\d+)\|(\d+)$/.exec(state.restartMarker ?? "");
+            if (
+              state.restartMarker === null
+              || (existing && Number(floors[1]) <= Number(existing[1])
+                && Number(floors[2]) <= Number(existing[2]))
+            ) {
+              state.restartMarker = fenced;
+            }
+          } else {
             state.restartMarker = state.snapshot ? "collision" : "restart";
           }
-          state.snapshot = serializedOrBootEpoch;
-          state.bootEpoch = maybeBootEpoch ?? null;
-          state.member = replicaId;
-          return 1;
         }
-
-        if (state.bootEpoch !== serializedOrBootEpoch) return 0;
-        state.snapshot = null;
-        state.bootEpoch = null;
-        state.member = null;
-        state.restartMarker = null;
+        state.snapshot = record;
+        state.bootValue = bootValue;
+        state.member = replicaId;
         return 1;
-      },
-    ),
+      }
+
+      // rest: key count, four keys, replica id, then epoch and floors.
+      const [, , , , , , epoch, mutationFloor, retirementFloor] = rest;
+      if (!state.bootValue || epochOf(state.bootValue) !== epoch) return 0;
+      state.snapshot = null;
+      state.bootValue = null;
+      state.member = null;
+      const fenced = /^fenced\|(\d+)\|(\d+)$/.exec(state.restartMarker ?? "");
+      if (
+        fenced
+        && Number(fenced[1]) >= Number(mutationFloor)
+        && Number(fenced[2]) >= Number(retirementFloor)
+      ) {
+        state.restartMarker = null;
+      }
+      return 1;
+    }),
     disconnect: vi.fn(),
   };
 }
@@ -107,21 +125,21 @@ describe("worker heartbeat graceful retirement", () => {
     const first = new WorkerHeartbeatWriter(snapshot, createClient);
 
     await first.write(50_000);
-    const firstBootEpoch = state.bootEpoch;
+    const firstBootValue = state.bootValue;
     expect(JSON.parse(state.snapshot!).walletSyncSchedulerRetirementFloor).toBe(2);
     await first.stop();
 
-    expect(firstBootEpoch).toMatch(/^[0-9a-f-]{36}$/);
+    expect(firstBootValue).toMatch(/^[0-9a-f-]{36}\|1\|2$/);
     expect(state).toEqual(emptySlot());
     const retireCall = clients[1].eval.mock.calls[0];
-    expect(retireCall[0]).toContain("current_boot ~= ARGV[2]");
+    expect(retireCall[0]).toContain("parse_boot(current_boot) ~= ARGV[2]");
     expect(retireCall[0]).toContain("redis.call('ZREM', KEYS[2], ARGV[1])");
-    expect(retireCall[7]).toBe(firstBootEpoch);
+    expect(retireCall[7]).toBe(epochOf(firstBootValue!));
 
     const replacement = new WorkerHeartbeatWriter(snapshot, createClient);
     await replacement.write(60_000);
 
-    expect(state.bootEpoch).not.toBe(firstBootEpoch);
+    expect(state.bootValue).not.toBe(firstBootValue);
     expect(state.restartMarker).toBeNull();
     await replacement.stop();
   });
@@ -137,9 +155,10 @@ describe("worker heartbeat graceful retirement", () => {
     await writer.write(50_000);
 
     const writeCall = client.eval.mock.calls[0] as unknown[];
-    // max(15-minute registry retention, 31-minute execution drain horizon)
-    expect(writeCall[12]).toBe(31 * 60_000);
-    expect(writeCall[12]).not.toBe(24 * 60 * 60_000);
+    // The 31-minute execution drain horizon, one heartbeat TTL and a 5-minute
+    // clock-skew budget; never an arbitrary day-long marker.
+    expect(writeCall[13]).toBe(31 * 60_000 + 35_000 + 5 * 60_000);
+    expect(writeCall[13]).not.toBe(24 * 60 * 60_000);
     await writer.stop();
   });
 
@@ -151,23 +170,23 @@ describe("worker heartbeat graceful retirement", () => {
     const replacement = new WorkerHeartbeatWriter(snapshot, createClient);
 
     await stale.write(50_000);
-    const staleBootEpoch = state.bootEpoch;
+    const staleBootValue = state.bootValue;
     await replacement.write(60_000);
-    const replacementBootEpoch = state.bootEpoch;
+    const replacementBootValue = state.bootValue;
     const replacementSnapshot = state.snapshot;
     await stale.stop();
 
-    expect(replacementBootEpoch).not.toBe(staleBootEpoch);
+    expect(replacementBootValue).not.toBe(staleBootValue);
     expect(state).toEqual({
-      bootEpoch: replacementBootEpoch,
+      bootValue: replacementBootValue,
       snapshot: replacementSnapshot,
       member: expect.any(String),
-      restartMarker: "collision",
+      restartMarker: "fenced|1|2",
     });
     await replacement.stop();
   });
 
-  it("retains crash evidence when the old boot does not stop gracefully", async () => {
+  it("records fenced crash evidence naming the predecessor's floors", async () => {
     vi.stubEnv("WORKER_REPLICA_ID", "worker-slot-a");
     const state = emptySlot();
     const createClient = () => statefulWriterClient(state) as unknown as Redis;
@@ -175,14 +194,50 @@ describe("worker heartbeat graceful retirement", () => {
     const replacement = new WorkerHeartbeatWriter(snapshot, createClient);
 
     await crashed.write(50_000);
-    const crashedBootEpoch = state.bootEpoch;
+    const crashedBootValue = state.bootValue;
     await replacement.write(60_000);
 
-    expect(state.bootEpoch).not.toBe(crashedBootEpoch);
+    expect(state.bootValue).not.toBe(crashedBootValue);
     expect(state.snapshot).not.toBeNull();
     expect(state.member).not.toBeNull();
+    expect(state.restartMarker).toBe("fenced|1|2");
+    // A fenced marker that blocks neither reader leaves with a clean retirement.
+    await replacement.stop();
+    expect(state.restartMarker).toBeNull();
+  });
+
+  it("keeps blocking evidence about an unknown predecessor past a clean retirement", async () => {
+    vi.stubEnv("WORKER_REPLICA_ID", "worker-slot-a");
+    const state = { ...emptySlot(), bootValue: "legacy-epoch", snapshot: "{}", member: "slot" };
+    const createClient = () => statefulWriterClient(state) as unknown as Redis;
+    const replacement = new WorkerHeartbeatWriter(snapshot, createClient);
+
+    await replacement.write(60_000);
     expect(state.restartMarker).toBe("collision");
     await replacement.stop();
+
+    expect(state.restartMarker).toBe("collision");
+    expect(state.bootValue).toBeNull();
+  });
+
+  it("marks a live duplicate of the slot as a blocking collision on its next write", async () => {
+    vi.stubEnv("WORKER_REPLICA_ID", "worker-slot-a");
+    const state = emptySlot();
+    const createClient = () => statefulWriterClient(state) as unknown as Redis;
+    const original = new WorkerHeartbeatWriter(snapshot, createClient);
+    const duplicate = new WorkerHeartbeatWriter(snapshot, createClient);
+
+    await original.write(50_000);
+    await duplicate.write(55_000);
+    expect(state.restartMarker).toBe("fenced|1|2");
+    await original.write(60_000);
+
+    expect(state.restartMarker).toBe("collision");
+    // A blocking marker is never weakened by a later fenced classification.
+    const late = new WorkerHeartbeatWriter(snapshot, createClient);
+    await late.write(65_000);
+    expect(state.restartMarker).toBe("collision");
+    await Promise.all([original.stop(), duplicate.stop(), late.stop()]);
   });
 
   it("bounds a stalled retirement without issuing a late delete", async () => {

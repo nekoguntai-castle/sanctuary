@@ -210,8 +210,14 @@ advertise that capability through the bounded heartbeat registry. An immutable
 activation policy can be established only after current exact fleet proof has
 remained continuously ready for a complete wallet-lock drain horizon; blocked,
 unavailable, stale, or restart evidence resets that durable stabilization.
+After activation, a reset forfeits the completed drain only when its evidence
+is tainting (see ADR 0004, "Re-admission after activation"): a fenced restart, a
+stale gap, an empty or briefly unreadable registry lets current exact readiness
+re-admit at once, while below-floor or unknown evidence, a live duplicate, a
+malformed registry entry, a changed Redis incarnation, or a floor raise drains
+again.
 The marker alone never authorizes work: every admission, recovery, and reclaim
-boundary rechecks live and stabilized evidence.
+boundary rechecks live evidence and stabilization or continuity.
 Canonical incremental and full-resync wake-ups use floor-bound v3 so pre-fence
 workers reject them before locking. Retained v1 and generation-less v2 jobs
 remain readable only long enough to persist equivalent durable intent; the

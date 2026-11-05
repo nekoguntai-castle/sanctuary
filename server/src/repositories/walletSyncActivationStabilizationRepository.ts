@@ -3,7 +3,10 @@ import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from '../constants/walletSyncActivat
 import { Prisma } from '../generated/prisma/client';
 import prisma from '../models/prisma';
 import { safeJsonParse } from '../utils/safeJson';
-import { WALLET_SYNC_ACTIVATION_STABILIZATION_KEY } from './operationalSystemSettings';
+import {
+  WALLET_SYNC_ACTIVATION_CONTINUITY_KEY,
+  WALLET_SYNC_ACTIVATION_STABILIZATION_KEY,
+} from './operationalSystemSettings';
 
 export const WALLET_SYNC_ACTIVATION_STABILIZATION_VERSION = 1 as const;
 
@@ -41,9 +44,28 @@ export interface WalletSyncActivationStabilization {
   lastReadyAt: string | null;
 }
 
+export const WALLET_SYNC_ACTIVATION_CONTINUITY_VERSION = 1 as const;
+
+// Stored under its own key so a rolled-back binary, which neither reads nor
+// writes it, can still parse the v1 stabilization state. The record is bound
+// to the exact stabilization row version (PostgreSQL `xmin`) and interval it
+// describes; any write to that row by another binary changes the version and
+// loses continuity, even when it writes byte-identical v1 state.
+const continuitySchema = z.object({
+  version: z.literal(WALLET_SYNC_ACTIVATION_CONTINUITY_VERSION),
+  requiredMutationFenceFloor: z.number().int().min(1),
+  stabilizationRowVersion: z.string().min(1),
+  registryIncarnation: z.string().min(1),
+  candidateReadySince: z.iso.datetime({ offset: true }).nullable(),
+  lastReadyAt: z.iso.datetime({ offset: true }).nullable(),
+  eligible: z.boolean(),
+}).strict();
+
+type WalletSyncActivationContinuity = z.infer<typeof continuitySchema>;
+
 export type WalletSyncActivationReadinessObservation =
-  | { status: 'ready'; observedAt: Date }
-  | { status: 'blocked' | 'unavailable' };
+  | { status: 'ready'; observedAt: Date; registryIncarnation: string | null }
+  | { status: 'blocked' | 'unavailable'; taint: boolean };
 
 export interface ObserveWalletSyncActivationReadinessInput {
   observation: WalletSyncActivationReadinessObservation;
@@ -55,21 +77,41 @@ export interface ObserveWalletSyncActivationReadinessInput {
 export interface InspectWalletSyncActivationReadinessInput {
   readyObservationMaxAgeMs: number;
   drainHorizonMs: number;
+  registryIncarnation: string | null;
 }
 
 export interface WalletSyncActivationStabilizationResult {
   state: WalletSyncActivationStabilization;
   readyObservationAccepted: boolean;
   drainHorizonSatisfied: boolean;
+  /**
+   * - `held`: a full drain has completed with no tainting evidence and an
+   *   unchanged registry incarnation since, so an already-active policy may
+   *   re-admit on current exact readiness without draining again.
+   * - `incarnation_changed` (inspect only): the registry incarnation differs
+   *   from the recorded one, so Redis lost data since the last observation.
+   * - `none`: neither.
+   */
+  continuity: WalletSyncActivationContinuityStatus;
 }
+
+export type WalletSyncActivationContinuityStatus = 'held' | 'incarnation_changed' | 'none';
 
 interface StabilizationRow {
   value: string;
+  rowVersion: string;
 }
 
 interface StabilizationSnapshotRow {
   value: string | null;
+  rowVersion: string | null;
+  continuity: string | null;
   databaseNow: Date;
+}
+
+interface LockedClockRow {
+  databaseNow: Date;
+  continuity: string | null;
 }
 
 function emptyStabilization(): WalletSyncActivationStabilization {
@@ -95,6 +137,49 @@ export function parseWalletSyncActivationStabilization(
     throw new Error('Invalid durable wallet-sync activation stabilization state');
   }
   return parsed;
+}
+
+/** Malformed continuity only forfeits the fast path; it never blocks the drain. */
+function parseContinuity(value: string | null): WalletSyncActivationContinuity | null {
+  if (value === null) return null;
+  return safeJsonParse(value, continuitySchema.nullable(), null, WALLET_SYNC_ACTIVATION_CONTINUITY_KEY);
+}
+
+function boundContinuity(
+  continuity: WalletSyncActivationContinuity | null,
+  state: WalletSyncActivationStabilization,
+  rowVersion: string | null,
+): WalletSyncActivationContinuity | null {
+  if (
+    continuity === null
+    || rowVersion === null
+    || continuity.stabilizationRowVersion !== rowVersion
+    || continuity.requiredMutationFenceFloor !== WALLET_SYNC_MUTATION_FENCE_FLOOR
+    || state.requiredMutationFenceFloor !== WALLET_SYNC_MUTATION_FENCE_FLOOR
+    || continuity.candidateReadySince !== state.candidateReadySince
+    || continuity.lastReadyAt !== state.lastReadyAt
+  ) {
+    return null;
+  }
+  return continuity;
+}
+
+/** The row version is filled in once the stabilization row write is known. */
+type UnboundContinuity = Omit<WalletSyncActivationContinuity, 'stabilizationRowVersion'>;
+
+function bindContinuity(
+  state: WalletSyncActivationStabilization,
+  registryIncarnation: string,
+  eligible: boolean,
+): UnboundContinuity {
+  return {
+    version: WALLET_SYNC_ACTIVATION_CONTINUITY_VERSION,
+    requiredMutationFenceFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
+    registryIncarnation,
+    candidateReadySince: state.candidateReadySince,
+    lastReadyAt: state.lastReadyAt,
+    eligible,
+  };
 }
 
 function requireValidDate(value: Date, description: string): void {
@@ -203,30 +288,73 @@ function readyInterval(state: WalletSyncActivationStabilization): {
   };
 }
 
-function nextStabilization(
+interface StabilizationTransition {
+  state: WalletSyncActivationStabilization;
+  continuity: UnboundContinuity | null;
+  accepted: boolean;
+  drainSatisfied: boolean;
+}
+
+function transition(
   current: WalletSyncActivationStabilization,
+  previous: WalletSyncActivationContinuity | null,
   input: ObserveWalletSyncActivationReadinessInput,
   recordedAt: Date,
-): { state: WalletSyncActivationStabilization; accepted: boolean } {
-  if (input.observation.status !== 'ready') {
-    return { state: emptyStabilization(), accepted: false };
+): StabilizationTransition {
+  const { observation } = input;
+  const rebindPrevious = (state: WalletSyncActivationStabilization) => (previous === null
+    ? null
+    : bindContinuity(state, previous.registryIncarnation, previous.eligible));
+  if (observation.status !== 'ready') {
+    // Every non-ready observation resets the interval; only tainting evidence
+    // also forfeits the completed drain.
+    const state = emptyStabilization();
+    return {
+      state,
+      continuity: observation.taint ? null : rebindPrevious(state),
+      accepted: false,
+      drainSatisfied: false,
+    };
   }
-  const observationAgeMs = input.evaluatedAt.getTime() - input.observation.observedAt.getTime();
+  const observationAgeMs = input.evaluatedAt.getTime() - observation.observedAt.getTime();
   if (observationAgeMs > input.readyObservationMaxAgeMs) {
-    return { state: emptyStabilization(), accepted: false };
+    const state = emptyStabilization();
+    return { state, continuity: rebindPrevious(state), accepted: false, drainSatisfied: false };
   }
-  return {
-    state: projectReadyObservation(
-      current,
-      recordedAt,
-      input.readyObservationMaxAgeMs,
-    ),
-    accepted: true,
-  };
+  const { registryIncarnation } = observation;
+  // A missing nonce read keeps the interval but cannot carry continuity.
+  // Otherwise unknown history (no record bound to this exact row version and
+  // interval, as after an upgrade or a write by another binary) or a changed
+  // registry incarnation (Redis lost data) restarts the interval as if tainted.
+  const continuous = previous !== null
+    && registryIncarnation !== null
+    && previous.registryIncarnation === registryIncarnation;
+  const state = projectReadyObservation(
+    continuous || registryIncarnation === null ? current : emptyStabilization(),
+    recordedAt,
+    input.readyObservationMaxAgeMs,
+  );
+  const interval = readyInterval(state);
+  const drainSatisfied = interval !== null && drainHorizonSatisfied(
+    interval.candidateReadySince,
+    interval.lastReadyAt,
+    recordedAt,
+    input.readyObservationMaxAgeMs,
+    input.drainHorizonMs,
+  );
+  const continuity = registryIncarnation === null
+    ? null
+    : bindContinuity(
+      state,
+      registryIncarnation,
+      (continuous && previous.eligible) || drainSatisfied,
+    );
+  return { state, continuity, accepted: true, drainSatisfied };
 }
 
 async function readStabilizationSnapshot(): Promise<{
   state: WalletSyncActivationStabilization;
+  continuity: WalletSyncActivationContinuity | null;
   databaseNow: Date;
 }> {
   const rows = await prisma.$queryRaw<StabilizationSnapshotRow[]>(Prisma.sql`
@@ -236,6 +364,16 @@ async function readStabilizationSnapshot(): Promise<{
         FROM "system_settings"
         WHERE "key" = ${WALLET_SYNC_ACTIVATION_STABILIZATION_KEY}
       ) AS "value",
+      (
+        SELECT xmin::text
+        FROM "system_settings"
+        WHERE "key" = ${WALLET_SYNC_ACTIVATION_STABILIZATION_KEY}
+      ) AS "rowVersion",
+      (
+        SELECT "value"
+        FROM "system_settings"
+        WHERE "key" = ${WALLET_SYNC_ACTIVATION_CONTINUITY_KEY}
+      ) AS "continuity",
       clock_timestamp() AS "databaseNow"
   `);
   const row = rows[0];
@@ -246,8 +384,10 @@ async function readStabilizationSnapshot(): Promise<{
     ? emptyStabilization()
     : parseWalletSyncActivationStabilization(row.value);
   assertStateNotFuture(stored, row.databaseNow);
+  const state = currentFloorState(stored);
   return {
-    state: currentFloorState(stored),
+    state,
+    continuity: boundContinuity(parseContinuity(row.continuity), state, row.rowVersion),
     databaseNow: row.databaseNow,
   };
 }
@@ -267,11 +407,17 @@ export async function inspectWalletSyncActivationReadiness(
   input: InspectWalletSyncActivationReadinessInput,
 ): Promise<WalletSyncActivationStabilizationResult> {
   requireInspectionInput(input);
-  const { state, databaseNow } = await readStabilizationSnapshot();
+  const { state, continuity, databaseNow } = await readStabilizationSnapshot();
   const interval = readyInterval(state);
   const readyObservationAccepted = interval !== null
     && databaseNow.getTime() - Date.parse(interval.lastReadyAt)
       <= input.readyObservationMaxAgeMs;
+  let continuityStatus: WalletSyncActivationContinuityStatus = 'none';
+  if (continuity !== null && continuity.registryIncarnation !== input.registryIncarnation) {
+    continuityStatus = 'incarnation_changed';
+  } else if (readyObservationAccepted && continuity?.eligible) {
+    continuityStatus = 'held';
+  }
   return {
     state,
     readyObservationAccepted,
@@ -282,6 +428,7 @@ export async function inspectWalletSyncActivationReadiness(
       input.readyObservationMaxAgeMs,
       input.drainHorizonMs,
     ),
+    continuity: continuityStatus,
   };
 }
 
@@ -304,15 +451,23 @@ export async function observeWalletSyncActivationReadiness(
       skipDuplicates: true,
     });
     const rows = await tx.$queryRaw<StabilizationRow[]>(Prisma.sql`
-      SELECT "value"
+      SELECT "value", xmin::text AS "rowVersion"
       FROM "system_settings"
       WHERE "key" = ${WALLET_SYNC_ACTIVATION_STABILIZATION_KEY}
       FOR UPDATE
     `);
     const row = rows[0];
     if (!row) throw new Error('Wallet-sync activation stabilization row is unavailable');
-    const clockRows = await tx.$queryRaw<Pick<StabilizationSnapshotRow, 'databaseNow'>[]>(Prisma.sql`
-      SELECT clock_timestamp() AS "databaseNow"
+    // The stabilization row lock above serializes every writer of the
+    // continuity key, so it is read alongside the post-lock clock.
+    const clockRows = await tx.$queryRaw<LockedClockRow[]>(Prisma.sql`
+      SELECT
+        clock_timestamp() AS "databaseNow",
+        (
+          SELECT "value"
+          FROM "system_settings"
+          WHERE "key" = ${WALLET_SYNC_ACTIVATION_CONTINUITY_KEY}
+        ) AS "continuity"
     `);
     const recordedAt = clockRows[0]?.databaseNow;
     if (!(recordedAt instanceof Date) || !Number.isFinite(recordedAt.getTime())) {
@@ -321,22 +476,54 @@ export async function observeWalletSyncActivationReadiness(
     const stored = parseWalletSyncActivationStabilization(row.value);
     assertStateNotFuture(stored, recordedAt);
     const current = currentFloorState(stored);
-    const next = nextStabilization(current, input, recordedAt);
-    const interval = readyInterval(next.state);
-    await tx.systemSetting.update({
-      where: { key: WALLET_SYNC_ACTIVATION_STABILIZATION_KEY },
-      data: { value: JSON.stringify(next.state) },
-    });
+    const storedContinuity = clockRows[0]?.continuity ?? null;
+    const previous = boundContinuity(parseContinuity(storedContinuity), current, row.rowVersion);
+    const next = transition(current, previous, input, recordedAt);
+
+    // Skip writes that would change nothing; a steadily blocked fleet otherwise
+    // rewrites both rows on every observation.
+    const nextState = JSON.stringify(next.state);
+    let rowVersion = row.rowVersion;
+    if (nextState !== row.value) {
+      const updated = await tx.$queryRaw<Pick<StabilizationRow, 'rowVersion'>[]>(Prisma.sql`
+        UPDATE "system_settings"
+        SET "value" = ${nextState}, "updatedAt" = clock_timestamp()
+        WHERE "key" = ${WALLET_SYNC_ACTIVATION_STABILIZATION_KEY}
+        RETURNING xmin::text AS "rowVersion"
+      `);
+      const updatedVersion = updated[0]?.rowVersion;
+      if (!updatedVersion) throw new Error('Wallet-sync activation stabilization row is unavailable');
+      rowVersion = updatedVersion;
+    }
+    // Schema field order, so an unchanged record serializes byte-identically.
+    const continuity: WalletSyncActivationContinuity | null = next.continuity === null
+      ? null
+      : {
+        version: next.continuity.version,
+        requiredMutationFenceFloor: next.continuity.requiredMutationFenceFloor,
+        stabilizationRowVersion: rowVersion,
+        registryIncarnation: next.continuity.registryIncarnation,
+        candidateReadySince: next.continuity.candidateReadySince,
+        lastReadyAt: next.continuity.lastReadyAt,
+        eligible: next.continuity.eligible,
+      };
+    const nextContinuity = continuity === null ? null : JSON.stringify(continuity);
+    if (nextContinuity === null) {
+      if (storedContinuity !== null) {
+        await tx.systemSetting.deleteMany({ where: { key: WALLET_SYNC_ACTIVATION_CONTINUITY_KEY } });
+      }
+    } else if (nextContinuity !== storedContinuity) {
+      await tx.systemSetting.upsert({
+        where: { key: WALLET_SYNC_ACTIVATION_CONTINUITY_KEY },
+        create: { key: WALLET_SYNC_ACTIVATION_CONTINUITY_KEY, value: nextContinuity },
+        update: { value: nextContinuity },
+      });
+    }
     return {
       state: next.state,
       readyObservationAccepted: next.accepted,
-      drainHorizonSatisfied: next.accepted && interval !== null && drainHorizonSatisfied(
-        interval.candidateReadySince,
-        interval.lastReadyAt,
-        recordedAt,
-        input.readyObservationMaxAgeMs,
-        input.drainHorizonMs,
-      ),
+      drainHorizonSatisfied: next.accepted && next.drainSatisfied,
+      continuity: next.accepted && continuity?.eligible ? 'held' : 'none',
     };
   });
 }

@@ -12,6 +12,7 @@ import {
 import prisma from '../../../src/models/prisma';
 import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from '../../../src/constants/walletSyncActivation';
 import {
+  WALLET_SYNC_ACTIVATION_CONTINUITY_KEY,
   WALLET_SYNC_ACTIVATION_KEY,
   WALLET_SYNC_ACTIVATION_STABILIZATION_KEY,
 } from '../../../src/repositories/operationalSystemSettings';
@@ -396,7 +397,11 @@ describeIfDatabase('SystemSettingRepository Integration Tests', () => {
 
   describe('wallet-sync activation stabilization', () => {
     const input = (evaluatedAt = new Date()) => ({
-      observation: { status: 'ready' as const, observedAt: evaluatedAt },
+      observation: {
+        status: 'ready' as const,
+        observedAt: evaluatedAt,
+        registryIncarnation: 'integration-incarnation',
+      },
       evaluatedAt,
       readyObservationMaxAgeMs: 15_000,
       drainHorizonMs: 30_000,
@@ -408,6 +413,7 @@ describeIfDatabase('SystemSettingRepository Integration Tests', () => {
           key: { in: [
             WALLET_SYNC_ACTIVATION_KEY,
             WALLET_SYNC_ACTIVATION_STABILIZATION_KEY,
+            WALLET_SYNC_ACTIVATION_CONTINUITY_KEY,
           ] },
         },
       });
@@ -462,6 +468,7 @@ describeIfDatabase('SystemSettingRepository Integration Tests', () => {
           inspectWalletSyncActivationReadiness({
             readyObservationMaxAgeMs: 15_000,
             drainHorizonMs: 30_000,
+            registryIncarnation: 'integration-incarnation',
           }),
           new Promise<never>((_resolve, reject) => {
             timeout = setTimeout(
@@ -482,7 +489,7 @@ describeIfDatabase('SystemSettingRepository Integration Tests', () => {
       await observeWalletSyncActivationReadiness(input());
 
       await expect(observeWalletSyncActivationReadiness({
-        observation: { status: 'blocked' },
+        observation: { status: 'blocked', taint: false },
         evaluatedAt: new Date(),
         readyObservationMaxAgeMs: 15_000,
         drainHorizonMs: 30_000,
@@ -493,6 +500,66 @@ describeIfDatabase('SystemSettingRepository Integration Tests', () => {
         },
         drainHorizonSatisfied: false,
       });
+    });
+
+    it('unbinds continuity when another binary rewrites identical v1 state', async () => {
+      const blocked = {
+        observation: { status: 'blocked' as const, taint: false },
+        evaluatedAt: new Date(),
+        readyObservationMaxAgeMs: 15_000,
+        drainHorizonMs: 30_000,
+      };
+      await observeWalletSyncActivationReadiness(input());
+      await observeWalletSyncActivationReadiness(blocked);
+      await expect(inspectWalletSyncActivationReadiness({
+        readyObservationMaxAgeMs: 15_000,
+        drainHorizonMs: 30_000,
+        registryIncarnation: 'other-incarnation',
+      })).resolves.toMatchObject({ continuity: 'incarnation_changed' });
+
+      // A rolled-back binary writes the same empty v1 value on every block.
+      const row = await prisma.systemSetting.findUniqueOrThrow({
+        where: { key: WALLET_SYNC_ACTIVATION_STABILIZATION_KEY },
+      });
+      await prisma.systemSetting.update({
+        where: { key: WALLET_SYNC_ACTIVATION_STABILIZATION_KEY },
+        data: { value: row.value },
+      });
+
+      await expect(inspectWalletSyncActivationReadiness({
+        readyObservationMaxAgeMs: 15_000,
+        drainHorizonMs: 30_000,
+        registryIncarnation: 'other-incarnation',
+      })).resolves.toMatchObject({ continuity: 'none' });
+    });
+
+    it('records interval continuity beside the v1 state and drops it on taint', async () => {
+      await observeWalletSyncActivationReadiness(input());
+      const stored = await prisma.systemSetting.findUnique({
+        where: { key: WALLET_SYNC_ACTIVATION_CONTINUITY_KEY },
+        select: { value: true },
+      });
+      const state = await readWalletSyncActivationStabilization();
+      expect(JSON.parse(stored!.value)).toEqual({
+        version: 1,
+        requiredMutationFenceFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
+        stabilizationRowVersion: expect.stringMatching(/^\d+$/),
+        registryIncarnation: 'integration-incarnation',
+        candidateReadySince: state.candidateReadySince,
+        lastReadyAt: state.lastReadyAt,
+        eligible: false,
+      });
+
+      await observeWalletSyncActivationReadiness({
+        observation: { status: 'blocked', taint: true },
+        evaluatedAt: new Date(),
+        readyObservationMaxAgeMs: 15_000,
+        drainHorizonMs: 30_000,
+      });
+
+      await expect(prisma.systemSetting.findUnique({
+        where: { key: WALLET_SYNC_ACTIVATION_CONTINUITY_KEY },
+      })).resolves.toBeNull();
     });
 
     it('never mutates the immutable active policy while recording readiness', async () => {

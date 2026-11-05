@@ -7,6 +7,8 @@ export const WALLET_SYNC_ACTIVATION_KEY =
   `${OPERATIONAL_SYSTEM_SETTING_PREFIX}wallet-sync.activation.v1`;
 export const WALLET_SYNC_ACTIVATION_STABILIZATION_KEY =
   `${OPERATIONAL_SYSTEM_SETTING_PREFIX}wallet-sync.activation-stabilization.v1`;
+export const WALLET_SYNC_ACTIVATION_CONTINUITY_KEY =
+  `${OPERATIONAL_SYSTEM_SETTING_PREFIX}wallet-sync.activation-continuity.v1`;
 
 export function isOperationalSystemSettingKey(key: string): boolean {
   return key.startsWith(OPERATIONAL_SYSTEM_SETTING_PREFIX);

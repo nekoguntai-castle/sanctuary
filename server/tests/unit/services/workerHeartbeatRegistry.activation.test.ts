@@ -143,6 +143,7 @@ describe("wallet sync mutation-fence fleet readiness", () => {
         [null, null],
         [null, current("22222222-2222-4222-8222-222222222222", now)],
         [null, null],
+        [null, "incarnation-1"],
       ],
     );
 
@@ -153,12 +154,13 @@ describe("wallet sync mutation-fence fleet readiness", () => {
     expect(result).toEqual({
       ready: true,
       requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
+      registryIncarnation: "incarnation-1",
     });
     expect(workerMutationFenceReadinessSchema.parse(result)).toEqual(result);
     expect(JSON.stringify(result)).not.toMatch(
       /worker-a|worker-b|11111111|22222222/,
     );
-    expect(client.pipelineHandle.get).toHaveBeenCalledTimes(4);
+    expect(client.pipelineHandle.get).toHaveBeenCalledTimes(5);
     expect(client.disconnect).toHaveBeenCalledWith(false);
   });
 
@@ -182,6 +184,7 @@ describe("wallet sync mutation-fence fleet readiness", () => {
       ready: false,
       requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
       reason: "worker_below_floor",
+      taint: true,
     });
   });
 
@@ -208,6 +211,7 @@ describe("wallet sync mutation-fence fleet readiness", () => {
     await expect(reader.readMutationFenceReadiness(now)).resolves.toEqual({
       ready: true,
       requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
+      registryIncarnation: null,
     });
     const retirement = await reader.readSchedulerRetirementReadiness(now);
     expect(retirement).toEqual({
@@ -306,6 +310,7 @@ describe("wallet sync mutation-fence fleet readiness", () => {
       ready: false,
       requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
       reason: "restart_observed",
+      taint: true,
     });
   });
 
@@ -317,6 +322,7 @@ describe("wallet sync mutation-fence fleet readiness", () => {
         [null, null],
         [null, null],
       ],
+      taint: false,
     },
     {
       name: "malformed heartbeat",
@@ -325,6 +331,34 @@ describe("wallet sync mutation-fence fleet readiness", () => {
         [null, "{"],
         [null, null],
       ],
+      taint: true,
+    },
+    {
+      name: "unreadable heartbeat",
+      members: ["unreadable"],
+      replies: [
+        [new Error("WRONGTYPE"), null],
+        [null, null],
+      ],
+      taint: true,
+    },
+    {
+      name: "unreadable restart evidence",
+      members: ["unreadable-marker"],
+      replies: [
+        [null, current("11111111-1111-4111-8111-111111111111", 100_000)],
+        [new Error("WRONGTYPE"), null],
+      ],
+      taint: true,
+    },
+    {
+      name: "future-dated heartbeat",
+      members: ["future"],
+      replies: [
+        [null, current("11111111-1111-4111-8111-111111111111", 160_001)],
+        [null, null],
+      ],
+      taint: true,
     },
     {
       name: "unstable replica identity",
@@ -342,6 +376,7 @@ describe("wallet sync mutation-fence fleet readiness", () => {
         ],
         [null, null],
       ],
+      taint: true,
     },
     {
       name: "replica collision",
@@ -350,6 +385,7 @@ describe("wallet sync mutation-fence fleet readiness", () => {
         [null, current("11111111-1111-4111-8111-111111111111", 100_000)],
         [null, "collision"],
       ],
+      taint: true,
     },
     {
       name: "stale heartbeat",
@@ -359,8 +395,9 @@ describe("wallet sync mutation-fence fleet readiness", () => {
         [null, null],
       ],
       scores: [64_999],
+      taint: false,
     },
-  ])("fails closed for $name", async ({ members, replies, scores }) => {
+  ])("fails closed for $name", async ({ members, replies, scores, taint }) => {
     const client = readerClient(
       members,
       replies as Array<[Error | null, unknown]>,
@@ -375,6 +412,7 @@ describe("wallet sync mutation-fence fleet readiness", () => {
       ready: false,
       requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
       reason: "incomplete_fleet",
+      taint,
     });
   });
 
@@ -406,8 +444,9 @@ describe("wallet sync mutation-fence fleet readiness", () => {
       ready: false,
       requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
       reason: "incomplete_fleet",
+      taint: true,
     });
-    expect(client.pipelineHandle.get).toHaveBeenCalledTimes(64);
+    expect(client.pipelineHandle.get).toHaveBeenCalledTimes(65);
   });
 
   it("distinguishes no-worker, unavailable, and timeout evidence", async () => {
@@ -435,20 +474,101 @@ describe("wallet sync mutation-fence fleet readiness", () => {
           ready: false,
           requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
           reason: "no_workers",
+          taint: false,
         },
         {
           ready: false,
           requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
           reason: "unavailable",
+          taint: false,
         },
         {
           ready: false,
           requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
           reason: "timeout",
+          taint: false,
         },
       ]);
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  describe("fenced restart evidence", () => {
+    const now = 100_000;
+    const fencedReader = (marker: string) => new WorkerHeartbeatReader(
+      () => readerClient(
+        ["restarted"],
+        [
+          [null, current("11111111-1111-4111-8111-111111111111", now)],
+          [null, marker],
+          [null, "incarnation-1"],
+        ],
+      ) as unknown as Redis,
+    );
+
+    it("admits a restart whose predecessor met both floors", async () => {
+      const reader = fencedReader(
+        `fenced|${WALLET_SYNC_MUTATION_FENCE_FLOOR}|${WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR}`,
+      );
+
+      await expect(reader.readMutationFenceReadiness(now)).resolves.toEqual({
+        ready: true,
+        requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
+        registryIncarnation: "incarnation-1",
+      });
+      await expect(reader.readSchedulerRetirementReadiness(now)).resolves.toEqual({
+        ready: true,
+        requiredFloor: WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR,
+      });
+    });
+
+    it("judges each floor separately", async () => {
+      const reader = fencedReader(`fenced|${WALLET_SYNC_MUTATION_FENCE_FLOOR}|1`);
+
+      await expect(reader.readMutationFenceReadiness(now)).resolves.toMatchObject({ ready: true });
+      await expect(reader.readSchedulerRetirementReadiness(now)).resolves.toEqual({
+        ready: false,
+        requiredFloor: WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR,
+        reason: "restart_observed",
+      });
+    });
+
+    it.each([
+      ["a predecessor below the mutation floor", `fenced|${WALLET_SYNC_MUTATION_FENCE_FLOOR - 1}|2`],
+      ["an unrecognized marker", "fenced|x|y"],
+      ["a legacy marker", "1"],
+    ])("blocks and taints for %s", async (_label, marker) => {
+      await expect(fencedReader(marker).readMutationFenceReadiness(now)).resolves.toEqual({
+        ready: false,
+        requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
+        reason: "restart_observed",
+        taint: true,
+      });
+    });
+
+    it("keeps diagnostics aware of a fenced restart", async () => {
+      const fleet = await fencedReader(
+        `fenced|${WALLET_SYNC_MUTATION_FENCE_FLOOR}|${WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR}`,
+      ).read(now);
+
+      expect(fleet).toMatchObject({ observation: "observed", restartObserved: true });
+    });
+
+    it("taints a stale gap that hides a blocking marker", async () => {
+      const reader = new WorkerHeartbeatReader(
+        () => readerClient(
+          ["stale"],
+          [[null, null], [null, "restart"]],
+        ) as unknown as Redis,
+      );
+
+      await expect(reader.readMutationFenceReadiness(now)).resolves.toEqual({
+        ready: false,
+        requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
+        reason: "incomplete_fleet",
+        taint: true,
+      });
+    });
   });
 });

@@ -1,7 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 import Redis from "ioredis";
 import { afterEach, expect, it, vi } from "vitest";
-import { WorkerHeartbeatWriter } from "../../../src/services/workerHeartbeatRegistry";
+import {
+  WorkerHeartbeatReader,
+  WorkerHeartbeatWriter,
+} from "../../../src/services/workerHeartbeatRegistry";
 import { buildWorkerDiagnosticsSnapshot } from "../../../src/worker/diagnostics/snapshot";
 import { describeWithRedis } from "../setup/redis";
 
@@ -129,14 +132,15 @@ describeWithRedis("worker heartbeat Redis retirement", () => {
     const replacementSnapshot = await inspectionClient!.get(keys!.snapshot);
 
     expect(replacementBoot).not.toBe(staleBoot);
-    expect(await inspectionClient!.get(keys!.restart)).toBe("collision");
+    expect(replacementBoot).toMatch(/^[0-9a-f-]{36}\|1\|2$/);
+    expect(await inspectionClient!.get(keys!.restart)).toBe("fenced|1|2");
     await stale.stop();
 
     expect(await inspectionClient!.get(keys!.boot)).toBe(replacementBoot);
     expect(await inspectionClient!.get(keys!.snapshot)).toBe(
       replacementSnapshot,
     );
-    expect(await inspectionClient!.get(keys!.restart)).toBe("collision");
+    expect(await inspectionClient!.get(keys!.restart)).toBe("fenced|1|2");
     expect(
       await inspectionClient!.zscore(keys!.registry, keys!.replicaId),
     ).toBe("60000");
@@ -148,5 +152,49 @@ describeWithRedis("worker heartbeat Redis retirement", () => {
     expect(
       await inspectionClient!.zscore(keys!.registry, keys!.replicaId),
     ).toBeNull();
+  });
+
+  it("admits a fenced crash restart while keeping a live duplicate blocking", async () => {
+    await arrangeSlot();
+    const crashed = writer();
+    const replacement = writer();
+    await crashed.write(50_000);
+    await replacement.write(55_000);
+    const nonce = await inspectionClient!.get(`${KEY_PREFIX}:incarnation`);
+
+    const reader = new WorkerHeartbeatReader(redisClient);
+    await expect(reader.readMutationFenceReadiness(55_000)).resolves.toEqual({
+      ready: true,
+      requiredFloor: 1,
+      registryIncarnation: nonce,
+    });
+
+    // The "crashed" boot is in fact still alive: its next write is a duplicate.
+    await crashed.write(60_000);
+    expect(await inspectionClient!.get(keys!.restart)).toBe("collision");
+    await expect(reader.readMutationFenceReadiness(60_000)).resolves.toMatchObject({
+      ready: false,
+      taint: true,
+    });
+    // A later fenced classification never weakens the blocking marker.
+    const late = writer();
+    await late.write(65_000);
+    expect(await inspectionClient!.get(keys!.restart)).toBe("collision");
+    expect(await inspectionClient!.get(`${KEY_PREFIX}:incarnation`)).toBe(nonce);
+  });
+
+  it("keeps blocking evidence about an unknown predecessor past a clean retirement", async () => {
+    await arrangeSlot();
+    await inspectionClient!.set(keys!.boot, randomUUID(), "PX", 60_000);
+    const replacement = writer();
+    await replacement.write(60_000);
+    expect(await inspectionClient!.get(keys!.restart)).toBe("restart");
+    const ttl = await inspectionClient!.pttl(keys!.restart);
+
+    await replacement.stop();
+
+    expect(await inspectionClient!.get(keys!.restart)).toBe("restart");
+    expect(await inspectionClient!.pttl(keys!.restart)).toBeLessThanOrEqual(ttl);
+    expect(await inspectionClient!.get(keys!.boot)).toBeNull();
   });
 });

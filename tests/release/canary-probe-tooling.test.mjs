@@ -59,6 +59,22 @@ function drainHorizonMs() {
   return Number(maxExecution[1]) * 60_000 + Number(slack[1].replace(/_/g, ''));
 }
 
+// The blocking restart marker outlives the drain horizon by one heartbeat TTL
+// and a clock-skew budget (WORKER_RESTART_MARKER_TTL_MS).
+function restartMarkerTtlMs() {
+  const source = readFileSync(ACTIVATION_CONSTANTS, 'utf8');
+  const heartbeatTtl = source.match(/WORKER_HEARTBEAT_TTL_MS\s*=\s*([\d_]+);/);
+  const skew = source.match(
+    /WORKER_REGISTRY_CLOCK_SKEW_BUDGET_MS\s*=\s*(\d+)\s*\*\s*(?:60_000|60000);/,
+  );
+  assert.ok(heartbeatTtl && skew, 'could not read the registry evidence margin from the activation constants');
+  // Mirrors WORKER_REGISTRY_RETENTION_MS, including its 15-minute floor.
+  return Math.max(
+    15 * 60_000,
+    drainHorizonMs() + Number(heartbeatTtl[1].replace(/_/g, '')) + Number(skew[1]) * 60_000,
+  );
+}
+
 // These tools gate every stable release: no canary receipt, no stable tag. They
 // lived only on the production host, untracked, until 2026-09-10 -- which meant
 // the activation-timeout defect below could not be reviewed, tested, or even
@@ -79,15 +95,16 @@ test('the canary tooling parses', () => {
 
 // The regression this file exists for.
 //
-// The wallet-sync activation gate blocks in two sequential phases after any
-// worker restart, and a deploy always restarts the worker:
+// After a worker restart with tainting evidence (an unknown predecessor, the
+// first restart after upgrading, ...) the wallet-sync activation gate blocks in
+// two sequential phases:
 //
-//   1. restart_observed -- a Redis marker with RESTART_MARKER_TTL_MS =
-//      max(REGISTRY_RETENTION_MS, WALLET_SYNC_ACTIVATION_DRAIN_HORIZON_MS).
+//   1. restart_observed -- a blocking Redis marker with
+//      WORKER_RESTART_MARKER_TTL_MS = drain horizon + heartbeat TTL + skew budget.
 //   2. stabilizing -- only once that expires can a healthy observation be
 //      accepted, which then starts the drain horizon over again.
 //
-// So admissions reopen roughly 2 x DRAIN_HORIZON after a deploy. Throughout,
+// So admissions can reopen as late as marker TTL + DRAIN_HORIZON after a deploy. Throughout,
 // POST /sync/network/mainnet answers 200 success:true with requested:0
 // merged:0 rejected:<fleet>, which reads like a hung fleet but is the gate
 // failing closed.
@@ -109,13 +126,13 @@ test('the probe activation timeout covers both gate phases', () => {
   );
 
   const defaultMs = Number(match[1]) * 60_000;
-  const requiredMs = 2 * drainHorizonMs();
+  const requiredMs = restartMarkerTtlMs() + drainHorizonMs();
 
   assert.ok(
     defaultMs >= requiredMs,
     `probe activation timeout default is ${defaultMs / 60_000}m but the gate can `
-      + `block for ${requiredMs / 60_000}m (2 x drain horizon); a probe started `
-      + 'after a deploy would abort before admissions reopen',
+      + `block for ${requiredMs / 60_000}m (restart marker + drain horizon); a probe `
+      + 'started after a deploy would abort before admissions reopen',
   );
 });
 

@@ -13,7 +13,11 @@ const activation = {
   activatedAt: stabilizedAt.toISOString(),
   mutationFenceFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
 };
-const ready = { ready: true as const, requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR };
+const ready = {
+  ready: true as const,
+  requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
+  registryIncarnation: 'incarnation-1',
+};
 
 function stabilization(
   candidateReadySince: Date | null,
@@ -29,6 +33,7 @@ function stabilization(
     },
     readyObservationAccepted: candidateReadySince !== null,
     drainHorizonSatisfied,
+    continuity: 'none' as 'held' | 'incarnation_changed' | 'none',
   };
 }
 
@@ -64,7 +69,7 @@ describe('walletSyncActivationGate', () => {
       candidateReadySince: firstReadyAt.toISOString(),
     });
     expect(dependencies.observeReadiness).toHaveBeenCalledWith({
-      observation: { status: 'ready', observedAt: firstReadyAt },
+      observation: { status: 'ready', observedAt: firstReadyAt, registryIncarnation: 'incarnation-1' },
       evaluatedAt: firstReadyAt,
       readyObservationMaxAgeMs: WALLET_SYNC_ACTIVATION_READY_OBSERVATION_MAX_AGE_MS,
       drainHorizonMs,
@@ -97,6 +102,7 @@ describe('walletSyncActivationGate', () => {
     expect(dependencies.inspectReadiness).toHaveBeenCalledWith({
       readyObservationMaxAgeMs: WALLET_SYNC_ACTIVATION_READY_OBSERVATION_MAX_AGE_MS,
       drainHorizonMs,
+      registryIncarnation: 'incarnation-1',
     });
     expect(dependencies.observeReadiness).not.toHaveBeenCalled();
     expect(dependencies.activatePolicy).not.toHaveBeenCalled();
@@ -116,6 +122,59 @@ describe('walletSyncActivationGate', () => {
     expect(dependencies.activatePolicy).not.toHaveBeenCalled();
   });
 
+  describe('re-admission after activation', () => {
+    const heldContinuity = { ...firstReadySample, continuity: 'held' as const };
+
+    it('re-admits on current exact readiness when continuity is held', async () => {
+      dependencies.readPolicy.mockResolvedValue({ mode: 'active', activation });
+      dependencies.observeReadiness.mockResolvedValue(heldContinuity);
+      dependencies.inspectReadiness.mockResolvedValue(heldContinuity);
+
+      await expect(gate.activate(firstReadyAt)).resolves.toEqual({
+        status: 'active',
+        requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
+        activatedAt: stabilizedAt.toISOString(),
+      });
+      await expect(gate.inspect(firstReadyAt)).resolves.toMatchObject({ status: 'active' });
+      expect(dependencies.activatePolicy).not.toHaveBeenCalled();
+    });
+
+    it('still drains when the policy predates the binary floor', async () => {
+      dependencies.readPolicy.mockResolvedValue({
+        mode: 'active',
+        activation: { ...activation, mutationFenceFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR - 1 },
+      });
+      dependencies.inspectReadiness.mockResolvedValue(heldContinuity);
+
+      await expect(gate.inspect(firstReadyAt)).resolves.toMatchObject({ status: 'stabilizing' });
+    });
+
+    it('never establishes the first activation from continuity alone', async () => {
+      dependencies.observeReadiness.mockResolvedValue(heldContinuity);
+
+      await expect(gate.activate(firstReadyAt)).resolves.toMatchObject({ status: 'stabilizing' });
+      expect(dependencies.activatePolicy).not.toHaveBeenCalled();
+    });
+
+    it('taints and fails closed when the registry incarnation changed', async () => {
+      dependencies.readPolicy.mockResolvedValue({ mode: 'active', activation });
+      dependencies.inspectReadiness.mockResolvedValue({
+        ...continuouslyReady,
+        continuity: 'incarnation_changed' as const,
+      });
+      dependencies.observeReadiness.mockResolvedValue(resetEvidence);
+
+      await expect(gate.inspect(stabilizedAt)).resolves.toEqual({
+        status: 'unavailable',
+        requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
+        reason: 'stabilization_unavailable',
+      });
+      expect(dependencies.observeReadiness).toHaveBeenCalledWith(expect.objectContaining({
+        observation: { status: 'blocked', taint: true },
+      }));
+    });
+  });
+
   it.each([
     'no_workers',
     'incomplete_fleet',
@@ -124,10 +183,12 @@ describe('walletSyncActivationGate', () => {
     'unavailable',
     'timeout',
   ] as const)('resets stabilization and propagates mixed-fleet reason %s', async (reason) => {
+    const taint = !['no_workers', 'unavailable', 'timeout'].includes(reason);
     dependencies.readFleet.mockResolvedValue({
       ready: false,
       requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
       reason,
+      taint,
     });
     dependencies.observeReadiness.mockResolvedValue(resetEvidence);
 
@@ -137,7 +198,7 @@ describe('walletSyncActivationGate', () => {
       reason,
     });
     expect(dependencies.observeReadiness).toHaveBeenCalledWith({
-      observation: { status: 'blocked' },
+      observation: { status: 'blocked', taint },
       evaluatedAt: stabilizedAt,
       readyObservationMaxAgeMs: WALLET_SYNC_ACTIVATION_READY_OBSERVATION_MAX_AGE_MS,
       drainHorizonMs,
@@ -155,7 +216,7 @@ describe('walletSyncActivationGate', () => {
       reason: 'fleet_unavailable',
     });
     expect(dependencies.observeReadiness).toHaveBeenCalledWith({
-      observation: { status: 'unavailable' },
+      observation: { status: 'unavailable', taint: false },
       evaluatedAt: stabilizedAt,
       readyObservationMaxAgeMs: WALLET_SYNC_ACTIVATION_READY_OBSERVATION_MAX_AGE_MS,
       drainHorizonMs,
@@ -252,6 +313,7 @@ describe('walletSyncActivationGate', () => {
       ready: false,
       requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
       reason: 'restart_observed',
+      taint: true,
     });
     dependencies.observeReadiness.mockResolvedValue(resetEvidence);
 
@@ -260,7 +322,7 @@ describe('walletSyncActivationGate', () => {
       reason: 'restart_observed',
     });
     expect(dependencies.observeReadiness).toHaveBeenCalledWith({
-      observation: { status: 'blocked' },
+      observation: { status: 'blocked', taint: true },
       evaluatedAt: stabilizedAt,
       readyObservationMaxAgeMs: WALLET_SYNC_ACTIVATION_READY_OBSERVATION_MAX_AGE_MS,
       drainHorizonMs,
@@ -276,7 +338,7 @@ describe('walletSyncActivationGate', () => {
       reason: 'stabilization_unavailable',
     });
     expect(dependencies.observeReadiness).toHaveBeenCalledWith({
-      observation: { status: 'unavailable' },
+      observation: { status: 'unavailable', taint: false },
       evaluatedAt: stabilizedAt,
       readyObservationMaxAgeMs: WALLET_SYNC_ACTIVATION_READY_OBSERVATION_MAX_AGE_MS,
       drainHorizonMs,
@@ -294,7 +356,7 @@ describe('walletSyncActivationGate', () => {
       reason: 'stabilization_unavailable',
     });
     expect(dependencies.observeReadiness).toHaveBeenCalledWith({
-      observation: { status: 'unavailable' },
+      observation: { status: 'unavailable', taint: false },
       evaluatedAt: stabilizedAt,
       readyObservationMaxAgeMs: WALLET_SYNC_ACTIVATION_READY_OBSERVATION_MAX_AGE_MS,
       drainHorizonMs,
@@ -311,7 +373,7 @@ describe('walletSyncActivationGate', () => {
     expect(dependencies.readFleet).not.toHaveBeenCalled();
     expect(dependencies.inspectReadiness).not.toHaveBeenCalled();
     expect(dependencies.observeReadiness).toHaveBeenCalledWith({
-      observation: { status: 'unavailable' },
+      observation: { status: 'unavailable', taint: false },
       evaluatedAt: stabilizedAt,
       readyObservationMaxAgeMs: WALLET_SYNC_ACTIVATION_READY_OBSERVATION_MAX_AGE_MS,
       drainHorizonMs,
@@ -338,7 +400,7 @@ describe('walletSyncActivationGate', () => {
       reason: 'policy_unavailable',
     });
     expect(dependencies.observeReadiness).toHaveBeenLastCalledWith({
-      observation: { status: 'unavailable' },
+      observation: { status: 'unavailable', taint: false },
       evaluatedAt: stabilizedAt,
       readyObservationMaxAgeMs: WALLET_SYNC_ACTIVATION_READY_OBSERVATION_MAX_AGE_MS,
       drainHorizonMs,

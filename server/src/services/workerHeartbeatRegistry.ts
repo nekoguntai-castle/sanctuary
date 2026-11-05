@@ -5,6 +5,7 @@ import { getConfig } from "../config";
 import {
   WALLET_SYNC_MUTATION_FENCE_FLOOR,
   WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR,
+  WORKER_HEARTBEAT_TTL_MS,
   WORKER_REGISTRY_RETENTION_MS,
   WORKER_RESTART_MARKER_TTL_MS,
 } from "../constants/walletSyncActivation";
@@ -23,8 +24,11 @@ const log = createLogger("WORKER:DIAGNOSTIC_HEARTBEAT");
 const HEARTBEAT_VERSION = 1 as const;
 const KEY_PREFIX = `sanctuary:diagnostics:worker-heartbeat:v${HEARTBEAT_VERSION}`;
 const REGISTRY_KEY = `${KEY_PREFIX}:members`;
+// TTL-less incarnation nonce: a changed value proves Redis lost registry data
+// (flush, volume reset) even when nobody was observing while it happened.
+const INCARNATION_KEY = `${KEY_PREFIX}:incarnation`;
 const HEARTBEAT_INTERVAL_MS = 10_000;
-const HEARTBEAT_TTL_MS = 35_000;
+const HEARTBEAT_TTL_MS = WORKER_HEARTBEAT_TTL_MS;
 const REGISTRY_RETENTION_MS = WORKER_REGISTRY_RETENTION_MS;
 const RESTART_MARKER_TTL_MS = WORKER_RESTART_MARKER_TTL_MS;
 const READ_TIMEOUT_MS = 1_000;
@@ -156,6 +160,8 @@ export const workerMutationFenceReadinessSchema = z.discriminatedUnion(
       .object({
         ready: z.literal(true),
         requiredFloor: z.literal(WALLET_SYNC_MUTATION_FENCE_FLOOR),
+        // Null until a floor-capable writer has created the nonce.
+        registryIncarnation: z.string().min(1).nullable(),
       })
       .strict(),
     z
@@ -163,6 +169,10 @@ export const workerMutationFenceReadinessSchema = z.discriminatedUnion(
         ready: z.literal(false),
         requiredFloor: z.literal(WALLET_SYNC_MUTATION_FENCE_FLOOR),
         reason: workerMutationFenceReadinessReasonSchema,
+        // True when the evidence could hide an unfenced execution (a below-floor
+        // or unknown predecessor, a live duplicate, an unreadable or malformed
+        // registry entry), so re-admission must wait out a full drain again.
+        taint: z.boolean(),
       })
       .strict(),
   ],
@@ -205,17 +215,77 @@ type WorkerRegistryRead =
       observation: "observed";
       members: RegistryMember[];
       records: StoredHeartbeat[];
+      /** Any restart/collision evidence, fenced or not (diagnostics). */
       restartObserved: boolean;
+      /** Restart evidence a mutation-fence reader must treat as blocking. */
+      mutationRestartBlocking: boolean;
+      /** Restart evidence a scheduler-retirement reader must treat as blocking. */
+      retirementRestartBlocking: boolean;
+      /**
+       * Gap evidence other than stale snapshots and blocking restart markers,
+       * which readers add themselves (see readiness `taint`).
+       */
+      tainted: boolean;
+      registryIncarnation: string | null;
       complete: boolean;
     }
   | { observation: "unavailable" | "timeout" };
 
-const WRITE_SCRIPT = `
+// Restart marker values. A fenced marker names its exact predecessor's floors;
+// every other value blocks both readers.
+const RESTART_MARKER_COLLISION = "collision";
+const RESTART_MARKER_RESTART = "restart";
+const FENCED_RESTART_MARKER = /^fenced\|(\d+)\|(\d+)$/;
+
+// Shared by both scripts so the boot value and marker formats are defined once.
+const LUA_PRELUDE = `
+local function parse_boot(value)
+  local epoch, mutation_floor, retirement_floor = string.match(value, '^([^|]+)|(%d+)|(%d+)$')
+  if epoch then return epoch, tonumber(mutation_floor), tonumber(retirement_floor) end
+  return value, nil, nil
+end
+local function parse_fenced(value)
+  local mutation_floor, retirement_floor = string.match(value or '', '^fenced|(%d+)|(%d+)$')
+  if mutation_floor then return tonumber(mutation_floor), tonumber(retirement_floor) end
+  return nil, nil
+end
+`;
+
+// The boot key holds `epoch|mutationFloor|retirementFloor` so a successor can
+// prove what its exact predecessor advertised; a pre-floor writer stores a bare
+// epoch, which never parses as fenced. On a changed epoch:
+// - the successor's first acknowledged write records `fenced|m|r` when the
+//   predecessor's floors are known. Readers decide against their own required
+//   floors whether it blocks. It never replaces a blocking marker, and replaces
+//   a fenced one only with floors that are no higher (markers never weaken);
+// - an unknown predecessor keeps the blocking `collision`/`restart` marker;
+// - a later write that finds a foreign epoch is a live duplicate of this slot
+//   and always records a blocking `collision`, whatever the floors.
+const WRITE_SCRIPT = `${LUA_PRELUDE}
+local is_first_write = ARGV[9] == '1'
+redis.call('SET', KEYS[5], ARGV[10], 'NX')
 local previous_boot = redis.call('GET', KEYS[3])
-if previous_boot and previous_boot ~= ARGV[3] then
-  local previous_snapshot = redis.call('GET', KEYS[1])
-  local marker = previous_snapshot and 'collision' or 'restart'
-  redis.call('SET', KEYS[4], marker, 'PX', ARGV[7])
+local own_epoch = parse_boot(ARGV[3])
+if previous_boot then
+  local previous_epoch, previous_mutation, previous_retirement = parse_boot(previous_boot)
+  if previous_epoch ~= own_epoch then
+    if not is_first_write then
+      redis.call('SET', KEYS[4], '${RESTART_MARKER_COLLISION}', 'PX', ARGV[7])
+    elseif previous_mutation then
+      local existing = redis.call('GET', KEYS[4])
+      local existing_mutation, existing_retirement = parse_fenced(existing)
+      if not existing
+        or (existing_mutation
+          and previous_mutation <= existing_mutation
+          and previous_retirement <= existing_retirement) then
+        redis.call('SET', KEYS[4], 'fenced|' .. previous_mutation .. '|' .. previous_retirement, 'PX', ARGV[7])
+      end
+    else
+      local previous_snapshot = redis.call('GET', KEYS[1])
+      local marker = previous_snapshot and '${RESTART_MARKER_COLLISION}' or '${RESTART_MARKER_RESTART}'
+      redis.call('SET', KEYS[4], marker, 'PX', ARGV[7])
+    end
+  end
 end
 redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[5])
 redis.call('SET', KEYS[3], ARGV[3], 'PX', ARGV[7])
@@ -233,12 +303,20 @@ return 1
 // Graceful shutdown may retire only the boot epoch it wrote. A crash never runs
 // this script, and a stale shutdown sees the replacement epoch and becomes a
 // no-op, preserving fail-closed collision evidence and the replacement record.
-const RETIRE_SCRIPT = `
+// Retirement removes only a fenced marker that blocks neither reader; blocking
+// evidence about a predecessor lives out its full TTL.
+const RETIRE_SCRIPT = `${LUA_PRELUDE}
 local current_boot = redis.call('GET', KEYS[3])
-if not current_boot or current_boot ~= ARGV[2] then
+if not current_boot or parse_boot(current_boot) ~= ARGV[2] then
   return 0
 end
-redis.call('DEL', KEYS[1], KEYS[3], KEYS[4])
+redis.call('DEL', KEYS[1], KEYS[3])
+local mutation_floor, retirement_floor = parse_fenced(redis.call('GET', KEYS[4]))
+if mutation_floor
+  and mutation_floor >= tonumber(ARGV[3])
+  and retirement_floor >= tonumber(ARGV[4]) then
+  redis.call('DEL', KEYS[4])
+end
 redis.call('ZREM', KEYS[2], ARGV[1])
 return 1
 `;
@@ -307,6 +385,12 @@ export class WorkerHeartbeatWriter {
   private client: Redis | null;
   private readonly replicaIdentity = internalReplicaIdentity();
   private readonly bootEpoch = randomUUID();
+  private readonly bootValue = `${this.bootEpoch}|${WALLET_SYNC_MUTATION_FENCE_FLOOR}|${WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR}`;
+  // Only this boot's first acknowledged write may classify a foreign epoch as
+  // its predecessor; any later sighting is a live duplicate of the slot. A
+  // write whose reply was lost counts as unacknowledged, which errs towards
+  // `fenced` once; the duplicate's next write records `collision` regardless.
+  private hasWritten = false;
   private timer: NodeJS.Timeout | null = null;
   private stopped = false;
   private fence = 0;
@@ -394,20 +478,24 @@ export class WorkerHeartbeatWriter {
     });
     await client.eval(
       WRITE_SCRIPT,
-      4,
+      5,
       heartbeatKey(this.replicaIdentity.id),
       REGISTRY_KEY,
       bootKey(this.replicaIdentity.id),
       restartKey(this.replicaIdentity.id),
+      INCARNATION_KEY,
       this.replicaIdentity.id,
       JSON.stringify(record),
-      this.bootEpoch,
+      this.bootValue,
       nowMs,
       HEARTBEAT_TTL_MS,
       nowMs - REGISTRY_RETENTION_MS,
       RESTART_MARKER_TTL_MS,
       MAX_REPLICAS + 1,
+      this.hasWritten ? "0" : "1",
+      randomUUID(),
     );
+    this.hasWritten = true;
   }
 
   private async retireExactBoot(): Promise<void> {
@@ -448,6 +536,8 @@ export class WorkerHeartbeatWriter {
       restartKey(this.replicaIdentity.id),
       this.replicaIdentity.id,
       this.bootEpoch,
+      WALLET_SYNC_MUTATION_FENCE_FLOOR,
+      WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR,
     );
   }
 
@@ -556,24 +646,28 @@ export class WorkerHeartbeatReader {
     nowMs = Date.now(),
   ): Promise<WorkerMutationFenceReadiness> {
     const registry = await this.readRegistry(nowMs);
+    // Neither an unreadable nor an empty registry is taint: a gracefully retired
+    // worker had drained, and Redis data loss is caught by the incarnation nonce
+    // on the next ready read.
     if (registry.observation !== "observed") {
-      return blockedReadiness(registry.observation);
+      return blockedReadiness(registry.observation, false);
     }
-    if (registry.members.length === 0) return blockedReadiness("no_workers");
-    if (!registry.complete) return blockedReadiness("incomplete_fleet");
-    if (registry.restartObserved) return blockedReadiness("restart_observed");
-    if (
-      registry.records.some(
-        (record) =>
-          (record.walletSyncMutationFenceFloor ?? 0) <
-          WALLET_SYNC_MUTATION_FENCE_FLOOR,
-      )
-    ) {
-      return blockedReadiness("worker_below_floor");
+    if (registry.members.length === 0) return blockedReadiness("no_workers", false);
+    const belowFloor = registry.records.some(
+      (record) =>
+        (record.walletSyncMutationFenceFloor ?? 0) <
+        WALLET_SYNC_MUTATION_FENCE_FLOOR,
+    );
+    const taint = registry.tainted || registry.mutationRestartBlocking || belowFloor;
+    if (!registry.complete) return blockedReadiness("incomplete_fleet", taint);
+    if (registry.mutationRestartBlocking) {
+      return blockedReadiness("restart_observed", taint);
     }
+    if (belowFloor) return blockedReadiness("worker_below_floor", taint);
     return workerMutationFenceReadinessSchema.parse({
       ready: true,
       requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
+      registryIncarnation: registry.registryIncarnation,
     });
   }
 
@@ -591,7 +685,7 @@ export class WorkerHeartbeatReader {
     if (!registry.complete) {
       return blockedSchedulerRetirementReadiness("incomplete_fleet");
     }
-    if (registry.restartObserved) {
+    if (registry.retirementRestartBlocking) {
       return blockedSchedulerRetirementReadiness("restart_observed");
     }
     if (
@@ -647,6 +741,10 @@ export class WorkerHeartbeatReader {
         members: [],
         records: [],
         restartObserved: false,
+        mutationRestartBlocking: false,
+        retirementRestartBlocking: false,
+        tainted: false,
+        registryIncarnation: null,
         complete: false,
       };
     }
@@ -669,29 +767,43 @@ export class WorkerHeartbeatReader {
       pipeline.get(heartbeatKey(member.id));
       pipeline.get(restartKey(member.id));
     }
+    pipeline.get(INCARNATION_KEY);
     const replies = await pipeline.exec();
     if (!replies) throw new Error("worker_heartbeat_read_failed");
 
     const records: StoredHeartbeat[] = [];
     let restartObserved = false;
+    let mutationRestartBlocking = false;
+    let retirementRestartBlocking = false;
     let missing = members.length > MAX_REPLICAS;
+    // Every gap except an expired or stale snapshot taints readiness.
+    let tainted = missing;
     for (let index = 0; index < selected.length; index += 1) {
       const member = selected[index];
       const snapshotReply = replies[index * 2];
       const restartReply = replies[index * 2 + 1];
-      if (!restartReply || restartReply[0]) missing = true;
-      const restartMarker =
-        restartReply && !restartReply[0] ? restartReply[1] : null;
-      restartObserved ||= ["1", "restart", "collision"].includes(
-        String(restartMarker),
+      if (!restartReply || restartReply[0]) {
+        missing = true;
+        tainted = true;
+      }
+      const rawMarker = restartReply && !restartReply[0] ? restartReply[1] : null;
+      const marker = classifyRestartMarker(
+        rawMarker === null || rawMarker === undefined ? null : String(rawMarker),
       );
-      if (restartMarker === "collision") missing = true;
+      restartObserved ||= marker.observed;
+      mutationRestartBlocking ||= marker.mutationBlocking;
+      retirementRestartBlocking ||= marker.retirementBlocking;
+      if (marker.duplicate) {
+        missing = true;
+        tainted = true;
+      }
       if (
         !snapshotReply ||
         snapshotReply[0] ||
         typeof snapshotReply[1] !== "string"
       ) {
         missing = true;
+        if (snapshotReply?.[0]) tainted = true;
         continue;
       }
       const record = safeJsonParse(
@@ -700,17 +812,26 @@ export class WorkerHeartbeatReader {
         null,
         "worker diagnostic heartbeat",
       );
+      if (!record || record.writtenAt > nowMs + 60_000) {
+        missing = true;
+        tainted = true;
+        continue;
+      }
       if (
-        !record ||
         member.writtenAt < nowMs - HEARTBEAT_TTL_MS ||
-        record.writtenAt < nowMs - HEARTBEAT_TTL_MS ||
-        record.writtenAt > nowMs + 60_000
+        record.writtenAt < nowMs - HEARTBEAT_TTL_MS
       ) {
         missing = true;
         continue;
       }
+      if (!record.stableReplicaIdentity) tainted = true;
       records.push(record);
     }
+    const incarnationReply = replies[selected.length * 2];
+    const registryIncarnation =
+      incarnationReply && !incarnationReply[0] && typeof incarnationReply[1] === "string"
+        ? incarnationReply[1]
+        : null;
 
     // Aggregate capability and provider state only when every indexed replica has
     // a fresh, parseable heartbeat with a stable identity. Any gap fails closed.
@@ -723,6 +844,10 @@ export class WorkerHeartbeatReader {
       members,
       records,
       restartObserved,
+      mutationRestartBlocking,
+      retirementRestartBlocking,
+      tainted,
+      registryIncarnation,
       complete,
     };
   }
@@ -730,12 +855,49 @@ export class WorkerHeartbeatReader {
 
 function blockedReadiness(
   reason: z.infer<typeof workerMutationFenceReadinessReasonSchema>,
+  taint: boolean,
 ): WorkerMutationFenceReadiness {
   return workerMutationFenceReadinessSchema.parse({
     ready: false,
     requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
     reason,
+    taint,
   });
+}
+
+interface RestartMarkerEvidence {
+  observed: boolean;
+  mutationBlocking: boolean;
+  retirementBlocking: boolean;
+  duplicate: boolean;
+}
+
+const NO_RESTART: RestartMarkerEvidence = {
+  observed: false, mutationBlocking: false, retirementBlocking: false, duplicate: false,
+};
+
+/**
+ * Judge restart evidence against this binary's floors. A fenced marker names
+ * the floors its exact predecessor advertised; any other value, including one
+ * this binary does not recognize, blocks both readers.
+ */
+function classifyRestartMarker(marker: string | null): RestartMarkerEvidence {
+  if (marker === null) return NO_RESTART;
+  const fenced = FENCED_RESTART_MARKER.exec(marker);
+  if (fenced) {
+    return {
+      observed: true,
+      mutationBlocking: Number(fenced[1]) < WALLET_SYNC_MUTATION_FENCE_FLOOR,
+      retirementBlocking: Number(fenced[2]) < WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR,
+      duplicate: false,
+    };
+  }
+  return {
+    observed: true,
+    mutationBlocking: true,
+    retirementBlocking: true,
+    duplicate: marker === RESTART_MARKER_COLLISION,
+  };
 }
 
 function blockedSchedulerRetirementReadiness(

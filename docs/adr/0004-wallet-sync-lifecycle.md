@@ -6,6 +6,7 @@
 - **Owner:** Sanctuary maintainers
 - **Supersedes:** none
 - **Superseded by:** none
+- **Amended:** 2026-11-04 (re-admission after activation; see "Re-admission after activation")
 - **Related:** `config/wallet-sync-lifecycle-contract.json`, `server/ARCHITECTURE.md`, `server/src/jobs/syncJobContract.ts`, `server/src/worker/recurringSchedules.ts`
 
 ## Context
@@ -104,8 +105,9 @@ configuration validation; it does not silently shorten an operator-selected
 timeout or advertise a drain guarantee it cannot satisfy.
 
 The immutable marker is necessary but never sufficient: admission and every
-recovery/reclaim pass recheck current live fleet evidence and the continuous
-drain proof. Worker health exposes only the bounded activation state, floor,
+recovery/reclaim pass recheck current live fleet evidence and either the
+continuous drain proof or, after activation, an unbroken continuity record (see
+"Re-admission after activation"). Worker health exposes only the bounded activation state, floor,
 reason, and timestamps—never replica identities or lease tokens. The recovery
 runtime polls the gate while dormant; its coordinator starts only after
 activation, repairs on activation, a bounded timer, and Redis reconnect, and
@@ -193,6 +195,67 @@ always null. Support packages expose only bounded aggregate counts and coarse
 drift buckets; they never include wallet identity, exact generations, timestamps,
 or lease tokens and are not authority for live Redis execution ownership.
 
+### Re-admission after activation
+
+*Amended 2026-11-04.* Before this amendment every reset of the stabilization
+interval held admission for a fresh drain horizon, even after activation and
+even when nothing unfenced could be running: a worker restart that left its
+heartbeat unretired held sync for a 31-minute restart marker and then a
+31-minute drain, and any worker outage over two minutes held it for 31 minutes.
+After activation the drain protects fenced work against one thing only, an
+unfenced (pre-floor) execution that could still hold or have lost the wallet
+lock. Re-admission therefore skips the drain only when the evidence proves no
+such execution can exist:
+
+- **Fenced restart evidence.** The boot key stores
+  `epoch|mutationFloor|retirementFloor`. A successor's first applied write
+  records `fenced|m|r`, naming its exact predecessor's advertised floors; each
+  reader judges that marker against its own required floor, so the
+  scheduler-retirement reader still blocks a predecessor below its floor.
+  A predecessor of unknown floor keeps the blocking `restart`/`collision`
+  marker. A later write that finds a foreign epoch is a live duplicate of the
+  slot and always records a blocking `collision`. Markers never get weaker: a
+  fenced marker never replaces a blocking one, and graceful retirement removes
+  only a fenced marker that blocks neither reader. Unrecognized marker values
+  block.
+- **Taint.** Blocked readiness carries `taint`: below-floor or unknown-floor
+  evidence, a live duplicate, an unreadable or malformed registry entry, a
+  future-dated heartbeat, an unstable replica identity, and a registry over
+  its replica bound all taint. An expired or stale snapshot, an empty
+  registry, and an unavailable or timed-out registry read do not: a gracefully
+  retired worker had drained its queue, Redis data loss is caught by the
+  incarnation nonce once reads recover, and registry membership and restart
+  evidence are retained for the drain horizon plus one heartbeat TTL plus a
+  five-minute clock-skew budget, so any unfenced worker that heartbeated
+  recently is still visible. Resets that carry no fleet evidence (an
+  unreadable policy, a stale stabilization observation) do not taint either.
+- **Registry incarnation.** Every write creates, once, a TTL-less nonce. A
+  changed nonce proves Redis lost registry data (a flush or volume reset loses
+  wallet locks at the same moment) and taints, even when nobody observed while
+  it happened.
+- **Continuity record.** A separate operational setting
+  (`operational.wallet-sync.activation-continuity.v1`) records the incarnation
+  of the current stabilization interval and whether a full drain has completed
+  since the last taint. It is bound to the stabilization row's exact version
+  (PostgreSQL `xmin`) and interval, and every write by this binary rebinds it in
+  the same row-locked transaction. Any write to that row by another binary,
+  even of byte-identical v1 state, changes the version and loses continuity, so
+  a rolled-back binary never needs to understand it and never weakens it.
+
+The gate re-admits on current exact readiness, without a fresh drain, only when
+the activation policy is active **and** its floor equals the binary's floor
+(a floor raise always drains again), and the continuity record holds a completed
+drain with an unchanged incarnation. First activation, any taint, a changed
+incarnation, unknown history after an upgrade, and a floor mismatch keep the
+full drain. A fenced crash restart, a fast crash restart, an event-loop stall
+longer than the heartbeat TTL, and a clean restart of any length re-admit as
+soon as the restarted worker's first heartbeat makes readiness exact.
+
+The rule does not close the case of a pre-floor executor whose heartbeat writes
+keep failing beyond the retention margin; the prior design shared that blind
+spot with 31 more minutes of slack. Running a below-floor worker after
+activation remains unsupported.
+
 ## Executable invariants
 
 | ID | Requirement |
@@ -225,8 +288,8 @@ Every replica must have a unique stable `WORKER_REPLICA_ID`. Only the activation
 gate may establish the immutable floor, and only after continuous exact fleet
 proof has survived the full drain horizon. A single ready snapshot is never
 activation authority. Admission, recovery, and reclaim continue to require the
-durable marker, current fleet readiness, and fresh stabilization evidence after
-activation. Canonical producers now emit only through admission after those
+durable marker, current fleet readiness, and either fresh stabilization evidence
+or an unbroken continuity record after activation. Canonical producers now emit only through admission after those
 checks. The scheduler-cutover release advertises the current worker floor before
 cutover inspection, atomically establishes the durable marker only after exact
 readiness, and purges stale-only Redis work. A transient block retains

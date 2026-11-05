@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => {
     systemSetting: {
       createMany: vi.fn(),
       update: vi.fn(),
+      upsert: vi.fn(),
+      deleteMany: vi.fn(),
     },
     $queryRaw: vi.fn(),
   };
@@ -22,6 +24,7 @@ import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from '../../../src/constants/walletS
 import prisma from '../../../src/models/prisma';
 import {
   isOperationalSystemSettingKey,
+  WALLET_SYNC_ACTIVATION_CONTINUITY_KEY,
   WALLET_SYNC_ACTIVATION_STABILIZATION_KEY,
 } from '../../../src/repositories/operationalSystemSettings';
 import {
@@ -51,31 +54,72 @@ const readyState = (candidateReadySince = START, lastReadyAt = TEN_SECONDS) => (
   lastReadyAt: lastReadyAt.toISOString(),
 });
 
+type StabilizationState = ReturnType<typeof emptyState> | ReturnType<typeof readyState>;
+
+const INCARNATION = 'incarnation-1';
+const ROW_VERSION = '1000';
+const NEXT_ROW_VERSION = '1001';
+
+const continuityFor = (
+  state: StabilizationState,
+  eligible = false,
+  registryIncarnation = INCARNATION,
+  stabilizationRowVersion = ROW_VERSION,
+) => ({
+  version: 1 as const,
+  requiredMutationFenceFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
+  stabilizationRowVersion,
+  registryIncarnation,
+  candidateReadySince: state.candidateReadySince,
+  lastReadyAt: state.lastReadyAt,
+  eligible,
+});
+
 function lockRows(
   rows: Array<{ value: string }>,
   databaseNow = START,
+  continuity: string | null = null,
 ): void {
   mocks.tx.$queryRaw.mockReset();
   mocks.tx.$queryRaw
-    .mockResolvedValueOnce(rows)
-    .mockResolvedValueOnce([{ databaseNow }]);
+    .mockResolvedValueOnce(rows.map(row => ({ rowVersion: ROW_VERSION, ...row })))
+    .mockResolvedValueOnce([{ databaseNow, continuity }])
+    .mockResolvedValue([{ rowVersion: NEXT_ROW_VERSION }]);
 }
+
+/** SQL text of the raw statements the observation issued. */
+const rawStatements = () => (mocks.tx.$queryRaw as Mock).mock.calls
+  .map(([sql]) => (sql as { strings: string[] }).strings.join('?'));
+const stabilizationUpdates = () => rawStatements().filter(sql => sql.includes('UPDATE "system_settings"'));
 
 function lockState(
-  state: ReturnType<typeof emptyState> | ReturnType<typeof readyState>,
+  state: StabilizationState,
   databaseNow = START,
+  continuity: ReturnType<typeof continuityFor> | null = null,
 ): void {
-  lockRows([{ value: JSON.stringify(state) }], databaseNow);
+  lockRows(
+    [{ value: JSON.stringify(state) }],
+    databaseNow,
+    continuity === null ? null : JSON.stringify(continuity),
+  );
 }
 
-function readyInput(observedAt: Date, evaluatedAt = observedAt) {
+function readyInput(
+  observedAt: Date,
+  evaluatedAt = observedAt,
+  registryIncarnation: string | null = INCARNATION,
+) {
   return {
-    observation: { status: 'ready' as const, observedAt },
+    observation: { status: 'ready' as const, observedAt, registryIncarnation },
     evaluatedAt,
     readyObservationMaxAgeMs: FRESHNESS_MS,
     drainHorizonMs: HORIZON_MS,
   };
 }
+
+const upsertedContinuity = () => JSON.parse(
+  (mocks.tx.systemSetting.upsert as Mock).mock.calls[0][0].update.value,
+);
 
 describe('walletSyncActivationStabilizationRepository', () => {
   beforeEach(() => {
@@ -86,14 +130,20 @@ describe('walletSyncActivationStabilizationRepository', () => {
     }]);
     mocks.tx.systemSetting.createMany.mockResolvedValue({ count: 0 });
     mocks.tx.systemSetting.update.mockResolvedValue({});
+    mocks.tx.systemSetting.upsert.mockResolvedValue({});
+    mocks.tx.systemSetting.deleteMany.mockResolvedValue({ count: 0 });
     lockState(emptyState());
   });
 
-  it('uses a protected operational singleton key', () => {
+  it('uses protected operational singleton keys', () => {
     expect(WALLET_SYNC_ACTIVATION_STABILIZATION_KEY).toBe(
       'operational.wallet-sync.activation-stabilization.v1',
     );
+    expect(WALLET_SYNC_ACTIVATION_CONTINUITY_KEY).toBe(
+      'operational.wallet-sync.activation-continuity.v1',
+    );
     expect(isOperationalSystemSettingKey(WALLET_SYNC_ACTIVATION_STABILIZATION_KEY)).toBe(true);
+    expect(isOperationalSystemSettingKey(WALLET_SYNC_ACTIVATION_CONTINUITY_KEY)).toBe(true);
   });
 
   it('treats a missing record as empty stabilization evidence', async () => {
@@ -162,14 +212,16 @@ describe('walletSyncActivationStabilizationRepository', () => {
     await expect(inspectWalletSyncActivationReadiness({
       readyObservationMaxAgeMs: 25_000,
       drainHorizonMs: HORIZON_MS,
+      registryIncarnation: INCARNATION,
     })).resolves.toEqual({
       state: readyState(START, TEN_SECONDS),
       readyObservationAccepted: true,
       drainHorizonSatisfied: true,
+      continuity: 'none',
     });
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(mocks.tx.systemSetting.createMany).not.toHaveBeenCalled();
-    expect(mocks.tx.systemSetting.update).not.toHaveBeenCalled();
+    expect(stabilizationUpdates()).toEqual([]);
     const sql = (prisma.$queryRaw as Mock).mock.calls[0][0].strings.join('');
     expect(sql).toContain('clock_timestamp() AS "databaseNow"');
     expect(sql).not.toContain('FOR UPDATE');
@@ -182,7 +234,11 @@ describe('walletSyncActivationStabilizationRepository', () => {
         databaseNow: THIRTY_SECONDS,
       }])
       .mockResolvedValueOnce([{ value: null, databaseNow: THIRTY_SECONDS }]);
-    const input = { readyObservationMaxAgeMs: FRESHNESS_MS, drainHorizonMs: HORIZON_MS };
+    const input = {
+      readyObservationMaxAgeMs: FRESHNESS_MS,
+      drainHorizonMs: HORIZON_MS,
+      registryIncarnation: INCARNATION,
+    };
 
     await expect(inspectWalletSyncActivationReadiness(input)).resolves.toMatchObject({
       readyObservationAccepted: false,
@@ -192,6 +248,7 @@ describe('walletSyncActivationStabilizationRepository', () => {
       state: emptyState(),
       readyObservationAccepted: false,
       drainHorizonSatisfied: false,
+      continuity: 'none',
     });
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
@@ -208,7 +265,9 @@ describe('walletSyncActivationStabilizationRepository', () => {
       state: readyState(START, START),
       readyObservationAccepted: true,
       drainHorizonSatisfied: false,
+      continuity: 'none',
     });
+    expect(upsertedContinuity()).toEqual(continuityFor(readyState(START, START), false, INCARNATION, NEXT_ROW_VERSION));
     expect(mocks.tx.systemSetting.createMany).toHaveBeenCalledWith({
       data: [{
         key: WALLET_SYNC_ACTIVATION_STABILIZATION_KEY,
@@ -219,15 +278,18 @@ describe('walletSyncActivationStabilizationRepository', () => {
     const sql = (mocks.tx.$queryRaw as Mock).mock.calls[0][0].strings.join('');
     expect(sql).toContain('FROM "system_settings"');
     expect(sql).toContain('FOR UPDATE');
-    expect(mocks.tx.systemSetting.update).toHaveBeenCalledWith({
-      where: { key: WALLET_SYNC_ACTIVATION_STABILIZATION_KEY },
-      data: { value: JSON.stringify(readyState(START, START)) },
-    });
+    const update = (mocks.tx.$queryRaw as Mock).mock.calls[2][0];
+    expect(update.strings.join('?')).toContain('RETURNING xmin::text');
+    expect(update.values).toEqual([
+      JSON.stringify(readyState(START, START)),
+      WALLET_SYNC_ACTIVATION_STABILIZATION_KEY,
+    ]);
   });
 
   it('resumes continuous evidence and reports a satisfied drain horizon', async () => {
     const twentySeconds = new Date('2026-08-23T00:00:20.000Z');
-    lockState(readyState(START, twentySeconds), THIRTY_SECONDS);
+    const state = readyState(START, twentySeconds);
+    lockState(state, THIRTY_SECONDS, continuityFor(state));
 
     await expect(observeWalletSyncActivationReadiness(
       readyInput(THIRTY_SECONDS, THIRTY_SECONDS),
@@ -235,23 +297,32 @@ describe('walletSyncActivationStabilizationRepository', () => {
       state: readyState(START, THIRTY_SECONDS),
       readyObservationAccepted: true,
       drainHorizonSatisfied: true,
+      continuity: 'held',
     });
+    // The completed drain makes the bound interval eligible for re-admission.
+    expect(upsertedContinuity()).toEqual(
+      continuityFor(readyState(START, THIRTY_SECONDS), true, INCARNATION, NEXT_ROW_VERSION),
+    );
   });
 
   it('restarts the candidate when the ready-observation gap is too long', async () => {
     const observedAt = new Date(TEN_SECONDS.getTime() + FRESHNESS_MS + 1);
-    lockState(readyState(START, TEN_SECONDS), observedAt);
+    const state = readyState(START, TEN_SECONDS);
+    lockState(state, observedAt, continuityFor(state, true));
 
     await expect(observeWalletSyncActivationReadiness(readyInput(observedAt))).resolves.toEqual({
       state: readyState(observedAt, observedAt),
       readyObservationAccepted: true,
       drainHorizonSatisfied: false,
+      // A gap is not taint: the completed drain still counts.
+      continuity: 'held',
     });
   });
 
   it('does not regress lastReadyAt for a fresh out-of-order replica observation', async () => {
     const observedAt = new Date('2026-08-23T00:00:05.000Z');
-    lockState(readyState(START, TEN_SECONDS), TEN_SECONDS);
+    const state = readyState(START, TEN_SECONDS);
+    lockState(state, TEN_SECONDS, continuityFor(state));
 
     await expect(observeWalletSyncActivationReadiness(
       readyInput(observedAt, TEN_SECONDS),
@@ -262,12 +333,12 @@ describe('walletSyncActivationStabilizationRepository', () => {
   });
 
   it.each(['blocked', 'unavailable'] as const)(
-    'resets continuous evidence on %s',
+    'resets continuous evidence on %s but keeps an untainted completed drain',
     async (status) => {
-      lockState(readyState(), THIRTY_SECONDS);
+      lockState(readyState(), THIRTY_SECONDS, continuityFor(readyState(), true));
 
       await expect(observeWalletSyncActivationReadiness({
-        observation: { status },
+        observation: { status, taint: false },
         evaluatedAt: THIRTY_SECONDS,
         readyObservationMaxAgeMs: FRESHNESS_MS,
         drainHorizonMs: HORIZON_MS,
@@ -275,9 +346,156 @@ describe('walletSyncActivationStabilizationRepository', () => {
         state: emptyState(),
         readyObservationAccepted: false,
         drainHorizonSatisfied: false,
+        continuity: 'none',
       });
+      expect(upsertedContinuity()).toEqual(continuityFor(emptyState(), true, INCARNATION, NEXT_ROW_VERSION));
     },
   );
+
+  it('forfeits the completed drain on tainting evidence', async () => {
+    lockState(readyState(), THIRTY_SECONDS, continuityFor(readyState(), true));
+
+    await observeWalletSyncActivationReadiness({
+      observation: { status: 'blocked', taint: true },
+      evaluatedAt: THIRTY_SECONDS,
+      readyObservationMaxAgeMs: FRESHNESS_MS,
+      drainHorizonMs: HORIZON_MS,
+    });
+
+    expect(mocks.tx.systemSetting.deleteMany).toHaveBeenCalledWith({
+      where: { key: WALLET_SYNC_ACTIVATION_CONTINUITY_KEY },
+    });
+    expect(mocks.tx.systemSetting.upsert).not.toHaveBeenCalled();
+  });
+
+  it('restarts the interval and forfeits continuity when the registry incarnation changed', async () => {
+    const twentySeconds = new Date('2026-08-23T00:00:20.000Z');
+    const state = readyState(START, twentySeconds);
+    lockState(state, THIRTY_SECONDS, continuityFor(state, true, 'incarnation-0'));
+
+    await expect(observeWalletSyncActivationReadiness(readyInput(THIRTY_SECONDS))).resolves.toEqual({
+      state: readyState(THIRTY_SECONDS, THIRTY_SECONDS),
+      readyObservationAccepted: true,
+      drainHorizonSatisfied: false,
+      continuity: 'none',
+    });
+    expect(upsertedContinuity()).toEqual(
+      continuityFor(readyState(THIRTY_SECONDS, THIRTY_SECONDS), false, INCARNATION, NEXT_ROW_VERSION),
+    );
+  });
+
+  it.each([
+    ['bound to another interval (rewritten by another binary)', (state: StabilizationState) => JSON.stringify(
+      continuityFor({ ...state, lastReadyAt: START.toISOString() } as StabilizationState, true),
+    )],
+    ['malformed', () => '{"version":1}'],
+    ['bound to another row version (an identical v1 rewrite by another binary)',
+      (state: StabilizationState) => JSON.stringify(continuityFor(state, true, INCARNATION, '999'))],
+    ['bound to an older floor', (state: StabilizationState) => JSON.stringify({
+      ...continuityFor(state, true),
+      requiredMutationFenceFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR + 1,
+    })],
+  ])('treats continuity %s as unknown history', async (_label, continuity) => {
+    const twentySeconds = new Date('2026-08-23T00:00:20.000Z');
+    const state = readyState(START, twentySeconds);
+    lockRows([{ value: JSON.stringify(state) }], THIRTY_SECONDS, continuity(state));
+
+    await expect(observeWalletSyncActivationReadiness(readyInput(THIRTY_SECONDS))).resolves.toMatchObject({
+      state: readyState(THIRTY_SECONDS, THIRTY_SECONDS),
+      continuity: 'none',
+    });
+  });
+
+  it('keeps the interval but drops continuity when the incarnation could not be read', async () => {
+    const twentySeconds = new Date('2026-08-23T00:00:20.000Z');
+    const state = readyState(START, twentySeconds);
+    lockState(state, THIRTY_SECONDS, continuityFor(state, true));
+
+    await expect(observeWalletSyncActivationReadiness(
+      readyInput(THIRTY_SECONDS, THIRTY_SECONDS, null),
+    )).resolves.toMatchObject({
+      state: readyState(START, THIRTY_SECONDS),
+      drainHorizonSatisfied: true,
+      continuity: 'none',
+    });
+    expect(mocks.tx.systemSetting.deleteMany).toHaveBeenCalled();
+  });
+
+  it('skips writes that would change nothing for a steadily blocked fleet', async () => {
+    const continuity = continuityFor(emptyState(), true);
+    lockState(emptyState(), THIRTY_SECONDS, continuity);
+
+    await observeWalletSyncActivationReadiness({
+      observation: { status: 'blocked', taint: false },
+      evaluatedAt: THIRTY_SECONDS,
+      readyObservationMaxAgeMs: FRESHNESS_MS,
+      drainHorizonMs: HORIZON_MS,
+    });
+
+    expect(stabilizationUpdates()).toEqual([]);
+    expect(mocks.tx.systemSetting.upsert).not.toHaveBeenCalled();
+    expect(mocks.tx.systemSetting.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('does not delete a continuity record that does not exist', async () => {
+    lockState(readyState(), THIRTY_SECONDS);
+
+    await observeWalletSyncActivationReadiness({
+      observation: { status: 'blocked', taint: true },
+      evaluatedAt: THIRTY_SECONDS,
+      readyObservationMaxAgeMs: FRESHNESS_MS,
+      drainHorizonMs: HORIZON_MS,
+    });
+
+    expect(mocks.tx.systemSetting.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the stabilization update returns no row version', async () => {
+    lockState(emptyState(), START);
+    mocks.tx.$queryRaw.mockResolvedValue([]);
+
+    await expect(observeWalletSyncActivationReadiness(readyInput(START))).rejects.toThrow(
+      'stabilization row is unavailable',
+    );
+  });
+
+  describe('read-only continuity inspection', () => {
+    const inspect = (registryIncarnation: string | null) => inspectWalletSyncActivationReadiness({
+      readyObservationMaxAgeMs: 25_000,
+      drainHorizonMs: HORIZON_MS,
+      registryIncarnation,
+    });
+    const snapshotWith = (continuity: ReturnType<typeof continuityFor> | null, databaseNow = THIRTY_SECONDS) => {
+      (prisma.$queryRaw as Mock).mockResolvedValue([{
+        value: JSON.stringify(readyState(START, TEN_SECONDS)),
+        rowVersion: ROW_VERSION,
+        continuity: continuity === null ? null : JSON.stringify(continuity),
+        databaseNow,
+      }]);
+    };
+
+    it('holds continuity for a fresh, eligible interval with the same incarnation', async () => {
+      snapshotWith(continuityFor(readyState(START, TEN_SECONDS), true));
+
+      await expect(inspect(INCARNATION)).resolves.toMatchObject({ continuity: 'held' });
+    });
+
+    it('reports a changed incarnation without holding continuity', async () => {
+      snapshotWith(continuityFor(readyState(START, TEN_SECONDS), true));
+
+      await expect(inspect('incarnation-2')).resolves.toMatchObject({
+        continuity: 'incarnation_changed',
+      });
+    });
+
+    it('does not hold continuity for stale or not-yet-eligible evidence', async () => {
+      snapshotWith(continuityFor(readyState(START, TEN_SECONDS), true), new Date('2026-08-23T00:01:00.000Z'));
+      await expect(inspect(INCARNATION)).resolves.toMatchObject({ continuity: 'none' });
+
+      snapshotWith(continuityFor(readyState(START, TEN_SECONDS), false));
+      await expect(inspect(INCARNATION)).resolves.toMatchObject({ continuity: 'none' });
+    });
+  });
 
   it('resets continuous evidence for a stale ready observation', async () => {
     const evaluatedAt = new Date(START.getTime() + FRESHNESS_MS + 1);
@@ -289,6 +507,7 @@ describe('walletSyncActivationStabilizationRepository', () => {
       state: emptyState(),
       readyObservationAccepted: false,
       drainHorizonSatisfied: false,
+      continuity: 'none',
     });
   });
 
@@ -316,7 +535,7 @@ describe('walletSyncActivationStabilizationRepository', () => {
       mocks.tx.systemSetting.createMany.mockResolvedValue({ count: 0 });
       lockRows(rows);
       await expect(observeWalletSyncActivationReadiness(readyInput(START))).rejects.toThrow();
-      expect(mocks.tx.systemSetting.update).not.toHaveBeenCalled();
+      expect(stabilizationUpdates()).toEqual([]);
     }
   });
 
@@ -330,6 +549,7 @@ describe('walletSyncActivationStabilizationRepository', () => {
       state: readyState(postLockTime, postLockTime),
       readyObservationAccepted: true,
       drainHorizonSatisfied: false,
+      continuity: 'none',
     });
   });
 
@@ -342,7 +562,7 @@ describe('walletSyncActivationStabilizationRepository', () => {
     await expect(observeWalletSyncActivationReadiness(readyInput(START))).rejects.toThrow(
       'database clock is unavailable',
     );
-    expect(mocks.tx.systemSetting.update).not.toHaveBeenCalled();
+    expect(stabilizationUpdates()).toEqual([]);
   });
 
   it('parses a structurally valid future-floor state for explicit compatibility refusal', () => {
