@@ -56,11 +56,11 @@
  */
 
 import { migrationService } from '../migrationService';
-import { createBackup } from './creation';
+import { createBackup, writeBackup, type BackupChunkWriter } from './creation';
 import { validateBackup, validateBackupForRestore } from './validation';
 import { restoreFromBackup } from './restore';
 import { BACKUP_FORMAT_VERSION } from './constants';
-import type { SanctuaryBackup, BackupOptions, ValidationResult, RestoreResult } from './types';
+import type { BackupMeta, SanctuaryBackup, BackupOptions, ValidationResult, RestoreResult } from './types';
 
 /**
  * BackupService class
@@ -71,6 +71,18 @@ export class BackupService {
    */
   async createBackup(adminUser: string, options: BackupOptions = {}): Promise<SanctuaryBackup> {
     return createBackup(adminUser, options);
+  }
+
+  /**
+   * Write a complete database backup as JSON through `write`, one export page
+   * at a time, and return its metadata. Use this for files and downloads.
+   */
+  async writeBackup(
+    adminUser: string,
+    write: BackupChunkWriter,
+    options: BackupOptions = {},
+  ): Promise<BackupMeta> {
+    return writeBackup(adminUser, write, options);
   }
 
   /**

@@ -1,11 +1,11 @@
 import type { Job } from 'bullmq';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { JobDefinition } from '../types';
 import { auditService, AuditCategory } from '../../services/auditService';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import type { BackupService } from '../../services/backupService/backupService';
-import type { SanctuaryBackup } from '../../services/backupService/types';
+import type { BackupMeta } from '../../services/backupService/types';
 
 const log = createLogger('JOB:MAINTENANCE');
 const BACKUP_FILE_PREFIX = 'sanctuary-backup-';
@@ -13,6 +13,18 @@ const BACKUP_FILE_SUFFIX = '.json';
 const TEMP_FILE_PREFIX = `.${BACKUP_FILE_PREFIX}`;
 const TEMP_FILE_SUFFIX = '.tmp';
 const STALE_TEMP_FILE_AGE_MS = 24 * 60 * 60 * 1000;
+/**
+ * Published names carry the SHA-256 of their bytes, so retention can prove a
+ * file is the complete one this job wrote by streaming a hash instead of
+ * parsing it (a full parse of a large backup exhausts the worker's heap).
+ */
+const DIGEST_FILE_PATTERN = /^sanctuary-backup-.+-([0-9a-f]{64})\.json$/;
+/**
+ * Files written before digest names are parsed and validated in full, which is
+ * only safe while they are small. Larger ones are kept but not counted.
+ */
+const HASH_READ_CHUNK_BYTES = 1024 * 1024;
+export const LEGACY_VALIDATION_MAX_BYTES = 64 * 1024 * 1024;
 
 export interface ScheduledBackupData {
   /** Number of newest scheduled-backup files to retain; defaults to seven. */
@@ -40,12 +52,11 @@ async function syncDirectory(fs: FileSystem, backupDir: string): Promise<void> {
 async function publishBackupAtomically(
   fs: FileSystem,
   backupDir: string,
-  filename: string,
-  backup: SanctuaryBackup,
+  timestamp: string,
+  writeBackup: (write: (chunk: string) => Promise<void>) => Promise<BackupMeta>,
   signal?: AbortSignal,
-): Promise<string> {
+): Promise<{ filename: string; meta: BackupMeta }> {
   const path = await import('path');
-  const filepath = path.join(backupDir, filename);
   const tempPath = path.join(
     backupDir,
     `${TEMP_FILE_PREFIX}${process.pid}-${randomUUID()}${TEMP_FILE_SUFFIX}`,
@@ -56,17 +67,27 @@ async function publishBackupAtomically(
   try {
     signal?.throwIfAborted();
     file = await fs.open(tempPath, 'wx', 0o600);
-    await file.writeFile(JSON.stringify(backup), 'utf8');
+    const handle = file;
+    const hash = createHash('sha256');
+    const meta = await writeBackup(async (chunk) => {
+      signal?.throwIfAborted();
+      const bytes = Buffer.from(chunk, 'utf8');
+      hash.update(bytes);
+      // FileHandle.writeFile writes from the current position, so successive
+      // calls append; it also retries short writes until the chunk is out.
+      await handle.writeFile(bytes);
+    });
     signal?.throwIfAborted();
     await file.sync();
     signal?.throwIfAborted();
     await file.close();
     file = undefined;
     signal?.throwIfAborted();
-    await fs.rename(tempPath, filepath);
+    const filename = `${BACKUP_FILE_PREFIX}${timestamp}-${hash.digest('hex')}${BACKUP_FILE_SUFFIX}`;
+    await fs.rename(tempPath, path.join(backupDir, filename));
     published = true;
     await syncDirectory(fs, backupDir);
-    return filepath;
+    return { filename, meta };
   } finally {
     await file?.close().catch(() => undefined);
     if (!published) {
@@ -75,12 +96,37 @@ async function publishBackupAtomically(
   }
 }
 
+async function hashFile(fs: FileSystem, filepath: string): Promise<string> {
+  const file = await fs.open(filepath, 'r');
+  try {
+    const hash = createHash('sha256');
+    for await (const chunk of file.createReadStream({ autoClose: false, highWaterMark: HASH_READ_CHUNK_BYTES })) {
+      hash.update(chunk as Buffer);
+    }
+    return hash.digest('hex');
+  } finally {
+    await file.close();
+  }
+}
+
 async function isValidBackupFile(
   fs: FileSystem,
   backupService: BackupService,
   filepath: string,
+  file: string,
 ): Promise<boolean> {
   try {
+    const digest = DIGEST_FILE_PATTERN.exec(file)?.[1];
+    if (digest) {
+      if (await hashFile(fs, filepath) === digest) return true;
+      log.warn('Ignoring scheduled backup whose bytes do not match its name', { filepath });
+      return false;
+    }
+    const { size } = await fs.stat(filepath);
+    if (size > LEGACY_VALIDATION_MAX_BYTES) {
+      log.warn('Keeping a large legacy backup without counting it toward retention', { filepath, size });
+      return false;
+    }
     const parsed = JSON.parse(await fs.readFile(filepath, 'utf8')) as unknown;
     return (await backupService.validateBackupForRestore(parsed)).valid;
   } catch (error) {
@@ -117,6 +163,7 @@ async function enforceRetention(
   backupDir: string,
   files: string[],
   retentionCount: number,
+  publishedFile: string,
   signal?: AbortSignal,
 ): Promise<void> {
   const path = await import('path');
@@ -128,7 +175,9 @@ async function enforceRetention(
 
   for (const file of candidates) {
     signal?.throwIfAborted();
-    if (await isValidBackupFile(fs, backupService, path.join(backupDir, file))) {
+    // The file this run just published was hashed as it was written.
+    if (file === publishedFile
+      || await isValidBackupFile(fs, backupService, path.join(backupDir, file), file)) {
       validFiles.push(file);
     }
   }
@@ -176,23 +225,19 @@ export const scheduledBackupJob: JobDefinition<ScheduledBackupData, string> = {
 
     const { BackupService } = await import('../../services/backupService/backupService.js');
     const backupService = new BackupService();
-    const backup = await backupService.createBackup('system-scheduled', {
-      description: 'Automated daily backup',
-      signal: execution?.signal,
-    });
-    execution?.throwIfAborted();
-
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `${BACKUP_FILE_PREFIX}${timestamp}${BACKUP_FILE_SUFFIX}`;
-    const filepath = await publishBackupAtomically(
+    const { filename, meta } = await publishBackupAtomically(
       fs,
       backupDir,
-      filename,
-      backup,
+      timestamp,
+      (write) => backupService.writeBackup('system-scheduled', write, {
+        description: 'Automated daily backup',
+        signal: execution?.signal,
+      }),
       execution?.signal,
     );
     execution?.throwIfAborted();
-    log.info('Backup written', { filepath, records: backup.meta.recordCounts });
+    log.info('Backup written', { filename, records: meta.recordCounts });
 
     const files = await fs.readdir(backupDir);
     execution?.throwIfAborted();
@@ -203,6 +248,7 @@ export const scheduledBackupJob: JobDefinition<ScheduledBackupData, string> = {
       backupDir,
       files,
       retentionCount,
+      filename,
       execution?.signal,
     );
 
@@ -210,7 +256,7 @@ export const scheduledBackupJob: JobDefinition<ScheduledBackupData, string> = {
       username: 'system',
       action: 'maintenance.scheduled_backup',
       category: AuditCategory.SYSTEM,
-      details: { filename, records: backup.meta.recordCounts },
+      details: { filename, records: meta.recordCounts },
       success: true,
     });
     execution?.throwIfAborted();

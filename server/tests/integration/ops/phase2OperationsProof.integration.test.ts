@@ -992,6 +992,50 @@ describeIfDb('Phase 2 operations proof', () => {
       .resolves.toMatchObject({ walletId: wallet.id });
   }, 30_000);
 
+  it('streams a multi-page backup that restore validation accepts and createBackup matches', async () => {
+    const username = createUniqueId('stream-user');
+    const user = await prisma.user.create({
+      data: {
+        username,
+        password: 'hashed-password-placeholder',
+        email: `${username}@example.test`,
+        isAdmin: true,
+      },
+    });
+    const wallet = await prisma.wallet.create({
+      data: {
+        name: createUniqueId('stream-wallet'),
+        type: 'single_sig',
+        scriptType: 'native_segwit',
+        network: 'regtest',
+      },
+    });
+    await prisma.transaction.createMany({
+      data: Array.from({ length: 2500 }, (_, index) => ({
+        id: `stream-${index.toString().padStart(4, '0')}`,
+        walletId: wallet.id,
+        userId: user.id,
+        txid: `stream-tx-${index.toString().padStart(4, '0')}`,
+        type: 'received',
+        amount: BigInt(index),
+        confirmations: 0,
+      })),
+    });
+
+    const chunks: string[] = [];
+    const meta = await backupService.writeBackup('stream-proof', async (chunk) => {
+      chunks.push(chunk);
+    });
+    const streamed = JSON.parse(chunks.join(''));
+    const built = await backupService.createBackup('stream-proof');
+
+    expect(meta.recordCounts.transaction).toBeGreaterThanOrEqual(2500);
+    expect(streamed.meta).toEqual(meta);
+    expect(streamed.data).toEqual(JSON.parse(JSON.stringify(built.data)));
+    await expect(backupService.validateBackupForRestore(streamed))
+      .resolves.toMatchObject({ valid: true, issues: [] });
+  }, 60_000);
+
   it('persists gateway audit events sent through the gateway HMAC path', async () => {
     const username = createUniqueId('phase2-gateway');
 

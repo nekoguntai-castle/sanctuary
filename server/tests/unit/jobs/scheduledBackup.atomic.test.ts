@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { basename } from 'node:path';
+import { createHash } from 'node:crypto';
+import { Readable } from 'node:stream';
 
 const mocks = vi.hoisted(() => ({
   auditLog: vi.fn(),
@@ -10,7 +12,8 @@ const mocks = vi.hoisted(() => ({
     },
     data: { user: [{ id: 'user-1' }] },
   },
-  createBackup: vi.fn(),
+  writeBackup: vi.fn(),
+  fileContents: new Map<string, string>(),
   validateBackupForRestore: vi.fn(),
   mkdir: vi.fn(),
   access: vi.fn(),
@@ -42,7 +45,7 @@ vi.mock('fs/promises', () => ({
 
 vi.mock('../../../src/services/backupService/backupService', () => ({
   BackupService: class {
-    createBackup = mocks.createBackup;
+    writeBackup = mocks.writeBackup;
     validateBackupForRestore = mocks.validateBackupForRestore;
   },
 }));
@@ -61,13 +64,20 @@ vi.mock('../../../src/utils/logger', () => ({
   }),
 }));
 
-import { scheduledBackupJob } from '../../../src/jobs/definitions/scheduledBackup';
+import {
+  LEGACY_VALIDATION_MAX_BYTES,
+  scheduledBackupJob,
+} from '../../../src/jobs/definitions/scheduledBackup';
 
 describe('scheduled backup atomic publication', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.events.length = 0;
-    mocks.createBackup.mockResolvedValue(mocks.backup);
+    mocks.fileContents.clear();
+    mocks.writeBackup.mockImplementation(async (_admin: string, write: (chunk: string) => Promise<void>) => {
+      await write(JSON.stringify(mocks.backup));
+      return mocks.backup.meta;
+    });
     mocks.validateBackupForRestore.mockImplementation(async (backup: {
       meta?: { complete?: boolean };
     }) => ({ valid: backup.meta?.complete !== false }));
@@ -78,7 +88,7 @@ describe('scheduled backup atomic publication', () => {
     });
     mocks.readdir.mockResolvedValue([]);
     mocks.readFile.mockResolvedValue(JSON.stringify(mocks.backup));
-    mocks.stat.mockResolvedValue({ mtimeMs: 0 });
+    mocks.stat.mockResolvedValue({ mtimeMs: 0, size: 10 });
     mocks.unlink.mockResolvedValue(undefined);
     mocks.fileWrite.mockImplementation(async () => {
       mocks.events.push('file-write');
@@ -93,24 +103,36 @@ describe('scheduled backup atomic publication', () => {
       mocks.events.push('directory-sync');
     });
     mocks.directoryClose.mockResolvedValue(undefined);
-    mocks.open.mockImplementation(async (_path: string, flags: string) => (
-      flags === 'wx'
-        ? {
-            writeFile: mocks.fileWrite,
-            sync: mocks.fileSync,
-            close: mocks.fileClose,
-          }
-        : {
-            sync: mocks.directorySync,
-            close: mocks.directoryClose,
-          }
-    ));
+    mocks.open.mockImplementation(async (path: string, flags: string) => {
+      if (flags === 'wx') {
+        return {
+          writeFile: mocks.fileWrite,
+          sync: mocks.fileSync,
+          close: mocks.fileClose,
+        };
+      }
+      if (mocks.fileContents.has(path)) {
+        return {
+          createReadStream: () => Readable.from([Buffer.from(mocks.fileContents.get(path)!)]),
+          close: vi.fn().mockResolvedValue(undefined),
+        };
+      }
+      return {
+        sync: mocks.directorySync,
+        close: mocks.directoryClose,
+      };
+    });
   });
 
   it('syncs and closes a unique temporary file before rename and directory sync', async () => {
     const filename = await scheduledBackupJob.handler({ data: {} } as never);
 
-    expect(filename).toMatch(/^sanctuary-backup-.*\.json$/);
+    const digest = createHash('sha256').update(JSON.stringify(mocks.backup)).digest('hex');
+    expect(filename).toMatch(new RegExp(`^sanctuary-backup-.+-${digest}\\.json$`));
+    expect(mocks.writeBackup).toHaveBeenCalledWith('system-scheduled', expect.any(Function), {
+      description: 'Automated daily backup',
+      signal: undefined,
+    });
     expect(mocks.open).toHaveBeenNthCalledWith(
       1,
       expect.stringMatching(/\/\.sanctuary-backup-.*\.tmp$/),
@@ -139,7 +161,7 @@ describe('scheduled backup atomic publication', () => {
       .rejects.toThrow(/Backup directory .* is not writable by uid .*backup-volume-init.*EACCES/);
 
     expect(mocks.access).toHaveBeenCalledWith(expect.any(String), 2);
-    expect(mocks.createBackup).not.toHaveBeenCalled();
+    expect(mocks.writeBackup).not.toHaveBeenCalled();
     expect(mocks.open).not.toHaveBeenCalled();
   });
 
@@ -153,7 +175,7 @@ describe('scheduled backup atomic publication', () => {
     } finally {
       Object.defineProperty(process, 'getuid', { value: original, configurable: true });
     }
-    expect(mocks.createBackup).not.toHaveBeenCalled();
+    expect(mocks.writeBackup).not.toHaveBeenCalled();
   });
 
   it('propagates a mkdir failure unchanged', async () => {
@@ -307,5 +329,61 @@ describe('scheduled backup atomic publication', () => {
       .resolves.toMatch(/^sanctuary-backup-/);
 
     expect(mocks.unlink).not.toHaveBeenCalled();
+  });
+  it('streams every chunk to the temporary file and fails cleanly when the export fails', async () => {
+    mocks.writeBackup.mockImplementationOnce(async (_admin: string, write: (chunk: string) => Promise<void>) => {
+      await write('{"data":{');
+      await write('"user":[');
+      throw new Error('export failed');
+    });
+
+    await expect(scheduledBackupJob.handler({ data: {} } as never))
+      .rejects.toThrow('export failed');
+
+    expect(mocks.fileWrite.mock.calls.map(([chunk]) => String(chunk))).toEqual(['{"data":{', '"user":[']);
+    expect(mocks.rename).not.toHaveBeenCalled();
+    expect(mocks.unlink).toHaveBeenCalledWith(expect.stringMatching(/\/\.sanctuary-backup-.*\.tmp$/));
+  });
+
+  it('verifies digest-named backups by hash without parsing them', async () => {
+    const good = 'good backup bytes';
+    const goodDigest = createHash('sha256').update(good).digest('hex');
+    const tamperedDigest = createHash('sha256').update('original bytes').digest('hex');
+    const older = `sanctuary-backup-2026-07-01T01-00-00-000Z-${goodDigest}.json`;
+    const tampered = `sanctuary-backup-2026-07-02T01-00-00-000Z-${tamperedDigest}.json`;
+    mocks.fileContents.set(`/data/backups/${older}`, good);
+    mocks.fileContents.set(`/data/backups/${tampered}`, 'truncated');
+    mocks.readdir.mockImplementation(async () => [
+      basename(mocks.rename.mock.calls[0][1] as string),
+      tampered,
+      older,
+    ]);
+
+    await scheduledBackupJob.handler({ data: { retentionCount: 1 } } as never);
+
+    expect(mocks.readFile).not.toHaveBeenCalled();
+    expect(mocks.validateBackupForRestore).not.toHaveBeenCalled();
+    // The tampered file is not counted, so only the verified older one is evicted.
+    expect(mocks.unlink).toHaveBeenCalledOnce();
+    expect(mocks.unlink).toHaveBeenCalledWith(`/data/backups/${older}`);
+  });
+
+  it('keeps a legacy backup too large to parse safely without counting it', async () => {
+    mocks.readdir.mockImplementation(async () => [
+      basename(mocks.rename.mock.calls[0][1] as string),
+      'sanctuary-backup-2026-07-02.json',
+      'sanctuary-backup-2026-07-01.json',
+    ]);
+    mocks.stat.mockImplementation(async (filepath: string) => ({
+      mtimeMs: 0,
+      size: filepath.endsWith('2026-07-02.json') ? LEGACY_VALIDATION_MAX_BYTES + 1 : 10,
+    }));
+
+    await scheduledBackupJob.handler({ data: { retentionCount: 1 } } as never);
+
+    expect(mocks.readFile).toHaveBeenCalledOnce();
+    expect(mocks.readFile).toHaveBeenCalledWith('/data/backups/sanctuary-backup-2026-07-01.json', 'utf8');
+    expect(mocks.unlink).toHaveBeenCalledOnce();
+    expect(mocks.unlink).toHaveBeenCalledWith('/data/backups/sanctuary-backup-2026-07-01.json');
   });
 });

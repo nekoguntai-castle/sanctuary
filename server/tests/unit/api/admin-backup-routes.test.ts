@@ -1,10 +1,15 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import express, { type Express } from 'express';
 import request from 'supertest';
+import { request as httpRequest, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { readdir, unlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { errorHandler } from '../../../src/errors/errorHandler';
 
 const {
-  mockCreateBackup,
+  mockWriteBackup,
   mockValidateBackupForRestore,
   mockRestoreFromBackup,
   mockAuditLogFromRequest,
@@ -12,7 +17,7 @@ const {
   mockPrismaUserFindUnique,
   mockRateLimitConsume,
 } = vi.hoisted(() => ({
-  mockCreateBackup: vi.fn(),
+  mockWriteBackup: vi.fn(),
   mockValidateBackupForRestore: vi.fn(),
   mockRestoreFromBackup: vi.fn(),
   mockAuditLogFromRequest: vi.fn(),
@@ -20,6 +25,20 @@ const {
   mockPrismaUserFindUnique: vi.fn(),
   mockRateLimitConsume: vi.fn(),
 }));
+
+const fsMocks = vi.hoisted(() => ({ open: vi.fn(), unlink: vi.fn() }));
+
+// Real filesystem, with seams to fail staging-file creation and removal.
+vi.mock('node:fs/promises', async () => {
+  const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+  fsMocks.open.mockImplementation(actual.open);
+  fsMocks.unlink.mockImplementation(actual.unlink);
+  return {
+    ...actual,
+    open: (...args: Parameters<typeof actual.open>) => fsMocks.open(...args),
+    unlink: (...args: Parameters<typeof actual.unlink>) => fsMocks.unlink(...args),
+  };
+});
 
 vi.mock('../../../src/middleware/auth', () => ({
   requireAuthenticatedUser: (req: any) => req.user ?? { userId: 'test-user-id', username: 'testuser', isAdmin: false },
@@ -45,7 +64,7 @@ vi.mock('../../../src/services/rateLimiting', () => ({
 
 vi.mock('../../../src/services/backupService', () => ({
   backupService: {
-    createBackup: mockCreateBackup,
+    writeBackup: mockWriteBackup,
     validateBackupForRestore: mockValidateBackupForRestore,
     restoreFromBackup: mockRestoreFromBackup,
   },
@@ -88,7 +107,11 @@ vi.mock('../../../src/utils/password', () => ({
   verifyPassword: mockVerifyPassword,
 }));
 
-import backupRouter from '../../../src/api/admin/backup';
+import backupRouter, { ADMIN_BACKUP_STAGING_PREFIX } from '../../../src/api/admin/backup';
+
+async function stagedBackups(): Promise<string[]> {
+  return (await readdir(tmpdir())).filter(file => file.startsWith(ADMIN_BACKUP_STAGING_PREFIX));
+}
 
 function makeBackup() {
   return {
@@ -108,6 +131,19 @@ function makeBackup() {
       user: [{ id: 'u1' }, { id: 'u2' }],
       wallet: [{ id: 'w1' }, { id: 'w2' }, { id: 'w3' }],
     },
+  };
+}
+
+/** Stream a backup the way writeBackup does: data first, one table per write, meta last. */
+function streamBackup(backup: ReturnType<typeof makeBackup>) {
+  return async (_admin: string, write: (chunk: string) => Promise<void>) => {
+    await write('{"data":{');
+    const tables = Object.entries(backup.data);
+    for (const [index, [table, rows]] of tables.entries()) {
+      await write(`${index === 0 ? '' : ','}${JSON.stringify(table)}:${JSON.stringify(rows)}`);
+    }
+    await write(`},"meta":${JSON.stringify(backup.meta)}}`);
+    return backup.meta;
   };
 }
 
@@ -150,7 +186,7 @@ describe('Admin Backup Routes', () => {
     mockVerifyPassword.mockResolvedValue(true);
     mockRateLimitConsume.mockResolvedValue({ allowed: true, remaining: 2, limit: 3, resetAt: Date.now() + 3_600_000 });
     mockPrismaUserFindUnique.mockResolvedValue({ password: 'hashed-password' });
-    mockCreateBackup.mockResolvedValue(makeBackup());
+    mockWriteBackup.mockImplementation(streamBackup(makeBackup()));
     mockValidateBackupForRestore.mockResolvedValue({
       valid: true,
       issues: [],
@@ -271,7 +307,7 @@ describe('Admin Backup Routes', () => {
       .send({ includeCache: true, description: 'weekly snapshot' });
 
     expect(response.status).toBe(200);
-    expect(mockCreateBackup).toHaveBeenCalledWith('admin', {
+    expect(mockWriteBackup).toHaveBeenCalledWith('admin', expect.any(Function), {
       includeCache: true,
       description: 'weekly snapshot',
     });
@@ -290,6 +326,7 @@ describe('Admin Backup Routes', () => {
     expect(response.headers['content-type']).toContain('application/json');
     expect(response.headers['content-disposition']).toMatch(/attachment; filename="sanctuary-backup-.*\.json"/);
     expect(response.body.meta.createdBy).toBe('admin');
+    expect(response.body).toEqual(makeBackup());
   });
 
   it('uses unknown as backup creator when request user is unavailable', async () => {
@@ -298,14 +335,14 @@ describe('Admin Backup Routes', () => {
       .set('x-no-user', 'true')
       .send({ includeCache: false });
 
-    expect(mockCreateBackup).toHaveBeenCalledWith('unknown', {
+    expect(mockWriteBackup).toHaveBeenCalledWith('unknown', expect.any(Function), {
       includeCache: false,
       description: undefined,
     });
   });
 
-  it('returns 500 when backup creation fails', async () => {
-    mockCreateBackup.mockRejectedValue(new Error('backup failed'));
+  it('returns 500 when backup creation fails before anything is streamed', async () => {
+    mockWriteBackup.mockRejectedValue(new Error('backup failed'));
 
     const response = await request(app)
       .post('/api/v1/admin/backup')
@@ -313,6 +350,90 @@ describe('Admin Backup Routes', () => {
 
     expect(response.status).toBe(500);
     expect(response.body.code).toBe('INTERNAL_ERROR');
+    expect(mockAuditLogFromRequest).not.toHaveBeenCalled();
+  });
+
+  it('answers 500 and removes the staged file when the export fails midway', async () => {
+    mockWriteBackup.mockImplementation(async (_admin: string, write: (chunk: string) => Promise<void>) => {
+      await write('{"data":{');
+      throw new Error('export failed midway');
+    });
+
+    const response = await request(app).post('/api/v1/admin/backup').send({ includeCache: false });
+
+    expect(response.status).toBe(500);
+    expect(mockAuditLogFromRequest).not.toHaveBeenCalled();
+    expect(await stagedBackups()).toEqual([]);
+  });
+
+  it('sends nothing when the audit record cannot be written', async () => {
+    mockAuditLogFromRequest.mockRejectedValue(new Error('audit unavailable'));
+
+    const response = await request(app).post('/api/v1/admin/backup').send({ includeCache: false });
+
+    expect(response.status).toBe(500);
+    expect(response.headers['content-disposition']).toBeUndefined();
+    expect(response.body.data).toBeUndefined();
+    expect(await stagedBackups()).toEqual([]);
+  });
+
+  it('sends the staged file with its length and removes it afterwards', async () => {
+    const response = await request(app).post('/api/v1/admin/backup').send({ includeCache: false });
+
+    expect(response.status).toBe(200);
+    expect(Number(response.headers['content-length'])).toBe(JSON.stringify(makeBackup()).length);
+    // The body can reach the client before the handler's cleanup runs.
+    await vi.waitFor(async () => expect(await stagedBackups()).toEqual([]));
+  });
+
+  it('removes the staged file when the client hangs up mid-download', async () => {
+    const large = 'x'.repeat(8 * 1024 * 1024);
+    mockWriteBackup.mockImplementation(async (_admin: string, write: (chunk: string) => Promise<void>) => {
+      await write(`{"data":{"blob":["${large}"]},"meta":{"recordCounts":{"blob":1}}}`);
+      return { recordCounts: { blob: 1 } };
+    });
+
+    const server: Server = await new Promise(resolve => {
+      const listening = app.listen(0, () => resolve(listening));
+    });
+    const closed = new Promise<void>(resolve => {
+      server.on('connection', socket => socket.on('close', () => resolve()));
+    });
+    try {
+      const { port } = server.address() as AddressInfo;
+      const client = httpRequest({
+        port,
+        method: 'POST',
+        path: '/api/v1/admin/backup',
+        headers: { 'content-type': 'application/json' },
+      }, () => client.destroy());
+      client.on('error', () => undefined);
+      client.end(JSON.stringify({ includeCache: false }));
+      await closed;
+      await vi.waitFor(async () => expect(await stagedBackups()).toEqual([]));
+    } finally {
+      await new Promise(resolve => server.close(resolve));
+    }
+    expect(mockAuditLogFromRequest).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the original error when the staged file cannot be created', async () => {
+    fsMocks.open.mockRejectedValueOnce(Object.assign(new Error('EACCES: staging'), { code: 'EACCES' }));
+
+    const response = await request(app).post('/api/v1/admin/backup').send({ includeCache: false });
+
+    expect(response.status).toBe(500);
+    expect(mockWriteBackup).not.toHaveBeenCalled();
+  });
+
+  it('still answers when the staged file cannot be removed', async () => {
+    fsMocks.unlink.mockRejectedValueOnce(Object.assign(new Error('EBUSY: staging'), { code: 'EBUSY' }));
+
+    const response = await request(app).post('/api/v1/admin/backup').send({ includeCache: false });
+
+    expect(response.status).toBe(200);
+    await vi.waitFor(() => expect(fsMocks.unlink).toHaveBeenCalled());
+    for (const file of await stagedBackups()) await unlink(join(tmpdir(), file));
   });
 
   it('rejects backup validation requests without backup payload', async () => {

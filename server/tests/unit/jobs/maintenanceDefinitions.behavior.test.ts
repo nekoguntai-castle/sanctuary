@@ -706,7 +706,7 @@ describe('Maintenance job definitions behavior', () => {
       'sanctuary-backup-2026-04-03.json',
     ]);
     const mockUnlink = vi.fn().mockResolvedValue(undefined);
-    const mockStat = vi.fn();
+    const mockStat = vi.fn().mockResolvedValue({ mtimeMs: Date.now(), size: 64 });
 
     vi.doMock('fs/promises', () => ({
       mkdir: mockMkdir,
@@ -731,7 +731,10 @@ describe('Maintenance job definitions behavior', () => {
     };
     vi.doMock('../../../src/services/backupService/backupService', () => ({
       BackupService: class {
-        async createBackup() { return mockBackup; }
+        async writeBackup(_admin: string, write: (chunk: string) => Promise<void>) {
+          await write(JSON.stringify(mockBackup));
+          return mockBackup.meta;
+        }
         async validateBackupForRestore() { return { valid: true }; }
       },
     }));
@@ -750,10 +753,7 @@ describe('Maintenance job definitions behavior', () => {
       'wx',
       0o600,
     );
-    expect(mockFileWrite).toHaveBeenCalledWith(
-      expect.any(String),
-      'utf8',
-    );
+    expect(mockFileWrite).toHaveBeenCalledWith(expect.any(Buffer));
     expect(mockFileSync).toHaveBeenCalled();
     expect(mockRename).toHaveBeenCalledWith(
       expect.stringMatching(/\/\.sanctuary-backup-.*\.tmp$/),

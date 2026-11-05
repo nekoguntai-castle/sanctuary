@@ -4,6 +4,12 @@
  * Endpoints for backup creation, validation, and restoration (admin only)
  */
 
+import { randomUUID } from 'node:crypto';
+import { createReadStream } from 'node:fs';
+import { open, stat, unlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import { Router } from 'express';
 import express from 'express';
 import { authenticate, requireAuthenticatedUser, requireAdmin } from '../../middleware/auth';
@@ -11,6 +17,7 @@ import { rateLimitByUser } from '../../middleware/rateLimit';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ErrorCodes } from '../../errors/ApiError';
 import { createLogger } from '../../utils/logger';
+import { getErrorMessage } from '../../utils/errors';
 import { backupService, SanctuaryBackup } from '../../services/backupService';
 import { auditService, AuditAction, AuditCategory } from '../../services/auditService';
 import { verifyAdminPassword } from '../../services/adminCredentialService';
@@ -23,6 +30,7 @@ import {
 import { parseAdminRequestBody } from './requestValidation';
 
 const router = Router();
+export const ADMIN_BACKUP_STAGING_PREFIX = '.sanctuary-admin-backup-';
 const log = createLogger('ADMIN_BACKUP:ROUTE');
 
 // Large body parser for backup/restore operations (200MB for large wallets)
@@ -89,32 +97,58 @@ router.post('/backup', authenticate, requireAdmin, asyncHandler(async (req, res)
 
   log.info('Creating backup', { adminUser, includeCache });
 
-  const backup = await backupService.createBackup(adminUser, {
-    includeCache: includeCache === true,
-    description,
-  });
-
-  // Audit log
-  const totalRecords = Object.values(backup.meta.recordCounts).reduce((a, b) => a + b, 0);
-  await auditService.logFromRequest(req, AuditAction.BACKUP_CREATE, AuditCategory.BACKUP, {
-    details: {
-      tables: Object.keys(backup.data).length,
-      records: totalRecords,
-      includeCache: includeCache === true,
-    },
-  });
-
   // Generate filename with timestamp
   const timestamp = new Date().toISOString()
     .slice(0, 19)
     .replace(/[T:]/g, '-');
   const filename = `sanctuary-backup-${timestamp}.json`;
 
-  // Set headers for file download
-  res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  // Stage the backup in an owner-only temp file, then send it. Building the
+  // document in memory does not fit the heap on a large install, and staging
+  // (rather than streaming straight to the socket) keeps three properties: an
+  // export failure still answers with an error status, nothing is sent before
+  // the audit record exists, and a slow client cannot hold the snapshot
+  // transaction open.
+  const stagingPath = join(tmpdir(), `${ADMIN_BACKUP_STAGING_PREFIX}${randomUUID()}.json`);
+  try {
+    const file = await open(stagingPath, 'wx', 0o600);
+    let meta;
+    try {
+      meta = await backupService.writeBackup(adminUser, async (chunk) => {
+        await file.writeFile(chunk, 'utf8');
+      }, {
+        includeCache: includeCache === true,
+        description,
+      });
+    } finally {
+      await file.close();
+    }
 
-  res.json(backup);
+    const totalRecords = Object.values(meta.recordCounts).reduce((a, b) => a + b, 0);
+    await auditService.logFromRequest(req, AuditAction.BACKUP_CREATE, AuditCategory.BACKUP, {
+      details: {
+        tables: Object.keys(meta.recordCounts).length,
+        records: totalRecords,
+        includeCache: includeCache === true,
+      },
+    });
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', (await stat(stagingPath)).size);
+    try {
+      await pipeline(createReadStream(stagingPath), res);
+    } catch (error) {
+      // pipeline has already destroyed the response; the client saw a cut-off download.
+      log.warn('Backup download ended before the file was sent', { adminUser, error: getErrorMessage(error) });
+    }
+  } finally {
+    await unlink(stagingPath).catch((error: unknown) => {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        log.warn('Could not remove staged backup', { stagingPath, error: getErrorMessage(error) });
+      }
+    });
+  }
 }));
 
 /**

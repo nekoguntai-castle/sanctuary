@@ -8,6 +8,7 @@ import {
   BACKUP_TRANSACTION_TIMEOUT_MS,
 } from '../../../../src/services/backupService/creation';
 import {
+  BACKUP_PAGE_SIZE,
   CACHE_TABLES,
   TABLE_ORDER,
 } from '../../../../src/services/backupService/constants';
@@ -98,6 +99,84 @@ export function registerBackupSnapshotTests(): void {
       });
 
       await expect(backupService.createBackup('admin', { signal: controller.signal }))
+        .rejects.toMatchObject({ name: 'AbortError' });
+
+      expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledOnce();
+      expect(migrationService.getSchemaVersion).not.toHaveBeenCalled();
+    });
+
+    it('streams a backup one export page per write and parses to the createBackup document', async () => {
+      const page = (start: number, length: number) => Array.from({ length }, (_, index) => ({
+        id: `tx-${String(start + index).padStart(6, '0')}`,
+        amount: BigInt(start + index),
+        blockTime: new Date('2026-11-05T01:00:00.000Z'),
+        memo: undefined,
+      }));
+      const stubPages = () => {
+        mockPrismaClient.transaction.findMany
+          .mockResolvedValueOnce(page(0, BACKUP_PAGE_SIZE))
+          .mockResolvedValueOnce(page(BACKUP_PAGE_SIZE, 500));
+        mockPrismaClient.user.findMany.mockResolvedValueOnce([{ ...sampleUsers.admin, id: 'streamed-admin' }]);
+      };
+
+      stubPages();
+      const chunks: string[] = [];
+      const meta = await backupService.writeBackup('admin', async (chunk) => {
+        chunks.push(chunk);
+      }, { description: 'nightly' });
+
+      // Non-regression: the whole document is never one string. No write holds
+      // more than one export page of records.
+      const recordsPerChunk = chunks.map(chunk => chunk.match(/"id":"tx-/g)?.length ?? 0);
+      expect(Math.max(...recordsPerChunk)).toBe(BACKUP_PAGE_SIZE);
+      expect(recordsPerChunk.filter(count => count > 0)).toEqual([BACKUP_PAGE_SIZE, 500]);
+
+      const streamed = JSON.parse(chunks.join(''));
+      expect(streamed.meta).toEqual(meta);
+      expect(meta.recordCounts).toMatchObject({ transaction: 1500, user: 1 });
+      expect(meta.description).toBe('nightly');
+
+      stubPages();
+      const built = await backupService.createBackup('admin', { description: 'nightly' });
+      expect(streamed.data).toEqual(JSON.parse(JSON.stringify(built.data)));
+      expect({ ...streamed.meta, createdAt: built.meta.createdAt }).toEqual(built.meta);
+      expect(Object.keys(streamed.data)).toEqual([...TABLE_ORDER]);
+      expect(streamed.data.transaction[0]).toEqual({
+        id: 'tx-000000',
+        amount: '__bigint__0',
+        blockTime: '2026-11-05T01:00:00.000Z',
+      });
+    });
+
+    it('writes valid JSON for an empty database', async () => {
+      const chunks: string[] = [];
+      const meta = await backupService.writeBackup('admin', async (chunk) => {
+        chunks.push(chunk);
+      }, { includeCache: true });
+
+      const streamed = JSON.parse(chunks.join(''));
+      expect(Object.keys(streamed.data)).toEqual([...TABLE_ORDER, ...CACHE_TABLES]);
+      expect(Object.values(streamed.data).every(rows => Array.isArray(rows) && rows.length === 0)).toBe(true);
+      expect(meta.includesCache).toBe(true);
+    });
+
+    it('stops exporting when the writer fails', async () => {
+      await expect(backupService.writeBackup('admin', async () => {
+        throw new Error('disk full');
+      })).rejects.toThrow('disk full');
+
+      expect(mockPrismaClient.user.findMany).not.toHaveBeenCalled();
+      expect(migrationService.getSchemaVersion).not.toHaveBeenCalled();
+    });
+
+    it('aborts a streamed export before the next page', async () => {
+      const controller = new AbortController();
+      mockPrismaClient.transaction.findMany.mockImplementationOnce(async () => {
+        controller.abort();
+        return Array.from({ length: BACKUP_PAGE_SIZE }, (_, index) => ({ id: `tx-${index}` }));
+      });
+
+      await expect(backupService.writeBackup('admin', async () => undefined, { signal: controller.signal }))
         .rejects.toMatchObject({ name: 'AbortError' });
 
       expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledOnce();
