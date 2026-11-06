@@ -6,23 +6,36 @@
  * are merged by `merge-shard-reports.mjs` into the canonical report path that
  * `check-critical-mutation-gate.mjs` consumes.
  *
- * Shard balance was chosen to roughly equalize wallclock by file count and
- * known mutant density (addressDerivation has the largest mutant population
- * by far and gets its own shard).
+ * Shards are balanced by measured cost, not file or mutant count. A mutant's
+ * cost is the tests it runs (`testsCompleted` in the shard report), and every
+ * surviving mutant runs all of its covering tests. The address-derivation
+ * mutants are covered by thousands of vector tests each, so 542 of them cost
+ * more than shard 3's ~3,900 mutants. In the November 2026 reports,
+ * xpubConversion.ts alone was 52-58% of the address-derivation test
+ * executions (223k-301k of 433k-515k). With it in shard 1, that shard ran
+ * 38-59 minutes and hit its 60-minute deadline on busy hosts, while shard 2
+ * finished in about 75 seconds. xpubConversion.ts therefore runs in shard 2.
+ *
+ * A shard may carve a file out of another shard's glob. When it does, that
+ * file must also be listed explicitly in ALL_MUTATE, because
+ * scripts/ci/check-critical-mutation-config.mjs requires the shards' positive
+ * patterns to match ALL_MUTATE's and every file to belong to exactly one shard.
  */
 
 const SHARDS = {
   1: {
-    label: 'addressDerivation',
+    label: 'address-derivation',
     mutate: [
       'src/services/bitcoin/addressDerivation.ts',
       'src/services/bitcoin/addressDerivation/**/*.ts',
+      '!src/services/bitcoin/addressDerivation/xpubConversion.ts',
       '!src/**/*.d.ts',
     ],
   },
   2: {
-    label: 'psbt-validation',
+    label: 'psbt-validation-xpub-conversion',
     mutate: [
+      'src/services/bitcoin/addressDerivation/xpubConversion.ts',
       'src/services/bitcoin/psbtValidation.ts',
       'src/services/bitcoin/psbtInfo.ts',
       'src/services/bitcoin/validationEvidenceContracts.ts',
@@ -48,6 +61,8 @@ const SHARDS = {
 const ALL_MUTATE = [
   'src/services/bitcoin/addressDerivation.ts',
   'src/services/bitcoin/addressDerivation/**/*.ts',
+  // Already matched by the glob above; listed so shard 2 can own it.
+  'src/services/bitcoin/addressDerivation/xpubConversion.ts',
   'src/services/bitcoin/psbtValidation.ts',
   'src/services/bitcoin/psbtInfo.ts',
   'src/services/bitcoin/validationEvidenceContracts.ts',

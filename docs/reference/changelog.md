@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- CI: the critical mutation gate's shard 1 ran 38-59 minutes against its 60-minute deadline and timed out on busy runner hosts, while shard 2 finished in about 75 seconds. `xpubConversion.ts`, about 55% of shard 1's test executions, now runs in shard 2, so no shard is expected to need more than about 30 minutes uncontended.
+
 ## [0.8.84] - 2026-11-05
 
 ### Fixed
