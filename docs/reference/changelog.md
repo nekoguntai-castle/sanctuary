@@ -7,11 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.84] - 2026-11-05
+
 ### Fixed
 
-- A worker job that crashed its worker disappeared without a trace. BullMQ redelivered the stalled job, the restarted worker found the dead attempt's lock still held, and it marked the job completed as skipped. A redelivered job that finds its own lock still held now fails as unrecoverable and is recorded in the dead-letter queue. It is not re-run, because it would likely crash the worker again; a recurring job's next scheduled run proceeds normally. A job whose last two deliveries both stalled is also failed instead of re-run, because BullMQ never fails a repeatable job at its stall limit. Wallet-sync jobs, which re-delay on lock contention, keep their existing handling.
-- Scheduled backups ran the worker out of memory on large installs. The job built the whole backup in memory and serialized it in one step, which exceeded the worker's heap at about 800k transaction outputs. Each nightly run crashed the worker, interrupting in-progress wallet syncs, and left a partial `.tmp` file behind. The crashed job was then skipped because its lock was still held, so it never reached the dead-letter queue. Backups are now written to the file one export page at a time. The admin backup download builds the file the same way in an owner-only temp file, records the audit entry, and only then sends it. An export or audit failure still returns an error, and a slow download no longer holds the database snapshot open.
-- Scheduled backup retention no longer parses every kept backup to check it. New backups are named `sanctuary-backup-<timestamp>-<sha256>.json`, and retention verifies each one by streaming its hash. Older-named backups are still validated in full up to 64 MiB; larger ones are kept but not counted toward retention.
+- A worker job that crashed its worker disappeared without a trace. BullMQ redelivered the stalled job, the restarted worker found the dead attempt's lock still held, and it marked the job completed as skipped. A redelivered job that finds its own lock still held now fails as unrecoverable and is recorded in the dead-letter queue. It is not re-run, because it would likely crash the worker again; a recurring job's next scheduled run proceeds normally. A job whose last two deliveries both stalled is also failed instead of re-run, because BullMQ never fails a repeatable job at its stall limit. Wallet-sync jobs, which re-delay on lock contention, keep their existing handling (#1463).
+- Scheduled backups ran the worker out of memory on large installs. The job built the whole backup in memory and serialized it in one step, which exceeded the worker's heap at about 800k transaction outputs. Each nightly run crashed the worker, interrupting in-progress wallet syncs, and left a partial `.tmp` file behind. The crashed job was then skipped because its lock was still held, so it never reached the dead-letter queue. Backups are now written to the file one export page at a time. The admin backup download builds the file the same way in an owner-only temp file, records the audit entry, and only then sends it. An export or audit failure still returns an error, and a slow download no longer holds the database snapshot open (#1462).
+- Scheduled backup retention no longer parses every kept backup to check it. New backups are named `sanctuary-backup-<timestamp>-<sha256>.json`, and retention verifies each one by streaming its hash. Older-named backups are still validated in full up to 64 MiB; larger ones are kept but not counted toward retention (#1462).
 
 ## [0.8.83] - 2026-11-05
 
@@ -1227,7 +1229,8 @@ upgrade browser-smoke and 2FA preservation assertions.
 
 - Removed navigation-triggered syncs in favor of worker-driven sync
 
-[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.83...HEAD
+[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.84...HEAD
+[0.8.84]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.83...v0.8.84
 [0.8.83]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.82...v0.8.83
 [0.8.82]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.81...v0.8.82
 [0.8.81]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.80...v0.8.81
