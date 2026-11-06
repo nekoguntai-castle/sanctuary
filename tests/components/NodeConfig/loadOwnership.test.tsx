@@ -11,6 +11,9 @@ import * as bitcoinApi from '../../../src/api/bitcoin';
 
 vi.mock('../../../src/api/admin', () => ({ getNodeConfig: vi.fn(), getElectrumServers: vi.fn(), getTorContainerStatus: vi.fn(), updateNodeConfig: vi.fn() }));
 vi.mock('../../../src/api/bitcoin', () => ({ getStatus: vi.fn() }));
+// Expanding External Services mounts the diagnostics panel, whose
+// /price/providers/status load is outside this suite (ExternalServicesSection.test.tsx).
+vi.mock('../../../src/components/PriceProviderDiagnostics', () => ({ PriceProviderDiagnostics: () => <div data-testid="price-provider-diagnostics" /> }));
 const baseline: NodeConfigType = { ...DEFAULT_NODE_CONFIG, mainnetMode: 'singleton', mainnetSingletonHost: 'private-node', testnet3Enabled: true, signetEnabled: true, explorerUrl: 'https://explorer.example', proxyEnabled: true, proxyHost: 'private-proxy', proxyPort: 9050 };
 function deferred<T>() {
   let resolve!: (value: T) => void; let reject!: (error: Error) => void;

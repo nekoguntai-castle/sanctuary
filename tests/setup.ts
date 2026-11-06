@@ -1,5 +1,9 @@
 import '@testing-library/jest-dom/vitest';
-import { vi } from 'vitest';
+import { afterEach, vi } from 'vitest';
+import {
+  assertNoUnmockedApiRetries,
+  installUnmockedApiRetryGuard,
+} from './support/unmockedApiRetryGuard';
 
 // jsdom models dialog markup but not the browser's modal lifecycle. These
 // mocks model only the open/close state; Playwright contracts verify trapping.
@@ -43,16 +47,11 @@ vi.mock('../src/api/sync', async () => {
   };
 });
 
-const originalConsoleWarn = console.warn.bind(console);
-const suppressedApiRetryPrefixes = ['[API] Request failed', '[ApiClient] Request failed'];
-vi.spyOn(console, 'warn').mockImplementation((message?: unknown, ...args: unknown[]) => {
-  if (
-    typeof message === 'string' &&
-    suppressedApiRetryPrefixes.some(prefix => message.startsWith(prefix))
-  ) {
-    return;
-  }
-  originalConsoleWarn(message, ...args);
+// Any other unmocked request fails the test that issued it, instead of
+// retrying in the background after the test ends.
+installUnmockedApiRetryGuard();
+afterEach(() => {
+  assertNoUnmockedApiRetries();
 });
 
 // Mock window.matchMedia
