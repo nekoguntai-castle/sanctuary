@@ -125,7 +125,7 @@ is_ci_classifier_file() {
     # plus the root-layout schema its suite pins. Exact paths, not globs.
     # tests/ci/classify-quality-scope.test.sh derives the executed set from
     # quality.yml and fails when one of them is missing here.
-    scripts/lib/is-main-module.mjs|scripts/quality/check-root-layout.mjs|scripts/quality/root-layout-classification.schema.json|scripts/bump-funds-critical.sh|scripts/create-forge-release.sh|scripts/offline/apply-bundle.sh|scripts/offline/bundle-common.sh|config/tooling/jscpd.json|config/wallet-safety-critical-paths.json|.github/ci-performance-budget.json)
+    scripts/lib/browser-sandbox-contract.mjs|scripts/lib/is-main-module.mjs|scripts/quality/check-root-layout.mjs|scripts/quality/root-layout-classification.schema.json|scripts/bump-funds-critical.sh|scripts/create-forge-release.sh|scripts/offline/apply-bundle.sh|scripts/offline/bundle-common.sh|config/browser-toolchain.json|config/tooling/playwright-browser.ts|config/tooling/jscpd.json|config/wallet-safety-critical-paths.json|.github/ci-performance-budget.json)
       return 0
       ;;
     scripts/perf/wallet-sync-database-readiness.mjs|scripts/perf/wallet-sync-health-probe.mjs|scripts/perf/wallet-sync-high-fanout-replay.mjs|scripts/perf/wallet-sync-replay-cleanup.mjs|scripts/perf/wallet-sync-replay-creation.mjs|scripts/perf/wallet-sync-replay-ownership.mjs)

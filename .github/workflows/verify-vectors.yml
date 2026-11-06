@@ -570,9 +570,9 @@ jobs:
     runs-on: docker-socket
     container:
       image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:14d65190139aad39b2af99b751d12237c259a952b7f908e0dcde25512c09299f
-    # Above the step bounds (10 + 15 + 5) plus setup, so a run that hits a step
+    # Above the step bounds (10 + 30 + 5) plus setup, so a run that hits a step
     # bound still writes and uploads its diagnostics.
-    timeout-minutes: 35
+    timeout-minutes: 50
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/verify-vectors-mutation-fee
 
@@ -592,10 +592,10 @@ jobs:
           ${{ github.workspace }}/scripts/ci/setup-server-dependencies.sh
 
       - name: Prove exact transaction fee invariants by mutation
-        # Two contended PR-event runs reached 91-92% before this step's former
-        # eight-minute bound; the same tree passed when run in isolation. Keep
-        # the proof blocking and finite while allowing that observed tail.
-        timeout-minutes: 15
+        # A prior attempt was interrupted at about 15 minutes; the identical
+        # proof inputs are estimated to take about 25 minutes. No OOM was
+        # observed, so allow that runtime while keeping the proof finite.
+        timeout-minutes: 30
         run: >
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/fee-policy-mutation.log"
           ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain

@@ -35,7 +35,7 @@ const testWorkflowPath = path.join(repoRoot, '.github/workflows/test.yml');
 
 const browserToolchain = JSON.parse(readFileSync(browserToolchainPath, 'utf8'));
 const PLAYWRIGHT_IMAGE_REPO = 'nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright:' +
-  `pw${browserToolchain.playwrightVersion}-chrome${browserToolchain.browserVersion}`;
+  `pw${browserToolchain.playwrightVersion}-chrome${browserToolchain.browserVersion}-sandbox${browserToolchain.sandboxPolicyRevision}`;
 const PLAYWRIGHT_IMAGE_DIGEST_PLACEHOLDER = 'PLAYWRIGHT_IMAGE_DIGEST_PENDING';
 const PLAYWRIGHT_E2E_JOB_NAMES = ['full-browser-e2e-tests', 'full-render-e2e-tests'];
 
@@ -117,6 +117,26 @@ export function workflowPlaywrightRunnerLabels(workflowText) {
   );
 }
 
+test('non-root browser jobs defer writable lock directory resolution to runtime', () => {
+  const workflowText = readFileSync(testWorkflowPath, 'utf8');
+  for (const name of PLAYWRIGHT_E2E_JOB_NAMES) {
+    const block = extractJobBlock(workflowText, name);
+    assert.match(block, /^      SANCTUARY_RUNNER_LOCK_DIR: \.tmp\/runner-locks-v2$/m);
+  }
+});
+
+test('both browser lanes retain hidden sandbox evidence on successful runs', () => {
+  const workflowText = readFileSync(testWorkflowPath, 'utf8');
+  for (const name of PLAYWRIGHT_E2E_JOB_NAMES) {
+    const block = extractJobBlock(workflowText, name);
+    const upload = block.split('      - name: Upload test results\n')[1]?.split('\n      - name: ')[0];
+    assert.ok(upload, `${name} must upload test results`);
+    assert.match(upload, /^        if: always\(\)$/m);
+    assert.match(upload, /^          path: test-results\/$/m);
+    assert.match(upload, /^          include-hidden-files: true$/m);
+  }
+});
+
 test('test.yml has no leftover sanctuary-playwright-* runs-on label', () => {
   const workflowText = readFileSync(testWorkflowPath, 'utf8');
   const labels = workflowPlaywrightRunnerLabels(workflowText);
@@ -135,6 +155,10 @@ test('both Playwright E2E jobs pin the same digest-pinned sanctuary-ci-playwrigh
 
   const images = PLAYWRIGHT_E2E_JOB_NAMES.map((jobName) => {
     const jobBlock = extractJobBlock(workflowText, jobName);
+    assert.match(jobBlock, /options: --group-add 0/);
+    assert.match(jobBlock, /SANCTUARY_SANDBOXED_BROWSER: '1'/);
+    assert.doesNotMatch(jobBlock, /RUNNER_TOOL_CACHE/);
+    assert.match(jobBlock, /uses: \.\/\.github\/actions\/setup-node-toolchain/);
     return { jobName, image: jobContainerImage(jobBlock, jobName) };
   });
 
@@ -195,7 +219,7 @@ test('pinned Chrome for Testing toolchain matches its independent Docker build a
   assert.equal(dockerfileArg(dockerfileText, 'CHROME_SHA256'), toolchain.browserSha256);
   assert.equal(
     dockerfileArg(dockerfileText, 'TOOLCHAIN_VERSION'),
-    `pw${toolchain.playwrightVersion}-chrome${toolchain.browserVersion}`,
+    `pw${toolchain.playwrightVersion}-chrome${toolchain.browserVersion}-sandbox${toolchain.sandboxPolicyRevision}`,
   );
   assert.match(dockerfileText, /PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=\/opt\/chrome\/chrome-linux64\/chrome/);
   assert.match(dockerfileText, /MINIMUM_BROWSER_VERSION=\$\{MINIMUM_BROWSER_VERSION\}/);
@@ -229,7 +253,7 @@ test('pinned Chrome for Testing toolchain matches its independent Docker build a
     path.join(repoRoot, 'scripts/demo/capture/capture.config.ts'),
   ]) {
     const configText = readFileSync(configPath, 'utf8');
-    assert.match(configText, /launchOptions: \{ executablePath: chromiumExecutablePath \}/);
+    assert.match(configText, /launchOptions: chromiumLaunchOptions\(chromiumExecutablePath\)/);
     assert.match(configText, /resolvePlaywrightBrowser\(repoRoot\)/);
   }
 });

@@ -150,3 +150,58 @@ if api_timeout="$(FRESHNESS_FETCH_TIMEOUT_MS=100 \
 fi
 [[ "$api_timeout" == *'Forgejo API GET timed out after 100 ms'* ]]
 echo 'PASS: stalled issue API calls time out'
+
+
+# Sandbox revision findings are independent of the version-feed findings above.
+printf 'empty' > "$TEMP_DIR/issue-mode"
+write_sandbox_fixture() {
+  node --input-type=module - "$TEMP_DIR" "$1" "$2" <<'NODE'
+import { readFileSync, writeFileSync } from 'node:fs';
+const [root, revision, suffix] = process.argv.slice(2);
+const configPath = `${root}/config/browser-toolchain.json`;
+const config = JSON.parse(readFileSync(configPath, 'utf8'));
+if (revision === 'absent') delete config.sandboxPolicyRevision;
+else config.sandboxPolicyRevision = JSON.parse(revision);
+writeFileSync(configPath, JSON.stringify(config));
+writeFileSync(`${root}/.github/workflows/ci.yml`, `jobs:\n  browser:\n    container:\n      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright:pw${config.playwrightVersion}-chrome${config.browserVersion}${suffix}@sha256:${'a'.repeat(64)}\n`);
+NODE
+}
+run_sandbox_freshness() {
+  PLAYWRIGHT_LATEST_URL="http://127.0.0.1:$PORT/npm" \
+    CHROME_STABLE_URL="http://127.0.0.1:$PORT/chrome" \
+    FORGEJO_API_URL="http://127.0.0.1:$PORT/api" \
+    FORGEJO_REPOSITORY=example/project FORGEJO_TOKEN=fixture-secret \
+    node "$ROOT_DIR/scripts/ci/check-browser-toolchain-freshness.mjs" "$TEMP_DIR"
+}
+for invalid_revision in 0 -1 1.5 '"1"' null 9007199254740992; do
+  write_sandbox_fixture "$invalid_revision" '-sandbox1'
+  : > "$TEMP_DIR/requests.log"
+  if invalid_output="$(run_sandbox_freshness 2>&1)"; then
+    echo "freshness checker accepted invalid sandbox revision $invalid_revision" >&2
+    exit 1
+  fi
+  [[ "$invalid_output" == *'invalid sandboxPolicyRevision'* ]]
+  [ ! -s "$TEMP_DIR/requests.log" ]
+done
+echo 'PASS: invalid sandbox policy revisions fail before issue API access'
+
+for suffix in '' '-sandbox2'; do
+  write_sandbox_fixture 1 "$suffix"
+  : > "$TEMP_DIR/requests.log"
+  run_sandbox_freshness >/dev/null
+  grep -Fq 'image tag sandbox policy differs from browser-toolchain.json' "$TEMP_DIR/requests.log"
+done
+write_sandbox_fixture absent '-sandbox1'
+: > "$TEMP_DIR/requests.log"
+run_sandbox_freshness >/dev/null
+grep -Fq 'image tag sandbox policy differs from browser-toolchain.json' "$TEMP_DIR/requests.log"
+echo 'PASS: missing or mismatched tag/config sandbox revisions produce a drift finding'
+
+write_sandbox_fixture 1 '-sandbox1'
+: > "$TEMP_DIR/requests.log"
+run_sandbox_freshness >/dev/null
+if grep -Fq 'image tag sandbox policy differs from browser-toolchain.json' "$TEMP_DIR/requests.log"; then
+  echo 'matching sandbox revisions produced a false drift finding' >&2
+  exit 1
+fi
+echo 'PASS: matching sandbox revisions do not produce a policy drift finding'

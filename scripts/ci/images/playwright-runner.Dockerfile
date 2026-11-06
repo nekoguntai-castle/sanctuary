@@ -56,12 +56,15 @@ FROM nexus.tabineko.dev/nekoguntai-castle/act-ubuntu-node@sha256:9a9cf26dae68eb8
 # Playwright's bundled Chromium is below Sanctuary's minimum supported browser
 # version. Install Playwright's OS dependencies, then fetch the independently
 # pinned Chrome for Testing archive and verify it before extraction.
-ARG TOOLCHAIN_VERSION=pw1.64.1-chrome157.0.8103.38
+ARG TOOLCHAIN_VERSION=pw1.64.1-chrome157.0.8103.38-sandbox1
+ARG SANDBOX_POLICY_REVISION=1
 ARG PLAYWRIGHT_VERSION=1.64.1
 ARG CHROME_VERSION=157.0.8103.38
 ARG MINIMUM_BROWSER_VERSION=156.0.8078.73
 ARG CHROME_SHA256=8cdeb344e9b2cefe59f4aea8d1d93d5d93054c03cde217665c16fc1f62e72a66
 ENV PLAYWRIGHT_VERSION=${PLAYWRIGHT_VERSION} \
+    PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers \
+    SANDBOX_POLICY_REVISION=${SANDBOX_POLICY_REVISION} \
     CHROME_VERSION=${CHROME_VERSION} \
     MINIMUM_BROWSER_VERSION=${MINIMUM_BROWSER_VERSION} \
     PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/opt/chrome/chrome-linux64/chrome
@@ -83,3 +86,13 @@ RUN apt-get update \
 LABEL org.opencontainers.image.title="sanctuary-ci-playwright" \
       org.opencontainers.image.description="act-ubuntu-node + Playwright ${PLAYWRIGHT_VERSION} and verified Chrome for Testing ${CHROME_VERSION}" \
       org.opencontainers.image.version="${TOOLCHAIN_VERSION}"
+
+# Immutable browser assets are shared; each browser job owns its writable roots.
+RUN groupadd --gid 1000 pwuser \
+ && useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash pwuser \
+ && mkdir -p /workspace /home/pwuser/.cache /home/pwuser/toolcache \
+ && chown -R 1000:1000 /workspace /home/pwuser \
+ && chmod -R a+rX,go-w /opt/chrome /opt/playwright /opt/playwright-browsers \
+ && find /opt/hostedtoolcache /github -perm -0002 -exec chmod o-w {} +
+ENV HOME=/home/pwuser
+USER 1000:1000

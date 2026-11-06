@@ -25,7 +25,7 @@ env:
   GIT_CONFIG_VALUE_0: main
   NODE_VERSION: '24.22.2'
   NPM_VERSION: '12.0.2'
-  SANCTUARY_RUNNER_LOCK_DIR: ${{ github.workspace }}/.tmp/runner-locks-v2
+  SANCTUARY_RUNNER_LOCK_DIR: .tmp/runner-locks-v2
 
 jobs:
   # ============================================
@@ -1378,7 +1378,8 @@ jobs:
     # jobs to pin the same real digest.
     runs-on: docker-socket
     container:
-      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright:pw1.64.1-chrome157.0.8103.38@sha256:fde8670f103cc24fd71ea8185e8707856e2f756635c5c273c1b9789f9cb29241
+      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright:pw1.64.1-chrome157.0.8103.38-sandbox1@sha256:cf627d37888e1ba12e70a73457fb1a226bd24b6a722892af17752b0c9a09a443
+      options: --group-add 0
     timeout-minutes: 90
     # Deliberately not ordered after full-backend-unit-coverage-shards. That
     # edge kept heavy lanes off the shared DIND daemon; every job now runs in
@@ -1387,6 +1388,9 @@ jobs:
     # R2). action-runtime-workflow-guards.mjs forbids re-adding it.
     needs: [detect-changes]
     env:
+      SANCTUARY_SANDBOXED_BROWSER: '1'
+      # Resolve against the runtime workspace; early Forgejo expression context can be empty.
+      SANCTUARY_RUNNER_LOCK_DIR: .tmp/runner-locks-v2
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/browser-e2e
       # A starved e2e lock wait must fail inside the job budget so the
       # diagnostics upload runs and the log names the lock (issue #1020). The
@@ -1428,7 +1432,6 @@ jobs:
 
       - name: Verify Node.js toolchain
         uses: ./.github/actions/setup-node-toolchain
-
       - name: Install frontend dependencies
         run: >
           scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-frontend-dependencies.log"
@@ -1526,7 +1529,7 @@ jobs:
           scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/browser-flow-e2e.log" \
             scripts/ci/with-runner-lock.sh e2e \
             scripts/ci/cleanup-ci-callsite.sh auto-run \
-              --engine host \
+              --engine docker \
               --lane browser-e2e-backend \
               --checkout-root "$GITHUB_WORKSPACE" \
               -- scripts/ci/run-browser-e2e-subject.sh
@@ -1584,6 +1587,7 @@ jobs:
           name: playwright-results-browser
           path: test-results/
           if-no-files-found: ignore
+          include-hidden-files: true
           retention-days: 14
 
   full-render-e2e-tests:
@@ -1598,7 +1602,8 @@ jobs:
     # the placeholder-digest gate.
     runs-on: docker-socket
     container:
-      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright:pw1.64.1-chrome157.0.8103.38@sha256:fde8670f103cc24fd71ea8185e8707856e2f756635c5c273c1b9789f9cb29241
+      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright:pw1.64.1-chrome157.0.8103.38-sandbox1@sha256:cf627d37888e1ba12e70a73457fb1a226bd24b6a722892af17752b0c9a09a443
+      options: --group-add 0
     timeout-minutes: 60
     # Runs beside full-browser-e2e-tests rather than after it: each lane has
     # its own job container, and the ordering only added the browser lane's
@@ -1607,6 +1612,9 @@ jobs:
     # fails full-test-summary on its own.
     needs: [detect-changes]
     env:
+      SANCTUARY_SANDBOXED_BROWSER: '1'
+      # Resolve against the runtime workspace; early Forgejo expression context can be empty.
+      SANCTUARY_RUNNER_LOCK_DIR: .tmp/runner-locks-v2
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/render-e2e
       # See full-browser-e2e-tests: bound the shared e2e lock wait below the
       # job budget so lock starvation is named rather than killed (#1020).
@@ -1618,7 +1626,6 @@ jobs:
 
       - name: Verify Node.js toolchain
         uses: ./.github/actions/setup-node-toolchain
-
       - name: Install dependencies
         run: >
           scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-dependencies.log"
@@ -1655,9 +1662,11 @@ jobs:
         run: >
           scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/render-regression-e2e.log"
           scripts/ci/with-runner-lock.sh e2e
+          scripts/ci/cleanup-ci-callsite.sh auto-run --engine docker --lane render-regression-e2e --checkout-root "$GITHUB_WORKSPACE" --
           scripts/ci/retry-playwright-infrastructure-failure.sh "render regression E2E"
           scripts/ci/time-command.sh "render regression E2E"
-          npm run test:e2e -- --project=chromium --workers=3 tests/e2e/render-regression.spec.ts
+          node scripts/ci/run-sandboxed-playwright.mjs --
+          npm run test:e2e -- --project=chromium --project=mobile-chrome --workers=3 tests/e2e/render-regression.spec.ts
         env:
           CI: 'true'
           NODE_ENV: test
@@ -1694,6 +1703,7 @@ jobs:
           name: playwright-results-render
           path: test-results/
           if-no-files-found: ignore
+          include-hidden-files: true
           retention-days: 14
 
   full-build-check:

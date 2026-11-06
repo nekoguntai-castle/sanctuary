@@ -184,6 +184,10 @@ async function measureClipping(page: Page) {
       overflowRight: rect.right - clip.right,
       width: rect.width,
       height: rect.height,
+      viewportHeight: window.innerHeight,
+      anchorTop: popup.style.top,
+      placement: popup.dataset.placement,
+      offsetHeight: popup.offsetHeight,
     } as const;
   });
 }
@@ -205,6 +209,9 @@ test.describe("wallet sync tooltip is not clipped by its card", () => {
     ), { timeout: 5000 }).toBeGreaterThan(0.9);
 
     const measured = await measureClipping(page);
+    await test.info().attach('tooltip-geometry', {
+      body: JSON.stringify(measured), contentType: 'application/json',
+    });
     expect(measured.found).toBe(true);
     expect(measured).toMatchObject({ clipper: null });
     expect(measured.overflowTop).toBeLessThanOrEqual(0);

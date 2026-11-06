@@ -2,5 +2,6 @@
   "playwrightVersion": "1.64.1",
   "browserVersion": "157.0.8103.38",
   "minimumBrowserVersion": "156.0.8078.73",
-  "browserSha256": "8cdeb344e9b2cefe59f4aea8d1d93d5d93054c03cde217665c16fc1f62e72a66"
+  "browserSha256": "8cdeb344e9b2cefe59f4aea8d1d93d5d93054c03cde217665c16fc1f62e72a66",
+  "sandboxPolicyRevision": 1
 }

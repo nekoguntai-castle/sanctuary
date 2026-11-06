@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -288,4 +288,39 @@ test('host migrations stay deferred until their callers use the exact adapter', 
   assert.deepEqual(phase6MigrationBlockers({ callsites: [deferred] }), [
     'scripts/raw.sh:temporary_artifact:cleanup',
   ]);
+});
+
+
+test('browser lifecycle exemptions fail closed when cross-file ownership is weakened', () => {
+  const wrapperPath = 'scripts/ci/run-sandboxed-playwright.mjs';
+  const adapterPath = 'scripts/ci/lib/browser-container-ownership.mjs';
+  const coordinatorPath = 'scripts/ownership/ci-cleanup-coordinator.mjs';
+  const workflowPath = '.github/workflows/test.yml';
+  const sources = Object.fromEntries([wrapperPath, adapterPath, coordinatorPath, workflowPath]
+    .map(name => [name, readFileSync(path.join(CHECKOUT, name), 'utf8')]));
+  const owned = fixture(sources);
+  const scan = () => scanLifecycleCallsites({ root: owned.root, files: [wrapperPath] });
+  try {
+    const baseline = scan();
+    assert.equal(baseline.findings.find(entry => entry.resourceClass === 'compose_container').mechanism,
+      'registered_transient');
+    assert.equal(baseline.findings.find(entry => entry.resourceClass === 'collector_process').mechanism,
+      'scoped_child_process');
+    const inventory = { schemaVersion: '1.0.0', callsites: baseline.findings.map(entry => ({
+      path: entry.path, resourceClass: entry.resourceClass, operation: entry.operation,
+      disposition: 'exempt', safetyContract: 'Mechanically verified coordinated browser lifecycle.',
+    })) };
+    assert.doesNotThrow(() => validateLifecycleCallsites({ inventory, scan: baseline, phase: 6 }));
+    const mutations = [
+      [adapterPath, sources[adapterPath].replace('register(context.ownership, context.containerId);', '')],
+      [workflowPath, sources[workflowPath].replace('--engine docker --lane render-regression-e2e', '--engine host --lane render-regression-e2e')],
+      [adapterPath, sources[adapterPath].replace("waitBounded(context.attachPromise, 5_000, 'attached browser server')", 'context.attachPromise')],
+    ];
+    for (const [name, altered] of mutations) {
+      assert.notEqual(altered, sources[name]);
+      writeFileSync(path.join(owned.root, name), altered);
+      assert.throws(() => validateLifecycleCallsites({ inventory, scan: scan(), phase: 6 }), /cannot be exempt/);
+      writeFileSync(path.join(owned.root, name), sources[name]);
+    }
+  } finally { rmSync(owned.root, { recursive: true, force: true }); }
 });

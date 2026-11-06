@@ -60,12 +60,82 @@ main() {
     [ "$status" -eq 42 ] || fail "expected exit status 42, got ${status}"
   fi
 
+  assert_runtime_workspace_lock_resolution
+  assert_invalid_lock_override_fails
   assert_contended_lock_reports_timeout "$lock_dir"
   assert_lock_timeout_fits_inside_every_job
   assert_lock_reports_wait_duration
   assert_uncontended_lock_ignores_wall_second_boundary
 
   echo 'runner lock regression checks passed'
+}
+
+assert_runtime_workspace_lock_resolution() {
+  local workspace="$TEST_TEMP_DIR/workspace with spaces"
+  mkdir -p "$workspace/server"
+  git init -q "$workspace"
+  (cd "$workspace" && GITHUB_WORKSPACE="$workspace" SANCTUARY_RUNNER_LOCK_DIR=.tmp/runner-locks-v2 \
+    bash "$LOCK_SCRIPT" runtime true)
+  local lock_file="$workspace/.tmp/runner-locks-v2/runtime.lock"
+  [ -f "$lock_file" ] || fail 'relative lock must be rooted at runtime workspace'
+  [ "$(stat -c '%a' "$workspace/.tmp")" = '700' ] \
+    || fail 'new lock-path ancestors must be owner-only for private install workspaces'
+  # Holding the root invocation's lock must block the subdirectory invocation.
+  exec 8>"$lock_file"
+  flock -n 8 || fail 'could not hold runtime workspace lock'
+  local status=0
+  (cd "$workspace/server" && GITHUB_WORKSPACE="$workspace" \
+    SANCTUARY_RUNNER_LOCK_DIR=.tmp/runner-locks-v2 SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS=1 \
+    bash "$LOCK_SCRIPT" runtime true) >"$TEST_TEMP_DIR/runtime-contention.log" 2>&1 8>&- || status="$?"
+  exec 8>&-
+  [ "$status" -eq "$LOCK_CONFLICT_EXIT_CODE" ] || fail 'root/subdirectory invocations must contend on the same lock'
+  (cd "$workspace/server" && GITHUB_WORKSPACE='' SANCTUARY_RUNNER_LOCK_DIR=.tmp/runner-locks-v2 \
+    bash "$LOCK_SCRIPT" fallback true)
+  [ -f "$workspace/.tmp/runner-locks-v2/fallback.lock" ] || fail 'empty runtime workspace must use git root'
+  (cd "$workspace/server" && env -u GITHUB_WORKSPACE SANCTUARY_RUNNER_LOCK_DIR=.tmp/runner-locks-v2 \
+    bash "$LOCK_SCRIPT" unset-workspace true)
+  [ -f "$workspace/.tmp/runner-locks-v2/unset-workspace.lock" ] || fail 'unset runtime workspace must use git root'
+  assert_fails_with 'relative runner lock directory requires an existing absolute workspace' \
+    env GITHUB_WORKSPACE="$TEST_TEMP_DIR/missing-workspace" SANCTUARY_RUNNER_LOCK_DIR=.tmp/runner-locks-v2 \
+    bash "$LOCK_SCRIPT" invalid true
+  [ ! -d "$workspace/server/.tmp" ] || fail 'relative lock may not split by working directory'
+
+  local existing_parent="$TEST_TEMP_DIR/existing-lock-parent"
+  mkdir -p "$existing_parent"
+  chmod 750 "$existing_parent"
+  (cd "$workspace" && SANCTUARY_RUNNER_LOCK_DIR="$existing_parent/nested-locks" \
+    bash "$LOCK_SCRIPT" preserve-parent true)
+  [ "$(stat -c '%a' "$existing_parent")" = '750' ] \
+    || fail 'lock creation must preserve permissions on existing parent directories'
+  [ "$(stat -c '%a' "$existing_parent/nested-locks")" = '1777' ] \
+    || fail 'new final lock directory must retain shared sticky permissions'
+
+  (cd "$workspace/server" && env -u SANCTUARY_RUNNER_LOCK_DIR bash "$LOCK_SCRIPT" default true)
+  [ -f "$TEST_TEMP_DIR/.sanctuary-runner-locks/default.lock" ] || fail 'unconfigured default lock location changed'
+  # verify-vectors.yml is hashed execution provenance: changing its declaration
+  # requires a separate four-implementation regeneration, outside this migration.
+  local migrated_workflow
+  for migrated_workflow in test quality install-test release-candidate architecture; do
+    if grep -E 'SANCTUARY_RUNNER_LOCK_DIR:.*\$\{\{' "$WORKFLOW_DIR/$migrated_workflow.yml"; then
+      fail "$migrated_workflow runner lock directory depends on early workflow expansion"
+    fi
+  done
+}
+
+assert_invalid_lock_override_fails() {
+  local blocker="$TEST_TEMP_DIR/lock-path-file"
+  printf 'not a directory' > "$blocker"
+  assert_fails_with "cannot create runner lock directory: $blocker/locks" \
+    env SANCTUARY_RUNNER_LOCK_DIR="$blocker/locks" bash "$LOCK_SCRIPT" invalid true
+  # Empty early github.workspace expansion yielded this exact absolute path in
+  # Forgejo. Stub mkdir to discriminate the attempted target without touching /.
+  local fake_bin="$TEST_TEMP_DIR/mkdir-discriminator"
+  mkdir -p "$fake_bin"
+  printf '#!/usr/bin/env bash\nprintf "mkdir target: %%s\\n" "$*" >&2\nexit 73\n' > "$fake_bin/mkdir"
+  chmod +x "$fake_bin/mkdir"
+  assert_fails_with 'mkdir target: -p /.tmp/runner-locks-v2' \
+    env PATH="$fake_bin:$PATH" SANCTUARY_RUNNER_LOCK_DIR=/.tmp/runner-locks-v2 \
+    bash "$LOCK_SCRIPT" invalid true
 }
 
 assert_uncontended_lock_ignores_wall_second_boundary() {

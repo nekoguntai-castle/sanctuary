@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AUTH_STATE_FILE, loadDemoCaptureEnv, repoRoot } from './demoEnv';
-import { resolvePlaywrightBrowser } from '../../../config/tooling/playwright-browser';
+import { chromiumConnectionOptions, chromiumLaunchOptions, resolvePlaywrightBrowser } from '../../../config/tooling/playwright-browser';
 
 /**
  * Throwaway-style Playwright config for docs screenshots. It has no
@@ -17,7 +17,8 @@ const chromiumExecutablePath = resolvePlaywrightBrowser(repoRoot);
 
 const desktop = {
   ...devices['Desktop Chrome'],
-  ...(chromiumExecutablePath ? { launchOptions: { executablePath: chromiumExecutablePath } } : {}),
+  launchOptions: chromiumLaunchOptions(chromiumExecutablePath),
+  ...chromiumConnectionOptions(),
   viewport: { width: 1440, height: 900 },
   // 1x keeps committed PNGs near the old 100–300 KB; DEMO_SCREENSHOT_SCALE=2 for retina.
   deviceScaleFactor: Number(process.env.DEMO_SCREENSHOT_SCALE || 1),

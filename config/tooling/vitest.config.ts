@@ -33,6 +33,9 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
+    // This executable runs in Node in the browser sibling; preserve its native
+    // imports and dynamic contract-module resolution when testing readiness.
+    server: { deps: { external: [/scripts\/ci\/browser-server\.mjs$/] } },
     setupFiles: ['./tests/setup.ts'],
     // verify-jade-junit.test.mjs is a vitest suite written as .mjs because it
     // imports the plain-JS verifier the Jade emulator proof runs.

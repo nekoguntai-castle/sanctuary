@@ -3,7 +3,7 @@
   "lockedImages": [
     { "reference": "ghcr.io/catthehacker/ubuntu:act-22.04", "digest": "sha256:41e84facdece5f25b0de00cd69969f5f032c54f5bb7313f385727330db9ac40f", "scope": "wallet-proof-runner-parent" },
     { "reference": "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go", "digest": "sha256:14d65190139aad39b2af99b751d12237c259a952b7f908e0dcde25512c09299f", "scope": "wallet-proof-runner" },
-    { "reference": "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright:pw1.64.1-chrome157.0.8103.38", "digest": "sha256:fde8670f103cc24fd71ea8185e8707856e2f756635c5c273c1b9789f9cb29241", "scope": "playwright-e2e-runner" },
+    { "reference": "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright:pw1.64.1-chrome157.0.8103.38-sandbox1", "digest": "sha256:cf627d37888e1ba12e70a73457fb1a226bd24b6a722892af17752b0c9a09a443", "scope": "playwright-e2e-runner" },
     { "reference": "nexus.tabineko.dev/nekoguntai-castle/act-ubuntu-node", "digest": "sha256:9a9cf26dae68eb81e0446f91f81427b0c65c380371225b47ece9ddb407a68891", "scope": "playwright-e2e-runner-parent" },
     { "reference": "node:24-alpine", "digest": "sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85", "scope": "production-build-and-runtime" },
     { "reference": "docker.io/aquasec/trivy:0.74.0", "digest": "sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969", "scope": "release-candidate-vulnerability-observer" },
@@ -31,7 +31,7 @@
   ],
   "localImagePrefixes": ["sanctuary-", "sanctuary/verify-addresses-python:"],
   "reviewedOsPackageAcquisition": [
-    {"file": "scripts/ci/images/playwright-runner.Dockerfile", "sha256": "6256186e9b771e1d99556d35ad2370467d928bad6103956bffe6ef32fdb795d3", "review": "Browser CI image uses signed Ubuntu repositories from the digest-pinned act-ubuntu-node base for ca-certificates, curl, unzip and Playwright OS dependencies. Chrome for Testing is independently version-pinned and SHA-256 verified; package/browser launch is verified before publish and after pull by digest."},
+    {"file": "scripts/ci/images/playwright-runner.Dockerfile", "sha256": "93acf715c54bc26f541e5573f8f4eb7c9978912998b4acd910b5a271f35cabc4", "review": "Browser CI image uses signed Ubuntu repositories from the digest-pinned act-ubuntu-node base for ca-certificates, curl, unzip and Playwright OS dependencies. Chrome for Testing is independently version-pinned and SHA-256 verified; package/browser launch is verified before publish and after pull by digest."},
     {"file": "llm-egress-proxy/Dockerfile", "sha256": "942c1cfd2ec224e81e40c357328756b2a61c2a8c5d659d37c7443ed0090fb8db", "review": "Stable Alpine repositories selected by the digest-locked Node base supply same-line OpenSSL security updates; any Dockerfile change requires an explicit lock review"},
     { "file": "docker/frontend/Dockerfile", "sha256": "1a0888affcccc09fda1907d45a5f95968cd4ebdfc001b5b594b561a891a9d17a", "review": "apk repositories are transitively fixed by digest-locked Alpine bases; any Dockerfile change requires an explicit lock review" },
     { "file": "gateway/Dockerfile", "sha256": "b58aca2ce08db4fbc4dd5633d2938ba2877b9d6cf616651aae2255dde4d7f8be","review": "apk repositories are transitively fixed by the digest-locked Node Alpine base; any Dockerfile change requires an explicit lock review" },

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { closeSidebar, openSidebar } from "../helpers";
 
 import {
   DEVICE_ID,
@@ -29,15 +30,19 @@ export async function renderDashboardRendersCoreCardsAndNetworkSpecificPlacehold
   await expect(page.getByTestId("transaction-stats-grid")).toHaveCount(0);
   await expect(page.getByText("Fee Estimation")).toBeVisible();
   await expect(page.getByText("Node Status")).toBeVisible();
-  await expect(page.getByTitle("Mainnet block height")).toBeVisible();
+  await openSidebar(page);
+  await expect(page.getByTitle("Mainnet block height").filter({ visible: true })).toBeVisible();
+  await closeSidebar(page);
   // The unit is stated once on the fee card header now, not per tier.
   await expect(page.getByText("sat/vB")).toBeVisible();
   await expect(page.getByRole("main").getByText("22", { exact: true })).toBeVisible();
 
+  await openSidebar(page);
   await page
     .getByRole("tablist", { name: "Network tabs" })
     .getByRole("tab", { name: "Testnet3" })
     .click();
+  await closeSidebar(page);
   // Bitcoin Price is mainnet-only: on Testnet3 the card is omitted outright, and
   // the telemetry row reflows to two cards rather than leaving a blank slot.
   await expect(page.getByText("Bitcoin Price")).toHaveCount(0);
@@ -139,9 +144,24 @@ export async function renderWalletDetailRendersTabShellsAndEmptyStateContent({
   // width, so the unit tests stub it and this pins it.
   const statsGrid = page.getByTestId("transaction-stats-grid");
   await expect(statsGrid).toHaveAttribute("data-density", "compact");
-  expect(
-    await statsGrid.evaluate((el) => el.getBoundingClientRect().height),
-  ).toBeLessThan(80);
+  const geometry = await statsGrid.evaluate((el) => ({
+    width: el.clientWidth,
+    scrollWidth: el.scrollWidth,
+    height: el.getBoundingClientRect().height,
+    tiles: Array.from(el.children, (tile) => ({
+      height: tile.getBoundingClientRect().height,
+      top: tile.getBoundingClientRect().top,
+    })),
+  }));
+  expect(geometry.tiles).toHaveLength(7);
+  expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.width);
+  for (const tile of geometry.tiles) expect(tile.height).toBeLessThan(80);
+  if ((page.viewportSize()?.width ?? 1280) >= 768) {
+    expect(geometry.height).toBeLessThan(80);
+  } else {
+    // Narrow screens wrap the same compact tiles into multiple short rows.
+    expect(new Set(geometry.tiles.map((tile) => tile.top)).size).toBeGreaterThan(1);
+  }
 
   await page.getByRole("tab", { name: "UTXOs", exact: true }).click();
   await expect(page.getByText("Available Outputs")).toBeVisible();
@@ -230,10 +250,12 @@ export async function renderWalletListRendersNetworkScopedCardsAndControls({
   ).toBeVisible();
   await expect(page.getByText("Render Testnet Wallet")).not.toBeVisible();
 
+  await openSidebar(page);
   await page
     .getByRole("tablist", { name: "Network tabs" })
     .getByRole("tab", { name: "Testnet3" })
     .click();
+  await closeSidebar(page);
   await expect(
     page.getByRole("heading", { name: "Testnet3 Wallets" }),
   ).toBeVisible();

@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { AUTH_COORDINATION_LOCK_NAME } from '../../src/api/authCoordination';
 import { BROWSER_E2E_FIXTURES } from './support/browserE2EFixtures';
+import { openSidebar } from './helpers';
 
 /**
  * Authentication E2E Tests
@@ -49,6 +50,7 @@ test.describe('Authentication', () => {
     await page.getByLabel(/password/i).fill(BROWSER_E2E_FIXTURES.user.password);
     await page.getByRole('button', { name: /sign in/i }).click();
 
+    await openSidebar(page);
     await expect(page.getByRole('button', { name: /logout/i })).toBeVisible();
     await expect(
       page.getByText(BROWSER_E2E_FIXTURES.user.username, { exact: true }),
@@ -59,6 +61,7 @@ test.describe('Authentication', () => {
     await page.getByLabel(/username/i).fill(BROWSER_E2E_FIXTURES.user.username);
     await page.getByLabel(/password/i).fill(BROWSER_E2E_FIXTURES.user.password);
     await page.getByRole('button', { name: /sign in/i }).click();
+    await openSidebar(page);
     await expect(page.getByRole('button', { name: /logout/i })).toBeVisible();
 
     await page.evaluate(() => {
@@ -81,6 +84,7 @@ test.describe('Authentication', () => {
     await page.getByLabel(/password/i).fill(BROWSER_E2E_FIXTURES.user.password);
     await page.getByRole('button', { name: /sign in/i }).click();
 
+    await openSidebar(page);
     await expect(page.getByRole('button', { name: /logout/i })).toBeVisible();
     await expect.poll(() => loginBodies.length).toBe(2);
     expect(loginBodies[1]).toBe(loginBodies[0]);
@@ -152,6 +156,7 @@ test.describe('Authentication', () => {
     await page.getByLabel(/username/i).fill(BROWSER_E2E_FIXTURES.user.username);
     await page.getByLabel(/password/i).fill(BROWSER_E2E_FIXTURES.user.password);
     await page.getByRole('button', { name: /sign in/i }).click();
+    await openSidebar(page);
     await expect(page.getByRole('button', { name: /logout/i })).toBeVisible();
 
     const peer = await context.newPage();
@@ -223,6 +228,7 @@ test.describe('Authentication', () => {
     releaseMutation();
     await reload;
     await expect.poll(() => refreshRequests).toBe(1);
+    await openSidebar(peer);
     await expect(peer.getByRole('button', { name: /logout/i })).toBeVisible();
     const csrfAfterRefresh = (await context.cookies())
       .find(cookie => cookie.name === 'sanctuary_csrf')?.value;
@@ -264,6 +270,7 @@ test.describe('Authentication', () => {
     await page.getByLabel(/username/i).fill(BROWSER_E2E_FIXTURES.user.username);
     await page.getByLabel(/password/i).fill(BROWSER_E2E_FIXTURES.user.password);
     await page.getByRole('button', { name: /sign in/i }).click();
+    await openSidebar(page);
     await expect(page.getByRole('button', { name: /logout/i })).toBeVisible();
 
     // Then logout

@@ -635,7 +635,7 @@ node24_runner_report() {
         docker_socket = 1
       }
 
-      in_jobs && docker_socket && /^      image: nexus\.tabineko\.dev\/nekoguntai-castle\/sanctuary-ci-playwright:pw[0-9]+\.[0-9]+\.[0-9]+-chrome[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+@sha256:[a-f0-9]{64}$/ {
+      in_jobs && docker_socket && /^      image: nexus\.tabineko\.dev\/nekoguntai-castle\/sanctuary-ci-playwright:pw[0-9]+\.[0-9]+\.[0-9]+-chrome[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+-sandbox[1-9][0-9]*@sha256:[a-f0-9]{64}$/ {
         selected = 1
       }
 
@@ -2548,7 +2548,8 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/browser-flow-e2e.log"' \
   "scripts/ci/with-runner-lock.sh e2e" \
   "scripts/ci/cleanup-ci-callsite.sh auto-run" \
-  "--engine host" \
+  "--engine docker" \
+  "--lane browser-e2e-backend" \
   "-- scripts/ci/run-browser-e2e-subject.sh" \
   "Write browser E2E diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Browser E2E"' \
@@ -2560,9 +2561,12 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "full-render-e2e-tests:" \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/render-regression-e2e.log"' \
   "scripts/ci/with-runner-lock.sh e2e" \
+  "scripts/ci/cleanup-ci-callsite.sh auto-run" \
+  "--engine docker --lane render-regression-e2e" \
   'scripts/ci/retry-playwright-infrastructure-failure.sh "render regression E2E"' \
   'scripts/ci/time-command.sh "render regression E2E"' \
-  "npm run test:e2e -- --project=chromium --workers=3 tests/e2e/render-regression.spec.ts" \
+  "node scripts/ci/run-sandboxed-playwright.mjs --" \
+  "npm run test:e2e -- --project=chromium --project=mobile-chrome --workers=3 tests/e2e/render-regression.spec.ts" \
   "Write render E2E diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Render E2E"' \
   "Upload render E2E diagnostics" \
@@ -2841,13 +2845,15 @@ assert_contains_in_order "$BROWSER_E2E_SUBJECT" \
   "full browser Playwright infrastructure retry" \
   '"$SCRIPT_DIR/retry-playwright-infrastructure-failure.sh" "browser-flow E2E ${browser_group}"' \
   '"$SCRIPT_DIR/time-command.sh" "browser-flow E2E ${browser_group}"' \
-  'npm run test:e2e -- --project=chromium "${browser_specs[@]}"'
+  'node "$SCRIPT_DIR/run-sandboxed-playwright.mjs" --' \
+  'npm run test:e2e -- --project=chromium --project=mobile-chrome "${browser_specs[@]}"'
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full render Playwright infrastructure retry" \
   'scripts/ci/retry-playwright-infrastructure-failure.sh "render regression E2E"' \
   'scripts/ci/time-command.sh "render regression E2E"' \
-  "npm run test:e2e -- --project=chromium --workers=3 tests/e2e/render-regression.spec.ts"
+  "node scripts/ci/run-sandboxed-playwright.mjs --" \
+  "npm run test:e2e -- --project=chromium --project=mobile-chrome --workers=3 tests/e2e/render-regression.spec.ts"
 
 # The render routes are independent and run against a mocked API; one worker
 # took 12-15 minutes on idle 16-core hosts (R1 of
@@ -2998,7 +3004,8 @@ assert_named_job_step_contains "$VV" \
   "verify-vectors-mutation-fee" \
   "Prove exact transaction fee invariants by mutation" \
   "verify-vectors fee-policy mutation proof has a contention-safe timeout" \
-  "timeout-minutes: 15"
+  "timeout-minutes: 30"
+assert_named_job_contains "$VV" "verify-vectors-mutation-fee" "fee mutation job outlasts its install and proof bounds" "timeout-minutes: 50"
 
 assert_named_job_step_contains "$VV" \
   "verify-vectors-mutation-fee" \

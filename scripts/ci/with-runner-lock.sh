@@ -90,9 +90,24 @@ main() {
   local lock_dir="${SANCTUARY_RUNNER_LOCK_DIR:-}"
   if [ -z "$lock_dir" ]; then
     lock_dir="$(dirname "$workspace")/.sanctuary-runner-locks"
+  elif [[ "$lock_dir" != /* ]]; then
+    # Resolve at command execution, not workflow expression evaluation (where
+    # Forgejo can expose an empty workspace). Root and subdirectory invocations
+    # retain the same workspace lock inode and therefore the same contention.
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    # Provider-specific workspace values are resolved only by the shared adapter.
+    source "$script_dir/provider-context.sh"
+    workspace="$(ci_workspace)"
+    [[ "$workspace" == /* && "$workspace" != / && -d "$workspace" ]] \
+      || fail "relative runner lock directory requires an existing absolute workspace: $workspace"
+    lock_dir="$workspace/$lock_dir"
   fi
 
-  mkdir -p "$lock_dir"
+  # A relative lock path may create a `.tmp` ancestor inside a private
+  # workspace. Keep newly-created ancestors owner-only; do not change modes on
+  # existing parents. The final shared lock directory is opened to 1777 below.
+  (umask 077; mkdir -p "$lock_dir") || fail "cannot create runner lock directory: $lock_dir"
   chmod 1777 "$lock_dir" 2>/dev/null || true
 
   if [ ! -w "$lock_dir" ]; then

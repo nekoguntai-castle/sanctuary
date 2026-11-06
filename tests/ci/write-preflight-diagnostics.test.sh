@@ -201,6 +201,27 @@ else
   end_test_pass
 fi
 
+start_test "relative lock telemetry resolves against runtime workspace"
+out="$CURRENT_DIR/relative-lock.out"
+write_docker_stub
+workspace="$CURRENT_DIR/workspace"
+mkdir -p "$workspace/.tmp/runner-locks-v2"
+touch "$workspace/.tmp/runner-locks-v2/e2e.lock"
+PATH="$CURRENT_DIR/bin:$PATH" \
+  SANCTUARY_CI_WORKSPACE_OVERRIDE="$workspace" \
+  SANCTUARY_RUNNER_LOCK_DIR=.tmp/runner-locks-v2 \
+  "$PREFLIGHT" >"$out" 2>&1
+status=$?
+if [ "$status" -ne 0 ]; then
+  end_test_fail "expected exit 0, got $status"
+elif ! grep -Fxq "runner_lock_dir=$workspace/.tmp/runner-locks-v2" "$out"; then
+  end_test_fail "relative lock report must use the actual workspace path"
+elif ! grep -q '^runner_lock_scope_inference=workspace-local$' "$out"; then
+  end_test_fail "relative workspace lock must retain workspace-local scope"
+else
+  end_test_pass
+fi
+
 # ----- 5. integrates with run-with-log.sh ---------------------------------
 start_test "wrapped through run-with-log.sh: produces redacted log + sidecar"
 write_docker_stub

@@ -10,6 +10,7 @@ import { balanceHistory, emptyBalanceHistory } from './fixtures/balanceHistory';
 import {
   getFailClosedWalletRemediationResponse,
   json,
+  openSidebar,
   unmocked,
   registerApiRoutes,
   waitForThemeUtilityPaint,
@@ -329,6 +330,8 @@ test.describe('Accessibility', () => {
     // Should have a main landmark
     await expect(page.getByRole('main')).toBeVisible();
 
+    await openSidebar(page);
+
     // Should have navigation landmark (sidebar)
     const nav = page.getByRole('navigation');
     await expect(nav.first()).toBeVisible();
@@ -344,6 +347,8 @@ test.describe('Accessibility', () => {
     // Main content area
     await expect(page.getByRole('main')).toBeVisible();
 
+    await openSidebar(page);
+
     // Navigation
     await expect(page.getByRole('navigation').first()).toBeVisible();
 
@@ -357,6 +362,8 @@ test.describe('Accessibility', () => {
 
     await page.goto('/#/');
     await expect(page.getByRole('main')).toBeVisible();
+
+    await openSidebar(page);
 
     // Sidebar links should be focusable
     const walletLink = page.getByRole('link', { name: /Wallets/i }).first();
@@ -452,6 +459,8 @@ test.describe('Accessibility', () => {
     const unhandledRequests = await mockA11yApi(page);
 
     await page.goto('/#/');
+
+    await openSidebar(page);
 
     // Wait for navigation links to be visible (sidebar loads with the page)
     await expect(page.getByRole('link', { name: 'Dashboard' })).toBeVisible();

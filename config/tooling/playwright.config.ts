@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolvePlaywrightBrowser } from './playwright-browser';
+import { chromiumConnectionOptions, chromiumLaunchOptions, resolvePlaywrightBrowser } from './playwright-browser';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -43,7 +43,8 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
-        ...(chromiumExecutablePath ? { launchOptions: { executablePath: chromiumExecutablePath } } : {}),
+        launchOptions: chromiumLaunchOptions(chromiumExecutablePath),
+        ...chromiumConnectionOptions(),
       },
     },
     {
@@ -59,7 +60,8 @@ export default defineConfig({
       name: 'mobile-chrome',
       use: {
         ...devices['Pixel 5'],
-        ...(chromiumExecutablePath ? { launchOptions: { executablePath: chromiumExecutablePath } } : {}),
+        launchOptions: chromiumLaunchOptions(chromiumExecutablePath),
+        ...chromiumConnectionOptions(),
       },
     },
     {

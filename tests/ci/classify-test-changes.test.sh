@@ -799,9 +799,23 @@ EOF_DOC
   assert_contains_output "$output_file" "frontend_files" "src/components/RenameSource/RenameSource.tsx"
 
   # Code whose tests run in the frontend lane: the Jade JUnit verifier (vitest
-  # suite) and the wallet-sync replay driver (node test in Full Frontend
-  # Typechecks). Editing either must run that lane.
-  for frontend_tested in scripts/ci/verify-jade-junit.mjs scripts/perf/wallet-sync-high-fanout-replay.mjs; do
+  # suite), replay driver, browser ownership declaration, and exact canonical
+  # contract surfaces imported by the browser ownership validator. These select
+  # frontend coverage/typechecks without promoting them to full-scan inputs.
+  for frontend_tested in scripts/ci/verify-jade-junit.mjs scripts/perf/wallet-sync-high-fanout-replay.mjs \
+    scripts/ci/lib/browser-container-ownership.d.mts \
+    .github/workflows/podman-socket-canary.yml \
+    .github/workflows/release-candidate.yml \
+    scripts/ci/observe-runtime-image-cves.sh \
+    scripts/ci/run-extended-upgrade-fixtures.sh \
+    scripts/ci/run-install-e2e-isolated-subject.sh \
+    scripts/ci/run-upgrade-baseline-isolated-subject.sh \
+    scripts/ops/grafana-quiescence-records.sh \
+    scripts/ops/run-grafana-password-migration.sh \
+    scripts/ownership/operator-recovery-cli.mjs \
+    scripts/run-integration-tests.sh \
+    scripts/setup.sh \
+    start.sh; do
     base_sha="$(git -C "$repo_dir" rev-parse HEAD)"
     mkdir -p "$repo_dir/$(dirname "$frontend_tested")"
     printf '// %s\n' "$frontend_tested" > "$repo_dir/$frontend_tested"
@@ -811,6 +825,7 @@ EOF_DOC
     run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
     assert_exact_output "$output_file" "frontend_changed" "true"
     assert_contains_output "$output_file" "frontend_files" "$frontend_tested"
+    assert_exact_output "$output_file" "full_scan" "false"
   done
 
   # shared/ is consumed by every workspace through shared/dist, so a shared-only
@@ -857,6 +872,42 @@ EOF_DOC
     git -C "$repo_dir" commit -qm "lane infrastructure $infra_script"
     head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
 
+    run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
+    assert_exact_output "$output_file" "full_scan" "true"
+  done
+
+  # Both browser and render workflow gates run on full_scan for sandbox infrastructure changes.
+  local sandbox_input
+  for sandbox_input in config/ci/browser-seccomp/podman-chromium.json \
+    scripts/ci/browser-server.mjs scripts/ci/lib/browser-container-security.mjs \
+    scripts/ci/run-sandboxed-playwright.mjs scripts/lib/browser-sandbox-contract.mjs \
+    scripts/ci/lib/browser-container-ownership.mjs \
+    scripts/ownership/canonical-json.mjs \
+    scripts/ownership/ci-cleanup-state.mjs \
+    scripts/ownership/ci-cleanup-coordinator.mjs \
+    scripts/ownership/cleanup-inventory.mjs \
+    scripts/ownership/cleanup-command.mjs \
+    scripts/ownership/cleanup-execution-context.mjs \
+    scripts/ownership/cleanup-schema-contract.mjs \
+    scripts/ownership/cleanup-terminal-state.mjs \
+    scripts/ownership/contracts.mjs \
+    scripts/ownership/coordination-receipt-schema.mjs \
+    scripts/ownership/crypto.mjs \
+    scripts/ownership/deployment-lock.mjs \
+    scripts/ownership/deployment-store-io.mjs \
+    scripts/ownership/execution-receipt-schema.mjs \
+    scripts/ownership/manifest-schema-validators.mjs \
+    scripts/ownership/privacy.mjs \
+    scripts/ownership/registration.mjs \
+    scripts/ownership/safe-file.mjs \
+    scripts/ownership/schemas.mjs \
+    scripts/ownership/validation.mjs; do
+    base_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+    mkdir -p "$repo_dir/$(dirname "$sandbox_input")"
+    printf 'sandbox input changed\n' > "$repo_dir/$sandbox_input"
+    git -C "$repo_dir" add "$sandbox_input"
+    git -C "$repo_dir" commit -qm "sandbox infrastructure $sandbox_input"
+    head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
     run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
     assert_exact_output "$output_file" "full_scan" "true"
   done

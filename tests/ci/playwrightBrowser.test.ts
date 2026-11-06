@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { resolvePlaywrightBrowser } from '../../config/tooling/playwright-browser';
+import { chromiumConnectionOptions, chromiumLaunchOptions, resolvePlaywrightBrowser } from '../../config/tooling/playwright-browser';
 
 const mocks = vi.hoisted(() => ({
   exists: vi.fn(), read: vi.fn(), access: vi.fn(), execute: vi.fn(),
@@ -78,5 +78,31 @@ describe('pinned Chromium selection', () => {
     vi.stubEnv('PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH', '/explicit/chrome');
     mocks.execute.mockImplementation(() => { throw new Error('probe failed'); });
     expect(() => resolvePlaywrightBrowser('/repo')).toThrow('probe failed');
+  });
+});
+
+it('requires the Chromium sandbox and observable command-line evidence', () => {
+  expect(chromiumLaunchOptions('/opt/chrome/chrome')).toEqual({
+    executablePath: '/opt/chrome/chrome', chromiumSandbox: true, args: ['--enable-automation'],
+  });
+});
+
+describe('isolated Chromium connection', () => {
+  it('keeps local execution without an endpoint', () => {
+    expect(chromiumConnectionOptions({})).toEqual({});
+  });
+  it('accepts an explicitly selected loopback server', () => {
+    const endpoint = 'ws://127.0.0.1:32100/opaque-token';
+    expect(chromiumConnectionOptions({ SANCTUARY_SANDBOXED_BROWSER: '1',
+      SANCTUARY_PLAYWRIGHT_WS_ENDPOINT: endpoint })).toEqual({ connectOptions: { wsEndpoint: endpoint } });
+  });
+  it.each([undefined, '', 'ws://remote:123/token', 'ws://127.0.0.1:99999/token',
+    'ws://127.0.0.1:0/token', 'ws://127.0.0.1:123/token?secret=yes'])('rejects invalid endpoint %s', (endpoint) => {
+    expect(() => chromiumConnectionOptions({ SANCTUARY_SANDBOXED_BROWSER: '1',
+      SANCTUARY_PLAYWRIGHT_WS_ENDPOINT: endpoint })).toThrow('valid loopback');
+  });
+  it('rejects unexpected endpoints and unknown modes', () => {
+    expect(() => chromiumConnectionOptions({ SANCTUARY_PLAYWRIGHT_WS_ENDPOINT: 'secret' })).toThrow('Unexpected');
+    expect(() => chromiumConnectionOptions({ SANCTUARY_SANDBOXED_BROWSER: 'true' })).toThrow('Invalid');
   });
 });

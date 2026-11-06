@@ -33,8 +33,31 @@ is_frontend_file() {
 # tests/ci/vitestRepoInputsClassified.test.ts keeps the list honest; add a path
 # here when it reports one. server/src/** stays out (a known residual).
 # POSIX sh: the pre-commit hook sources this library under sh.
+# Browser ownership tests import the canonical contract validator. Its exact
+# workflow, operator, and install callsite surfaces below are frontend inputs,
+# not full-scan triggers; the executable browser dependency closure is separate.
 is_root_vitest_input_file() {
   case "$1" in
+    config/ci/browser-seccomp/podman-chromium.json|\
+    scripts/ci/browser-server.mjs|\
+    .github/workflows/podman-socket-canary.yml|\
+    .github/workflows/release-candidate.yml|\
+    scripts/ci/observe-runtime-image-cves.sh|\
+    scripts/ci/run-extended-upgrade-fixtures.sh|\
+    scripts/ci/run-install-e2e-isolated-subject.sh|\
+    scripts/ci/run-upgrade-baseline-isolated-subject.sh|\
+    scripts/ops/grafana-quiescence-records.sh|\
+    scripts/ops/run-grafana-password-migration.sh|\
+    scripts/ownership/operator-recovery-cli.mjs|\
+    scripts/run-integration-tests.sh|\
+    scripts/setup.sh|\
+    start.sh|\
+    scripts/ci/lib/browser-container-ownership.d.mts|\
+    scripts/ci/lib/browser-container-security.mjs|\
+    scripts/ci/run-sandboxed-playwright.mjs|\
+    scripts/lib/browser-sandbox-contract.mjs)
+      return 0
+      ;;
     .github/workflows/verify-vectors.yml|\
     .nvmrc|\
     config/address-key-corpus-sources.json|\
@@ -486,6 +509,34 @@ is_test_lane_excluded_file() {
 is_test_lane_infrastructure_file() {
   is_test_lane_excluded_file "$1" && return 1
   case "$1" in
+    config/ci/browser-seccomp/podman-chromium.json|\
+    scripts/ci/browser-server.mjs|\
+    scripts/ci/lib/browser-container-ownership.mjs|\
+    scripts/ownership/canonical-json.mjs|\
+    scripts/ownership/ci-cleanup-state.mjs|\
+    scripts/ownership/ci-cleanup-coordinator.mjs|\
+    scripts/ownership/cleanup-inventory.mjs|\
+    scripts/ownership/cleanup-command.mjs|\
+    scripts/ownership/cleanup-execution-context.mjs|\
+    scripts/ownership/cleanup-schema-contract.mjs|\
+    scripts/ownership/cleanup-terminal-state.mjs|\
+    scripts/ownership/contracts.mjs|\
+    scripts/ownership/coordination-receipt-schema.mjs|\
+    scripts/ownership/crypto.mjs|\
+    scripts/ownership/deployment-lock.mjs|\
+    scripts/ownership/deployment-store-io.mjs|\
+    scripts/ownership/execution-receipt-schema.mjs|\
+    scripts/ownership/manifest-schema-validators.mjs|\
+    scripts/ownership/privacy.mjs|\
+    scripts/ownership/registration.mjs|\
+    scripts/ownership/safe-file.mjs|\
+    scripts/ownership/schemas.mjs|\
+    scripts/ownership/validation.mjs|\
+    scripts/ci/lib/browser-container-security.mjs|\
+    scripts/ci/run-sandboxed-playwright.mjs|\
+    scripts/lib/browser-sandbox-contract.mjs)
+      return 0
+      ;;
     scripts/ci/aggregate-runner-locks.sh|\
     scripts/ci/backend-coverage-merge.sh|\
     scripts/ci/backend-coverage-shard.sh|\

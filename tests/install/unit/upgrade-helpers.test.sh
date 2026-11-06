@@ -1556,7 +1556,7 @@ test_install_workflow_uses_run_scoped_ssl_dirs() {
   contents="$(cat "$PROJECT_ROOT/.github/workflows/install-test.yml")"
   subject_contents="$(cat "$PROJECT_ROOT/scripts/ci/run-compose-e2e-subject.sh")"
 
-  assert_contains "$contents" 'SANCTUARY_RUNNER_LOCK_DIR: ${{ github.workspace }}/.tmp/runner-locks-v2' \
+  assert_contains "$contents" 'SANCTUARY_RUNNER_LOCK_DIR: .tmp/runner-locks-v2' \
     "install workflow should keep inner runner locks under the checked-out workspace"
   assert_contains "$contents" 'scripts/ci/run-compose-e2e-subject.sh' \
     "install workflow should delegate reusable stack setup to the supervised subject" || return 1

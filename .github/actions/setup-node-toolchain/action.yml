@@ -1,6 +1,6 @@
 name: 'Setup Node.js toolchain'
 description: >-
-  Selects a checksum-locked Node.js runtime from the shared runner cache,
+  Selects a checksum-locked Node.js runtime from the job user's private cache,
   installs exact npm, and verifies both with repo-owned helpers.
 inputs:
   install-npm:

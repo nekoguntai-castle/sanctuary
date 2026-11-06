@@ -122,7 +122,7 @@ env:
   # Share the runner-lock namespace with test.yml / install-test.yml so the
   # node-toolchain (cleanup) and e2e locks here actually serialize against
   # those workflows' lock-takers on the shared self-hosted runner.
-  SANCTUARY_RUNNER_LOCK_DIR: ${{ github.workspace }}/.tmp/runner-locks-v2
+  SANCTUARY_RUNNER_LOCK_DIR: .tmp/runner-locks-v2
 
 jobs:
   # ============================================

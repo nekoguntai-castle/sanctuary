@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 import { flatBalanceHistory } from "./fixtures/balanceHistory";
-import { getFailClosedWalletRemediationResponse, json, registerApiRoutes, unmocked } from "./helpers";
+import { getFailClosedWalletRemediationResponse, json, openSidebar, registerApiRoutes, unmocked } from "./helpers";
 
 const USER = {
   id: "user-console-smoke",
@@ -245,6 +245,7 @@ test("Console drawer submits a prompt, shows thinking state, and clears display/
   );
 
   await page.goto("/#/wallets");
+  await openSidebar(page);
   await page.getByRole("button", { name: "Open AI Console" }).click();
 
   await expect(

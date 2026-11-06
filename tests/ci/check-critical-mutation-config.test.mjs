@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, matchesGlob } from 'node:path';
 import test from 'node:test';
 
 import * as checker from '../../scripts/ci/check-critical-mutation-config.mjs';
@@ -10,6 +10,7 @@ import {
   assertShardFilePartition,
   checkCriticalMutationConfig,
 } from '../../scripts/ci/check-critical-mutation-config.mjs';
+import { resolveShard, SHARD_IDS } from '../../server/scripts/mutation/shards.mjs';
 import criticalConfig, { criticalMutationReporters } from '../../server/stryker.critical.config.mjs';
 
 function fixtureRoot(baseline) {
@@ -19,12 +20,39 @@ function fixtureRoot(baseline) {
   return root;
 }
 
+function owns(path, patterns) {
+  return patterns.reduce((mutated, pattern) => (
+    pattern.startsWith('!')
+      ? mutated && !matchesGlob(path, pattern.slice(1))
+      : mutated || matchesGlob(path, pattern)
+  ), false);
+}
+
 test('accepts the repository mutation baseline and shard contract', () => {
   const root = fixtureRoot({
     serverCritical: { rawScoreMin: 80, weightedScoreMin: 85 },
   });
 
   assert.doesNotThrow(() => checkCriticalMutationConfig(root));
+});
+
+test('assigns real address derivation targets to their exclusive shards', () => {
+  const serverRoot = join(import.meta.dirname, '../../server');
+  const targets = [
+    ['src/services/bitcoin/addressDerivation/descriptorDerivation.ts', 1],
+    ['src/services/bitcoin/addressDerivation/xpubConversion.ts', 2],
+    ['src/services/bitcoin/addressDerivation/descriptorParser.ts', 1],
+    ['src/services/bitcoin/addressDerivation.ts', 1],
+  ];
+
+  for (const [path, expectedShard] of targets) {
+    assert.ok(existsSync(join(serverRoot, path)), `${path} exists in server/src`);
+    assert.deepEqual(
+      SHARD_IDS.filter(id => owns(path, resolveShard(String(id)).mutate)),
+      [expectedShard],
+      `${path} belongs only to shard ${expectedShard}`,
+    );
+  }
 });
 
 test('retains HTML for local full runs but not numbered shards', () => {

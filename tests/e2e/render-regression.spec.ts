@@ -82,9 +82,16 @@ for (const darkMode of [false, true]) {
     test.describe(`visual consistency ${darkMode ? 'dark' : 'light'} ${width}`, () => {
       test.use({ viewport: { width, height: 1000 } });
       setupRenderRegressionErrorChecks();
-      test('enabled choices expose state and readable labels', ({ page }) => choiceFocus.renderChoiceContrastAndSemantics(page, darkMode));
+      test('dashboard choices expose state and readable labels', ({ page }) => choiceFocus.renderDashboardChoiceContrastAndSemantics(page, darkMode));
+      test('admin system setting choices expose readable labels', ({ page }) => choiceFocus.renderAdminSettingsChoiceContrastAndSemantics(page, darkMode));
+      test('settings choices expose state and readable labels', ({ page }) => choiceFocus.renderSettingsChoiceContrastAndSemantics(page, darkMode));
+      test('device account choices expose readable labels', ({ page }) => choiceFocus.renderDeviceAccountChoiceContrastAndSemantics(page, darkMode));
+      test('wallet progress exposes readable labels', ({ page }) => choiceFocus.renderWalletProgressContrastAndSemantics(page, darkMode));
       if (width !== 320) {
-        test('VC28-10 selectors meet contrast and preserve semantics', ({ page }) => secondaryText.renderSecondarySelectorContrast(page, darkMode));
+        test('VC28-10 wallet chart selectors meet contrast and preserve semantics', ({ page }) => secondaryText.renderSecondaryWalletChartSelectorContrast(page, darkMode));
+        test('VC28-10 settings selectors meet contrast and preserve semantics', ({ page }) => secondaryText.renderSecondarySettingsSelectorContrast(page, darkMode));
+        test('VC28-10 wallet access selectors meet contrast and preserve semantics', ({ page }) => secondaryText.renderSecondaryWalletAccessSelectorContrast(page, darkMode));
+        test('VC28-10 address type selectors meet contrast and preserve semantics', ({ page }) => secondaryText.renderSecondaryAddressTypeSelectorContrast(page, darkMode));
         test('VC28-10 secondary actions meet contrast and preserve outcomes', ({ page }) => secondaryText.renderSecondaryActionContrast(page, darkMode));
       }
       test('shared actions show readable keyboard focus', ({ page }) => choiceFocus.renderSharedActionKeyboardFocus(page, darkMode));
@@ -150,10 +157,12 @@ for (const darkMode of [false, true]) {
   test.describe(`shared palette focus ${darkMode ? 'dark' : 'light'}`, () => {
     test.use({ viewport: { width: 1440, height: 1000 } });
     setupRenderRegressionErrorChecks();
-    test('all palettes retain readable action focus', async ({ page }) => {
-      test.setTimeout(120000);
-      await choiceFocus.renderAllPaletteSharedActionFocus(page, darkMode);
-    });
+    for (const palette of choiceFocus.SHARED_ACTION_FOCUS_PALETTES) {
+      test(`palette ${palette.name} retains readable action focus`, async ({ page }) => {
+        test.setTimeout(30000);
+        await choiceFocus.renderPaletteSharedActionFocus(page, darkMode, palette);
+      });
+    }
   });
 }
 

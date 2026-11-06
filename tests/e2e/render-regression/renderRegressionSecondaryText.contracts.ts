@@ -202,25 +202,40 @@ async function finalizeContract(
   expect({ unhandled, errors }).toEqual({ unhandled: [], errors: [] });
 }
 
-export async function renderSecondarySelectorContrast(page: Page, darkMode: boolean) {
+export async function renderSecondaryWalletChartSelectorContrast(page: Page, darkMode: boolean) {
   const { errors, unhandled } = await setup(page, darkMode);
   const readings: TextReading[] = [];
   await measureChart(page, readings);
+  await finalizeContract(readings, 10, errors, unhandled);
+}
 
+export async function renderSecondarySettingsSelectorContrast(page: Page, darkMode: boolean) {
+  const { errors, unhandled } = await setup(page, darkMode);
+  const readings: TextReading[] = [];
   await page.goto('/#/settings');
   await settle(page);
   await measureTabs(page, readings, 'tab', ['Appearance', 'Display', 'Services', 'Notifications'], OWNERS.settings, 'Settings sections');
   await page.getByRole('tab', { name: 'Notifications', exact: true }).click();
   await settle(page);
   await measureTabs(page, readings, 'tab', ['Sound', 'Telegram'], OWNERS.notifications, 'Notification settings sections');
+  await finalizeContract(readings, 14, errors, unhandled);
+}
 
+export async function renderSecondaryWalletAccessSelectorContrast(page: Page, darkMode: boolean) {
+  const { errors, unhandled } = await setup(page, darkMode);
+  const readings: TextReading[] = [];
   await page.goto(`/#/wallets/${MAINNET_WALLET_ID}`);
   await page.getByRole('tab', { name: 'Access', exact: true }).click();
   await settle(page);
   await measureTabs(page, readings, 'tab', ['Ownership', 'Sharing', 'Transfers'], OWNERS.access, 'Wallet access sections');
-  await measureAddressTabs(page, readings);
+  await finalizeContract(readings, 7, errors, unhandled);
+}
 
-  await finalizeContract(readings, 41, errors, unhandled);
+export async function renderSecondaryAddressTypeSelectorContrast(page: Page, darkMode: boolean) {
+  const { errors, unhandled } = await setup(page, darkMode);
+  const readings: TextReading[] = [];
+  await measureAddressTabs(page, readings);
+  await finalizeContract(readings, 10, errors, unhandled);
 }
 
 export async function renderSecondaryActionContrast(page: Page, darkMode: boolean) {

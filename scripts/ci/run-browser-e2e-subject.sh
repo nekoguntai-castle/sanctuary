@@ -97,6 +97,7 @@ while IFS= read -r browser_group; do
   VITE_API_URL="${BROWSER_E2E_API_URL:?}" \
     "$SCRIPT_DIR/retry-playwright-infrastructure-failure.sh" "browser-flow E2E ${browser_group}" \
       "$SCRIPT_DIR/time-command.sh" "browser-flow E2E ${browser_group}" \
-      npm run test:e2e -- --project=chromium "${browser_specs[@]}"
+      node "$SCRIPT_DIR/run-sandboxed-playwright.mjs" -- \
+      npm run test:e2e -- --project=chromium --project=mobile-chrome "${browser_specs[@]}"
   echo '::endgroup::'
 done < <("$SCRIPT_DIR/browser-e2e-groups.sh" --groups)

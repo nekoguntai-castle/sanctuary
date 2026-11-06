@@ -13,6 +13,9 @@ import { resolveCleanupHostAuthority } from './cleanup-host-authority.mjs';
 import { createCleanupHostInspectors } from './cleanup-host-observation.mjs';
 
 const LABEL = 'io.sanctuary.';
+const SANDBOX_BROWSER_LABEL = 'com.example.sanctuary.sandboxed-playwright';
+const SANDBOX_BROWSER_RUN_LABEL = 'com.example.sanctuary.run-id';
+const SANDBOX_RUN_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 const HARD_REFUSALS = Object.freeze({
   current: 'current', shared: 'shared', protected: 'protected', data: 'data',
   default_builder: 'default_builder', unlabeled: 'unlabeled', malformed: 'malformed',
@@ -87,10 +90,41 @@ function cleanupDisposition(failures, ownership) {
   return { disposition: 'eligible', failureClasses: [] };
 }
 
-function dockerDecision(resource, ownership, policy) {
+function sandboxBrowserCandidate(resource) {
+  return resource.resourceClass === 'compose_container'
+    && !resource.classifications.includes('externally_registered');
+}
+
+function sandboxBrowserMarkersPresent(labels) {
+  return labels[SANDBOX_BROWSER_LABEL] !== undefined || labels[SANDBOX_BROWSER_RUN_LABEL] !== undefined;
+}
+
+function sandboxBrowserIdentityMatches(labels, ownership, expected) {
+  return Boolean(expected && ownership)
+    && labels[SANDBOX_BROWSER_LABEL] === 'v1'
+    && SANDBOX_RUN_ID.test(labels[SANDBOX_BROWSER_RUN_LABEL] ?? '')
+    && ownership.project === expected.project
+    && ownership.deploymentId === expected.deploymentId
+    && ownership.ownerId === expected.ownerId
+    && ownership.createdByRelease === expected.release
+    && ownership.createdByCommit === expected.commit
+    && ownership.creationRunId === expected.operationRunId
+    && labels[`${LABEL}creation-run-id`] === expected.operationRunId;
+}
+
+function addSandboxBrowserIdentityFailure(failures, resource, ownership, expected) {
+  if (!sandboxBrowserCandidate(resource)) return;
+  const labels = resource.labels ?? {};
+  if (sandboxBrowserMarkersPresent(labels) && !sandboxBrowserIdentityMatches(labels, ownership, expected)) {
+    failures.add('identity_changed');
+  }
+}
+
+function dockerDecision(resource, ownership, policy, expectedContainerOwner) {
   const failures = new Set();
   addOwnershipFailures(failures, resource);
   addRegistrationFailures(failures, resource, ownership);
+  addSandboxBrowserIdentityFailure(failures, resource, ownership, expectedContainerOwner);
   if (ownership && !policy.cleanupPolicies.includes(ownership.cleanupPolicy)) failures.add('policy_mismatch');
   return cleanupDisposition(failures, ownership);
 }
@@ -134,9 +168,9 @@ function dockerOwnership(resource, project) {
   return registeredOwnership(resource.registration, project);
 }
 
-function dockerRow(resource, contract, project) {
+function dockerRow(resource, contract, project, expectedContainerOwner) {
   const ownership = dockerOwnership(resource, project);
-  const decision = dockerDecision(resource, ownership, policyFor(contract, resource.resourceClass));
+  const decision = dockerDecision(resource, ownership, policyFor(contract, resource.resourceClass), expectedContainerOwner);
   const evidence = dockerEvidence(resource);
   return {
     resourceClass: resource.resourceClass,
@@ -585,6 +619,14 @@ export async function inventoryCleanupResources({
   const resources = enforceDockerDependencies(addHostDependencies(consolidateRows([
     ...dockerResources.map((resource) => dockerRow(
       resource, ownershipContract, deploymentManifest.composeProjectName,
+      {
+        project: deploymentManifest.composeProjectName,
+        deploymentId: deploymentManifest.deploymentId,
+        ownerId: deploymentManifest.ownerId,
+        release: deploymentManifest.release,
+        commit: deploymentManifest.commit,
+        operationRunId: runManifest.operationRunId,
+      },
     )),
     ...registrations.filter((entry) => entry.disposition !== 'absent')
       .map((entry) => registrationRow(entry, ownershipContract, deploymentManifest.composeProjectName)),

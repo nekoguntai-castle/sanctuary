@@ -51,6 +51,10 @@ if (config) {
   if (typeof config.browserSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(config.browserSha256)) {
     throw new Error('invalid browserSha256 in config/browser-toolchain.json');
   }
+  if (config.sandboxPolicyRevision !== undefined &&
+      (!Number.isSafeInteger(config.sandboxPolicyRevision) || config.sandboxPolicyRevision <= 0)) {
+    throw new Error('invalid sandboxPolicyRevision in config/browser-toolchain.json');
+  }
   if (lockVersions.length && lockVersions[0].version !== config.playwrightVersion) {
     findings.push(`config/browser-toolchain.json pins Playwright ${config.playwrightVersion}, but ${lockVersions[0].file} pins ${lockVersions[0].version}.`);
   }
@@ -95,7 +99,7 @@ for (const file of workflowFiles) {
   for (const match of activeLines.matchAll(imagePattern)) references.push({ file: path.relative(repoRoot, file), tag: match[1], digest: match[2] });
 }
 if (references.length === 0) findings.push('No digest-pinned Counting Cats or Sanctuary browser image reference was found in workflows.');
-const pairPattern = /^pw(\d+\.\d+\.\d+)-chrome(\d+\.\d+\.\d+\.\d+)$/;
+const pairPattern = /^pw(\d+\.\d+\.\d+)-chrome(\d+\.\d+\.\d+\.\d+)(?:-sandbox([1-9]\d*))?$/;
 for (const reference of references) {
   if (!reference.digest) findings.push(`${reference.file} browser image reference is not digest-pinned.`);
   const pair = pairPattern.exec(reference.tag ?? '');
@@ -108,6 +112,10 @@ for (const reference of references) {
   }
   if (config && (pair[1] !== config.playwrightVersion || pair[2] !== config.browserVersion)) {
     findings.push(`${reference.file} image tag ${reference.tag} differs from browser-toolchain.json.`);
+  }
+  const taggedSandboxRevision = pair[3] === undefined ? undefined : Number(pair[3]);
+  if (config && taggedSandboxRevision !== config.sandboxPolicyRevision) {
+    findings.push(`${reference.file} image tag sandbox policy differs from browser-toolchain.json.`);
   }
 }
 

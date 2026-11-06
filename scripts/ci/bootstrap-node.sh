@@ -2,8 +2,47 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=scripts/ci/provider-context.sh
-. "$script_dir/provider-context.sh"
+active_staging=''
+active_staging_parent=''
+active_staging_kind=''
+expected_version=''
+
+cleanup_active_staging() {
+  local staging="$active_staging" expected_prefix
+  [[ -n "$staging" ]] || return 0
+  case "$active_staging_kind" in
+    node)
+      expected_prefix="$active_staging_parent/.node-${expected_version}."
+      [[ "$staging" == "$expected_prefix"* ]] \
+        || { echo 'bootstrap-node: refusing unexpected Node staging cleanup path' >&2; return 1; }
+      ;;
+    npm)
+      expected_prefix="$active_staging_parent/.npm-${expected_npm_version}."
+      [[ "$staging" == "$expected_prefix"* ]] \
+        || { echo 'bootstrap-node: refusing unexpected npm staging cleanup path' >&2; return 1; }
+      ;;
+    *) echo 'bootstrap-node: refusing staging cleanup without a known owner' >&2; return 1 ;;
+  esac
+  [[ -d "$staging" && ! -L "$staging" ]] \
+    || { echo 'bootstrap-node: staging path is missing or is not a real directory' >&2; return 1; }
+  rm -rf -- "$staging" || return
+  active_staging=''
+  active_staging_parent=''
+  active_staging_kind=''
+}
+
+cleanup_on_exit() {
+  local status=$? cleanup_status=0
+  trap - EXIT
+  cleanup_active_staging || cleanup_status=$?
+  if [[ $status -eq 0 && $cleanup_status -ne 0 ]]; then status=$cleanup_status; fi
+  exit "$status"
+}
+
+trap cleanup_on_exit EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 fail() {
   echo "bootstrap-node: $*" >&2
@@ -44,16 +83,28 @@ install_locked_node() {
   fi
 
   local staging archive extracted
-  staging="$(mktemp -d "${cache_parent}/.node-${expected_version}.XXXXXX")"
+  active_staging_parent="$cache_parent"
+  active_staging_kind=node
+  active_staging="$(mktemp -d "${cache_parent}/.node-${expected_version}.XXXXXX")"
+  staging="$active_staging"
   archive="$staging/node.tar.xz"
   extracted="$staging/extracted"
   mkdir -p "$extracted"
-  curl --fail --silent --show-error --location --output "$archive" "$archive_url"
-  printf '%s  %s\n' "$archive_sha256" "$archive" | sha256sum --check --status \
-    || fail "SHA-256 mismatch for $archive_url"
-  tar -xJf "$archive" --strip-components=1 -C "$extracted"
-  verify_install "$extracted" || fail "archive did not contain Node.js $expected_version"
+  if ! curl --fail --silent --show-error --location --connect-timeout 10 --max-time 180 \
+    --output "$archive" "$archive_url"; then
+    fail "download failed for $archive_url"
+  fi
+  if ! printf '%s  %s\n' "$archive_sha256" "$archive" | sha256sum --check --status; then
+    fail "SHA-256 mismatch for $archive_url"
+  fi
+  if ! tar -xJf "$archive" --strip-components=1 -C "$extracted"; then
+    fail "could not extract $archive_url"
+  fi
+  if ! verify_install "$extracted"; then
+    fail "archive did not contain Node.js $expected_version"
+  fi
   mv "$extracted" "$install_root"
+  cleanup_active_staging
 }
 
 install_locked_npm() {
@@ -64,12 +115,22 @@ install_locked_npm() {
   fi
 
   local staging archive
-  staging="$(mktemp -d "$(dirname "$install_root")/.npm-${expected_npm_version}.XXXXXX")"
+  active_staging_parent="$(dirname "$install_root")"
+  active_staging_kind=npm
+  active_staging="$(mktemp -d "${active_staging_parent}/.npm-${expected_npm_version}.XXXXXX")"
+  staging="$active_staging"
   archive="$staging/npm.tgz"
-  curl --fail --silent --show-error --location --output "$archive" "$npm_archive_url"
-  printf '%s  %s\n' "$npm_archive_sha512" "$archive" | sha512sum --check --status \
-    || fail "SHA-512 mismatch for $npm_archive_url"
-  PATH="$install_root/bin:$PATH" "$npm_bin" install --global --audit=false --fund=false "$archive"
+  if ! curl --fail --silent --show-error --location --connect-timeout 10 --max-time 180 \
+    --output "$archive" "$npm_archive_url"; then
+    fail "download failed for $npm_archive_url"
+  fi
+  if ! printf '%s  %s\n' "$npm_archive_sha512" "$archive" | sha512sum --check --status; then
+    fail "SHA-512 mismatch for $npm_archive_url"
+  fi
+  if ! PATH="$install_root/bin:$PATH" "$npm_bin" install --global --audit=false --fund=false "$archive"; then
+    fail "npm installation failed for $npm_archive_url"
+  fi
+  cleanup_active_staging
   [ "$(PATH="$install_root/bin:$PATH" "$npm_bin" --version)" = "$expected_npm_version" ] \
     || fail "npm installation did not select $expected_npm_version"
 }
@@ -82,6 +143,7 @@ main() {
   [ -f "$toolchain_lock" ] || fail "toolchain lock not found: $toolchain_lock"
 
   expected_version="$(read_lock_field runtimes.node)"
+  [[ "$expected_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail 'locked Node.js version must be numeric major.minor.patch'
   archive_url="$(read_lock_field artifacts.nodeLinuxX64.url)"
   archive_sha256="$(read_lock_field artifacts.nodeLinuxX64.sha256)"
   [[ "$archive_url" = "https://nodejs.org/dist/v${expected_version}/node-v${expected_version}-linux-x64.tar.xz" ]] \
@@ -89,13 +151,14 @@ main() {
   [[ "$archive_sha256" =~ ^[a-f0-9]{64}$ ]] || fail 'Node archive SHA-256 must be exact lowercase hex'
 
   local cache_root install_root
-  cache_root="${RUNNER_TOOL_CACHE:-$(ci_temp_dir)/sanctuary-toolcache}"
+  cache_root="${SANCTUARY_NODE_TOOL_CACHE:-${HOME:?HOME is required}/.cache/sanctuary-toolcache}"
   install_root="$cache_root/sanctuary-node/$expected_version/x64"
   install_locked_node "$install_root"
 
   case "${SANCTUARY_INSTALL_NPM:-true}" in
     true)
       expected_npm_version="$(read_lock_field runtimes.npm)"
+      [[ "$expected_npm_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail 'locked npm version must be numeric major.minor.patch'
       npm_archive_url="$(read_lock_field artifacts.npm.url)"
       npm_archive_sha512="$(read_lock_field artifacts.npm.sha512)"
       [[ "$npm_archive_url" = "https://registry.npmjs.org/npm/-/npm-${expected_npm_version}.tgz" ]] \
@@ -113,7 +176,6 @@ main() {
 }
 
 toolchain_lock=''
-expected_version=''
 archive_url=''
 archive_sha256=''
 expected_npm_version=''

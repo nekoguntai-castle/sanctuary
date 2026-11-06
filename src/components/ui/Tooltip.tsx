@@ -28,6 +28,31 @@ const ARROW_CLASSES = {
 interface Position {
   left: number;
   top: number;
+  placement: 'top' | 'bottom';
+}
+
+function verticalPosition(
+  rect: DOMRect,
+  height: number,
+  preferred: 'top' | 'bottom',
+  viewportHeight: number,
+): Pick<Position, 'top' | 'placement'> {
+  const above = rect.top - OFFSET_PX - height;
+  const below = rect.bottom + OFFSET_PX;
+  let placement = preferred;
+  if (height > 0) {
+    if (preferred === 'top' && above < VIEWPORT_MARGIN_PX
+      && below + height <= viewportHeight - VIEWPORT_MARGIN_PX) placement = 'bottom';
+    if (preferred === 'bottom' && below + height > viewportHeight - VIEWPORT_MARGIN_PX
+      && above >= VIEWPORT_MARGIN_PX) placement = 'top';
+  }
+  const desiredTop = placement === 'top' ? above : below;
+  // If neither side has room, use the available viewport space even when that
+  // overlaps the trigger. Preserve the unmeasured initial anchor.
+  const top = height > 0
+    ? Math.max(VIEWPORT_MARGIN_PX, Math.min(desiredTop, viewportHeight - VIEWPORT_MARGIN_PX - height))
+    : desiredTop;
+  return { top: top + (placement === 'top' ? height : 0), placement };
 }
 
 /**
@@ -102,7 +127,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
 
     setPosition({
       left,
-      top: placement === 'top' ? rect.top - OFFSET_PX : rect.bottom + OFFSET_PX,
+      ...verticalPosition(rect, popupElement.offsetHeight, placement, window.innerHeight),
     });
   }, [placement]);
 
@@ -110,7 +135,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
   useLayoutEffect(() => {
     if (!isOpen) return;
     reposition();
-  }, [isOpen, reposition]);
+  }, [isOpen, reposition, content]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -128,24 +153,29 @@ export const Tooltip: React.FC<TooltipProps> = ({
     return <>{children}</>;
   }
 
+  const actualPlacement = position?.placement ?? placement;
   const popup = (
     <span
       ref={popupRef}
       id={popupId}
       role="tooltip"
       data-testid="tooltip-popup"
-      data-placement={placement}
-      className={`tooltip-popup tooltip-portal max-w-xs text-left ${isOpen ? 'tooltip-visible' : ''}`}
+      data-placement={actualPlacement}
+      className={`tooltip-popup tooltip-portal text-left ${isOpen ? 'tooltip-visible' : ''}`}
       style={{
+        // A fixed element's shrink-to-fit width otherwise changes when `left`
+        // moves, invalidating the height measured for vertical placement.
+        width: 'max-content',
+        maxWidth: 'min(20rem, calc(100vw - 16px))',
         left: position?.left ?? 0,
         top: position?.top ?? 0,
         // Composes with the stylesheet's animated `translate` property rather
         // than overwriting it - writing `transform` from both places is how the
         // popup once landed half its own width to the right of its trigger.
-        transform: placement === 'top' ? 'translate(-50%, -100%)' : 'translateX(-50%)',
+        transform: actualPlacement === 'top' ? 'translate(-50%, -100%)' : 'translateX(-50%)',
       }}
     >
-      <span className={ARROW_CLASSES[placement]} />
+      <span className={ARROW_CLASSES[actualPlacement]} />
       {content}
     </span>
   );

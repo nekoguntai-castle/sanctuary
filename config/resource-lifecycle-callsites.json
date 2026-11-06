@@ -3010,6 +3010,90 @@
       "operation": "cleanup",
       "disposition": "reference_only",
       "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
+    },
+    {
+      "path": "scripts/ci/bootstrap-node.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "Only the two versioned mktemp staging directories created by this invocation are removed; exact owner assignments, path guards, EXIT/signal traps and failure propagation are mechanically checked. Invalid pre-existing cache quarantines are retained."
+    },
+    {
+      "path": "scripts/ci/lib/browser-container-security.mjs",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The reviewed engine CLI owner targets only its spawned child, bounds output and deadlines, escalates TERM to KILL and confirms close or fails explicitly. This proves supervised cleanup, not crash registration."
+    },
+    {
+      "path": "scripts/ci/run-sandboxed-playwright.mjs",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The reviewed wrapper owns detached attach/test process groups, bounded readiness and execution, abort forwarding and TERM/KILL escalation. Close and attach cleanup are verified; this does not claim uncatchable-signal recovery."
+    },
+    {
+      "path": "tests/ci/run-sandboxed-playwright.test.ts",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The test owns private mkdtemp fixtures, records each created root, and removes only those invocation-owned directories in afterEach."
+    },
+    {
+      "path": "tests/ci/bootstrap-node.test.sh",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "Test-only lifecycle fixtures own private temporary directories and bounded child processes; cleanup targets only resources created by the fixture invocation."
+    },
+    {
+      "path": "tests/ci/browser-container-ownership.test.ts",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "Test-only lifecycle fixtures own private temporary directories and bounded child processes; cleanup targets only resources created by the fixture invocation."
+    },
+    {
+      "path": "tests/ownership/browser-engine-cli-lifecycle.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "Test-only lifecycle fixtures own private temporary directories and bounded child processes; cleanup targets only resources created by the fixture invocation."
+    },
+    {
+      "path": "tests/ownership/browser-engine-cli-lifecycle.test.mjs",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "Test-only lifecycle fixtures own private temporary directories and bounded child processes; cleanup targets only resources created by the fixture invocation."
+    },
+    {
+      "path": "tests/ownership/lifecycle-browser-process-proof.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "Test-only lifecycle fixtures own private temporary directories and bounded child processes; cleanup targets only resources created by the fixture invocation."
+    },
+    {
+      "path": "tests/ownership/lifecycle-browser-process-proof.test.mjs",
+      "resourceClass": "collector_process",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "Test-only lifecycle fixtures own private temporary directories and bounded child processes; cleanup targets only resources created by the fixture invocation."
+    },
+    {
+      "path": "scripts/ci/run-sandboxed-playwright.mjs",
+      "resourceClass": "compose_container",
+      "operation": "create",
+      "disposition": "exempt",
+      "safetyContract": "The coordinator supplies Docker inventory and an authenticated ownership tuple before create. Full create-time labels cover the pre-registration crash window; exact engine-ID registration and reinspection precede browser startup. Retirement rechecks ownership and confirms absence. The cross-file source proof and runtime recovery tests gate this contract."
+    },
+    {
+      "path": "tests/ownership/browser-container-retirement.test.mjs",
+      "resourceClass": "temporary_artifact",
+      "operation": "cleanup",
+      "disposition": "exempt",
+      "safetyContract": "The retirement regression owns a private mkdtemp diagnostic directory and removes exactly that fixture path in finally; engine calls are injected test doubles."
     }
   ]
 }

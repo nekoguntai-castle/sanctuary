@@ -162,6 +162,8 @@ write_runner_lock_diagnostics() {
   lock_dir="${SANCTUARY_RUNNER_LOCK_DIR:-}"
   if [ -z "$lock_dir" ]; then
     lock_dir="$(dirname "$workspace")/.sanctuary-runner-locks"
+  elif [[ "$lock_dir" != /* ]]; then
+    lock_dir="$workspace/$lock_dir"
   fi
   lock_file="${lock_dir}/e2e.lock"
   parent_dir="$(dirname "$lock_dir")"

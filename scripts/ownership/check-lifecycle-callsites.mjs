@@ -5,6 +5,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseStrictJson } from './canonical-json.mjs';
 import { isMainModule } from '../lib/is-main-module.mjs';
+import { provesBrowserContainerLifecycle } from './lifecycle-browser-container-proof.mjs';
+import { provesBootstrapStagingLifecycle } from './lifecycle-bootstrap-proof.mjs';
+import { browserProcessOwnershipProof, lifecycleProofModulePurity } from './lifecycle-browser-process-proof.mjs';
 
 const DOCKER_CLASSES = new Set([
   'compose_container', 'compose_network', 'compose_volume', 'oci_image', 'buildkit_cache',
@@ -1120,7 +1123,9 @@ function hasScopedPlaywrightInstallerCleanup(relativePath, source, statements) {
     && /\[ "\$\(cat "\$verified_marker"\)" = "\$browser_sha256" \]/.test(source);
 }
 
-function hostMechanism(relativePath, source, statements) {
+function hostMechanism(relativePath, source, statements, adapterSource) {
+  if (relativePath === 'scripts/ci/bootstrap-node.sh' && provesBootstrapStagingLifecycle(source)) return 'scoped_temporary_artifact';
+  if (browserProcessOwnershipProof({ relativePath, source, adapterSource }).proven) return 'scoped_child_process';
   if (hasExactForwarderShutdownProof(relativePath, source)) return 'registered_exact';
   if (hasCanonicalHostInternalProof(relativePath, source)) return 'canonical_host_internal';
   if (hasScopedPlaywrightInstallerCleanup(relativePath, source, statements)) return 'scoped_temporary_artifact';
@@ -1128,11 +1133,11 @@ function hostMechanism(relativePath, source, statements) {
   return 'host_migration';
 }
 
-function hostLifecycleFindings(relativePath, source, statements) {
+function hostLifecycleFindings(relativePath, source, statements, adapterSource) {
   if (!isHostSourcePath(relativePath)) return [];
   const findings = [];
   const text = statements.join('\n');
-  const mechanism = hostMechanism(relativePath, source, statements);
+  const mechanism = hostMechanism(relativePath, source, statements, adapterSource);
   const recursiveDeletions = statements.filter((line) => (
     hasRecursivePathDeletion(line) && !isContainerInternalPathDeletion(line)
   ));
@@ -1229,9 +1234,12 @@ function registrationFindings(relativePath, source, statements) {
   })));
 }
 
-function scanSourceFile(root, relativePath) {
+function scanSourceFile(root, relativePath, adapterSource) {
   let source;
   try { source = readFileSync(path.join(root, relativePath), 'utf8'); } catch { return null; }
+  if (lifecycleProofModulePurity({ relativePath, source }).proven) {
+    return { findings: [], broadPrunes: [] };
+  }
   const statements = executableStatements(source);
   const dockerFindings = isSourcePath(relativePath)
     ? [...lifecycleFindings(relativePath, source, statements),
@@ -1240,7 +1248,7 @@ function scanSourceFile(root, relativePath) {
   return {
     findings: [
       ...dockerFindings,
-      ...hostLifecycleFindings(relativePath, source, statements),
+      ...hostLifecycleFindings(relativePath, source, statements, adapterSource),
     ],
     broadPrunes: isSourcePath(relativePath)
       ? [...new Set(statements.flatMap(broadPrunes))]
@@ -1249,12 +1257,32 @@ function scanSourceFile(root, relativePath) {
   };
 }
 
+function browserLifecycleSources(root) {
+  const read = relativePath => {
+    try { return readFileSync(path.join(root, relativePath), 'utf8'); }
+    catch { return undefined; }
+  };
+  return {
+    wrapper: read('scripts/ci/run-sandboxed-playwright.mjs'),
+    adapter: read('scripts/ci/lib/browser-container-ownership.mjs'),
+    coordinator: read('scripts/ownership/ci-cleanup-coordinator.mjs'),
+    workflow: read('.github/workflows/test.yml'),
+  };
+}
+
 export function scanLifecycleCallsites({ root, files = trackedFiles(root) }) {
+  const browserSources = browserLifecycleSources(root);
+  const containerLifecycle = provesBrowserContainerLifecycle(browserSources);
   const result = { findings: [], broadPrunes: [] };
   for (const relativePath of [...files].sort().filter(isLifecycleScannedPath)) {
-    const scanned = scanSourceFile(root, relativePath);
+    const scanned = scanSourceFile(root, relativePath, browserSources.adapter);
     if (!scanned) continue;
-    result.findings.push(...scanned.findings);
+    for (const finding of scanned.findings) {
+      if (relativePath === 'scripts/ci/run-sandboxed-playwright.mjs'
+          && finding.resourceClass === 'compose_container' && finding.operation === 'create'
+          && containerLifecycle.proven) finding.mechanism = 'registered_transient';
+      result.findings.push(finding);
+    }
     result.broadPrunes.push(...scanned.broadPrunes);
   }
   return result;
@@ -1286,7 +1314,7 @@ const EXEMPT_CLEANUP_MECHANISMS = new Set([
 const APPLICATION_MECHANISMS = new Set(['application_api', 'ownership_manifest']);
 const EXEMPT_HOST_MECHANISMS = new Set([
   'canonical_host_internal', 'cleanup_coordinator', 'registered_exact',
-  'scoped_temporary_artifact', 'test_fixture',
+  'scoped_temporary_artifact', 'scoped_child_process', 'test_fixture',
 ]);
 
 function exemptDeclarationErrors(key, entry, finding) {

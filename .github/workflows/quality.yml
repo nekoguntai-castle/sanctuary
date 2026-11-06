@@ -50,7 +50,7 @@ env:
   ACTIONLINT_VERSION: '1.7.12'
   ACTIONLINT_LINUX_AMD64_SHA256: '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8'
   LIZARD_WARNING_BASELINE: '86'
-  SANCTUARY_RUNNER_LOCK_DIR: ${{ github.workspace }}/.tmp/runner-locks-v2
+  SANCTUARY_RUNNER_LOCK_DIR: .tmp/runner-locks-v2
 
 jobs:
   determine-scope:

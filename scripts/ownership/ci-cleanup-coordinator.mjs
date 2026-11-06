@@ -67,12 +67,27 @@ function cleanupStatus(receipt) {
   return 5;
 }
 
+export function coordinatorSubjectEnvironment(environment, requestedEngine) {
+  const engine = requestedEngine ?? 'docker';
+  if (!['docker', 'podman', 'host'].includes(engine)) {
+    throw new Error('cleanup engine must be docker, podman, or host');
+  }
+  // The runner reads this from its coordinator-created child environment. It
+  // describes the actual request engine; it is process context, not a new
+  // authenticated state field.
+  return Object.freeze({ ...environment, SANCTUARY_CLEANUP_ENGINE: engine });
+}
+
 function prepare(request) {
   exactWithOptional(request, ['checkoutRoot', 'runtimeDirectory', 'lane', 'artifactDirectory'], [
     'engine', 'subjectGraceMs', 'subjectKillWaitMs', 'authorityMode',
     'legacyFixtureCreationWitness', 'upgradeTargetCommit', 'subjectDeadlineEpochMs',
   ]);
-  return prepareCiCleanupLifecycle(request);
+  const prepared = prepareCiCleanupLifecycle(request);
+  return Object.freeze({
+    ...prepared,
+    environment: coordinatorSubjectEnvironment(prepared.environment, request.engine),
+  });
 }
 
 function emitPreparedEnvironment(prepared) {

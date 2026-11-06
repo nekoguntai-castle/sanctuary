@@ -6,6 +6,7 @@
  */
 
 import { expect, test, type Page } from '@playwright/test';
+import { closeSidebar, openSidebar } from './helpers';
 import {
   DEVICE_ID,
   MAINNET_WALLET,
@@ -38,6 +39,7 @@ test.describe('User journey flows', () => {
     await page.goto('/#/');
     await expect(page.getByText('Bitcoin Price')).toBeVisible();
 
+    await openSidebar(page);
     await page.getByRole('link', { name: /Wallets/i }).first().click();
     await expect(page).toHaveURL(/#\/wallets/);
     await expect(page.getByRole('heading', { name: 'Mainnet Wallets' })).toBeVisible();
@@ -121,13 +123,17 @@ test.describe('User journey flows', () => {
     await page.goto('/#/');
     await expect(page.getByText('Bitcoin Price')).toBeVisible();
 
+    await openSidebar(page);
     await networkTabs.getByRole('tab', { name: 'Testnet3' }).click();
+    await closeSidebar(page);
     // Testnet coins have no market value, so the card is omitted rather than
     // showing a placeholder that explains its own emptiness.
     await expect(page.getByText('Bitcoin Price')).toHaveCount(0);
     await expect(page.getByText('Fee Estimation')).toBeVisible();
 
+    await openSidebar(page);
     await networkTabs.getByRole('tab', { name: /Mainnet/i }).click();
+    await closeSidebar(page);
     await expect(page.getByText('Bitcoin Price')).toBeVisible();
 
     expect(unhandledRequests).toEqual([]);
@@ -283,10 +289,12 @@ test.describe('User journey flows', () => {
     await page.goto('/#/admin/settings');
     await expect(page.getByRole('heading', { name: 'System Settings' })).toBeVisible();
 
+    await openSidebar(page);
     await page.getByRole('link', { name: /Feature Flags/i }).click();
     await expect(page).toHaveURL(/#\/admin\/feature-flags/);
     await expect(page.getByRole('heading', { name: 'Feature Flags' })).toBeVisible();
 
+    await openSidebar(page);
     await page.getByRole('link', { name: /Audit Logs/i }).click();
     await expect(page).toHaveURL(/#\/admin\/audit-logs/);
     await expect(page.getByRole('heading', { name: 'Audit Logs' })).toBeVisible();
@@ -335,7 +343,9 @@ test.describe('User journey flows', () => {
     await expect(page.getByText('Journey Main Wallet')).toBeVisible();
     await expect(page.getByText('Journey Testnet Wallet')).not.toBeVisible();
 
+    await openSidebar(page);
     await networkTabs.getByRole('tab', { name: 'Testnet3' }).click();
+    await closeSidebar(page);
     await expect(page.getByText('Journey Testnet Wallet')).toBeVisible();
     await expect(page.getByText('Journey Main Wallet')).not.toBeVisible();
 

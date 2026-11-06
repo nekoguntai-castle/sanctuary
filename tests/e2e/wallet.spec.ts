@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { BROWSER_E2E_FIXTURES } from './support/browserE2EFixtures';
+import { openSidebar } from './helpers';
 
 /**
  * Wallet E2E Tests
@@ -14,6 +15,7 @@ test.describe('Wallet Management', () => {
     await page.getByLabel(/username/i).fill(BROWSER_E2E_FIXTURES.user.username);
     await page.getByLabel(/password/i).fill(BROWSER_E2E_FIXTURES.user.password);
     await page.getByRole('button', { name: /sign in/i }).click();
+    await openSidebar(page);
     await expect(page.getByRole('button', { name: /logout/i })).toBeVisible();
   });
 

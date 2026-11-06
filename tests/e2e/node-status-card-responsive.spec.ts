@@ -216,10 +216,80 @@ test.describe('Node Status card responsive layout', () => {
       await expect(card).toBeVisible();
 
       // No horizontal page overflow at any viewport.
-      const overflow = await page.evaluate(() => ({
-        scrollWidth: document.documentElement.scrollWidth,
-        clientWidth: document.documentElement.clientWidth,
-      }));
+      const overflow = await page.evaluate((includeDiagnostics) => {
+        const root = document.documentElement;
+        const dimensions = {
+          scrollWidth: root.scrollWidth,
+          clientWidth: root.clientWidth,
+        };
+        if (!includeDiagnostics || dimensions.scrollWidth <= dimensions.clientWidth) {
+          return dimensions;
+        }
+
+        const describe = (element: Element) => {
+          const rect = element.getBoundingClientRect();
+          const style = getComputedStyle(element);
+          return {
+            tag: element.tagName.toLowerCase(),
+            id: element.id,
+            testId: element.getAttribute('data-testid'),
+            className: String(element.className).slice(0, 160),
+            rect: [rect.left, rect.top, rect.right, rect.bottom].map((value) =>
+              Math.round(value * 100) / 100,
+            ),
+            scrollWidth: element.scrollWidth,
+            clientWidth: element.clientWidth,
+            display: style.display,
+            visibility: style.visibility,
+            position: style.position,
+            overflowX: style.overflowX,
+            transform: style.transform,
+            width: style.width,
+            minWidth: style.minWidth,
+            gridTemplateColumns: style.gridTemplateColumns,
+            flexWrap: style.flexWrap,
+          };
+        };
+        const viewportWidth = root.clientWidth;
+        const candidates = [...document.querySelectorAll('*')]
+          .map((element) => ({ element, description: describe(element) }))
+          .filter(({ description }) =>
+            description.rect[0] < -1 ||
+            description.rect[2] > viewportWidth + 1 ||
+            description.scrollWidth > description.clientWidth + 1,
+          );
+        const overflowCandidates = candidates.slice(0, 60).map(({ element, description }) => {
+          const ancestors = [];
+          let parent = element.parentElement;
+          while (parent && ancestors.length < 6) {
+            ancestors.push(describe(parent));
+            parent = parent.parentElement;
+          }
+          return { element: description, ancestors };
+        });
+
+        return {
+          ...dimensions,
+          diagnostics: {
+            sampledDimensions: dimensions,
+            viewport: {
+              innerWidth: window.innerWidth,
+              innerHeight: window.innerHeight,
+              devicePixelRatio: window.devicePixelRatio,
+            },
+            fontStatus: document.fonts.status,
+            overflowCandidateCount: candidates.length,
+            overflowCandidatesTruncated: candidates.length > overflowCandidates.length,
+            overflowCandidates,
+          },
+        };
+      }, viewport.width === 375);
+      if ('diagnostics' in overflow) {
+        await test.info().attach('375px-page-overflow-diagnostics.json', {
+          body: JSON.stringify(overflow.diagnostics, null, 2),
+          contentType: 'application/json',
+        });
+      }
       expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth);
 
       // Every element inside the card stays within the card's own box.

@@ -46,7 +46,8 @@ grep -Fq "'{operationRunId: \$operationRunId, state: \$state}'" \
   scripts/ci/registered-collector-process.sh
 
 grep -Fq 'cleanup-ci-callsite.sh auto-run' .github/workflows/test.yml
-grep -Fq -- '--engine host' .github/workflows/test.yml
+# Browser collectors share the coordinator with the isolated Docker sibling.
+grep -Fq -- '--engine docker' .github/workflows/test.yml
 grep -Fq -- '-- scripts/ci/run-browser-e2e-subject.sh' .github/workflows/test.yml
 grep -Fq 'coproc SANCTUARY_BACKEND' scripts/ci/run-browser-e2e-subject.sh
 grep -Fq -- '--import "$SCRIPT_DIR/registered-start-gate.mjs"' \

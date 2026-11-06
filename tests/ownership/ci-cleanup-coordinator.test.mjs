@@ -8,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { canonicalJson } from '../../scripts/ownership/canonical-json.mjs';
+import { coordinatorSubjectEnvironment } from '../../scripts/ownership/ci-cleanup-coordinator.mjs';
 
 const CHECKOUT = path.resolve('.');
 const CLI = path.join(CHECKOUT, 'scripts/ownership/ci-cleanup-coordinator.mjs');
@@ -16,6 +17,13 @@ const VERIFY_UPLOAD = path.join(CHECKOUT, 'scripts/ownership/verify-ci-cleanup-u
 const REAL_GIT = spawnSync(
   'sh', ['-c', 'command -v git'], { encoding: 'utf8' },
 ).stdout.trim();
+
+test('coordinator engine overrides any caller subject environment value', () => {
+  const environment = coordinatorSubjectEnvironment({ SANCTUARY_CLEANUP_ENGINE: 'host' }, 'docker');
+  assert.equal(environment.SANCTUARY_CLEANUP_ENGINE, 'docker');
+  assert.equal(coordinatorSubjectEnvironment({}, undefined).SANCTUARY_CLEANUP_ENGINE, 'docker');
+  assert.throws(() => coordinatorSubjectEnvironment({}, 'unknown'), /cleanup engine/);
+});
 
 for (const expired of [true, false]) {
   test(`subject deadline ${expired ? 'already expired' : 'expires while running'} emits signed cleanup evidence`, () => {

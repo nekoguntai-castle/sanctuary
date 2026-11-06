@@ -870,6 +870,7 @@ test('tracked lifecycle registry exactly covers Docker and host-artifact surface
     daemon_atomic: 'exempt', registered_transient: 'exempt', registered_exact: 'exempt',
     retained_shared_cache: 'exempt', retained_application: 'exempt',
     ownership_manifest: 'exempt', scoped_temporary_artifact: 'exempt',
+    scoped_child_process: 'exempt',
     application_api: 'reference_only',
   };
   for (const finding of scan.findings) {

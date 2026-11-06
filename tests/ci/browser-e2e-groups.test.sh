@@ -113,6 +113,12 @@ main() {
   grep -Fxq 'wallet-transactions' <<< "$groups" || fail 'missing wallet-transactions group'
   grep -Fxq 'wallet-experience' <<< "$groups" || fail 'missing wallet-experience group'
 
+  # Keep the long navigation journeys in the lighter lifecycle group so both
+  # groups retain headroom under the same wall-clock gate.
+  grep -Fxq 'tests/e2e/user-journeys.spec.ts' <<< "$("$GROUP_SCRIPT" wallet-lifecycle)" ||
+    fail 'user journeys must run with wallet lifecycle flows'
+  assert_not_contains "$("$GROUP_SCRIPT" wallet-experience)" 'tests/e2e/user-journeys.spec.ts'
+
   specs="$({
   while IFS= read -r group; do
     "$GROUP_SCRIPT" "$group"

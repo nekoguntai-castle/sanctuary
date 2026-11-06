@@ -14,8 +14,25 @@ const OWNERS = {
   progress: 'src/components/CreateWallet/CreateWalletProgress.tsx',
 } as const;
 
-async function setup(page: Page, darkMode: boolean) {
-  const initialPreferences = { ...ADMIN_USER.preferences, darkMode, theme: 'sanctuary' };
+export const SHARED_ACTION_FOCUS_PALETTES = [
+  { name: 'Cyber', id: 'cyber' },
+  { name: 'Sanctuary', id: 'sanctuary' },
+  { name: 'Serenity', id: 'serenity' },
+  { name: 'Forest', id: 'forest' },
+  { name: 'Sun+rise/set', id: 'sunrise' },
+  { name: 'Ocean', id: 'ocean' },
+  { name: 'Sakura', id: 'sakura' },
+  { name: 'Sakura Yoshino', id: 'sakura-yoshino' },
+  { name: 'Sakura Sumi-e', id: 'sakura-sumie' },
+  { name: 'Midnight', id: 'midnight' },
+  { name: 'Bamboo Zen', id: 'bamboo' },
+  { name: 'Copper Patina', id: 'copper' },
+  { name: 'Desert Canyon', id: 'desert' },
+  { name: 'Seasonal', id: 'seasonal' },
+] as const;
+
+async function setup(page: Page, darkMode: boolean, unit: 'sats' | 'btc' = 'sats', theme = 'sanctuary') {
+  const initialPreferences = { ...ADMIN_USER.preferences, darkMode, theme, unit };
   const unhandled = await mockAuthenticatedApi(page, {
     failures: {
       'GET /auth/me': { status: 200, body: { ...ADMIN_USER, preferences: initialPreferences } },
@@ -42,7 +59,12 @@ async function settle(page: Page) {
 }
 
 
-export async function renderChoiceContrastAndSemantics(page: Page, darkMode: boolean) {
+function verifyChoiceReadings(unhandled: string[], readings: TextReading[], semanticFailures: string[]) {
+  expect(unhandled).toEqual([]);
+  checkReadings(readings.filter(reading => !reading.name.includes('contrast exempt')), semanticFailures);
+}
+
+export async function renderDashboardChoiceContrastAndSemantics(page: Page, darkMode: boolean) {
   const { unhandled } = await setup(page, darkMode);
   const readings: TextReading[] = [];
   const semanticFailures: string[] = [];
@@ -59,6 +81,13 @@ export async function renderChoiceContrastAndSemantics(page: Page, darkMode: boo
   }
   await addReading(readings, timeframeButtons[0], 'Dashboard unselected 1D', OWNERS.dashboard);
 
+  verifyChoiceReadings(unhandled, readings, semanticFailures);
+}
+
+export async function renderAdminSettingsChoiceContrastAndSemantics(page: Page, darkMode: boolean) {
+  const { unhandled } = await setup(page, darkMode);
+  const readings: TextReading[] = [];
+  const semanticFailures: string[] = [];
   await page.goto('/#/admin/settings');
   await settle(page);
   for (const name of ['Access Control', 'WebSocket', 'Support']) {
@@ -68,6 +97,13 @@ export async function renderChoiceContrastAndSemantics(page: Page, darkMode: boo
     await addReading(readings, button.locator('span').filter({ hasText: name }), `System Settings selected ${name}`, OWNERS.systemSettings);
   }
 
+  verifyChoiceReadings(unhandled, readings, semanticFailures);
+}
+
+export async function renderSettingsChoiceContrastAndSemantics(page: Page, darkMode: boolean) {
+  const { unhandled } = await setup(page, darkMode);
+  const readings: TextReading[] = [];
+  const semanticFailures: string[] = [];
   await page.goto('/#/settings');
   await settle(page);
   await page.getByRole('tab', { name: 'Display', exact: true }).click();
@@ -107,6 +143,16 @@ export async function renderChoiceContrastAndSemantics(page: Page, darkMode: boo
     await addReading(readings, button.locator('span').last(), `Background category ${name} count`, OWNERS.backgrounds);
   }
 
+  verifyChoiceReadings(unhandled, readings, semanticFailures);
+}
+
+export async function renderDeviceAccountChoiceContrastAndSemantics(page: Page, darkMode: boolean) {
+  // The original cross-route contract reached this route after selecting BTC.
+  // Keep that fixture state even though this route's assertions are independent
+  // of display units.
+  const { unhandled } = await setup(page, darkMode, 'btc');
+  const readings: TextReading[] = [];
+  const semanticFailures: string[] = [];
   await page.goto(`/#/devices/${DEVICE_ID}`);
   await settle(page);
   const details = page.getByRole('tab', { name: 'Details', exact: true });
@@ -125,14 +171,21 @@ export async function renderChoiceContrastAndSemantics(page: Page, darkMode: boo
   if (disabled !== 'true') semanticFailures.push('empty Multisig purpose was not kept disabled');
   await addReading(readings, disabledMultisig, 'Disabled zero-count Multisig (contrast exempt)', OWNERS.deviceAccounts);
 
+  verifyChoiceReadings(unhandled, readings, semanticFailures);
+}
+
+export async function renderWalletProgressContrastAndSemantics(page: Page, darkMode: boolean) {
+  // Match the prior route sequence's unit preference after the settings checks.
+  const { unhandled } = await setup(page, darkMode, 'btc');
+  const readings: TextReading[] = [];
+  const semanticFailures: string[] = [];
   await page.goto('/#/wallets/create');
   await settle(page);
   for (const [step, name] of ['Type', 'Signers', 'Config', 'Review'].entries()) {
     await addReading(readings, page.getByText(name, { exact: true }), `Create wallet step ${step + 1} ${name}`, OWNERS.progress);
   }
 
-  expect(unhandled).toEqual([]);
-  checkReadings(readings.filter(reading => !reading.name.includes('contrast exempt')), semanticFailures);
+  verifyChoiceReadings(unhandled, readings, semanticFailures);
 }
 
 function contrastRatio(first: string, second: string): number | null {
@@ -258,8 +311,14 @@ export async function renderSharedActionKeyboardFocus(page: Page, darkMode: bool
   expect({ focusFailures: failures, unhandled }).toEqual({ focusFailures: [], unhandled: [] });
 }
 
-export async function renderAllPaletteSharedActionFocus(page: Page, darkMode: boolean) {
-  const { unhandled } = await setup(page, darkMode);
+export async function renderPaletteSharedActionFocus(
+  page: Page,
+  darkMode: boolean,
+  palette: typeof SHARED_ACTION_FOCUS_PALETTES[number],
+) {
+  // The Sanctuary case needs another starting theme so every case proves an actual change.
+  const initialThemeId = palette.id === 'sanctuary' ? 'cyber' : 'sanctuary';
+  const { unhandled } = await setup(page, darkMode, 'sats', initialThemeId);
   await page.goto('/#/settings');
   await settle(page);
   await page.getByRole('tab', { name: 'Appearance', exact: true }).click();
@@ -267,53 +326,42 @@ export async function renderAllPaletteSharedActionFocus(page: Page, darkMode: bo
   await expect(page.getByRole('heading', { name: 'Color Theme', exact: true })).toBeVisible();
   const themeCard = page.getByRole('heading', { name: 'Color Theme', exact: true }).locator('xpath=../..');
   const themeNames = (await themeCard.getByRole('button').allTextContents()).map(name => name.trim()).filter(Boolean);
-  const themeIdsByName: Record<string, string> = {
-    Sanctuary: 'sanctuary', Serenity: 'serenity', Forest: 'forest', Cyber: 'cyber',
-    'Sun+rise/set': 'sunrise', Ocean: 'ocean', Sakura: 'sakura',
-    'Sakura Yoshino': 'sakura-yoshino', 'Sakura Sumi-e': 'sakura-sumie',
-    Midnight: 'midnight', 'Bamboo Zen': 'bamboo', 'Copper Patina': 'copper',
-    'Desert Canyon': 'desert', Seasonal: 'seasonal',
-  };
-  const orderedThemeNames = ['Cyber', ...themeNames.filter(name => name !== 'Cyber')];
+  expect(themeNames).toHaveLength(SHARED_ACTION_FOCUS_PALETTES.length);
+  expect([...themeNames].sort()).toEqual(SHARED_ACTION_FOCUS_PALETTES.map(({ name }) => name).sort());
+  expect(themeNames).toContain(palette.name);
+  const appliedThemeClass = () => page.locator('body').evaluate(element => Array.from(element.classList).find(name => name.startsWith('theme-')) ?? '');
+  await expect.poll(appliedThemeClass).toBe(`theme-${initialThemeId}`);
+  expect(initialThemeId).not.toBe(palette.id);
+  await themeCard.getByRole('button', { name: palette.name, exact: true }).click();
+  await expect(themeCard.getByRole('button', { name: palette.name, exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await waitForThemeUtilityPaint(page);
+  await expect.poll(appliedThemeClass).toBe(`theme-${palette.id}`);
+  const selectedThemeClass = await appliedThemeClass();
+  const themeChanged = selectedThemeClass !== `theme-${initialThemeId}`;
   const focusFailures: unknown[] = [];
-  const appliedThemeIds = new Set<string>();
-  let previousThemeClass = await page.locator('body').evaluate(element => Array.from(element.classList).find(name => name.startsWith('theme-')) ?? '');
-  for (const themeName of orderedThemeNames) {
-    const themeId = themeIdsByName[themeName];
-    expect(themeId, `theme registry mapping for ${themeName}`).toBeTruthy();
-    await themeCard.getByRole('button', { name: themeName, exact: true }).click();
-    await expect(themeCard.getByRole('button', { name: themeName, exact: true })).toHaveAttribute('aria-pressed', 'true');
-    await waitForThemeUtilityPaint(page);
-    await expect.poll(() => page.locator('body').evaluate(element => Array.from(element.classList).find(name => name.startsWith('theme-')) ?? '')).toBe(`theme-${themeId}`);
-    const themeClass = `theme-${themeId}`;
-    if (themeClass === previousThemeClass) focusFailures.push({ themeName, themeClass, name: 'theme selection did not change the applied theme' });
-    previousThemeClass = themeClass;
-    appliedThemeIds.add(themeId);
-    await page.waitForTimeout(700);
-    await page.goto('/#/admin/settings');
-    await settle(page);
-    await expect(page.getByRole('tab', { name: 'Access Control', exact: true })).toBeVisible();
-    const rawFocus = await focusWithKeyboard(page, page.getByRole('tab', { name: 'Access Control', exact: true }));
-    const rawFailures = focusSurfaceFailures(rawFocus);
-    if (!focusPainted(rawFocus) || rawFailures.length > 0) focusFailures.push({ themeName, themeClass, darkMode, name: 'global raw focus', style: rawFocus, surfaceFailures: rawFailures });
-    await page.goto('/#/admin/agent-wallets');
-    await settle(page);
-    await expect(page.getByRole('heading', { name: 'Agent Wallets', exact: true })).toBeVisible();
-    for (const [name, control] of [
-      ['LinkButton primary', page.getByRole('link', { name: 'Add Agent Wallet', exact: true })],
-      ['Button secondary', page.getByRole('button', { name: 'Refresh', exact: true })],
-    ] as const) {
-      const style = await focusWithKeyboard(page, control);
-      const surfaceFailures = focusSurfaceFailures(style);
-      if (!focusPainted(style) || surfaceFailures.length > 0) {
-        focusFailures.push({ themeName, darkMode, name, style, surfaceFailures });
-      }
+  await page.goto('/#/admin/settings');
+  await settle(page);
+  await expect(page.getByRole('tab', { name: 'Access Control', exact: true })).toBeVisible();
+  const rawFocus = await focusWithKeyboard(page, page.getByRole('tab', { name: 'Access Control', exact: true }));
+  const rawFailures = focusSurfaceFailures(rawFocus);
+  if (!focusPainted(rawFocus) || rawFailures.length > 0) focusFailures.push({ palette: palette.name, themeClass: `theme-${palette.id}`, darkMode, name: 'global raw focus', style: rawFocus, surfaceFailures: rawFailures });
+  await page.goto('/#/admin/agent-wallets');
+  await settle(page);
+  await expect(page.getByRole('heading', { name: 'Agent Wallets', exact: true })).toBeVisible();
+  for (const [name, control] of [
+    ['LinkButton primary', page.getByRole('link', { name: 'Add Agent Wallet', exact: true })],
+    ['Button secondary', page.getByRole('button', { name: 'Refresh', exact: true })],
+  ] as const) {
+    const style = await focusWithKeyboard(page, control);
+    const surfaceFailures = focusSurfaceFailures(style);
+    if (!focusPainted(style) || surfaceFailures.length > 0) {
+      focusFailures.push({ palette: palette.name, darkMode, name, style, surfaceFailures });
     }
-    await page.goto('/#/settings');
-    await settle(page);
-    await page.getByRole('tab', { name: 'Appearance', exact: true }).click();
-    await settle(page);
-    await expect(page.getByRole('heading', { name: 'Color Theme', exact: true })).toBeVisible();
   }
-  expect({ themeCount: themeNames.length, appliedThemeCount: appliedThemeIds.size, focusFailures, unhandled }).toEqual({ themeCount: 14, appliedThemeCount: 14, focusFailures: [], unhandled: [] });
+  expect({ selectedThemeClass, themeChanged, focusFailures, unhandled }).toEqual({
+    selectedThemeClass: `theme-${palette.id}`,
+    themeChanged: true,
+    focusFailures: [],
+    unhandled: [],
+  });
 }

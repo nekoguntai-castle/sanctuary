@@ -53,3 +53,30 @@ export function resolvePlaywrightBrowser(repoRoot: string): string {
   process.env.MINIMUM_BROWSER_VERSION = toolchain.minimumBrowserVersion;
   return executable;
 }
+
+/** Chromium sandboxing is mandatory: unsupported/root launches fail closed.
+ * Containers must supply a reviewed host policy; never disable the sandbox to
+ * work around launch failures. Firefox and WebKit retain their own options.
+ */
+export function chromiumLaunchOptions(executablePath: string) {
+  return { executablePath, chromiumSandbox: true, args: ['--enable-automation'] };
+}
+
+/** Only explicitly selected isolated CI runs accept a loopback/token endpoint.
+ * This validates endpoint shape, not authentication: the transport wrapper owns
+ * container identity, process policy and sandbox-readiness verification.
+ */
+export function chromiumConnectionOptions(env: NodeJS.ProcessEnv = process.env) {
+  const mode = env.SANCTUARY_SANDBOXED_BROWSER ?? '0';
+  const endpoint = env.SANCTUARY_PLAYWRIGHT_WS_ENDPOINT;
+  if (mode !== '0' && mode !== '1') throw new Error('Invalid sandboxed browser mode');
+  if (mode === '0') {
+    if (endpoint) throw new Error('Unexpected remote Chromium endpoint');
+    return {};
+  }
+  const match = endpoint?.match(/^ws:\/\/127\.0\.0\.1:([1-9][0-9]{0,4})\/[A-Za-z0-9_-]+$/);
+  if (!endpoint || !match || Number(match[1]) > 65535) {
+    throw new Error('Sandboxed Chromium requires a valid loopback browser-server endpoint');
+  }
+  return { connectOptions: { wsEndpoint: endpoint } };
+}

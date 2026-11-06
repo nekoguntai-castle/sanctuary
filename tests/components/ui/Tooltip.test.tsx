@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Tooltip } from '../../../src/components/ui/Tooltip';
 
 const renderTooltip = (content = 'connect ECONNREFUSED 127.0.0.1:50002') =>
@@ -259,5 +259,71 @@ describe('Tooltip viewport clamping', () => {
     fireEvent.scroll(window);
 
     expect(screen.getByTestId('tooltip-popup').style.left).toBe('310px');
+  });
+});
+
+describe('Tooltip vertical viewport placement', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it.each([
+    ['bottom', 400, 120, 500, 'top', 392],
+    ['top', 20, 120, 500, 'bottom', 48],
+    ['bottom', 100, 120, 500, 'bottom', 128],
+    ['top', 200, 120, 500, 'top', 192],
+    ['bottom', 100, 160, 200, 'bottom', 32],
+    ['top', 100, 160, 200, 'top', 168],
+    ['bottom', 352, 112, 500, 'bottom', 380],
+    ['top', 128, 112, 500, 'top', 120],
+    ['bottom', 480, 0, 500, 'bottom', 508],
+  ] as const)(
+    'keeps %s content visible at trigger y=%i with height=%i and viewport=%i',
+    (placement, triggerTop, popupHeight, viewportHeight, actualPlacement, anchorTop) => {
+      vi.stubGlobal('innerHeight', viewportHeight);
+      vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(popupHeight);
+      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+        top: triggerTop, bottom: triggerTop + 20, left: 100, width: 20,
+      } as DOMRect);
+      render(<Tooltip content="Long failure reason" label="Why" placement={placement}>Failed</Tooltip>);
+      fireEvent.mouseEnter(screen.getByRole('button', { name: 'Why' }));
+      const popup = screen.getByRole('tooltip');
+      expect(popup).toHaveAttribute('data-placement', actualPlacement);
+      expect(popup.style.top).toBe(`${anchorTop}px`);
+      expect(popup.style.transform).toBe(actualPlacement === 'top'
+        ? 'translate(-50%, -100%)' : 'translateX(-50%)');
+      expect(popup.firstElementChild).toHaveClass(actualPlacement === 'top' ? '-bottom-1' : '-top-1');
+    }
+  );
+
+  it('returns to the preferred side when resizing makes room', () => {
+    vi.stubGlobal('innerHeight', 500);
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(100);
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      top: 480, bottom: 500, left: 100, width: 20,
+    } as DOMRect);
+    render(<Tooltip content="Failure reason" label="Why" placement="bottom">Failed</Tooltip>);
+    fireEvent.focus(screen.getByRole('button', { name: 'Why' }));
+    expect(screen.getByRole('tooltip')).toHaveAttribute('data-placement', 'top');
+    vi.stubGlobal('innerHeight', 900);
+    fireEvent.resize(window);
+    expect(screen.getByRole('tooltip')).toHaveAttribute('data-placement', 'bottom');
+    expect(screen.getByRole('tooltip').style.top).toBe('508px');
+  });
+
+  it('remeasures a changed explanation while the tooltip stays open', () => {
+    vi.stubGlobal('innerHeight', 500);
+    const height = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(40);
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      top: 400, bottom: 420, left: 100, width: 20,
+    } as DOMRect);
+    const { rerender } = render(<Tooltip content="Short reason" label="Why" placement="bottom">Failed</Tooltip>);
+    fireEvent.focus(screen.getByRole('button', { name: 'Why' }));
+    expect(screen.getByRole('tooltip')).toHaveAttribute('data-placement', 'bottom');
+    height.mockReturnValue(120);
+    rerender(<Tooltip content="A longer failure explanation" label="Why" placement="bottom">Failed</Tooltip>);
+    expect(screen.getByRole('tooltip')).toHaveAttribute('data-placement', 'top');
+    expect(screen.getByRole('tooltip').style.top).toBe('392px');
   });
 });

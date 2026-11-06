@@ -5,7 +5,7 @@
  * boilerplate like json(), route registration, or unmocked-route handling.
  */
 
-import type { Page, Route } from "@playwright/test";
+import { expect, type Page, type Route } from "@playwright/test";
 import { getSharedApiResponse } from "./fixtures/apiBaseline";
 
 const THEME_UTILITY_PROBE_ATTRIBUTE = "data-theme-utility-probe";
@@ -153,4 +153,23 @@ export async function registerApiRoutes(
   };
 
   await registerStrictApiRoutes(page, routeHandler);
+}
+
+/** Reveal navigation before asserting sidebar controls on mobile viewports. */
+export async function openSidebar(page: Page): Promise<void> {
+  if ((page.viewportSize()?.width ?? 1440) >= 768) return;
+  const navigation = page.getByRole("dialog", { name: "Main navigation" });
+  if (!(await navigation.isVisible())) {
+    await page.getByRole("button", { name: "Open sidebar", exact: true }).click();
+  }
+  await expect(navigation).toBeVisible();
+}
+
+/** Return to page content after using a mobile sidebar control. */
+export async function closeSidebar(page: Page): Promise<void> {
+  const navigation = page.getByRole("dialog", { name: "Main navigation" });
+  if (await navigation.isVisible()) {
+    await navigation.getByRole("button", { name: "Close navigation", exact: true }).click();
+    await expect(navigation).toBeHidden();
+  }
 }

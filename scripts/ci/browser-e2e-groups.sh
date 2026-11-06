@@ -28,6 +28,7 @@ list_group_specs() {
       printf '%s\n' \
         tests/e2e/create-wallet-flow.spec.ts \
         tests/e2e/import-wallet-flow.spec.ts \
+        tests/e2e/user-journeys.spec.ts \
         tests/e2e/wallet-remediation.spec.ts
       ;;
     "$GROUP_WALLET_TRANSACTIONS")
@@ -42,7 +43,6 @@ list_group_specs() {
         tests/e2e/network-sync-toggle-dark.spec.ts \
         tests/e2e/node-status-card-responsive.spec.ts \
         tests/e2e/settings-persistence.spec.ts \
-        tests/e2e/user-journeys.spec.ts \
         tests/e2e/wallet-sharing-privacy.spec.ts \
         tests/e2e/wallet-sync-tooltip.spec.ts \
         tests/e2e/wallet.spec.ts

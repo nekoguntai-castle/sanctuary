@@ -632,7 +632,7 @@ test.describe("Wallet sharing and privacy", () => {
     await page.getByRole("tab", { name: /access/i }).click();
 
     // Should show ownership section with admin as owner
-    await expect(page.getByText("admin").first()).toBeVisible();
+    await expect(page.getByRole("main").getByText("admin").first()).toBeVisible();
 
     expect(unhandledRequests).toEqual([]);
   });

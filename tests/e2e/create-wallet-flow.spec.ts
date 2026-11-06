@@ -8,7 +8,7 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 
 import { emptyBalanceHistory } from './fixtures/balanceHistory';
-import { getFailClosedWalletRemediationResponse, json, unmocked, registerApiRoutes } from './helpers';
+import { closeSidebar, getFailClosedWalletRemediationResponse, json, openSidebar, unmocked, registerApiRoutes } from './helpers';
 
 const DEVICE_1_ID = 'device-create-1';
 const DEVICE_2_ID = 'device-create-2';
@@ -579,7 +579,9 @@ test.describe('Create wallet flow', () => {
 
     await expect(main.getByText('Configuration')).toBeVisible();
 
+    await openSidebar(page);
     await networkTabs.getByRole('tab', { name: 'Testnet3' }).click();
+    await closeSidebar(page);
 
     // Network changes invalidate signers chosen for a different coin type.
     await expect(main.getByText('Select Signers')).toBeVisible();

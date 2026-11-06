@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import { closeSidebar, openSidebar } from '../helpers';
 
 import {
   DEVICE_ID,
@@ -67,10 +68,12 @@ export async function renderCreateWalletRouteConfigurationShowsNetworkWarningFor
   await page.goto('/#/wallets/create');
 
   await main.getByRole('button', { name: 'Single Signature' }).click();
+  await openSidebar(page);
   await page
     .getByRole('tablist', { name: 'Network tabs' })
     .getByRole('tab', { name: 'Testnet3' })
     .click();
+  await closeSidebar(page);
   await main.getByRole('button', { name: 'Next Step' }).click();
 
   await main.getByText('Render Ledger', { exact: true }).click();
