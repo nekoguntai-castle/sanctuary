@@ -547,7 +547,7 @@ describe("Jade Plus authentication decision and vendor harness", () => {
     expect(harness).toContain("except jade_error_module.JadeError");
     expect(runner).toContain('docker pull "$runtime_image"');
     expect(runner).toContain('cleanup-ci-callsite.sh" auto-run');
-    expect(runner).toContain("docker create --rm --interactive");
+    expect(runner).toContain("docker create --interactive");
     expect(runner).toContain('--cidfile "$cidfile" --name "$container_name"');
     expect(runner).toContain(
       'docker start --attach --interactive "$container_id"',
@@ -655,6 +655,45 @@ cleanup`,
     );
     expect(result.status).toBe(1);
     expect(result.stdout).toBe(`retired=${exactId} verified=1\n`);
+  });
+
+  it("does not tie the attached client's exit to daemon auto-removal", () => {
+    // `docker start --attach` on an AutoRemove container waits for the
+    // daemon's "removed" event, not just the exit. Rootless Podman removes
+    // through a separate conmon cleanup process, so under host load the
+    // client outlived its 180s deadline after the proof had streamed out.
+    // The EXIT trap already removes the exact ID and proves its absence.
+    const testDir = mkdtempSync(path.join(tmpdir(), "jade-protocol-create-"));
+    try {
+      const result = spawnSync(
+        "bash",
+        [
+          "-c",
+          `set -u
+cidfile="$TEST_DIR/container.cid"
+create_output="$TEST_DIR/container.create-output"
+container_name=test-jade
+container_ownership_labels=(--label io.sanctuary.project=test)
+runtime_image=test-image
+manifest=config/jade-protocol-harness.json
+timeout() { printf '%s\\n' "$@" > "$TEST_DIR/create-args"; }
+resolve_created_container() { return "$1"; }
+${shellFunction("create_protocol_container")}
+create_protocol_container`,
+        ],
+        { encoding: "utf8", env: { ...process.env, TEST_DIR: testDir } },
+      );
+      expect(result).toMatchObject({ status: 0, stderr: "" });
+      const args = readFileSync(path.join(testDir, "create-args"), "utf8")
+        .trimEnd()
+        .split("\n");
+      expect(args.slice(args.indexOf("docker"), args.indexOf("docker") + 2))
+        .toEqual(["docker", "create"]);
+      expect(args).toContain("--interactive");
+      expect(args).not.toContain("--rm");
+    } finally {
+      rmSync(testDir, { recursive: true, force: true });
+    }
   });
 
   it("retires the attested immutable ID on timeout, signal, or normal exit", () => {

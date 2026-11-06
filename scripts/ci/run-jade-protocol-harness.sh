@@ -141,7 +141,11 @@ resolve_created_container() {
 create_protocol_container() {
   local create_status=0
   [ ! -e "$cidfile" ] || { echo 'Jade protocol cidfile already exists before create' >&2; return 1; }
-  timeout --foreground --kill-after=10s 60s docker create --rm --interactive \
+  # No --rm: `docker start --attach` on an AutoRemove container waits for the
+  # daemon's removal, which rootless Podman performs in a separate cleanup
+  # process that can lag past the client deadline under host load. The EXIT
+  # trap removes this exact ID and proves its absence instead.
+  timeout --foreground --kill-after=10s 60s docker create --interactive \
     --cidfile "$cidfile" --name "$container_name" \
     "${container_ownership_labels[@]}" \
     --read-only \
