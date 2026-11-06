@@ -32,6 +32,17 @@ vi.mock('../src/api/intelligence', async () => {
   };
 });
 
+// Same retry storm, from the sync-paused banner Layout mounts: report sync as
+// available. tests/components/Layout/SyncPausedBanner.test.tsx mocks the module
+// itself, and tests/api/remainingApiModules.test.ts unmocks it.
+vi.mock('../src/api/sync', async () => {
+  const actual = await vi.importActual<typeof import('../src/api/sync')>('../src/api/sync');
+  return {
+    ...actual,
+    getSyncAvailability: vi.fn().mockResolvedValue({ state: 'available' }),
+  };
+});
+
 const originalConsoleWarn = console.warn.bind(console);
 const suppressedApiRetryPrefixes = ['[API] Request failed', '[ApiClient] Request failed'];
 vi.spyOn(console, 'warn').mockImplementation((message?: unknown, ...args: unknown[]) => {

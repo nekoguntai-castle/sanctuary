@@ -5,7 +5,10 @@
  * - drafts, labels, payjoin, price, sync, transfers, twoFactor
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// tests/setup.ts stubs getSyncAvailability; this file covers the real module.
+vi.unmock("../../src/api/sync");
 
 import {
   mockDelete,
