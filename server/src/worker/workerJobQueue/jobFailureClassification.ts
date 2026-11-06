@@ -8,6 +8,21 @@ export function unrecoverableJobPayloadMessage(handlerKey: string): string {
   return `${UNRECOVERABLE_JOB_PAYLOAD_PREFIX} invalid payload for ${handlerKey}`;
 }
 
+/**
+ * failedReason for a stall-redelivered job that found its own lock still held.
+ * Thrown as an UnrecoverableError, so DLQ repair recognizes it by error name.
+ */
+export function stalledLockHeldJobMessage(handlerKey: string, lockKey: string): string {
+  return `${handlerKey} stalled while its previous attempt held ${lockKey}; `
+    + 'the worker running it crashed or stopped responding. Not re-running it.';
+}
+
+/** failedReason for a job whose last deliveries all stalled (a crash loop). */
+export function repeatedlyStalledJobMessage(handlerKey: string, unfinishedDeliveries: number): string {
+  return `${handlerKey} stalled on its last ${unfinishedDeliveries} deliveries; `
+    + 'it is likely crashing the worker. Not re-running it.';
+}
+
 /** Identify the live BullMQ terminal error without relying on realm identity. */
 export function isUnrecoverableJobError(error: unknown): boolean {
   return typeof error === 'object'

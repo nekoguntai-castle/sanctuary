@@ -17,11 +17,17 @@ import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import type { JobExecutionContext } from '../../jobs/types';
 import { hardTerminateProcess, type HardTerminate } from './hardTermination';
-import { unrecoverableJobPayloadMessage } from './jobFailureClassification';
+import {
+  repeatedlyStalledJobMessage,
+  stalledLockHeldJobMessage,
+  unrecoverableJobPayloadMessage,
+} from './jobFailureClassification';
 import type { RegisteredHandler } from './types';
 
 const log = createLogger('WORKER:QUEUE_PROCESSOR');
 const DEFAULT_LOCK_TTL_MS = 5 * 60 * 1000;
+/** Consecutive stalled deliveries after which a job is treated as a crash loop. */
+export const MAX_UNFINISHED_DELIVERIES = 2;
 // BullMQ never advances attemptsMade for a DelayedError, so the queue itself
 // remembers nothing about how long a job has been bouncing off a held lock.
 // The job's own enqueue timestamp is the honest clock: it needs no payload
@@ -122,6 +128,26 @@ function createExecutionController(shutdownSignal?: AbortSignal): {
 }
 
 /**
+ * How many deliveries before this one started but never finished.
+ *
+ * BullMQ counts a start on every delivery but an attempt only when one ends
+ * (fails or completes), so each delivery whose worker died leaves starts one
+ * further ahead. `stalledCounter` alone cannot tell this: BullMQ never resets
+ * it, so a job that stalled once and later failed normally still carries it.
+ *
+ * Only exact for jobs that never re-delay themselves on lock contention:
+ * `job.moveToDelayed` skips the attempt count, so callers must exclude jobs
+ * with `retryDelayMsIfUnavailable`.
+ */
+function unfinishedPriorDeliveries(job: Job): number {
+  if (!(job.stalledCounter > 0)) return 0;
+  const started = job.attemptsStarted;
+  const made = job.attemptsMade;
+  if (!Number.isInteger(started) || !Number.isInteger(made)) return 0;
+  return Math.max(0, started - made - 1);
+}
+
+/**
  * Process a job with optional distributed locking.
  */
 export async function processJobWithLock(
@@ -132,6 +158,20 @@ export async function processJobWithLock(
 ): Promise<unknown> {
   if (registered.validateData && !registered.validateData(job.data)) {
     throw new UnrecoverableError(unrecoverableJobPayloadMessage(handlerKey));
+  }
+  // Jobs that re-delay on lock contention skew the delivery count; they wait
+  // for their lock instead, and BullMQ fails them at its own stall limit.
+  const unfinishedDeliveries = registered.lockOptions?.retryDelayMsIfUnavailable
+    ? 0
+    : unfinishedPriorDeliveries(job);
+  if (unfinishedDeliveries >= MAX_UNFINISHED_DELIVERIES) {
+    // BullMQ never fails a repeatable job at its stall limit, so a job that
+    // crashes its worker would otherwise be re-run after every restart.
+    log.error(`Job stalled on consecutive deliveries - failing it: ${handlerKey}`, {
+      jobId: job.id,
+      unfinishedDeliveries,
+    });
+    throw new UnrecoverableError(repeatedlyStalledJobMessage(handlerKey, unfinishedDeliveries));
   }
   if (!registered.lockOptions) {
     const executionController = createExecutionController(dependencies.shutdownSignal);
@@ -215,6 +255,22 @@ export async function processJobWithLock(
       });
       await job.moveToDelayed(Date.now() + retryDelayMs, job.token);
       throw new DelayedError();
+    }
+    if (unfinishedDeliveries > 0) {
+      // BullMQ redelivered this job because the previous delivery's worker
+      // stopped renewing it, and that attempt still holds the lock: its worker
+      // crashed, or blocked its event loop past the job lock. Skipping would
+      // mark the job completed and erase the failure; re-running one that
+      // crashed its worker would crash it again. Fail it terminally so the
+      // failure is recorded in the dead-letter queue. A recurring job's next
+      // scheduled run proceeds normally once the lock expires.
+      log.error(`Stalled job found its lock still held - failing it: ${handlerKey}`, {
+        jobId: job.id,
+        lockKey,
+        walletId,
+        unfinishedDeliveries,
+      });
+      throw new UnrecoverableError(stalledLockHeldJobMessage(handlerKey, lockKey));
     }
     // The job resolves having done nothing, so this is the only record that the
     // wallet was passed over.

@@ -8,7 +8,14 @@ import {
   releaseLock,
   type WorkerJobQueueAccessor,
 } from './workerJobQueueTestHarness';
-import { processJobWithLock } from '../../../../src/worker/workerJobQueue/jobProcessor';
+import {
+  MAX_UNFINISHED_DELIVERIES,
+  processJobWithLock,
+} from '../../../../src/worker/workerJobQueue/jobProcessor';
+import {
+  repeatedlyStalledJobMessage,
+  stalledLockHeldJobMessage,
+} from '../../../../src/worker/workerJobQueue/jobFailureClassification';
 import { hasSupportedSyncJobContractVersion } from '../../../../src/jobs/syncJobContract';
 import type { JobExecutionContext } from '../../../../src/jobs/types';
 import { registerWorkerJobQueueInternalLockConfigContracts } from './workerJobQueue.internal-lock-config.contracts';
@@ -192,6 +199,153 @@ export const registerWorkerJobQueueInternalLockContracts = (getQueue: WorkerJobQ
         message: 'Skipping job - lock held: sync:locked',
         meta: { jobId: 'j-3', lockKey: 'lock:wallet-1', walletId: 'wallet-1' },
       });
+    });
+
+    it('fails a stall-recovered job unrecoverably instead of skipping it when its lock is still held', async () => {
+      // Non-regression (prod, 2026-11-03..05): the nightly backup crashed the
+      // worker; BullMQ redelivered the stalled job, the restarted worker found
+      // the dead attempt's lock and "completed" it as skipped, so the run
+      // vanished without reaching the dead-letter queue.
+      vi.mocked(acquireLock).mockResolvedValueOnce(null);
+      const handler = vi.fn(async () => ({ ok: true }));
+      queue.registerHandler('maintenance', {
+        name: 'backup:scheduled',
+        queue: 'maintenance',
+        handler,
+        lockOptions: { lockKey: () => 'maintenance:backup:scheduled' },
+      });
+
+      const outcome = (queue as any).processJob('maintenance', {
+        id: 'repeat:maintenance:backup:scheduled:1',
+        name: 'backup:scheduled',
+        data: { retentionCount: 7 },
+        stalledCounter: 1,
+        attemptsStarted: 2,
+        attemptsMade: 0,
+      });
+
+      await expect(outcome).rejects.toMatchObject({
+        name: 'UnrecoverableError',
+        message: stalledLockHeldJobMessage('maintenance:backup:scheduled', 'maintenance:backup:scheduled'),
+      });
+      expect(handler).not.toHaveBeenCalled();
+      expect(capturedLogs).toContainEqual({
+        level: 'error',
+        message: 'Stalled job found its lock still held - failing it: maintenance:backup:scheduled',
+        meta: {
+          jobId: 'repeat:maintenance:backup:scheduled:1',
+          lockKey: 'maintenance:backup:scheduled',
+          walletId: undefined,
+          unfinishedDeliveries: 1,
+        },
+      });
+    });
+
+    it('still skips a lock-held job whose earlier stall was followed by a normal failure', async () => {
+      // BullMQ never resets stalledCounter. This delivery is an ordinary retry
+      // (one start per finished attempt), so a held lock belongs to other work.
+      vi.mocked(acquireLock).mockResolvedValueOnce(null);
+      queue.registerHandler('maintenance', {
+        name: 'retried-after-stall',
+        queue: 'maintenance',
+        handler: vi.fn(async () => ({ ok: true })),
+        lockOptions: { lockKey: () => 'maintenance:retried-after-stall' },
+      });
+
+      await expect((queue as any).processJob('maintenance', {
+        id: 'retried-after-stall-1',
+        name: 'retried-after-stall',
+        data: {},
+        stalledCounter: 1,
+        attemptsStarted: 3,
+        attemptsMade: 2,
+      })).resolves.toEqual({ skipped: true, reason: 'lock_held' });
+    });
+
+    it('keeps skipping a stalled lock-held job that carries no attempt counters', async () => {
+      // A job written before BullMQ tracked starts cannot prove its previous
+      // delivery stalled, so it keeps the old behaviour.
+      vi.mocked(acquireLock).mockResolvedValueOnce(null);
+      queue.registerHandler('maintenance', {
+        name: 'legacy-stalled',
+        queue: 'maintenance',
+        handler: vi.fn(async () => ({ ok: true })),
+        lockOptions: { lockKey: () => 'maintenance:legacy-stalled' },
+      });
+
+      await expect((queue as any).processJob('maintenance', {
+        id: 'legacy-stalled-1',
+        name: 'legacy-stalled',
+        data: {},
+        stalledCounter: 1,
+      })).resolves.toEqual({ skipped: true, reason: 'lock_held' });
+    });
+
+    it('re-runs a once-stalled job whose lock has already expired', async () => {
+      const handler = vi.fn(async () => ({ ok: true }));
+      queue.registerHandler('maintenance', {
+        name: 'stalled-once',
+        queue: 'maintenance',
+        handler,
+        lockOptions: { lockKey: () => 'maintenance:stalled-once' },
+      });
+
+      await expect((queue as any).processJob('maintenance', {
+        id: 'stalled-once-1',
+        name: 'stalled-once',
+        data: {},
+        stalledCounter: 1,
+        attemptsStarted: 2,
+        attemptsMade: 0,
+      })).resolves.toEqual({ ok: true });
+      expect(handler).toHaveBeenCalledOnce();
+    });
+
+    it('fails a crash-looping job before running it, locked or not', async () => {
+      const handler = vi.fn(async () => ({ ok: true }));
+      queue.registerHandler('maintenance', {
+        name: 'crash-loop',
+        queue: 'maintenance',
+        handler,
+      });
+
+      await expect((queue as any).processJob('maintenance', {
+        id: 'repeat:crash-loop:1',
+        name: 'crash-loop',
+        data: {},
+        stalledCounter: 2,
+        attemptsStarted: MAX_UNFINISHED_DELIVERIES + 1,
+        attemptsMade: 0,
+      })).rejects.toMatchObject({
+        name: 'UnrecoverableError',
+        message: repeatedlyStalledJobMessage('maintenance:crash-loop', MAX_UNFINISHED_DELIVERIES),
+      });
+      expect(handler).not.toHaveBeenCalled();
+      expect(acquireLock).not.toHaveBeenCalled();
+    });
+
+    it('leaves stall handling to the re-delay path for lock-retrying jobs', async () => {
+      const handler = vi.fn(async () => ({ ok: true }));
+      queue.registerHandler('sync', {
+        name: 'retrying-stalled',
+        queue: 'sync',
+        handler,
+        lockOptions: {
+          lockKey: () => 'sync:wallet:retrying-stalled',
+          retryDelayMsIfUnavailable: () => 1000,
+        },
+      });
+
+      // Re-delays skip BullMQ's attempt count, so starts run far ahead here.
+      await expect((queue as any).processJob('sync', {
+        id: 'retrying-stalled-1',
+        name: 'retrying-stalled',
+        data: {},
+        stalledCounter: 2,
+        attemptsStarted: 9,
+        attemptsMade: 0,
+      })).resolves.toEqual({ ok: true });
+      expect(handler).toHaveBeenCalledOnce();
     });
 
     it('rejects retry-owned jobs when their distributed lock is held', async () => {

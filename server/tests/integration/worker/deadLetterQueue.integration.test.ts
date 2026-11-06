@@ -23,6 +23,13 @@ import {
 } from '../../../src/jobs/syncJobContract';
 import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from '../../../src/constants/walletSyncActivation';
 import { setupWorkerEventHandlers } from '../../../src/worker/workerJobQueue/eventHandlers';
+import { processJobWithLock } from '../../../src/worker/workerJobQueue/jobProcessor';
+import {
+  initializeDistributedLock,
+  shutdownDistributedLock,
+} from '../../../src/infrastructure/distributedLock';
+import { stalledLockHeldJobMessage } from '../../../src/worker/workerJobQueue/jobFailureClassification';
+import type { HardTerminate } from '../../../src/worker/workerJobQueue/hardTermination';
 import { describeWithRedis } from '../setup/redis';
 
 const FIXTURE = resolve(
@@ -88,6 +95,12 @@ async function waitUntil(
     await new Promise((resolveWait) => setTimeout(resolveWait, 20));
   }
   throw new Error('Timed out waiting for worker outcome');
+}
+
+function createDeferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolveDeferred!: () => void;
+  const promise = new Promise<void>((resolvePromise) => { resolveDeferred = resolvePromise; });
+  return { promise, resolve: resolveDeferred };
 }
 
 function bullConnection(redisClient: Redis): ConnectionOptions {
@@ -312,6 +325,104 @@ describeWithRedis('dead letter queue Redis integration', () => {
       await queue.close();
     }
   });
+
+  it.each([
+    {
+      kind: 'one-off',
+      enqueue: (queue: Queue) => queue.add('crasher', {}, { attempts: 2 }),
+    },
+    {
+      // The prod incident: BullMQ never fails a repeatable job at its stall limit.
+      kind: 'repeatable',
+      enqueue: (queue: Queue) => queue.upsertJobScheduler(
+        'crasher-scheduler',
+        { every: 60 * 60_000 },
+        { name: 'crasher', data: {}, opts: { attempts: 2 } },
+      ),
+    },
+  ])('records a $kind job whose worker died holding its lock instead of completing it as skipped', async ({ enqueue }) => {
+    // Non-regression for the prod nightly backup: the job crashed its worker,
+    // BullMQ redelivered it, and the next worker found the dead attempt's
+    // distributed lock and completed the job as `lock_held`, so it vanished.
+    redis = new Redis(process.env.REDIS_URL!);
+    const root = createRoot();
+    const dlq = new DeadLetterQueue(
+      () => new RedisDeadLetterStore(redis!, root),
+    );
+    const queueName = `dlq-stalled-${process.pid}-${Date.now()}`;
+    const prefix = `{${queueName}}`;
+    const connection = bullConnection(redis);
+
+    // The in-process lock table is shared by both "processes"; the crashed
+    // attempt never releases its lock.
+    shutdownDistributedLock();
+    initializeDistributedLock('local');
+    const neverTerminate: HardTerminate = (exitCode) => {
+      throw new Error(`unexpected hard termination (${exitCode})`);
+    };
+    let handlerRuns = 0;
+    // Holds the "crashed" attempt open until cleanup, then lets it settle so
+    // its lock-refresh timer stops and its lock is released.
+    const releaseCrashedAttempt = createDeferred();
+    const registered = {
+      handler: async () => {
+        handlerRuns += 1;
+        await releaseCrashedAttempt.promise;
+        return 'released';
+      },
+      lockOptions: { lockKey: () => 'maintenance:crasher', lockTtlMs: 60_000 },
+    };
+    const attempts: Promise<unknown>[] = [];
+    const processor = (job: Job) => {
+      const attempt = processJobWithLock(
+        'maintenance:crasher',
+        registered,
+        job,
+        { hardTerminate: neverTerminate },
+      );
+      attempts.push(attempt);
+      return attempt;
+    };
+    const stallOptions = { connection, prefix, lockDuration: 500, stalledInterval: 250 };
+
+    const queue = new Queue(queueName, { connection, prefix });
+    const crashed = new Worker(queueName, processor, stallOptions);
+    let survivor: Worker | undefined;
+    try {
+      await enqueue(queue);
+      await waitUntil(async () => handlerRuns === 1);
+      // Simulate the process dying: stop renewing the BullMQ job lock without settling.
+      await crashed.close(true);
+
+      survivor = new Worker(queueName, processor, stallOptions);
+      setupWorkerEventHandlers(
+        queueName,
+        survivor,
+        undefined,
+        (category, sourceQueue, workerJob, error) =>
+          dlq.addExhaustedJob(category, sourceQueue, workerJob, error),
+      );
+
+      await waitUntil(async () => (await queue.getJobCounts('failed')).failed === 1, 10_000);
+      await waitUntil(async () => (await dlq.getAll()).length === 1);
+
+      expect(handlerRuns).toBe(1);
+      await expect(dlq.getAll()).resolves.toEqual([
+        expect.objectContaining({
+          operation: `${queueName}:crasher`,
+          error: stalledLockHeldJobMessage('maintenance:crasher', 'maintenance:crasher'),
+        }),
+      ]);
+    } finally {
+      await crashed.close(true);
+      await survivor?.close(true);
+      releaseCrashedAttempt.resolve();
+      await Promise.allSettled(attempts);
+      shutdownDistributedLock();
+      await queue.obliterate({ force: true });
+      await queue.close();
+    }
+  }, 20_000);
 
   it('replaces exhausted exact sync generations with live wake-ups', async () => {
     redis = new Redis(process.env.REDIS_URL!);
