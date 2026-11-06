@@ -18,6 +18,7 @@ import { syncLifecyclePublisher } from './syncLifecyclePublisher';
 import type { ConfirmationUpdate } from '../bitcoin/blockchain';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
+import { hasDurablePendingSync } from './syncIntentState';
 import {
   syncIntentAdmission,
   type IncrementalSyncAdmissionResult,
@@ -129,13 +130,6 @@ export interface NetworkSyncStatusResponse {
 type NetworkWalletSyncState = Awaited<
 ReturnType<typeof walletRepository.findByNetworkWithSyncStatus>
 >[number];
-
-function hasDurablePendingSync(wallet: NetworkWalletSyncState): boolean {
-  return wallet.requestedIncrementalSyncGeneration
-      > wallet.processedIncrementalSyncGeneration
-    || wallet.requestedFullResyncGeneration
-      > wallet.processedFullResyncGeneration;
-}
 
 function isNetworkSyncFailed(wallet: NetworkWalletSyncState): boolean {
   if (wallet.syncInProgress) return false;

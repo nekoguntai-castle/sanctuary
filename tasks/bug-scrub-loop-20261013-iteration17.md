@@ -65,7 +65,10 @@ decision, OQ-B1b by coordinator decision); the docs lines and changelog bullets 
 - **OQ-A2 — a failed recursive gap pass reported as success: DECIDED, keep the behaviour (D-17.A1d) and record P3
   `wallet-sync--recursive-gap-pass-failure-reported-as-success`.** No funds are lost: gap rows and ownership-repair
   targets are durable, and the next scheduled sync (≤ 5 min, `SYNC_INTERVAL_MS`) scans them at depth 0 and runs the
-  receive gate. Propagating would make a deep import burn all three job attempts and land in `action_required` while
+  receive gate. *(Correction, 2026-11-05: there is no scheduled sync; the stale-wallet scheduler was retired in #933.
+  The decision still holds through the activity path: the `ensure_address_subscription_checkpoint` trigger gives
+  each generated address a pending checkpoint, and enrolling one that has history raises durable sync intent. See
+  ADR 0004.)* Propagating would make a deep import burn all three job attempts and land in `action_required` while
   it is still progressing. *(coordinator, at assembly: the drafted id
   `sync-wallet--recursive-gap-sync-failure-reported-as-success` is replaced by the run-state id above.)*
 - **OQ-B1a — the admin agent form still offers funding wallets by any role: DECIDED, P3

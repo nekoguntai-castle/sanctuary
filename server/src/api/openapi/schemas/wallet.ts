@@ -61,7 +61,7 @@ export const walletSchemas = {
       },
       lastSynced: { type: 'string', format: 'date-time', nullable: true },
       syncStatus: { type: 'string', enum: ['synced', 'syncing', 'error', 'pending', 'never'] },
-      lastSyncedAt: { type: 'string', format: 'date-time', nullable: true },
+      lastSyncedAt: { type: 'string', format: 'date-time', nullable: true, description: 'Completion time of the last wallet-history pass. Sync is activity-driven, so this stays old on a quiet wallet that is current.' },
       lastSyncStatus: { type: 'string', nullable: true },
       lastSyncError: { type: 'string', nullable: true },
       lastSyncFailureClass: {

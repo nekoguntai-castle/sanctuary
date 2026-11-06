@@ -132,7 +132,9 @@ export function registerMcpPrompts(server: McpServer): void {
         [
           `Evaluate overall health for wallet ${args.walletId}.`,
           `Use sanctuary://wallets/${args.walletId}, /balance, /utxos, /transactions, /policies, and /insights resources.`,
-          'Cover sync freshness, UTXO distribution, address reuse indicators, policy posture, and active insights.',
+          'Cover sync state, UTXO distribution, address reuse indicators, policy posture, and active insights.',
+          'Sync follows the chain tip and address activity, never elapsed time. sync.lastSyncedAt and sync.lastSyncedBlockHeight move only on wallet creation, address activity (including activity missed across a reconnect), a manual or retry sync, or a full resync, so old values on a quiet wallet are expected and do not mean it is behind.',
+          'Report sync.lastSyncStatus and sync.inProgress; pending sync intent and action-required state are not part of this resource, so do not infer them.',
           'Keep the output advisory, read-only, and explicit about stale or missing source data.',
         ].join('\n')
       );

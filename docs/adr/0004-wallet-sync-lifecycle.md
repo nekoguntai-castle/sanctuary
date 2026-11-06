@@ -12,8 +12,8 @@
 ## Context
 
 Sanctuary entered this transition with both worker and API-process wallet
-synchronization paths. It also schedules `check-stale-wallets`, selects wallets
-from the age of `lastSyncedAt`, and creates timestamped child jobs. That policy
+synchronization paths. It also scheduled `check-stale-wallets`, selected wallets
+from the age of `lastSyncedAt`, and created timestamped child jobs. That policy
 converts elapsed wall-clock time into wallet-history work even when the chain
 and every watched address are quiet. Multiple execution and subscription owners
 also make it hard to prove that activity is coalesced without being lost.
@@ -194,6 +194,17 @@ requested/prepared/processed generations. The retired local queue position is
 always null. Support packages expose only bounded aggregate counts and coarse
 drift buckets; they never include wallet identity, exact generations, timestamps,
 or lease tokens and are not authority for live Redis execution ownership.
+
+Because no pass runs on elapsed time, `lastSyncedAt` and
+`lastSyncedBlockHeight` record only the last wallet-history pass. They stay old
+on a quiet wallet that is current, and neither they nor the support package's
+`lastSyncAgeBuckets` are a freshness signal. Currency is judged from the
+network header checkpoint, address subscription checkpoints, and
+requested-versus-processed generations; the status endpoint's `isStale` is true
+only for a never-synced wallet or unprocessed requested work. A component that
+needs a wallet re-synced after a failure must raise durable intent, not wait
+for a timer. The operator checks are in
+[Is sync current?](../how-to/operations-runbooks.md#is-sync-current).
 
 ### Re-admission after activation
 

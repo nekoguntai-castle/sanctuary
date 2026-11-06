@@ -176,7 +176,7 @@ groups:
           severity: warning
         annotations:
           summary: "Wallet sync cleanup failed"
-          description: "Stale wallet reconciliation reported a cleanup error."
+          description: "Stuck wallet sync flag reconciliation reported a cleanup error."
 
       # Conservative until canary evidence supports a tighter timeout threshold.
       - alert: WalletSyncRepeatedTimeouts

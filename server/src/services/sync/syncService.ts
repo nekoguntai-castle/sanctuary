@@ -17,6 +17,7 @@ import { syncPollingModeTransitions } from '../../observability/metrics';
 import type { SyncExecutionOwner, SyncPriority } from '@sanctuary/shared/constants/sync';
 import type { SyncState, SyncResult, SyncHealthMetrics, PollingMode } from './types';
 import { classifyWalletSyncFailure } from './failureClassification';
+import { hasDurablePendingSync } from './syncIntentState';
 import { clearStuckSyncIfAuthorized } from './staleWalletChecker';
 import {
   refreshAllPendingConfirmations,
@@ -230,9 +231,9 @@ class SyncService {
       throw new Error('Wallet not found');
     }
 
-    const { staleThresholdMs } = getConfig().sync;
-    const isStale = !wallet.lastSyncedAt ||
-      (Date.now() - wallet.lastSyncedAt.getTime()) > staleThresholdMs;
+    // Sync is activity-driven (ADR 0004): a quiet wallet's lastSyncedAt stays
+    // old while it is current. Stale means durable intent is still unprocessed.
+    const isStale = !wallet.lastSyncedAt || hasDurablePendingSync(wallet);
 
     return {
       lastSyncedAt: wallet.lastSyncedAt,
@@ -352,8 +353,9 @@ class SyncService {
 
     // The retry ladder is an in-heap timer, so this restart just discarded every
     // pending retry. A row left at 'retrying' is selected by no reaper and shows
-    // "Retrying" over work nothing is doing; demoting it to 'failed' both tells
-    // the truth and returns the wallet to findStale's population.
+    // "Retrying" over work nothing is doing; demoting it to 'failed' tells the
+    // truth so a manual or dead-letter retry can reopen it. Nothing re-syncs it
+    // on elapsed time (ADR 0004).
     try {
       const reason = 'Sync retry was interrupted by a restart and did not resume';
       const demoted = await walletRepository.demoteStrandedInlineRetries(

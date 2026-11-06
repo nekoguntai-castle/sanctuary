@@ -102,7 +102,7 @@ Run the smallest relevant subset for each release that changes the touched area.
 | Scenario | Minimum run | Required capture |
 | --- | --- | --- |
 | Large wallet list and transaction history | Load a wallet list and transaction history using a documented privacy-safe fixture size | HTTP p95/p99 by route, DB p95 by operation, frontend responsiveness notes |
-| Wallet sync | Trigger sync on stale wallets across an operator-owned testnet/regtest fixture or generated address/transaction set | Sync p95/p99, failure ratio, Electrum health, worker queue depth |
+| Wallet sync | Trigger manual syncs or full resyncs across an operator-owned testnet/regtest fixture or generated address/transaction set | Sync p95/p99, failure ratio, Electrum health, worker queue depth |
 | WebSocket fanout | Maintain multiple clients subscribed to wallet updates while triggering sync or transaction events | Connection count, message rates, rate-limit hits, Redis bridge errors |
 | Queue processing | Enqueue privacy-safe sync, notification, maintenance, autopilot, and intelligence jobs | Queue depth, job processing p95, failed/stalled jobs |
 | Backup/restore | Validate and restore a generated or approved backup near the intended support size in non-production | Duration, memory/disk observations, HTTP status, restore validation result |

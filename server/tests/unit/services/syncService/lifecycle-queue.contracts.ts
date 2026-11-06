@@ -169,14 +169,57 @@ export function registerSyncServiceLifecycleQueueTests(context: SyncServiceTestC
       });
     });
 
-    it('should detect stale wallets', async () => {
-      context.syncService['isRunning'] = true;
-
-      const oldDate = new Date(Date.now() - 600000); // 10 minutes ago
+    // ADR 0004: elapsed time is not a wallet-history trigger, so an old
+    // lastSyncedAt on a quiet wallet is current, not stale.
+    it('does not report a quiet wallet as stale because lastSyncedAt is old', async () => {
       mockPrismaClient.wallet.findUnique.mockResolvedValue({
-        lastSyncedAt: oldDate,
+        lastSyncedAt: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000),
         lastSyncStatus: 'success',
         syncInProgress: false,
+        requestedIncrementalSyncGeneration: 3,
+        processedIncrementalSyncGeneration: 3,
+        requestedFullResyncGeneration: 1,
+        processedFullResyncGeneration: 1,
+      });
+
+      const status = await context.syncService.getSyncStatus('wallet-1');
+
+      expect(status.isStale).toBe(false);
+    });
+
+    // Blocked is not behind: action-required is reported by its own field.
+    it('does not fold action-required into isStale', async () => {
+      const actionRequiredAt = new Date('2026-11-01T00:00:00.000Z');
+      mockPrismaClient.wallet.findUnique.mockResolvedValue({
+        lastSyncedAt: new Date(),
+        lastSyncStatus: 'failed',
+        syncInProgress: false,
+        syncActionRequiredAt: actionRequiredAt,
+        requestedIncrementalSyncGeneration: 3,
+        processedIncrementalSyncGeneration: 3,
+        requestedFullResyncGeneration: 1,
+        processedFullResyncGeneration: 1,
+      });
+
+      const status = await context.syncService.getSyncStatus('wallet-1');
+
+      expect(status).toMatchObject({ isStale: false, syncActionRequiredAt: actionRequiredAt });
+    });
+
+    it.each([
+      ['never synced', { lastSyncedAt: null }],
+      ['incremental intent unprocessed', { requestedIncrementalSyncGeneration: 4 }],
+      ['full resync unprocessed', { requestedFullResyncGeneration: 2 }],
+    ])('reports stale when %s', async (_label, override) => {
+      mockPrismaClient.wallet.findUnique.mockResolvedValue({
+        lastSyncedAt: new Date(),
+        lastSyncStatus: 'success',
+        syncInProgress: false,
+        requestedIncrementalSyncGeneration: 3,
+        processedIncrementalSyncGeneration: 3,
+        requestedFullResyncGeneration: 1,
+        processedFullResyncGeneration: 1,
+        ...override,
       });
 
       const status = await context.syncService.getSyncStatus('wallet-1');

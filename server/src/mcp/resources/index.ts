@@ -96,7 +96,7 @@ export function registerMcpResources(server: McpServer): void {
     }),
     {
       title: 'Wallet Detail',
-      description: 'Wallet metadata and sync status',
+      description: 'Wallet metadata and sync status. Sync is activity-driven: sync.lastSyncedAt stays old on a quiet wallet that is current.',
       mimeType: 'application/json',
     },
     async (uri, variables, extra) => {

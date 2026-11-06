@@ -288,8 +288,8 @@ async function bridgeRetainedSyncWalletJob(
  *
  * Recovers from a crashed worker or a failed error-path write leaving the flag
  * set forever. The lock probe matters: findStuckWithCutoff's
- * `lastSyncedAt IS NULL` arm has no time bound, so a full resync - which nulls
- * that column before it starts - matches within seconds of beginning.
+ * `syncStartedAt IS NULL` arm has no time bound, so a legacy row that predates
+ * the attempt clock matches as soon as it is marked in progress.
  */
 async function resetStuckSyncFlags(maxSyncDurationMs: number): Promise<void> {
   const stuckCutoff = new Date(Date.now() - maxSyncDurationMs);

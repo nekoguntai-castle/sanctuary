@@ -5,6 +5,14 @@ Date: 2026-08-19
 Target: remote v0.8.64 install — 3 wallets stuck "not syncing", "Full resync"
 silently no-ops, "Resync all" leaves wallets unspun.
 
+> **Superseded scheduler model.** This plan predates the retirement of the
+> `check-stale-wallets` scheduler (#933). Its references to `findStale`,
+> stale-wallet ticks, `SYNC_INTERVAL_MS`, and an elapsed-time `isStale` describe
+> the old periodic model. Sync is now activity-driven
+> ([ADR 0004](../adr/0004-wallet-sync-lifecycle.md)): an old `lastSyncedAt` on a
+> quiet wallet is expected. To judge whether sync is current, use
+> [Is sync current?](../how-to/operations-runbooks.md#is-sync-current).
+
 ## Delivery status
 
 §3 is written as a to-do list. Most of it shipped in **#846**; four items did

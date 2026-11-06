@@ -268,6 +268,7 @@ export interface WalletSyncStatus {
   lastSyncedAt: string | null;
   syncStatus: string | null;
   syncInProgress: boolean;
+  /** Never synced, or requested incremental/full-resync work is unprocessed. Never elapsed time; action-required is reported separately. */
   isStale: boolean;
   queuePosition: number | null;
   executionOwner: SyncExecutionOwner | null;

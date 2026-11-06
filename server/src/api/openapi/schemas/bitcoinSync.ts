@@ -124,10 +124,18 @@ export const syncSchemas = {
   WalletSyncStatus: {
     type: "object",
     properties: {
-      lastSyncedAt: { type: "string", format: "date-time", nullable: true },
+      lastSyncedAt: {
+        type: "string",
+        format: "date-time",
+        nullable: true,
+        description: "Completion time of the last wallet-history pass. Sync is activity-driven, so this stays old on a quiet wallet that is current.",
+      },
       syncStatus: { type: "string", nullable: true },
       syncInProgress: { type: "boolean" },
-      isStale: { type: "boolean" },
+      isStale: {
+        type: "boolean",
+        description: "True when the wallet never synced or has requested incremental or full-resync work not yet processed. Elapsed time never makes a wallet stale. Blocked (action-required) and failed attempts are reported by syncActionRequiredAt and syncStatus, not by this flag.",
+      },
       queuePosition: { type: "integer", nullable: true, minimum: 0 },
       executionOwner: {
         type: "string",

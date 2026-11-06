@@ -58,7 +58,9 @@ latency for the three worker endpoints without gating them. It exits 2 only
 when the backend or every worker IP fails `/live`, and 0 otherwise.
 
 To check the receipt's latency gates before a canary, run the bounded,
-read-only sampling mode **during a scheduled sync**. It starts no sync itself.
+read-only sampling mode **while a sync is running** (for example, one you
+started manually or the canary's own fleet sync). It starts no sync itself.
+Wallet sync has no periodic schedule to wait for.
 
 ```bash
 CANARY_SELFTEST_SAMPLES=300 node scripts/release/canary/canary-selftest.mjs

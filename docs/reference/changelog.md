@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - CI: the critical mutation gate's shard 1 ran 38-59 minutes against its 60-minute deadline and timed out on busy runner hosts, while shard 2 finished in about 75 seconds. `xpubConversion.ts`, about 55% of shard 1's test executions, now runs in shard 2, so no shard is expected to need more than about 30 minutes uncontended.
 
+### Fixed
+
+- Wallet sync status no longer marks a quiet wallet stale because time has passed. `isStale` on `GET /sync/status/:walletId` is now true only for a never-synced wallet or unprocessed requested sync work, matching the tip- and activity-driven sync model (ADR 0004). The ADR, operations runbook ("Is sync current?"), OpenAPI descriptions, schema comments and MCP wallet-health prompt now say that an old `lastSyncedAt` on a quiet wallet is expected.
+
 ## [0.8.84] - 2026-11-05
 
 ### Fixed

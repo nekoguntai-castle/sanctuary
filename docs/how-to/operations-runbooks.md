@@ -183,6 +183,38 @@ Mitigation:
 - If the worker is unhealthy or stuck, inspect queue and worker logs before restart.
 - Avoid repeatedly forcing full resyncs until Electrum health and worker ownership are understood.
 
+### Is sync current?
+
+Wallet sync follows the chain tip and address activity; it is not periodic
+([ADR 0004](../adr/0004-wallet-sync-lifecycle.md)). The `check-stale-wallets`
+scheduler was retired in #933. Once the retirement cutover has run (a
+`system_settings` row with key
+`operational.wallet-sync.check-stale-wallets-forbidden.v1` exists), nothing
+re-syncs a wallet because time has passed.
+
+**Do not judge sync from `wallets.lastSyncedAt` or `lastSyncedBlockHeight`.**
+They record the last wallet-history pass, which runs only on wallet creation,
+address activity (including activity missed across a reconnect), a manual or
+retry sync, or a full resync. On a wallet with no recent transactions they stay
+days or weeks old while the wallet is fully current. A `lastSyncedBlockHeight` far below the chain tip is expected. The
+support package's `lastSyncAgeBuckets` is built from the same column and has
+the same limit.
+
+Sync is current when all of these hold:
+
+| Check | Where | Current means |
+| --- | --- | --- |
+| Chain tip | `network_header_checkpoints` | `lastProcessedHeight` equals the network tip (e.g. mempool.space), `observedAt` is recent, `coverageGapStartedAt` is null |
+| Address subscriptions | `address_subscription_checkpoints` | `processedEnrollmentGeneration >= requestedEnrollmentGeneration` and `coverageGapStartedAt` is null |
+| Wallet intent | `wallets` | `processedIncrementalSyncGeneration = requestedIncrementalSyncGeneration`, `processedFullResyncGeneration = requestedFullResyncGeneration`, `syncActionRequiredAt` is null |
+| Last attempt | `wallets.lastSyncStatus` | `success` |
+
+`GET /api/v1/sync/status/:walletId` reports `isStale` when the wallet never
+synced or has unprocessed requested work, never from elapsed time. A blocked
+wallet is reported separately by `syncActionRequiredAt`, and a failed attempt by
+`syncStatus`. The support package's `incremental`, `fullResync`, and
+`actionRequired` sections cover the same checks in aggregate.
+
 ### Full resync
 
 A full resync (wallet or network) deletes the wallet's transaction rows and

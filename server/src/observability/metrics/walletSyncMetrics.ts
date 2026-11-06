@@ -143,7 +143,7 @@ const lockLossTotal = new Counter({
 
 const cleanupTotal = new Counter({
   name: 'sanctuary_wallet_sync_cleanup_total',
-  help: 'Stale wallet sync reconciliation decisions by fixed outcome',
+  help: 'Stuck wallet sync flag reconciliation decisions by fixed outcome',
   labelNames: ['outcome'],
   registers: [registry],
 });

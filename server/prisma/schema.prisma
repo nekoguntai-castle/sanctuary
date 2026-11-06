@@ -140,9 +140,14 @@ model Wallet {
   groupId   String?
   groupRole String  @default("viewer") // Role for group members: owner, approver, signer, viewer
 
-  // Sync metadata - for caching layer
-  lastSyncedAt          DateTime? // Last successful full sync
-  lastSyncedBlockHeight Int?      // Block height at last successful sync
+  // Sync metadata. Sync follows the chain tip and address activity, never elapsed
+  // time (docs/adr/0004-wallet-sync-lifecycle.md). These two record the last
+  // wallet-history pass, which runs only on wallet creation, address activity
+  // (including activity missed across a reconnect), a manual or retry sync, or a
+  // full resync. On a quiet wallet they stay old while the wallet is current;
+  // chain-tip progress lives in NetworkHeaderCheckpoint.
+  lastSyncedAt          DateTime? // Completion time of the last wallet-history pass
+  lastSyncedBlockHeight Int?      // Cached tip height when that pass completed (not the current tip)
   lastSyncStatus        String?   // success, failed, partial
   lastSyncError         String?   // Error message if failed
   lastSyncFailureClass  String?   // Bounded machine-readable failure classification
@@ -188,8 +193,8 @@ model Wallet {
   @@index([syncInProgress]) // For sync service startup & scheduling
   @@index([syncExecutionOwner, syncInProgress]) // For owner-specific restart recovery
   @@index([lastSyncStatus, syncNextRetryAt]) // For durable retry scheduling
-  @@index([lastSyncedAt]) // For stale wallet detection
-  @@index([network, syncInProgress, lastSyncedAt]) // For stale wallet queries by network
+  @@index([lastSyncedAt]) // Legacy stale-wallet selection (pre-retirement compatibility only)
+  @@index([network, syncInProgress, lastSyncedAt]) // Legacy stale-wallet selection (pre-retirement compatibility only)
   @@map("wallets")
 }
 
