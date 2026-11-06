@@ -121,6 +121,8 @@ import { circuitBreakerRegistry } from '../../../src/services/circuitBreaker';
 
 const ENABLED = ['mempool', 'coingecko'];
 const HEALTH_CACHE_TTL_MS = 30_000;
+/** CoinGecko reuses one batched spot response this long (providers/coingecko.ts) */
+const COINGECKO_SPOT_BATCH_TTL_MS = 60_000;
 
 function respondWithPrices(url: string) {
   if (url.includes('mempool.space')) {
@@ -166,7 +168,10 @@ describe('PriceService.healthCheck (bounded public probe)', () => {
 
   it('refreshes a stale cache with one upstream call per provider for concurrent callers', async () => {
     const realNow = Date.now();
-    vi.spyOn(Date, 'now').mockReturnValue(realNow + HEALTH_CACHE_TTL_MS + 1);
+    // Past both the health cache and CoinGecko's batched spot response
+    vi.spyOn(Date, 'now').mockReturnValue(
+      realNow + Math.max(HEALTH_CACHE_TTL_MS, COINGECKO_SPOT_BATCH_TTL_MS) + 1
+    );
 
     const results = await fireConcurrentHealthChecks(service, 5);
 

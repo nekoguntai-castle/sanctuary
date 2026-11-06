@@ -1,11 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 
-vi.mock('axios', () => ({
-  default: {
-    get: vi.fn(),
-  },
-}));
+vi.mock('axios', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('axios')>();
+  return {
+    ...actual,
+    default: {
+      get: vi.fn(),
+    },
+  };
+});
 
 vi.mock('../../../../src/utils/logger', () => ({
   createLogger: () => ({
@@ -42,13 +46,100 @@ function requestedHistoryDate(): unknown {
   return (vi.mocked(axios.get).mock.calls[0]?.[1] as { params?: { date?: string } })?.params?.date;
 }
 
+const ALL_VS_CURRENCIES = 'usd,eur,gbp,cad,chf,aud,jpy,cny,krw,inr';
+
+function spotPriceCalls(): unknown[][] {
+  return vi
+    .mocked(axios.get)
+    .mock.calls.filter(([url]) => url === 'https://api.coingecko.com/api/v3/simple/price');
+}
+
 describe('CoinGeckoPriceProvider', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(axios.get).mockReset();
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  // Non-regression: one simple/price request per currency per refresh pushed
+  // the per-minute snapshot job (10 currencies) past CoinGecko's public rate
+  // limit, so prod got HTTP 429 and CNY (CoinGecko-only) prices failed.
+  it('serves concurrent requests for different currencies from one batched request', async () => {
+    vi.mocked(axios.get).mockResolvedValue({
+      data: {
+        bitcoin: {
+          usd: 50000,
+          usd_24h_change: 1.5,
+          eur: 46000,
+          cny: 360000,
+          cny_24h_change: -0.25,
+        },
+      },
+    } as any);
+
+    const provider = new CoinGeckoPriceProvider({ registerCircuitBreaker: false });
+    const [usd, eur, cny] = await Promise.all([
+      provider.getPrice('USD'),
+      provider.getPrice('EUR'),
+      provider.getPrice('CNY'),
+    ]);
+
+    expect(spotPriceCalls()).toHaveLength(1);
+    expect(usd).toMatchObject({ price: 50000, currency: 'USD', change24h: 1.5 });
+    expect(eur).toMatchObject({ price: 46000, currency: 'EUR', change24h: undefined });
+    expect(cny).toMatchObject({ price: 360000, currency: 'CNY', change24h: -0.25 });
+  });
+
+  it('reuses the batched spot prices for the batch TTL and refetches after it', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-05T00:00:00.000Z'));
+    vi.mocked(axios.get).mockResolvedValue({
+      data: { bitcoin: { usd: 50000, cny: 360000 } },
+    } as any);
+
+    const provider = new CoinGeckoPriceProvider({ registerCircuitBreaker: false });
+    await provider.getPrice('USD');
+    vi.setSystemTime(new Date('2026-11-05T00:00:59.000Z'));
+    // A reused batch reports when it was fetched, not when it was read
+    await expect(provider.getPrice('CNY')).resolves.toMatchObject({
+      timestamp: new Date('2026-11-05T00:00:00.000Z'),
+    });
+    // The registry health check probes USD; it must not cost a request either.
+    await expect(provider.healthCheck()).resolves.toBe(true);
+    expect(spotPriceCalls()).toHaveLength(1);
+
+    vi.setSystemTime(new Date('2026-11-05T00:01:00.000Z'));
+    await provider.getPrice('CNY');
+    expect(spotPriceCalls()).toHaveLength(2);
+  });
+
+  it('does not cache a failed batch request', async () => {
+    vi.mocked(axios.get)
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce({ data: { bitcoin: { cny: 360000 } } } as any);
+
+    const provider = new CoinGeckoPriceProvider({ registerCircuitBreaker: false });
+    await expect(provider.getPrice('CNY')).rejects.toThrow('network down');
+    await expect(provider.getPrice('CNY')).resolves.toMatchObject({ price: 360000 });
+    expect(spotPriceCalls()).toHaveLength(2);
+  });
+
+  it('skips the market chart circuit breaker while rate limited', async () => {
+    const rateLimited = new AxiosError('Request failed with status code 429');
+    rateLimited.response = { status: 429, headers: {} } as AxiosError['response'];
+    vi.mocked(axios.get).mockRejectedValueOnce(rateLimited);
+
+    const provider = new CoinGeckoPriceProvider({ registerCircuitBreaker: false });
+    await expect(provider.getPrice('USD')).rejects.toThrow('HTTP request failed');
+    const chartExecute = vi.spyOn((provider as any).marketChartCircuit, 'execute');
+
+    await expect(provider.getPriceHistory(1, 'USD')).rejects.toThrow('coingecko is rate limited');
+    expect(chartExecute).not.toHaveBeenCalled();
+    expect(axios.get).toHaveBeenCalledTimes(1);
   });
 
   it('fetches current price with rounded 24h change', async () => {
@@ -77,7 +168,7 @@ describe('CoinGeckoPriceProvider', () => {
       expect.objectContaining({
         params: expect.objectContaining({
           ids: 'bitcoin',
-          vs_currencies: 'usd',
+          vs_currencies: ALL_VS_CURRENCIES,
           include_24hr_change: true,
         }),
       })

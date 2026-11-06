@@ -7,6 +7,7 @@
  */
 
 import { createCircuitBreaker, CircuitBreaker } from '../../circuitBreaker';
+import { singleFlight } from '../../../utils/async';
 import { BasePriceProvider } from './base';
 import type { PriceProviderRuntimeOptions } from './base';
 import type { IPriceProviderWithHistory, PriceData, PriceHistoryPoint } from '../types';
@@ -16,6 +17,18 @@ interface CoinGeckoPriceResponse {
   bitcoin: {
     [currency: string]: number;
   };
+}
+
+/**
+ * How long one batched simple/price response serves every currency. CoinGecko's
+ * keyless tier allows only a few requests per minute per IP, so all currencies
+ * and the registry health probe share a single request per window.
+ */
+const SPOT_BATCH_TTL_MS = 60_000;
+
+interface SpotBatch {
+  data: CoinGeckoPriceResponse;
+  fetchedAt: number;
 }
 
 interface CoinGeckoHistoryResponse {
@@ -32,6 +45,9 @@ interface CoinGeckoMarketChartResponse {
 
 export class CoinGeckoPriceProvider extends BasePriceProvider implements IPriceProviderWithHistory {
   private marketChartCircuit: CircuitBreaker<PriceHistoryPoint[]>;
+  private spotBatch: SpotBatch | null = null;
+  private spotBatchRequests = new Map<string, Promise<SpotBatch>>();
+  private readonly vsCurrencies: string;
 
   constructor(options: PriceProviderRuntimeOptions = {}) {
     super({
@@ -40,6 +56,7 @@ export class CoinGeckoPriceProvider extends BasePriceProvider implements IPriceP
       supportedCurrencies: ['USD', 'EUR', 'GBP', 'CAD', 'CHF', 'AUD', 'JPY', 'CNY', 'KRW', 'INR'],
       registerCircuitBreaker: options.registerCircuitBreaker,
     });
+    this.vsCurrencies = this.supportedCurrencies.map((c) => c.toLowerCase()).join(',');
 
     const marketChartCircuitConfig = {
       name: 'price-coingecko-chart',
@@ -55,14 +72,7 @@ export class CoinGeckoPriceProvider extends BasePriceProvider implements IPriceP
   protected async fetchPrice(currency: string): Promise<PriceData> {
     const currencyLower = currency.toLowerCase();
 
-    const data = await this.httpGet<CoinGeckoPriceResponse>(
-      'https://api.coingecko.com/api/v3/simple/price',
-      {
-        ids: 'bitcoin',
-        vs_currencies: currencyLower,
-        include_24hr_change: true,
-      }
-    );
+    const { data, fetchedAt } = await this.getSpotBatch();
 
     const price = data.bitcoin?.[currencyLower];
     const change24hKey = `${currencyLower}_24h_change` as keyof typeof data.bitcoin;
@@ -76,9 +86,32 @@ export class CoinGeckoPriceProvider extends BasePriceProvider implements IPriceP
       provider: this.name,
       price,
       currency,
-      timestamp: new Date(),
+      timestamp: new Date(fetchedAt),
       change24h: change24h !== undefined ? parseFloat(change24h.toFixed(2)) : undefined,
     };
+  }
+
+  /**
+   * Spot prices for every supported currency from one simple/price request,
+   * reused for SPOT_BATCH_TTL_MS and shared by concurrent callers.
+   */
+  private async getSpotBatch(): Promise<SpotBatch> {
+    if (this.spotBatch && Date.now() - this.spotBatch.fetchedAt < SPOT_BATCH_TTL_MS) {
+      return this.spotBatch;
+    }
+
+    return singleFlight(this.spotBatchRequests, 'spot', async () => {
+      const data = await this.httpGet<CoinGeckoPriceResponse>(
+        'https://api.coingecko.com/api/v3/simple/price',
+        {
+          ids: 'bitcoin',
+          vs_currencies: this.vsCurrencies,
+          include_24hr_change: true,
+        }
+      );
+      this.spotBatch = { data, fetchedAt: Date.now() };
+      return this.spotBatch;
+    });
   }
 
   /**
@@ -125,6 +158,7 @@ export class CoinGeckoPriceProvider extends BasePriceProvider implements IPriceP
    * Get price history over a date range
    */
   async getPriceHistory(days: number, currency: string): Promise<PriceHistoryPoint[]> {
+    this.assertNotRateLimited();
     return this.marketChartCircuit.execute(async () => {
       const currencyLower = currency.toLowerCase();
 
