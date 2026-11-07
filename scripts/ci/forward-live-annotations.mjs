@@ -33,6 +33,10 @@ const CLEANUP_STATUS_BY_STATE = Object.freeze({
 const TIMING_RE = /^::(notice|error) title=CI timing::.+ completed in [0-9]+m [0-9]+s \([0-9]+s\)( with exit code [0-9]+)?$/;
 const WARNING_BUDGET_RE = /^::warning title=CI performance budget::.+ took [0-9]+s; warning budget is [0-9]+s$/;
 const HARD_BUDGET_RE = /^::error title=CI performance budget::.+ took [0-9]+s; hard budget is [0-9]+s$/;
+const BROWSER_CPU_PREFIX = '::notice title=CI browser CPU::browser child cpu.stat ';
+const BROWSER_CPU_RE = /^::notice title=CI browser CPU::browser child cpu\.stat (usage_usec=[0-9]+ nr_throttled=[0-9]+ throttled_usec=[0-9]+|unavailable \([A-Za-z0-9 .,:_/-]{1,200}\))$/;
+const BROWSER_CPU_REASON_UNSAFE = /[^A-Za-z0-9 .,:_/-]+/g;
+const BROWSER_CPU_REASON_MAX = 200;
 
 function exactFields(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -103,7 +107,8 @@ export function lifecycleAnnotation(line) {
 }
 
 export function liveAnnotation(line) {
-  if (TIMING_RE.test(line) || WARNING_BUDGET_RE.test(line) || HARD_BUDGET_RE.test(line)) {
+  if (TIMING_RE.test(line) || WARNING_BUDGET_RE.test(line) || HARD_BUDGET_RE.test(line)
+      || BROWSER_CPU_RE.test(line)) {
     return line;
   }
   return lifecycleAnnotation(line);
@@ -128,6 +133,18 @@ export async function forwardLiveAnnotations(input, output, liveOutput) {
       }
     }
   }
+}
+
+// The unavailable reason is free engine text, so it is reduced to the inert character set the
+// live allowlist accepts; the unreduced reason stays in the browser report.
+export function browserCpuNotice({ cpuThrottling, reason }) {
+  if (cpuThrottling) {
+    const { usage_usec: usage, nr_throttled: periods, throttled_usec: throttled } = cpuThrottling;
+    return `${BROWSER_CPU_PREFIX}usage_usec=${usage} nr_throttled=${periods} throttled_usec=${throttled}`;
+  }
+  const safe = String(reason ?? '').replace(BROWSER_CPU_REASON_UNSAFE, ' ').replace(/ +/g, ' ')
+    .trim().slice(0, BROWSER_CPU_REASON_MAX).trim();
+  return `${BROWSER_CPU_PREFIX}unavailable (${safe || 'unknown'})`;
 }
 
 export function lifecycleCandidate(value) {

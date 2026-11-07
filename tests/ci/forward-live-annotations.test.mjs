@@ -4,7 +4,7 @@ import path from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import test from 'node:test';
 import {
-  forwardLiveAnnotations, lifecycleAnnotation, lifecycleCandidate, liveAnnotation,
+  browserCpuNotice, forwardLiveAnnotations, lifecycleAnnotation, lifecycleCandidate, liveAnnotation,
 } from '../../scripts/ci/forward-live-annotations.mjs';
 import { subjectTerminalStatus } from '../../scripts/ownership/ci-cleanup-coordinator.mjs';
 
@@ -98,6 +98,45 @@ test('unrelated workflow commands are never promoted to the live stream', () => 
     '::notice title=CI lifecycle::{"schema_version":1}',
     '::warning title=unrelated::message',
   ]) assert.equal(liveAnnotation(line), null);
+});
+
+test('browser CPU evidence reaches the live stream only in its fixed shapes', () => {
+  for (const line of [
+    '::notice title=CI browser CPU::browser child cpu.stat usage_usec=412000000 nr_throttled=0 throttled_usec=0',
+    '::notice title=CI browser CPU::browser child cpu.stat unavailable (engine stats timed out after 3000ms)',
+    '::notice title=CI browser CPU::browser child cpu.stat unavailable (browser container never started)',
+  ]) assert.equal(liveAnnotation(line), line);
+  for (const line of [
+    '::notice title=CI browser CPU::browser child cpu.stat usage_usec=1 nr_throttled=x throttled_usec=0',
+    '::notice title=CI browser CPU::browser child cpu.stat usage_usec=1 nr_throttled=0 throttled_usec=0 extra',
+    '::notice title=CI browser CPU::browser child cpu.stat unavailable (<redacted>)',
+    '::notice title=CI browser CPU::browser child cpu.stat unavailable (100%)',
+    '::notice title=CI browser CPU::browser child cpu.stat unavailable ()',
+    `::notice title=CI browser CPU::browser child cpu.stat unavailable (${'a'.repeat(201)})`,
+    '::error title=CI browser CPU::browser child cpu.stat usage_usec=1 nr_throttled=0 throttled_usec=0',
+  ]) assert.equal(liveAnnotation(line), null);
+});
+
+test('every browser CPU notice the emitter builds is forwarded live', () => {
+  const engine404 = 'engine API GET /v1.41/containers/abc/stats?stream=false&one-shot=true returned 404: {"message":"No such container (abc)"}';
+  for (const result of [
+    { cpuThrottling: { usage_usec: 237096124, nr_throttled: 0, throttled_usec: 0 } },
+    { cpuThrottling: null, reason: engine404 },
+    { cpuThrottling: null, reason: `${'x'.repeat(300)}<%>` },
+    { cpuThrottling: null, reason: '' },
+    { cpuThrottling: null, reason: '\n::error::injected' },
+  ]) {
+    const notice = browserCpuNotice(result);
+    assert.equal(liveAnnotation(notice), notice, notice);
+  }
+  assert.equal(
+    browserCpuNotice({ cpuThrottling: null, reason: engine404 }),
+    '::notice title=CI browser CPU::browser child cpu.stat unavailable (engine API GET /v1.41/containers/abc/stats stream false one-shot true returned 404: message : No such container abc)',
+  );
+  assert.equal(
+    browserCpuNotice({ cpuThrottling: null, reason: '' }),
+    '::notice title=CI browser CPU::browser child cpu.stat unavailable (unknown)',
+  );
 });
 
 test('diagnostic forwarding honors output backpressure without dropping lines', async () => {

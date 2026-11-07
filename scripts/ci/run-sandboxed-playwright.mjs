@@ -2,6 +2,7 @@
 // Execute a caller-selected test command against Chromium in a no-socket sibling.
 import { createHash, randomUUID } from 'node:crypto';
 import { formatBrowserError, createBrowserErrorRedactor } from '../lib/browser-sandbox-contract.mjs';
+import { browserCpuNotice } from './forward-live-annotations.mjs';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -318,11 +319,8 @@ export async function readBrowserCpuThrottling(context, api, timeoutMs = CPU_STA
   }
 }
 
-function printCpuThrottling({ cpuThrottling, reason }) {
-  const detail = cpuThrottling
-    ? `usage_usec=${cpuThrottling.usage_usec} nr_throttled=${cpuThrottling.nr_throttled} throttled_usec=${cpuThrottling.throttled_usec}`
-    : `unavailable (${reason})`;
-  process.stdout.write(`::notice title=CI browser CPU::browser child cpu.stat ${detail}\n`);
+function printCpuThrottling(throttling) {
+  process.stdout.write(`${browserCpuNotice(throttling)}\n`);
 }
 
 async function createOwnedBrowserContainer(context, api, command, signal, registerContainer) {

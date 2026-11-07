@@ -122,6 +122,10 @@ measurements. Don't raise the budget without that evidence.
 
 The acceptance runs (three green runs, one co-scheduled with a mutation job) can only be observed after merge. The new `CI browser CPU` notice and report field give the throttled time for each.
 
+Run 1 (#1476's own PR run 22696, job 281614, head cc8e5677b): green. The groups took 157 s (admin-auth), 157 s (wallet-lifecycle, 83 s under its 240 s budget), 142 s (wallet-transactions) and 136 s (wallet-experience). The one report left in `playwright-results-browser` (wallet-experience) records `usage_usec=237096124 nr_throttled=0 throttled_usec=0`, so the 4-CPU cap did not bind.
+
+That run showed a gap: `run-with-log.sh` forwards only allowlisted annotations to the live job log, so the `CI browser CPU` notice reached only `browser-flow-e2e.log`, which is uploaded only on failure. Playwright also clears `test-results/` before each group, so only the last group's report survives. `forward-live-annotations.mjs` now forwards the notice in its two fixed shapes, so every group's figure appears beside its `CI timing` line.
+
 ## Delivery
 
 One PR. Coordinate with the #1460 author: the browser sandbox lane is theirs.
