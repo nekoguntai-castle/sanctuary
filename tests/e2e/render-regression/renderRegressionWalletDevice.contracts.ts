@@ -116,8 +116,16 @@ export async function renderSendTransactionRouteRedirectsViewersBackToWalletDeta
     },
   });
   const main = page.getByRole('main');
+  // The redirect waits on app bootstrap, auth and this wallet fetch. On a
+  // loaded runner that chain alone can outlast the 5s expect budget, so wait
+  // for the fetch first and keep the 5s budget for the redirect itself.
+  const walletLoaded = page.waitForResponse(response => (
+    response.request().method() === 'GET'
+    && new URL(response.url()).pathname.endsWith(`/wallets/${MAINNET_WALLET_ID}`)
+  ), { timeout: 20000 });
 
   await page.goto(`/#/wallets/${MAINNET_WALLET_ID}/send`);
+  await walletLoaded;
 
   await expect(page).toHaveURL(new RegExp(`#\\/wallets\\/${MAINNET_WALLET_ID}$`));
   await expect(main.getByRole('heading', { name: MAINNET_WALLET.name })).toBeVisible();

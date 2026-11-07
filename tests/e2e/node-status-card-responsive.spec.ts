@@ -8,7 +8,7 @@
  */
 
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { json, registerApiRoutes, unmocked } from './helpers';
+import { json, registerApiRoutes, unmocked, waitForThemeUtilityPaint } from './helpers';
 
 const WALLET_ID = 'wallet-node-status-responsive-1';
 
@@ -214,6 +214,9 @@ test.describe('Node Status card responsive layout', () => {
 
       const card = page.getByTestId('telemetry-node');
       await expect(card).toBeVisible();
+      // Tailwind's runtime loads after window load; until it paints, the page
+      // is unstyled and hidden tooltips widen it, so measure only once styled.
+      await waitForThemeUtilityPaint(page);
 
       // No horizontal page overflow at any viewport.
       const overflow = await page.evaluate((includeDiagnostics) => {
