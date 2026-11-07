@@ -31,9 +31,6 @@ vi.mock("../../../src/repositories/resyncRepository", () => ({
   reserveFullResyncGeneration: mocks.reserveGeneration,
   isFullResyncGenerationProcessed: vi.fn().mockResolvedValue(false),
 }));
-vi.mock("../../../src/repositories/walletSyncSchedulePolicyRepository", () => ({
-  readStaleWalletSchedulePolicy: vi.fn().mockResolvedValue({ mode: "legacy_enabled" }),
-}));
 vi.mock("../../../src/utils/logger", () => ({
   createLogger: () => ({
     info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn(),

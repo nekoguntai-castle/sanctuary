@@ -25,6 +25,7 @@ export const SYNC_WALLET_MUTATION_FENCE_JOB_VERSION = 3 as const;
 export const NETWORK_CONFIRMATIONS_JOB_VERSION = 2 as const;
 export const SYNC_QUEUE_NAME = 'sync' as const;
 export const SYNC_WALLET_JOB_NAME = 'sync-wallet' as const;
+// Retired elapsed-age scheduler job; kept only to purge retained Redis work.
 export const CHECK_STALE_WALLETS_JOB_NAME = 'check-stale-wallets' as const;
 export const CONFIRMATIONS_QUEUE_NAME = 'confirmations' as const;
 export const UPDATE_CONFIRMATIONS_JOB_NAME = 'update-confirmations' as const;
@@ -116,14 +117,6 @@ export interface SyncWalletLockContractState {
   lockContention?: SyncWalletLockContention;
 }
 
-export interface CheckStaleWalletsJobData extends VersionedSyncJobContract {
-  staleThresholdMs?: number;
-  maxWallets?: number;
-  priority?: SyncPriority;
-  staggerDelayMs?: number;
-  reason?: string;
-}
-
 /** Retained v1 payloads are interpreted against the configured network. */
 export interface RetainedUpdateConfirmationsJobData extends VersionedSyncJobContract {
   height?: number;
@@ -152,15 +145,6 @@ export interface SyncWalletJobResult extends VersionedSyncJobContract {
   transactionsFound?: number;
   utxosUpdated?: number;
   error?: string;
-}
-
-export interface CheckStaleWalletsResult extends VersionedSyncJobContract {
-  staleWalletIds: string[];
-  queued: number;
-  priority: SyncPriority;
-  staggerDelayMs: number;
-  reason: string;
-  maxWallets: number;
 }
 
 export interface UpdateConfirmationsResult extends VersionedSyncJobContract {
@@ -480,18 +464,6 @@ export function readSyncWalletLockContractState(
     version,
     ...(lockContention === undefined ? {} : { lockContention }),
   };
-}
-
-export function isCheckStaleWalletsJobData(
-  value: unknown,
-): value is CheckStaleWalletsJobData {
-  if (!isRecord(value) || !hasSupportedSyncJobContractVersion(value)) return false;
-  const data = value as Record<string, unknown>;
-  return (data.staleThresholdMs === undefined || typeof data.staleThresholdMs === 'number')
-    && (data.maxWallets === undefined || typeof data.maxWallets === 'number')
-    && (data.priority === undefined || isSyncPriority(data.priority))
-    && (data.staggerDelayMs === undefined || typeof data.staggerDelayMs === 'number')
-    && (data.reason === undefined || typeof data.reason === 'string');
 }
 
 export function isUpdateConfirmationsJobData(

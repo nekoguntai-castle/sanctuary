@@ -24,7 +24,8 @@ What exists today:
   - `latest-stable / legacy-runtime-env`
   - `latest-stable / notification-delivery`
   - `latest-stable / optional-profiles`
-  - `v0.8.66 / wallet-sync-retirement`
+- The `v0.8.66 / wallet-sync-retirement` lane was removed with the stale-wallet
+  scheduler compatibility layer; v0.8.67 is the oldest supported upgrade source.
 - The core lane seeds and validates encrypted operational 2FA state:
   - encrypted admin TOTP login after upgrade
   - encrypted secondary 2FA user login after upgrade
@@ -132,11 +133,9 @@ Fixture definitions:
     `needs`) added by #1057 to keep monitoring-over-an-owned-source visible
     while the volume-identity root cause is still open; must not be wired
     into the blocking matrix until that root cause is fixed
-- `wallet-sync-retirement`
-  - retained v0.8.66 stale-wallet scheduler plus stale/manual/activity queue work
-  - proves irreversible marker creation, selective cleanup, floor-aware restart,
-    and executable evidence that a below-floor rollback recreates forbidden work
-    before the floor-2 worker purges it again
+- `wallet-sync-retirement` (removed)
+  - covered the v0.8.66 to floor-2 scheduler cutover. The cutover code was
+    removed once every supported source (v0.8.67 and later) had already run it.
 - `seeded-app-state`
   - additional user/group
   - labels

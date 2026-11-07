@@ -25,12 +25,12 @@ export interface PollingIntervalRefs {
 }
 
 /**
- * Start in-process polling intervals (stale wallet checks + confirmation updates).
+ * Start in-process polling intervals (stuck-flag repair + confirmation updates).
  * Guarded against double-start via the refs.
  *
  * @param refs - Mutable interval handle references owned by the caller.
  * @param state - Shared sync state (pollingMode is updated).
- * @param onCheckStale - Callback invoked on each stale-wallet check tick.
+ * @param onCheckStale - Callback invoked on each stuck-flag repair tick.
  * @param onUpdateConfirmations - Callback invoked on each confirmation update tick.
  */
 export function startPollingIntervals(
@@ -87,7 +87,7 @@ export function stopPollingIntervals(
  *
  * @param refs - Mutable interval handle references owned by the caller.
  * @param state - Shared sync state.
- * @param onCheckStale - Callback for stale-wallet check (forwarded to startPollingIntervals).
+ * @param onCheckStale - Callback for stuck-flag repair (forwarded to startPollingIntervals).
  * @param onUpdateConfirmations - Callback for confirmation updates (forwarded to startPollingIntervals).
  */
 export function evaluatePollingMode(

@@ -7,7 +7,6 @@ import {
 import {
   WorkerHeartbeatReader,
   workerMutationFenceReadinessSchema,
-  workerSchedulerRetirementReadinessSchema,
 } from "../../../src/services/workerHeartbeatRegistry";
 import { buildWorkerDiagnosticsSnapshot } from "../../../src/worker/diagnostics/snapshot";
 
@@ -185,112 +184,6 @@ describe("wallet sync mutation-fence fleet readiness", () => {
       requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
       reason: "worker_below_floor",
       taint: true,
-    });
-  });
-
-  it("blocks scheduler retirement for a pre-cutover worker that passes the mutation floor", async () => {
-    const now = 100_000;
-    const preCutover = stored(
-      "11111111-1111-4111-8111-111111111111",
-      now,
-      1,
-      {},
-      true,
-      WALLET_SYNC_MUTATION_FENCE_FLOOR,
-      null,
-    );
-    const createClient = () => readerClient(
-      ["pre-cutover"],
-      [
-        [null, preCutover],
-        [null, null],
-      ],
-    ) as unknown as Redis;
-    const reader = new WorkerHeartbeatReader(createClient);
-
-    await expect(reader.readMutationFenceReadiness(now)).resolves.toEqual({
-      ready: true,
-      requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
-      registryIncarnation: null,
-    });
-    const retirement = await reader.readSchedulerRetirementReadiness(now);
-    expect(retirement).toEqual({
-      ready: false,
-      requiredFloor: WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR,
-      reason: "worker_below_floor",
-    });
-    expect(workerSchedulerRetirementReadinessSchema.parse(retirement)).toEqual(retirement);
-  });
-
-  it("fails scheduler retirement closed for unavailable, empty, incomplete, and restarted fleets", async () => {
-    const now = 100_000;
-    const currentRecord = current(
-      "11111111-1111-4111-8111-111111111111",
-      now,
-    );
-    const unavailable = new WorkerHeartbeatReader(() => {
-      throw new Error("Redis unavailable");
-    });
-    const empty = new WorkerHeartbeatReader(
-      () => readerClient([], []) as unknown as Redis,
-    );
-    const incomplete = new WorkerHeartbeatReader(
-      () => readerClient(
-        ["missing"],
-        [[null, null], [null, null]],
-      ) as unknown as Redis,
-    );
-    const restarted = new WorkerHeartbeatReader(
-      () => readerClient(
-        ["restarted"],
-        [[null, currentRecord], [null, "restart"]],
-      ) as unknown as Redis,
-    );
-
-    await expect(Promise.all([
-      unavailable.readSchedulerRetirementReadiness(now),
-      empty.readSchedulerRetirementReadiness(now),
-      incomplete.readSchedulerRetirementReadiness(now),
-      restarted.readSchedulerRetirementReadiness(now),
-    ])).resolves.toEqual([
-      {
-        ready: false,
-        requiredFloor: WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR,
-        reason: "unavailable",
-      },
-      {
-        ready: false,
-        requiredFloor: WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR,
-        reason: "no_workers",
-      },
-      {
-        ready: false,
-        requiredFloor: WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR,
-        reason: "incomplete_fleet",
-      },
-      {
-        ready: false,
-        requiredFloor: WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR,
-        reason: "restart_observed",
-      },
-    ]);
-  });
-
-  it("returns scheduler-retirement readiness only when every live worker is current", async () => {
-    const now = 100_000;
-    const client = readerClient(
-      ["current"],
-      [
-        [null, current("11111111-1111-4111-8111-111111111111", now)],
-        [null, null],
-      ],
-    );
-
-    await expect(new WorkerHeartbeatReader(
-      () => client as unknown as Redis,
-    ).readSchedulerRetirementReadiness(now)).resolves.toEqual({
-      ready: true,
-      requiredFloor: WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR,
     });
   });
 
@@ -507,7 +400,7 @@ describe("wallet sync mutation-fence fleet readiness", () => {
       ) as unknown as Redis,
     );
 
-    it("admits a restart whose predecessor met both floors", async () => {
+    it("admits a restart whose predecessor met the mutation floor", async () => {
       const reader = fencedReader(
         `fenced|${WALLET_SYNC_MUTATION_FENCE_FLOOR}|${WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR}`,
       );
@@ -517,21 +410,12 @@ describe("wallet sync mutation-fence fleet readiness", () => {
         requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
         registryIncarnation: "incarnation-1",
       });
-      await expect(reader.readSchedulerRetirementReadiness(now)).resolves.toEqual({
-        ready: true,
-        requiredFloor: WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR,
-      });
     });
 
-    it("judges each floor separately", async () => {
+    it("ignores the retired scheduler floor in a fenced marker", async () => {
       const reader = fencedReader(`fenced|${WALLET_SYNC_MUTATION_FENCE_FLOOR}|1`);
 
       await expect(reader.readMutationFenceReadiness(now)).resolves.toMatchObject({ ready: true });
-      await expect(reader.readSchedulerRetirementReadiness(now)).resolves.toEqual({
-        ready: false,
-        requiredFloor: WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR,
-        reason: "restart_observed",
-      });
     });
 
     it.each([

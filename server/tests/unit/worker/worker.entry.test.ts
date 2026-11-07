@@ -126,11 +126,6 @@ const mocks = vi.hoisted(() => {
       intervalMs: 5 * 60 * 1000,
       confirmationUpdateIntervalMs: 2 * 60 * 1000,
       maxConcurrentSyncs: 1,
-      staleBatchSize: 50,
-      syncStaggerDelayMs: 2000,
-      startupCatchUpBatchSize: 250,
-      startupCatchUpDelayMs: 10_000,
-      startupCatchUpStaggerDelayMs: 250,
     },
     maintenance: {
       auditLogRetentionDays: 30,
@@ -203,10 +198,6 @@ const mocks = vi.hoisted(() => {
       shutdownRuntime: vi.fn(),
       isEnabled: vi.fn(),
     },
-    readStaleWalletSchedulePolicy: vi.fn(),
-    withWalletSyncRetirementLock: vi.fn(),
-    schedulerRetirementAttempt: vi.fn(),
-    readSchedulerRetirementReadiness: vi.fn(),
     getElectrumCallbacks: () => electrumCallbacks,
     getHealthProvider: () => healthProvider,
     getDiagnosticsProvider: () => diagnosticsProvider,
@@ -267,23 +258,6 @@ vi.mock('../../../src/services/featureFlagService', () => ({
   featureFlagService: mocks.mockFeatureFlagService,
 }));
 
-vi.mock('../../../src/repositories/walletSyncSchedulePolicyRepository', () => ({
-  readStaleWalletSchedulePolicy: mocks.readStaleWalletSchedulePolicy,
-  readStaleWalletSchedulePolicyWithClient: mocks.readStaleWalletSchedulePolicy,
-}));
-
-vi.mock('../../../src/repositories/walletSyncRetirementLock', () => ({
-  withWalletSyncRetirementLock: mocks.withWalletSyncRetirementLock,
-}));
-
-vi.mock('../../../src/services/sync/schedulerRetirementCutover', () => ({
-  schedulerRetirementCutover: { attempt: mocks.schedulerRetirementAttempt },
-}));
-
-vi.mock('../../../src/services/sync/schedulerRetirementReadiness', () => ({
-  readSchedulerRetirementReadiness: mocks.readSchedulerRetirementReadiness,
-}));
-
 vi.mock('../../../src/worker/workerJobQueue', () => ({
   WorkerJobQueue: mocks.WorkerJobQueue,
 }));
@@ -318,7 +292,6 @@ vi.mock('../../../src/worker/networkHeaderReconciliationRuntime', () => ({
 vi.mock('../../../src/services/sync/syncIntentAdmission', () => ({
   syncIntentAdmission: {
     request: mocks.syncIntentRequest,
-    requestRetainedStale: mocks.syncIntentRequest,
   },
 }));
 
@@ -426,7 +399,7 @@ describe('worker entrypoint', () => {
 
     mocks.queueInstance.initialize.mockResolvedValue(undefined);
     mocks.queueInstance.startConsumers.mockReturnValue(undefined);
-    mocks.queueInstance.getRegisteredJobs.mockReturnValue(['check-stale-wallets']);
+    mocks.queueInstance.getRegisteredJobs.mockReturnValue(['sync-wallet']);
     mocks.queueInstance.isHealthy.mockReturnValue(true);
     mocks.queueInstance.isQueueWorkerRunning.mockReturnValue(true);
     mocks.queueInstance.hasRegisteredHandler.mockReturnValue(true);
@@ -539,19 +512,6 @@ describe('worker entrypoint', () => {
       await reconcileInstalledSnapshot?.();
     });
     mocks.mockFeatureFlagService.isEnabled.mockResolvedValue(false);
-    mocks.readStaleWalletSchedulePolicy.mockResolvedValue({ mode: 'legacy_enabled' });
-    mocks.withWalletSyncRetirementLock.mockImplementation(async (operation) => operation({}));
-    mocks.schedulerRetirementAttempt.mockResolvedValue({
-      status: 'legacy_enabled',
-      reason: 'activation_blocked',
-      activation: { status: 'dormant', requiredFloor: 3 },
-    });
-    mocks.readSchedulerRetirementReadiness.mockResolvedValue({
-      status: 'ready',
-      evaluatedAt: new Date('2026-08-25T00:00:00.000Z'),
-      maxAllowedOpenGapAgeMs: 0,
-      networks: [],
-    });
   });
 
   it('handles startup failure by logging and exiting with code 1', async () => {
@@ -1495,9 +1455,11 @@ describe('worker entrypoint', () => {
       await Promise.resolve();
     }
 
+    // The retired stale-wallet schedule is removed first; disabled feature
+    // schedules follow it in the same forbidden pass.
     expect(mocks.queueInstance.removeRecurring).toHaveBeenCalledWith(
-      'maintenance',
-      'autopilot:record-fees',
+      'sync',
+      'check-stale-wallets',
       { purgeQueued: true },
     );
     expect(mocks.queueInstance.startConsumers).not.toHaveBeenCalled();
@@ -1505,27 +1467,24 @@ describe('worker entrypoint', () => {
     releaseRemoval();
     await vi.dynamicImportSettled();
 
+    expect(mocks.queueInstance.removeRecurring).toHaveBeenCalledWith(
+      'maintenance',
+      'autopilot:record-fees',
+      { purgeQueued: true },
+    );
     expect(mocks.queueInstance.startConsumers).toHaveBeenCalledOnce();
     expect(mocks.queueInstance.removeRecurring.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.queueInstance.startConsumers.mock.invocationCallOrder[0],
     );
   });
 
-  it('purges retired stale-wallet work before consumers and suppresses startup catch-up', async () => {
+  it('purges retired stale-wallet work before consumers and never schedules it', async () => {
     vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
       void event;
       void handler;
       return process;
     }) as any);
     vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
-    mocks.readStaleWalletSchedulePolicy.mockResolvedValue({
-      mode: 'forbidden',
-      tombstone: {
-        version: 1,
-        forbiddenAt: '2026-08-22T00:00:00.000Z',
-        compatibilityFloor: 2,
-      },
-    });
 
     await import('../../../src/worker.ts');
     await vi.dynamicImportSettled();
@@ -1549,117 +1508,16 @@ describe('worker entrypoint', () => {
     );
   });
 
-  it('starts from an existing marker while current enrollment readiness is transiently blocked', async () => {
+  it('fails closed before consumers when retired stale-wallet work cannot be purged', async () => {
     vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
       void event;
       void handler;
       return process;
     }) as any);
     vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
-    mocks.schedulerRetirementAttempt.mockResolvedValue({
-      status: 'forbidden',
-      newlyForbidden: false,
-      tombstone: {
-        version: 1,
-        forbiddenAt: '2026-08-22T00:00:00.000Z',
-        compatibilityFloor: 2,
-      },
-    });
-    mocks.readStaleWalletSchedulePolicy.mockResolvedValue({
-      mode: 'forbidden',
-      tombstone: {
-        version: 1,
-        forbiddenAt: '2026-08-22T00:00:00.000Z',
-        compatibilityFloor: 2,
-      },
-    });
-    mocks.readSchedulerRetirementReadiness.mockResolvedValue({
-      status: 'blocked',
-      evaluatedAt: new Date('2026-08-25T00:00:01.000Z'),
-      maxAllowedOpenGapAgeMs: 0,
-      networks: [],
-    });
-
-    await import('../../../src/worker.ts');
-    await vi.dynamicImportSettled();
-
-    expect(mocks.queueInstance.purgeStaleWalletScheduleJobs).toHaveBeenCalledTimes(2);
-    expect(mocks.readSchedulerRetirementReadiness).not.toHaveBeenCalled();
-    expect(mocks.queueInstance.startConsumers).toHaveBeenCalledOnce();
-    expect(mocks.walletSyncRecoveryRuntime.start).toHaveBeenCalledOnce();
-  });
-
-  it('activates retirement after Electrum recovery and re-purges before consumers', async () => {
-    vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
-      void event;
-      void handler;
-      return process;
-    }) as any);
-    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
-    mocks.schedulerRetirementAttempt.mockImplementationOnce(async () => {
-      mocks.readStaleWalletSchedulePolicy.mockResolvedValue({
-        mode: 'forbidden',
-        tombstone: {
-          version: 1,
-          forbiddenAt: '2026-08-25T00:00:00.000Z',
-          compatibilityFloor: 2,
-        },
-      });
-      return {
-        status: 'forbidden',
-        newlyForbidden: true,
-        tombstone: {
-          version: 1,
-          forbiddenAt: '2026-08-25T00:00:00.000Z',
-          compatibilityFloor: 2,
-        },
-      };
-    });
-
-    await import('../../../src/worker.ts');
-    await vi.dynamicImportSettled();
-
-    expect(mocks.networkHeaderReconciliationRuntime.recoverDue.mock.invocationCallOrder[0])
-      .toBeLessThan(mocks.heartbeatInstance.write.mock.invocationCallOrder[0]);
-    expect(mocks.heartbeatInstance.write.mock.invocationCallOrder[0])
-      .toBeLessThan(mocks.schedulerRetirementAttempt.mock.invocationCallOrder[0]);
-    expect(mocks.schedulerRetirementAttempt.mock.invocationCallOrder[0])
-      .toBeLessThan(mocks.queueInstance.purgeStaleWalletScheduleJobs.mock.invocationCallOrder[0]);
-    expect(mocks.queueInstance.purgeStaleWalletScheduleJobs.mock.invocationCallOrder[0])
-      .toBeLessThan(mocks.readSchedulerRetirementReadiness.mock.invocationCallOrder[0]);
-    expect(mocks.readSchedulerRetirementReadiness.mock.invocationCallOrder[0])
-      .toBeLessThan(mocks.queueInstance.startConsumers.mock.invocationCallOrder[0]);
-  });
-
-  it('fails startup before consumers when post-purge readiness is no longer exact', async () => {
-    vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
-      void event;
-      void handler;
-      return process;
-    }) as any);
-    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
-    mocks.schedulerRetirementAttempt.mockResolvedValue({
-      status: 'forbidden',
-      newlyForbidden: true,
-      tombstone: {
-        version: 1,
-        forbiddenAt: '2026-08-25T00:00:00.000Z',
-        compatibilityFloor: 2,
-      },
-    });
-    mocks.readStaleWalletSchedulePolicy.mockResolvedValue({
-      mode: 'forbidden',
-      tombstone: {
-        version: 1,
-        forbiddenAt: '2026-08-25T00:00:00.000Z',
-        compatibilityFloor: 2,
-      },
-    });
-    mocks.readSchedulerRetirementReadiness.mockResolvedValue({
-      status: 'blocked',
-      evaluatedAt: new Date('2026-08-25T00:00:01.000Z'),
-      maxAllowedOpenGapAgeMs: 0,
-      networks: [],
+    mocks.queueInstance.purgeStaleWalletScheduleJobs.mockResolvedValue({
+      status: 'failed',
+      error: 'queue inspection failed',
     });
 
     await import('../../../src/worker.ts');
@@ -1669,29 +1527,8 @@ describe('worker entrypoint', () => {
     expect(mocks.logger.error).toHaveBeenCalledWith(
       'Worker startup failed',
       expect.objectContaining({
-        error: 'Scheduler retirement readiness changed after queue purge',
+        error: expect.stringContaining('sync:stale-wallet-jobs'),
       }),
-    );
-  });
-
-  it('fails closed before consumers when the durable schedule policy cannot be read', async () => {
-    vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
-      void event;
-      void handler;
-      return process;
-    }) as any);
-    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
-    mocks.readStaleWalletSchedulePolicy.mockRejectedValue(
-      new Error('schedule policy unavailable'),
-    );
-
-    await import('../../../src/worker.ts');
-    await vi.dynamicImportSettled();
-
-    expect(mocks.queueInstance.startConsumers).not.toHaveBeenCalled();
-    expect(mocks.logger.error).toHaveBeenCalledWith(
-      'Worker startup failed',
-      expect.objectContaining({ error: 'schedule policy unavailable' }),
     );
   });
 
@@ -1831,97 +1668,6 @@ describe('worker entrypoint', () => {
       'autopilot:evaluate',
       { purgeQueued: true }
     );
-  });
-
-  it('setupStaleWalletHandler routes stale compatibility results through admission', async () => {
-    vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
-      void event;
-      void handler;
-      return process;
-    }) as any);
-    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
-
-    await import('../../../src/worker.ts');
-    await vi.dynamicImportSettled();
-
-    // onJobCompleted should have been called with 'sync', 'check-stale-wallets'
-    expect(mocks.queueInstance.onJobCompleted).toHaveBeenCalledWith(
-      'sync',
-      'check-stale-wallets',
-      expect.any(Function)
-    );
-    expect(mocks.queueInstance.onJobCompleted.mock.invocationCallOrder[0])
-      .toBeLessThan(mocks.queueInstance.startConsumers.mock.invocationCallOrder[0]);
-
-    // Get the registered callback
-    const callback = mocks.queueInstance.onJobCompleted.mock.calls.find(
-      (call: any) => call[0] === 'sync' && call[1] === 'check-stale-wallets'
-    )?.[2];
-    expect(callback).toBeDefined();
-
-    // Simulate stale wallet check completing with results
-    await callback({ version: 1, staleWalletIds: ['w1', 'w2'], queued: 2 });
-
-    expect(mocks.syncIntentRequest).toHaveBeenCalledTimes(2);
-    expect(mocks.syncIntentRequest).toHaveBeenNthCalledWith(1, 'w1');
-    expect(mocks.syncIntentRequest).toHaveBeenNthCalledWith(2, 'w2');
-    expect(mocks.queueInstance.addBulkJobs).not.toHaveBeenCalled();
-  });
-
-  it('setupStaleWalletHandler skips queueing when no stale wallets found', async () => {
-    vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
-      void event;
-      void handler;
-      return process;
-    }) as any);
-    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
-
-    await import('../../../src/worker.ts');
-    await vi.dynamicImportSettled();
-
-    const callback = mocks.queueInstance.onJobCompleted.mock.calls.find(
-      (call: any) => call[0] === 'sync' && call[1] === 'check-stale-wallets'
-    )?.[2];
-
-    // Empty result
-    await callback({ staleWalletIds: [], queued: 0 });
-    expect(mocks.queueInstance.addBulkJobs).not.toHaveBeenCalled();
-
-    // Undefined result
-    await callback(undefined);
-    expect(mocks.queueInstance.addBulkJobs).not.toHaveBeenCalled();
-
-    // Unknown future result versions must not be interpreted as v1.
-    await callback({ version: 2, staleWalletIds: ['future-wallet'], queued: 1 });
-    expect(mocks.queueInstance.addBulkJobs).not.toHaveBeenCalled();
-  });
-
-  it('suppresses stale-wallet completion output when retirement is observed', async () => {
-    vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
-      void event;
-      void handler;
-      return process;
-    }) as any);
-    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
-
-    await import('../../../src/worker.ts');
-    await vi.dynamicImportSettled();
-    mocks.queueInstance.addBulkJobs.mockClear();
-    mocks.readStaleWalletSchedulePolicy.mockResolvedValue({
-      mode: 'forbidden',
-      tombstone: {
-        version: 1,
-        forbiddenAt: '2026-08-22T00:00:00.000Z',
-        compatibilityFloor: 2,
-      },
-    });
-    const callback = mocks.queueInstance.onJobCompleted.mock.calls.find(
-      (call: any) => call[0] === 'sync' && call[1] === 'check-stale-wallets'
-    )?.[2];
-
-    await callback({ version: 1, staleWalletIds: ['w1'], queued: 1 });
-
-    expect(mocks.queueInstance.addBulkJobs).not.toHaveBeenCalled();
   });
 
   it('treats unhandled rejections as fatal and shuts down with code 1', async () => {
@@ -2235,35 +1981,7 @@ describe('worker entrypoint', () => {
     expect(processExitSpy).toHaveBeenCalledWith(0);
   });
 
-  it('queues a startup catch-up check-stale-wallets job with configured delay and batch settings', async () => {
-    vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
-      void event;
-      void handler;
-      return process;
-    }) as any);
-    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
-
-    await import('../../../src/worker.ts');
-    await vi.dynamicImportSettled();
-
-    expect(mocks.queueInstance.addJob).toHaveBeenCalledWith(
-      'sync',
-      'check-stale-wallets',
-      {
-        version: 1,
-        maxWallets: 250,
-        priority: 'normal',
-        staggerDelayMs: 250,
-        reason: 'startup-catch-up',
-      },
-      expect.objectContaining({
-        delay: 10_000,
-        jobId: expect.stringMatching(/^startup-catch-up:\d+$/),
-      })
-    );
-  });
-
-  it('reports jobQueue unhealthy when check-stale-wallets is stale past grace period', async () => {
+  it('reports jobQueue unhealthy when webhook recovery is stale past grace period', async () => {
     vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
       void event;
       void handler;
@@ -2297,25 +2015,18 @@ describe('worker entrypoint', () => {
       },
     });
 
-    // Advance past grace period (syncIntervalMs=300000 + 30000 = 330000)
-    // and set last completion to a stale time (>2x interval = 600000ms ago)
-    mockNow = startTime + 700_000; // past grace period, and stale
+    // Advance past the 90s startup grace with the last completion older than
+    // the 2-minute freshness window.
+    mockNow = startTime + 700_000;
     mocks.queueInstance.getRecurringHeartbeatSnapshot.mockResolvedValue({
       healthy: true,
       records: {
-        'sync:check-stale-wallets': {
-          version: 1,
-          schedulerId: 'sync:check-stale-wallets',
-          recurrenceFingerprint: 'every:300000',
-          activatedAt: startTime,
-          lastCompletedAt: startTime + 10_000,
-        },
         'maintenance:webhook:recover-due-deliveries': {
           version: 1,
           schedulerId: 'maintenance:webhook:recover-due-deliveries',
           recurrenceFingerprint: 'pattern:* * * * *:tz:UTC',
           activatedAt: startTime,
-          lastCompletedAt: mockNow,
+          lastCompletedAt: startTime + 10_000,
         },
       },
     });
@@ -2337,7 +2048,7 @@ describe('worker entrypoint', () => {
     Date.now = realDateNow;
   });
 
-  it('reports unhealthy when webhook recovery is absent even while stale-wallet is fresh', async () => {
+  it('reports unhealthy when webhook recovery is absent', async () => {
     vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
       void event;
       void handler;
@@ -2422,7 +2133,7 @@ describe('worker entrypoint', () => {
     expect(recovered).toBe(true);
   });
 
-  it('retries a blocked scheduler cutover during periodic reconciliation', async () => {
+  it('skips periodic reconciliation ticks while one is still in flight', async () => {
     vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
       void event;
       void handler;
@@ -2437,58 +2148,44 @@ describe('worker entrypoint', () => {
       intervals.push({ callback, delay });
       return { delay } as any;
     }) as any);
-    let finishRetirement!: () => void;
-    const retirementBarrier = new Promise<void>((resolve) => {
-      finishRetirement = resolve;
-    });
-    mocks.schedulerRetirementAttempt
-      .mockResolvedValueOnce({
-        status: 'legacy_enabled',
-        reason: 'activation_blocked',
-        activation: { status: 'fleet_blocked', requiredFloor: 1, reason: 'restart_observed' },
-      })
-      .mockImplementationOnce(async () => {
-        await retirementBarrier;
-        mocks.readStaleWalletSchedulePolicy.mockResolvedValue({
-          mode: 'forbidden',
-          tombstone: {
-            version: 1,
-            forbiddenAt: '2026-08-25T00:00:00.000Z',
-            compatibilityFloor: 2,
-          },
-        });
-        return {
-          status: 'forbidden',
-          newlyForbidden: true,
-          tombstone: {
-            version: 1,
-            forbiddenAt: '2026-08-25T00:00:00.000Z',
-            compatibilityFloor: 2,
-          },
-        };
-      });
 
     await import('../../../src/worker.ts');
     await vi.dynamicImportSettled();
-    expect(mocks.schedulerRetirementAttempt).toHaveBeenCalledOnce();
-    mocks.queueInstance.purgeStaleWalletScheduleJobs.mockClear();
-    mocks.queueInstance.scheduleRecurring.mockClear();
 
+    let releasePurge!: () => void;
+    const purgeHeld = new Promise<void>((resolve) => {
+      releasePurge = resolve;
+    });
+    mocks.queueInstance.purgeStaleWalletScheduleJobs.mockClear();
+    mocks.queueInstance.purgeStaleWalletScheduleJobs.mockImplementationOnce(async () => {
+      await purgeHeld;
+      return { status: 'absent' };
+    });
     const reconciliations = intervals.filter(({ delay }) => delay === 60_000);
     expect(reconciliations.length).toBeGreaterThan(0);
-    for (const { callback } of reconciliations) callback();
-    await vi.waitFor(() => expect(mocks.schedulerRetirementAttempt).toHaveBeenCalledTimes(2));
-    for (const { callback } of reconciliations) callback();
-    await Promise.resolve();
-    expect(mocks.schedulerRetirementAttempt).toHaveBeenCalledTimes(2);
+    const tick = () => {
+      for (const { callback } of reconciliations) void callback();
+    };
+    const settle = async () => {
+      for (let index = 0; index < 50; index += 1) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+    };
 
-    finishRetirement();
+    tick();
     await vi.waitFor(() => (
-      expect(mocks.queueInstance.purgeStaleWalletScheduleJobs).toHaveBeenCalled()
+      expect(mocks.queueInstance.purgeStaleWalletScheduleJobs).toHaveBeenCalledOnce()
     ));
+    // A hung reconcile must not let later ticks queue behind it.
+    tick();
+    tick();
+    releasePurge();
+    await settle();
+    expect(mocks.queueInstance.purgeStaleWalletScheduleJobs).toHaveBeenCalledOnce();
 
-    expect(mocks.queueInstance.scheduleRecurring).not.toHaveBeenCalledWith(
-      expect.objectContaining({ schedulerId: 'sync:check-stale-wallets' }),
-    );
+    tick();
+    await vi.waitFor(() => (
+      expect(mocks.queueInstance.purgeStaleWalletScheduleJobs).toHaveBeenCalledTimes(2)
+    ));
   });
 });

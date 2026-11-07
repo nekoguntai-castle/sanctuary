@@ -37,7 +37,6 @@ source "$SCRIPT_DIR/../utils/upgrade-assertions.sh"
 source "$SCRIPT_DIR/../utils/upgrade-staleness.sh"
 source "$SCRIPT_DIR/../utils/upgrade-transaction-migration-helpers.sh"
 source "$SCRIPT_DIR/../utils/upgrade-wallet-sync-state-helpers.sh"
-source "$SCRIPT_DIR/../utils/upgrade-wallet-sync-retirement-helpers.sh"
 source "$SCRIPT_DIR/../utils/collect-upgrade-artifacts.sh"
 INSTALL_E2E_ARGS=("$@")
 
@@ -1748,11 +1747,7 @@ test_stop_containers_for_upgrade() {
     # serving. This is what makes the restart-staleness path deterministic
     # instead of a function of how long the rebuild happens to take -- see
     # tests/install/utils/upgrade-staleness.sh for why waiting cannot work.
-    if wallet_sync_retirement_fixture_enabled; then
-        log_info "Skipping generic recurring-staleness aging; baseline lanes own that proof"
-    else
-        force_recurring_completion_staleness || return 1
-    fi
+    force_recurring_completion_staleness || return 1
 
     if [ "$UPGRADE_ENABLE_MCP" = "yes" ]; then
         (
@@ -2019,8 +2014,7 @@ test_verify_transaction_migrations() {
 # Seeded as late as possible before the stop: the source ref is live until then
 # and a real sync attempt would overwrite the legacy shape this fixture plants.
 test_seed_wallet_sync_state_fixture() {
-    seed_wallet_sync_state_fixture || return 1
-    seed_wallet_sync_retirement_fixture
+    seed_wallet_sync_state_fixture
 }
 
 test_verify_wallet_sync_state_migration() {
@@ -2036,10 +2030,6 @@ test_verify_backup_volume_writable_after_upgrade() {
     fi
     log_error "Worker cannot write /data/backups after upgrade"
     return 1
-}
-
-test_verify_wallet_sync_retirement_upgrade() {
-    verify_wallet_sync_retirement_upgrade
 }
 
 # ============================================
@@ -2632,7 +2622,6 @@ main() {
     run_test "Verify Representative App State Preserved" test_verify_representative_app_state_preserved
     run_test "Verify Transaction Migrations" test_verify_transaction_migrations
     run_test "Verify Wallet Sync State Migration" test_verify_wallet_sync_state_migration
-    run_test "Verify Wallet Sync Scheduler Retirement" test_verify_wallet_sync_retirement_upgrade
     run_test "Verify 2FA Preserved" test_verify_two_factor_preserved
     run_test "Verify Multiple 2FA Users Preserved" test_verify_multiple_two_factor_users_preserved
     run_test "Verify 2FA Backup Code Preserved" test_verify_two_factor_backup_code_preserved

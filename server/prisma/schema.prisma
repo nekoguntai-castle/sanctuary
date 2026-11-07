@@ -193,8 +193,8 @@ model Wallet {
   @@index([syncInProgress]) // For sync service startup & scheduling
   @@index([syncExecutionOwner, syncInProgress]) // For owner-specific restart recovery
   @@index([lastSyncStatus, syncNextRetryAt]) // For durable retry scheduling
-  @@index([lastSyncedAt]) // Legacy stale-wallet selection (pre-retirement compatibility only)
-  @@index([network, syncInProgress, lastSyncedAt]) // Legacy stale-wallet selection (pre-retirement compatibility only)
+  @@index([lastSyncedAt]) // Built for the removed stale-wallet scheduler; kept because dropping it needs a migration
+  @@index([network, syncInProgress, lastSyncedAt]) // Built for the removed stale-wallet scheduler; kept because dropping it needs a migration
   @@map("wallets")
 }
 

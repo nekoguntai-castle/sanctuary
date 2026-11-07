@@ -1,10 +1,13 @@
 import { Prisma } from '../generated/prisma/client';
-import prisma, { type PrismaTxClient } from '../models/prisma';
+import type { PrismaTxClient } from '../models/prisma';
 
 export const WALLET_SYNC_RETIREMENT_LOCK_KEY =
   'sanctuary:wallet-sync:scheduler-retirement:v1';
 
-/** Serialize irreversible scheduler cutover, stale admission, and restore. */
+/**
+ * Serialize restore with the scheduler cutover that v0.8.67-v0.8.84 binaries
+ * may still run against the same database during a rollback.
+ */
 export async function acquireWalletSyncRetirementLock(
   tx: PrismaTxClient,
 ): Promise<void> {
@@ -13,18 +16,4 @@ export async function acquireWalletSyncRetirementLock(
       hashtextextended(${WALLET_SYNC_RETIREMENT_LOCK_KEY}, 0)
     )
   `);
-}
-
-/** Hold the retirement lock across a bounded cross-store compatibility action. */
-export async function withWalletSyncRetirementLock<T>(
-  operation: (tx: PrismaTxClient) => Promise<T>,
-): Promise<T> {
-  return prisma.$transaction(async (tx) => {
-    await acquireWalletSyncRetirementLock(tx);
-    return operation(tx);
-  }, {
-    isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
-    maxWait: 10_000,
-    timeout: 60_000,
-  });
 }

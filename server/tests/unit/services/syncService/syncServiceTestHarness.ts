@@ -192,10 +192,6 @@ vi.mock('../../../../src/repositories', () => ({
       orderBy: [{ syncStartedAt: 'asc' }, { id: 'asc' }],
       take: 100,
     }),
-    findStale: (opts: any) => mockPrismaClient.wallet.findMany({
-      where: { OR: [{ lastSyncedAt: null }, { lastSyncedAt: { lt: new Date(Date.now() - opts.staleThresholdMs) } }], syncInProgress: false },
-      select: { id: true },
-    }),
   },
   addressRepository: {
     findAddressStrings: (walletId: string) => mockPrismaClient.address.findMany({ where: { walletId }, select: { address: true } }).then((addrs: any[]) => addrs.map((a: any) => a.address)),

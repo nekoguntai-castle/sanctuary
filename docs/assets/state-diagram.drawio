@@ -162,13 +162,13 @@
         <mxCell id="trig1" value="1. Manual: POST /sync/wallet/:id" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" vertex="1" parent="1">
           <mxGeometry x="90" y="450" width="200" height="20" as="geometry" />
         </mxCell>
-        <mxCell id="trig2" value="2. Stale check: checkStaleWalletsJob" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" vertex="1" parent="1">
+        <mxCell id="trig2" value="2. Initial: wallet creation or import" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" vertex="1" parent="1">
           <mxGeometry x="90" y="475" width="220" height="20" as="geometry" />
         </mxCell>
         <mxCell id="trig3" value="3. Real-time: Electrum address subscription" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" vertex="1" parent="1">
           <mxGeometry x="90" y="500" width="250" height="20" as="geometry" />
         </mxCell>
-        <mxCell id="trig4" value="4. New block: blockheader subscription" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" vertex="1" parent="1">
+        <mxCell id="trig4" value="4. New block: tip and confirmations only" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" vertex="1" parent="1">
           <mxGeometry x="90" y="525" width="250" height="20" as="geometry" />
         </mxCell>
         <mxCell id="pipeline" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;" vertex="1" parent="1">

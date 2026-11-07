@@ -63,7 +63,6 @@ const ADMISSION_SINGLETON_METHODS = [
   'releaseForRetry',
   'request',
   'requestFullResync',
-  'requestRetainedStale',
   'reset',
   'wake',
   'wakeReservedFullResync',
@@ -81,10 +80,6 @@ const ACTIVATION_POLICY_REPOSITORY_PATH =
   'server/src/repositories/walletSyncActivationPolicyRepository.ts';
 const ACTIVATION_STABILIZATION_REPOSITORY_PATH =
   'server/src/repositories/walletSyncActivationStabilizationRepository.ts';
-const SCHEDULER_RETIREMENT_CUTOVER_PATH =
-  'server/src/services/sync/schedulerRetirementCutover.ts';
-const SCHEDULER_RETIREMENT_CUTOVER_REPOSITORY_PATH =
-  'server/src/repositories/schedulerRetirementCutoverRepository.ts';
 const REPOSITORY_BARREL_PATH = 'server/src/repositories/index.ts';
 const SUBSCRIPTION_ENROLLMENT_COORDINATOR_SYMBOL = 'createSubscriptionCheckpointEnrollment';
 const SUBSCRIPTION_CHECKPOINT_RUNTIME_PATH =
@@ -109,7 +104,7 @@ const TRACKED_PRODUCER_SINKS = new Set([
   'admission.bridgeRetained', 'admission.claimFresh', 'admission.complete', 'admission.recover',
   'admission.recoverExpired', 'admission.reclaimExpired',
   'admission.releaseAsActionRequired', 'admission.releaseForRetry',
-  'admission.request', 'admission.requestFullResync', 'admission.requestRetainedStale',
+  'admission.request', 'admission.requestFullResync',
   'admission.reset',
   'admission.wake', 'admission.wakeReservedFullResync',
   'coordinator.queueNetworkSync', 'coordinator.queueUserWallets',
@@ -462,12 +457,12 @@ function validateCompatibility(value) {
   if (compatibility.staleScheduleName !== 'check-stale-wallets') {
     throw new Error('compatibility.staleScheduleName must retain the legacy wire identity');
   }
-  if (compatibility.staleScheduleState !== 'durably_forbidden_compatibility_only') {
-    throw new Error('the stale scheduler must remain durably forbidden after cutover');
+  if (compatibility.staleScheduleState !== 'removed_redis_residue_purged_every_reconcile') {
+    throw new Error('the removed stale scheduler must stay purged on every reconcile');
   }
   if (compatibility.durableDisablePolicyState
-    !== 'atomic_readiness_cutover_and_immutable_floor_active') {
-    throw new Error('the atomic readiness cutover and immutable floor must remain active');
+    !== 'removed_marker_carried_by_backup_for_rollback_binaries') {
+    throw new Error('the retired marker must stay carried by backups for rollback binaries');
   }
   if (compatibility.legacyEntriesAreTemporary !== true) {
     throw new Error('compatibility legacy entries must be explicitly temporary');
@@ -1338,14 +1333,12 @@ function validateRecoveryComposition(sources, admissionModule, errors) {
     errors.push('incremental and full-resync admission must each publish requested state');
   }
   const incrementalPublishesAfterPersistence = /return\s+publishIncrementalRequest\s*\(\s*walletId\s*,\s*await\s+repository\.requestIncrementalSync\s*\(/.test(admission);
-  const retainedPublishesAfterPersistence = /const\s+result\s*=\s*await\s+repository\.requestRetainedStaleIncrementalSync\s*\([^;]+;[\s\S]{0,180}publishIncrementalRequest\s*\(\s*walletId\s*,\s*result\s*\)/.test(admission);
   const fullPersistence = admission.indexOf(
     'const result = await persistFullResyncRequest(walletId)',
   );
   const fullPublication = admission.indexOf('await publishTransition(', fullPersistence);
   if (countMatches(admission, /await\s+publishTransition\s*\(/g) !== 2
     || !incrementalPublishesAfterPersistence
-    || !retainedPublishesAfterPersistence
     || fullPersistence < 0
     || fullPublication <= fullPersistence) {
     errors.push('canonical admission must publish only after each durable request commits');
@@ -1411,7 +1404,6 @@ function unexpectedActivationConsumers(sources) {
     'server/src/services/sync/walletSyncAvailability.ts',
     'server/src/worker/healthServer.ts',
     RECOVERY_RUNTIME_PATH,
-    SCHEDULER_RETIREMENT_CUTOVER_PATH,
   ]).has(file));
   const policyConsumers = actualReferenceFiles(
     sources,
@@ -1437,8 +1429,7 @@ function unexpectedActivationConsumers(sources) {
 
 function isPermittedActivationPolicyConsumer(file, source = '') {
   if (file === ACTIVATION_POLICY_REPOSITORY_PATH
-    || file === ACTIVATION_GATE_PATH
-    || file === SCHEDULER_RETIREMENT_CUTOVER_REPOSITORY_PATH) return true;
+    || file === ACTIVATION_GATE_PATH) return true;
   const validationOnlyConsumers = new Set([
     'server/src/services/backupService/creation.ts',
     'server/src/services/backupService/restore.ts',

@@ -2627,20 +2627,6 @@
       "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
     },
     {
-      "path": "tests/install/utils/upgrade-wallet-sync-retirement-helpers.sh",
-      "resourceClass": "compose_container",
-      "operation": "cleanup",
-      "disposition": "reference_only",
-      "safetyContract": "This is an application lifecycle API boundary; cleanup remains owned by that application lifecycle."
-    },
-    {
-      "path": "tests/install/utils/upgrade-wallet-sync-retirement-helpers.sh",
-      "resourceClass": "compose_container",
-      "operation": "create",
-      "disposition": "exempt",
-      "safetyContract": "The signed cleanup coordinator owns this exact lifecycle and emits a final signed receipt."
-    },
-    {
       "path": "tests/install/unit/install-script.test.sh",
       "resourceClass": "collector_process",
       "operation": "cleanup",

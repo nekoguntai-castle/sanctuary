@@ -19,7 +19,9 @@
 # Two post-upgrade writers act on these rows, and the fixture is built around
 # both rather than trying to outrun them.
 #
-# 1. The stale sweep. walletRepository findStale() selects
+# 1. The stale sweep (removed after v0.8.84; a target built from a release
+#    that still has it behaves as below, and the pin is harmless otherwise).
+#    walletRepository findStale() selected
 #    `lastSyncedAt IS NULL OR lastSyncedAt < now - staleThreshold` with
 #    `syncInProgress = false`, and this lane deliberately ages the
 #    sync:check-stale-wallets completion so that sweep runs seconds after the

@@ -6,13 +6,12 @@ import {
   RecurringScheduleCoordinator,
   buildBaselineRecurringSchedules,
   inspectRecurringScheduleHealth,
-  requireStaleWalletSchedule,
+  RETIRED_STALE_WALLET_SCHEDULE,
   reconcileRecurringSchedules,
 } from '../../../src/worker/recurringSchedules';
 
 const config = {
   sync: {
-    intervalMs: 5 * 60_000,
     confirmationUpdateIntervalMs: 2 * 60_000,
   },
   maintenance: {
@@ -61,6 +60,7 @@ function createHeldReconcileQueue() {
       return { status: 'unchanged' };
     }),
     removeRecurring: vi.fn().mockResolvedValue({ status: 'absent' }),
+    purgeStaleWalletScheduleJobs: vi.fn().mockResolvedValue({ status: 'absent' }),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test double for WorkerJobQueue
   } as any;
   return { queue, midFlight, release, holdNext: () => { hold = true; } };
@@ -75,7 +75,6 @@ async function startHeldSecondReconcile() {
     async () => ({
       autopilotEnabled,
       intelligenceEnabled: false,
-      staleWalletScheduleForbidden: false,
     }),
   );
   await expect(coordinator.reconcile()).resolves.toEqual(
@@ -90,12 +89,14 @@ async function startHeldSecondReconcile() {
 }
 
 describe('recurring schedule contracts', () => {
-  it('fails closed when the compatibility baseline loses the stale definition', () => {
-    expect(requireStaleWalletSchedule(buildBaselineRecurringSchedules(config))).toMatchObject({
+  it('keeps the removed stale-wallet schedule out of the baseline', () => {
+    expect(RETIRED_STALE_WALLET_SCHEDULE).toMatchObject({
       schedulerId: 'sync:check-stale-wallets',
+      queue: 'sync',
+      name: 'check-stale-wallets',
     });
-    expect(() => requireStaleWalletSchedule([]))
-      .toThrow('Stale-wallet schedule definition is missing');
+    expect(buildBaselineRecurringSchedules(config).map(({ schedulerId }) => schedulerId))
+      .not.toContain('sync:check-stale-wallets');
   });
   const buildNeverCompletedQueue = (activatedAt: number) =>
     ({
@@ -109,12 +110,6 @@ describe('recurring schedule contracts', () => {
       getRecurringHeartbeatSnapshot: vi.fn().mockResolvedValue({
         healthy: true,
         records: {
-          'sync:check-stale-wallets': {
-            version: 1,
-            schedulerId: 'sync:check-stale-wallets',
-            recurrenceFingerprint: 'every:300000',
-            activatedAt,
-          },
           'maintenance:webhook:recover-due-deliveries': {
             version: 1,
             schedulerId: 'maintenance:webhook:recover-due-deliveries',
@@ -141,13 +136,6 @@ describe('recurring schedule contracts', () => {
       getRecurringHeartbeatSnapshot: vi.fn().mockResolvedValue({
         healthy: true,
         records: {
-          'sync:check-stale-wallets': {
-            version: 1,
-            schedulerId: 'sync:check-stale-wallets',
-            recurrenceFingerprint: 'every:300000',
-            activatedAt,
-            lastCompletedAt,
-          },
           'maintenance:webhook:recover-due-deliveries': {
             version: 1,
             schedulerId: 'maintenance:webhook:recover-due-deliveries',
@@ -206,10 +194,7 @@ describe('recurring schedule contracts', () => {
     ).resolves.toEqual(
       expect.objectContaining({
         healthy: false,
-        stale: [
-          'sync:check-stale-wallets',
-          'maintenance:webhook:recover-due-deliveries',
-        ],
+        stale: ['maintenance:webhook:recover-due-deliveries'],
       }),
     );
   });
@@ -235,10 +220,7 @@ describe('recurring schedule contracts', () => {
     ).resolves.toEqual(
       expect.objectContaining({
         healthy: false,
-        stale: [
-          'sync:check-stale-wallets',
-          'maintenance:webhook:recover-due-deliveries',
-        ],
+        stale: ['maintenance:webhook:recover-due-deliveries'],
       }),
     );
   });
@@ -247,7 +229,6 @@ describe('recurring schedule contracts', () => {
     const baseline = buildBaselineRecurringSchedules(config);
 
     expect(baseline.map(({ schedulerId }) => schedulerId)).toEqual([
-      'sync:check-stale-wallets',
       'confirmations:update-all-confirmations',
       'maintenance:cleanup:expired-drafts',
       'maintenance:cleanup:expired-approvals',
@@ -263,13 +244,6 @@ describe('recurring schedule contracts', () => {
       'maintenance:reconcile:signing-intent-broadcasts',
       'maintenance:webhook:recover-due-deliveries',
     ]);
-    expect(
-      baseline.find(({ schedulerId }) => schedulerId === 'sync:check-stale-wallets'),
-    ).toEqual(expect.objectContaining({
-      data: { version: 1 },
-      recurrence: { every: 300_000 },
-      freshness: expect.any(Object),
-    }));
     expect(
       baseline.find(({ schedulerId }) => schedulerId === 'confirmations:update-all-confirmations'),
     ).toEqual(expect.objectContaining({
@@ -300,23 +274,20 @@ describe('recurring schedule contracts', () => {
     ]);
   });
 
-  it.each([
-    [1_000, 90_000],
-    [90_000, 90 * 60_000],
-    [60 * 60_000, 5 * 60_000],
-  ])('preserves exact configurable intervals %d and %d', (sync, confirmations) => {
-    const definitions = buildBaselineRecurringSchedules({
-      ...config,
-      sync: {
-        ...config.sync,
-        intervalMs: sync,
-        confirmationUpdateIntervalMs: confirmations,
-      },
-    });
+  it.each([90_000, 90 * 60_000, 5 * 60_000])(
+    'preserves the exact configurable confirmation interval %d',
+    (confirmations) => {
+      const definitions = buildBaselineRecurringSchedules({
+        ...config,
+        sync: {
+          ...config.sync,
+          confirmationUpdateIntervalMs: confirmations,
+        },
+      });
 
-    expect(definitions[0]!.recurrence).toEqual({ every: sync });
-    expect(definitions[1]!.recurrence).toEqual({ every: confirmations });
-  });
+      expect(definitions[0]!.recurrence).toEqual({ every: confirmations });
+    },
+  );
 
   it('rejects an invalid confirmation recurrence interval', () => {
     expect(() => buildBaselineRecurringSchedules({
@@ -326,17 +297,6 @@ describe('recurring schedule contracts', () => {
         confirmationUpdateIntervalMs: 999,
       },
     })).toThrow('Recurring interval must be a safe integer of at least 1000ms');
-  });
-
-  it('rejects invalid or overflowing freshness intervals', () => {
-    expect(() => buildBaselineRecurringSchedules({
-      ...config,
-      sync: { ...config.sync, intervalMs: 999 },
-    })).toThrow('at least 1000ms');
-    expect(() => buildBaselineRecurringSchedules({
-      ...config,
-      sync: { ...config.sync, intervalMs: Number.MAX_SAFE_INTEGER },
-    })).toThrow('safe integer range');
   });
 
   it('reports explicit reconciliation failure', async () => {
@@ -357,7 +317,7 @@ describe('recurring schedule contracts', () => {
     const result = await reconcileRecurringSchedules(queue, definitions);
 
     expect(result.healthy).toBe(false);
-    expect(result.results['confirmations:update-all-confirmations']).toEqual({
+    expect(result.results['maintenance:cleanup:expired-drafts']).toEqual({
       status: 'failed',
       error: 'Redis unavailable',
     });
@@ -378,13 +338,6 @@ describe('recurring schedule contracts', () => {
       getRecurringHeartbeatSnapshot: vi.fn().mockResolvedValue({
         healthy: true,
         records: {
-          'sync:check-stale-wallets': {
-            version: 1,
-            schedulerId: 'sync:check-stale-wallets',
-            recurrenceFingerprint: 'every:300000',
-            activatedAt: startedAt,
-            lastCompletedAt: startedAt + 200_000,
-          },
         },
       }),
     } as any;
@@ -414,12 +367,6 @@ describe('recurring schedule contracts', () => {
       getRecurringHeartbeatSnapshot: vi.fn().mockResolvedValue({
         healthy: true,
         records: {
-          'sync:check-stale-wallets': {
-            version: 1,
-            schedulerId: 'sync:check-stale-wallets',
-            recurrenceFingerprint: 'every:300000',
-            activatedAt,
-          },
           'maintenance:webhook:recover-due-deliveries': {
             version: 1,
             schedulerId: 'maintenance:webhook:recover-due-deliveries',
@@ -437,10 +384,7 @@ describe('recurring schedule contracts', () => {
       inspectRecurringScheduleHealth(queue, definitions, activatedAt + 400_000),
     ).resolves.toEqual(expect.objectContaining({
       healthy: false,
-      stale: [
-        'sync:check-stale-wallets',
-        'maintenance:webhook:recover-due-deliveries',
-      ],
+      stale: ['maintenance:webhook:recover-due-deliveries'],
     }));
   });
 
@@ -486,10 +430,7 @@ describe('recurring schedule contracts', () => {
     ).resolves.toEqual(
       expect.objectContaining({
         healthy: false,
-        stale: [
-          'sync:check-stale-wallets',
-          'maintenance:webhook:recover-due-deliveries',
-        ],
+        stale: ['maintenance:webhook:recover-due-deliveries'],
       }),
     );
   });
@@ -526,6 +467,7 @@ describe('recurring schedule contracts', () => {
         .fn()
         .mockResolvedValueOnce({ status: 'failed', error: 'Redis unavailable' })
         .mockResolvedValue({ status: 'absent' }),
+      purgeStaleWalletScheduleJobs: vi.fn().mockResolvedValue({ status: 'absent' }),
     } as any;
     const coordinator = new RecurringScheduleCoordinator(
       queue,
@@ -533,7 +475,6 @@ describe('recurring schedule contracts', () => {
       async () => ({
         autopilotEnabled: false,
         intelligenceEnabled: false,
-        staleWalletScheduleForbidden: false,
       }),
     );
 
@@ -571,7 +512,7 @@ describe('recurring schedule contracts', () => {
     );
   });
 
-  it('removes and purges the stale-wallet schedule before scheduling desired work', async () => {
+  it('always removes and purges the retired stale-wallet schedule before scheduling desired work', async () => {
     const operations: string[] = [];
     const queue = {
       scheduleRecurring: vi.fn(async (definition: { schedulerId: string }) => {
@@ -598,7 +539,6 @@ describe('recurring schedule contracts', () => {
       async () => ({
         autopilotEnabled: false,
         intelligenceEnabled: false,
-        staleWalletScheduleForbidden: true,
       }),
     );
 
@@ -619,56 +559,6 @@ describe('recurring schedule contracts', () => {
     expect(queue.purgeStaleWalletScheduleJobs).toHaveBeenCalledTimes(2);
   });
 
-  it('rechecks retirement under the cutover lock before mutating Redis', async () => {
-    const operations: string[] = [];
-    const queue = {
-      scheduleRecurring: vi.fn(async (definition: { schedulerId: string }) => {
-        operations.push(`schedule:${definition.schedulerId}`);
-        return { status: 'unchanged' };
-      }),
-      removeRecurring: vi.fn(async (_queue: string, name: string) => {
-        operations.push(`remove:${name}`);
-        return { status: 'absent' };
-      }),
-      purgeStaleWalletScheduleJobs: vi.fn(async () => {
-        operations.push('purge:stale-wallet-jobs');
-        return { status: 'absent' };
-      }),
-    } as any;
-    const withRetirementLock = vi.fn(async (operation) => {
-      operations.push('lock');
-      const result = await operation(true);
-      operations.push('unlock');
-      return result;
-    });
-    const coordinator = new RecurringScheduleCoordinator(
-      queue,
-      config,
-      async () => ({
-        autopilotEnabled: false,
-        intelligenceEnabled: false,
-        // Simulate a stale read taken before another worker committed cutover.
-        staleWalletScheduleForbidden: false,
-      }),
-      withRetirementLock,
-    );
-
-    await expect(coordinator.reconcile()).resolves.toEqual(
-      expect.objectContaining({ healthy: true }),
-    );
-
-    expect(withRetirementLock).toHaveBeenCalledOnce();
-    expect(queue.scheduleRecurring).not.toHaveBeenCalledWith(
-      expect.objectContaining({ schedulerId: 'sync:check-stale-wallets' }),
-    );
-    expect(operations.indexOf('lock')).toBeLessThan(
-      operations.indexOf('remove:check-stale-wallets'),
-    );
-    expect(operations.indexOf('unlock')).toBeGreaterThan(
-      operations.findLastIndex((value) => value.startsWith('schedule:')),
-    );
-  });
-
   it('fails closed when stale work keeps reappearing during bounded cleanup', async () => {
     const queue = {
       scheduleRecurring: vi.fn().mockResolvedValue({ status: 'unchanged' }),
@@ -681,7 +571,6 @@ describe('recurring schedule contracts', () => {
       async () => ({
         autopilotEnabled: false,
         intelligenceEnabled: false,
-        staleWalletScheduleForbidden: true,
       }),
     );
 
@@ -707,7 +596,6 @@ describe('recurring schedule contracts', () => {
       async () => ({
         autopilotEnabled: false,
         intelligenceEnabled: false,
-        staleWalletScheduleForbidden: true,
       }),
     );
 
@@ -742,6 +630,7 @@ describe('recurring schedule contracts', () => {
         operations.push(`remove:${name}`);
         return { status: 'removed' };
       }),
+      purgeStaleWalletScheduleJobs: vi.fn().mockResolvedValue({ status: 'absent' }),
     } as any;
     const coordinator = new RecurringScheduleCoordinator(
       queue,
@@ -749,7 +638,6 @@ describe('recurring schedule contracts', () => {
       async () => ({
         autopilotEnabled,
         intelligenceEnabled: false,
-        staleWalletScheduleForbidden: false,
       }),
     );
 
@@ -776,6 +664,7 @@ describe('recurring schedule contracts', () => {
     const queue = {
       scheduleRecurring: vi.fn().mockResolvedValue({ status: 'unchanged' }),
       removeRecurring: vi.fn().mockResolvedValue({ status: 'absent' }),
+      purgeStaleWalletScheduleJobs: vi.fn().mockResolvedValue({ status: 'absent' }),
     } as any;
     const readConditionalState = vi
       .fn()
@@ -783,7 +672,6 @@ describe('recurring schedule contracts', () => {
       .mockResolvedValue({
         autopilotEnabled: false,
         intelligenceEnabled: false,
-        staleWalletScheduleForbidden: false,
       });
     const coordinator = new RecurringScheduleCoordinator(
       queue,

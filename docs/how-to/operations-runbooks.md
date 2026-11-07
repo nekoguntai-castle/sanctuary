@@ -187,10 +187,10 @@ Mitigation:
 
 Wallet sync follows the chain tip and address activity; it is not periodic
 ([ADR 0004](../adr/0004-wallet-sync-lifecycle.md)). The `check-stale-wallets`
-scheduler was retired in #933. Once the retirement cutover has run (a
-`system_settings` row with key
-`operational.wallet-sync.check-stale-wallets-forbidden.v1` exists), nothing
-re-syncs a wallet because time has passed.
+scheduler was retired in #933 and its compatibility code was later removed, so
+nothing re-syncs a wallet because time has passed. The `system_settings` key
+`operational.wallet-sync.check-stale-wallets-forbidden.v1` may still exist; it
+is kept for rollback to v0.8.67-v0.8.84 and the current release does not read it.
 
 **Do not judge sync from `wallets.lastSyncedAt` or `lastSyncedBlockHeight`.**
 They record the last wallet-history pass, which runs only on wallet creation,

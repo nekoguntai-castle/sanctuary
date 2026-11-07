@@ -125,7 +125,6 @@ const COORDINATED_COMPONENT_PATHS = new Set([
   'scripts/perf/phase3-compose/worker-proofs.mjs',
   'tests/install/utils/helpers.sh',
   'tests/install/utils/upgrade-assertions.sh',
-  'tests/install/utils/upgrade-wallet-sync-retirement-helpers.sh',
 ]);
 const APPLICATION_LIFECYCLE_PATHS = new Set([
   'scripts/ops/run-grafana-password-migration.sh',

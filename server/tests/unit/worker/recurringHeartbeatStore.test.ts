@@ -6,9 +6,9 @@ import {
 import type { RecurringScheduleDefinition } from '../../../src/worker/workerJobQueue';
 
 const syncDefinition: RecurringScheduleDefinition = {
-  schedulerId: 'sync:check-stale-wallets',
+  schedulerId: 'sync:heartbeat-fixture',
   queue: 'sync',
-  name: 'check-stale-wallets',
+  name: 'heartbeat-fixture',
   data: {},
   recurrence: { every: 90_000 },
   freshness: { maxAgeMs: 180_000, startupGraceMs: 120_000 },
@@ -89,8 +89,8 @@ describe('RecurringHeartbeatStore', () => {
     expect(redis.eval).toHaveBeenCalledWith(
       expect.stringContaining('pcall(cjson.decode, current)'),
       2,
-      'sanctuary:worker:recurring-generation:v1:sync%3Acheck-stale-wallets',
-      'sanctuary:worker:recurring-heartbeat:v1:sync%3Acheck-stale-wallets',
+      'sanctuary:worker:recurring-generation:v1:sync%3Aheartbeat-fixture',
+      'sanctuary:worker:recurring-heartbeat:v1:sync%3Aheartbeat-fixture',
       1,
       syncDefinition.schedulerId,
       'every:90000',
@@ -297,8 +297,8 @@ describe('RecurringHeartbeatStore', () => {
   it('removes both generation and heartbeat keys and rejects TTL overflow', async () => {
     await store.remove(syncDefinition.schedulerId);
     expect(redis.del).toHaveBeenCalledWith(
-      'sanctuary:worker:recurring-generation:v1:sync%3Acheck-stale-wallets',
-      'sanctuary:worker:recurring-heartbeat:v1:sync%3Acheck-stale-wallets',
+      'sanctuary:worker:recurring-generation:v1:sync%3Aheartbeat-fixture',
+      'sanctuary:worker:recurring-heartbeat:v1:sync%3Aheartbeat-fixture',
     );
 
     await expect(

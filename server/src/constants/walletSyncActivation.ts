@@ -8,9 +8,9 @@
 export const WALLET_SYNC_MUTATION_FENCE_FLOOR = 1 as const;
 
 /**
- * Deployment floor proving that every live worker understands the durable
- * stale-wallet scheduler tombstone and participates in the retirement lock.
- * This is intentionally independent of the mutation-fence floor.
+ * Floor advertised in worker heartbeats and restart markers. The stale-wallet
+ * scheduler it gated was removed; older binaries (v0.8.67 through v0.8.84)
+ * still read it, so the value and wire format must stay stable.
  */
 export const WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR = 2 as const;
 

@@ -171,7 +171,6 @@ on:
           - legacy-runtime-env
           - notification-delivery
           - optional-profiles
-          - wallet-sync-retirement
 
 concurrency:
   # PRs keep the branch-scoped cancel behavior: a superseding push cancels its

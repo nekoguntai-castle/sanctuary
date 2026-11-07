@@ -25,7 +25,6 @@ browser-origin-ip 30
 legacy-runtime-env 24
 notification-delivery 27
 optional-profiles 21
-wallet-sync-retirement 33
 EOF
 }
 
@@ -103,9 +102,6 @@ upgrade_extended_fixture_source_ref() {
     local default_ref="$2"
 
     case "$requested" in
-        wallet-sync-retirement)
-            printf '%s\n' 'v0.8.66'
-            ;;
         legacy-runtime-env)
             # A legacy runtime env predates ownership by definition: it is the
             # shape an install had before the runtime env migration, and an

@@ -124,14 +124,20 @@ for entry in "${UPGRADE_STALENESS_SCHEDULES[@]}"; do
   fi
 done
 
-# The retired wallet schedule must remain absent from both the active schedule
-# table and this upgrade helper. Its retained wire constant lives only in the
-# compatibility/purge boundary and is not evidence of active registration.
-if schedule_is_defined "check-stale-wallets" "$src" "$PROJECT_ROOT/server/src"; then
+# The removed wallet schedule must stay out of the baseline schedule table and
+# this upgrade helper. recurringSchedules.ts still names it, but only as the
+# RETIRED_STALE_WALLET_SCHEDULE purge definition, which is not registration.
+baseline_table="$(mktemp)"
+awk '/^export function buildBaselineRecurringSchedules/{found=1} found{print} found&&/^}/{exit}' \
+  "$src" > "$baseline_table"
+if [ ! -s "$baseline_table" ]; then
+  bad "could not locate buildBaselineRecurringSchedules in recurringSchedules.ts"
+elif schedule_is_defined "check-stale-wallets" "$baseline_table" "$PROJECT_ROOT/server/src"; then
   bad "retired sync schedule is still active in recurringSchedules.ts"
 else
-  ok "retired sync schedule is absent from recurringSchedules.ts"
+  ok "retired sync schedule is absent from the baseline schedule table"
 fi
+rm -f "$baseline_table"
 if printf '%s\n' "${UPGRADE_STALENESS_SCHEDULES[@]}" | grep -q 'sync:check-stale-wallets'; then
   bad "upgrade helper still expects the retired sync freshness schedule"
 else

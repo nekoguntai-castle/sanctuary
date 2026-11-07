@@ -630,7 +630,7 @@ export const registerWalletRepositoryMutationContracts = () => {
     it('demotes inline and legacy retrying rows that have no sync in flight', async () => {
       // The retry ladder is an in-heap setTimeout, so a restart leaves
       // lastSyncStatus='retrying' with no timer and no reaper that selects it
-      // (findStuckWithCutoff requires syncInProgress=true). 2026-08-20.
+      // (findStuckSyncing requires syncInProgress=true). 2026-08-20.
       prisma.wallet.updateMany.mockResolvedValueOnce({ count: 2 });
 
       await expect(walletRepository.demoteStrandedInlineRetries('restarted', 'other')).resolves.toBe(2);

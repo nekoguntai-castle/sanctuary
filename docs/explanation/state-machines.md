@@ -67,9 +67,11 @@ This document describes the state machines and interaction flows in Sanctuary. U
 ### Sync Triggers
 
 1. **Manual** - `POST /sync/wallet/:id` - User requests sync
-2. **Stale Check** - `checkStaleWalletsJob` - Every 3 minutes for wallets older than 5 minutes
-3. **Real-time** - Electrum address subscription event
-4. **New Block** - Electrum blockheader subscription event
+2. **Initial** - wallet creation or import
+3. **Real-time** - Electrum address subscription event, including activity missed across a reconnect
+
+A new block header updates the tip and known confirmations only, and elapsed
+time never triggers a sync ([ADR 0004](../adr/0004-wallet-sync-lifecycle.md)).
 
 ### Pipeline Phases (within SYNCING)
 

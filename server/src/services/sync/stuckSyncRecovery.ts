@@ -1,8 +1,9 @@
 /**
- * Stale Wallet Checker
+ * Stuck Sync Recovery
  *
- * Handles wallets with stuck sync states:
- * - resetStuckSyncs: Clears syncInProgress flags left over from a previous server session.
+ * Clears syncInProgress flags that no running sync owns:
+ * - clearStuckSyncIfAuthorized: lock-guarded repair of one stuck row.
+ * - resetStuckSyncs: clears flags left over from a previous server session.
  */
 
 import { walletRepository } from '../../repositories';
@@ -15,7 +16,7 @@ import { syncIntentAdmission } from './syncIntentAdmission';
 import { getSyncLockKey, getSyncLockTtlMs } from '../../jobs/syncJobContract';
 import { recordWalletSyncCleanupOutcome } from '../../observability/metrics/walletSyncMetrics';
 
-const log = createLogger('SYNC:STALE');
+const log = createLogger('SYNC:STUCK');
 
 interface StuckSyncCandidate {
   id: string;

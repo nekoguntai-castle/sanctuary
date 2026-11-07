@@ -29,10 +29,8 @@ vi.mock('../../../../src/config', () => ({
   getConfig: vi.fn(() => ({
     sync: {
       staleThresholdMs: 600000,
-      staleBatchSize: 75,
       maxConcurrentSyncs: 5,
       maxSyncDurationMs: 120000,
-      syncStaggerDelayMs: 2000,
     },
     bitcoin: {
       network: 'mainnet',

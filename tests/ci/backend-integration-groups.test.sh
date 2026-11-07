@@ -67,7 +67,6 @@ main() {
   assert_redis_suite_contract 'tests/integration/worker/workerHeartbeatRegistryRetirement.integration.test.ts'
   assert_contains "$repositories_core" 'tests/integration/repositories/syncIntentReaders.test.ts'
   assert_contains "$repositories_core" 'tests/integration/repositories/syncIntentLifecycle.test.ts'
-  assert_contains "$repositories_core" 'tests/integration/repositories/schedulerRetirementCutover.test.ts'
   assert_contains "$repositories_core" 'tests/integration/repositories/syncMutationNetworkTransactions.test.ts'
   assert_contains "$repositories_core" 'tests/integration/repositories/syncMutationRecursion.test.ts'
   assert_contains "$repositories_core" 'tests/integration/repositories/subscriptionCheckpointLifecycle.test.ts'

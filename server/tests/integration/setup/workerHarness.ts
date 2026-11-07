@@ -175,10 +175,6 @@ export const createWorkerTestHarness = async (
     validateEncryptionKey: vi.fn(async () => undefined),
   }));
 
-  vi.doMock('../../../src/repositories/walletSyncSchedulePolicyRepository', () => ({
-    readStaleWalletSchedulePolicy: vi.fn(async () => ({ mode: 'legacy_enabled' })),
-    readStaleWalletSchedulePolicyWithClient: vi.fn(async () => ({ mode: 'legacy_enabled' })),
-  }));
 
   vi.doMock('../../../src/infrastructure', () => ({
     initializeDistributedLock: vi.fn(() => undefined),
@@ -209,21 +205,7 @@ export const createWorkerTestHarness = async (
     },
   }));
 
-  vi.doMock('../../../src/services/sync/schedulerRetirementCutover', () => ({
-    schedulerRetirementCutover: {
-      attempt: vi.fn(async () => ({
-        status: 'legacy_enabled',
-        reason: 'activation_blocked',
-        activation: { status: 'dormant', requiredFloor: 1 },
-      })),
-    },
-  }));
 
-  vi.doMock('../../../src/repositories/walletSyncRetirementLock', () => ({
-    withWalletSyncRetirementLock: vi.fn(async (operation: (tx: object) => Promise<unknown>) => (
-      operation({})
-    )),
-  }));
 
   const walletSyncRecoveryRuntime = {
     getActivationState: vi.fn(() => ({ status: 'dormant', requiredFloor: 1 })),
@@ -314,10 +296,12 @@ export const createWorkerTestHarness = async (
 
   const waitForInit = async () => {
     for (let i = 0; i < 50; i += 1) {
+      // Recovery runtime start is the last awaited startup step.
       if (
         jobQueueInstance.initialize.mock.calls.length > 0 &&
-        jobQueueInstance.addJob.mock.calls.length > 0
+        walletSyncRecoveryRuntime.start.mock.calls.length > 0
       ) {
+        await new Promise((resolve) => setImmediate(resolve));
         return;
       }
       await new Promise((resolve) => setImmediate(resolve));
@@ -327,7 +311,7 @@ export const createWorkerTestHarness = async (
   await waitForInit();
   if (
     jobQueueInstance.initialize.mock.calls.length === 0 ||
-    jobQueueInstance.addJob.mock.calls.length === 0
+    walletSyncRecoveryRuntime.start.mock.calls.length === 0
   ) {
     const exitCalls = exitSpy.mock.calls.map((call) => call[0]);
     const logInfo = errorLogs.length ? ` logs: ${errorLogs.join(' | ')}` : '';

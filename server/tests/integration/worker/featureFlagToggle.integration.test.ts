@@ -250,20 +250,7 @@ describe('feature flag admin + worker integration', () => {
       stopDatabaseHealthCheck: vi.fn(),
     }));
 
-    vi.doMock('../../../src/repositories/walletSyncSchedulePolicyRepository', () => ({
-      readStaleWalletSchedulePolicy: vi.fn(async () => ({ mode: 'legacy_enabled' })),
-      readStaleWalletSchedulePolicyWithClient: vi.fn(async () => ({ mode: 'legacy_enabled' })),
-    }));
 
-    vi.doMock('../../../src/services/sync/schedulerRetirementCutover', () => ({
-      schedulerRetirementCutover: {
-        attempt: vi.fn(async () => ({
-          status: 'legacy_enabled',
-          reason: 'activation_blocked',
-          activation: { status: 'dormant', requiredFloor: 1 },
-        })),
-      },
-    }));
 
     vi.doMock('../../../src/services/workerHeartbeatRegistry', () => ({
       WorkerHeartbeatWriter: class {
@@ -291,11 +278,6 @@ describe('feature flag admin + worker integration', () => {
       })),
     }));
 
-    vi.doMock('../../../src/repositories/walletSyncRetirementLock', () => ({
-      withWalletSyncRetirementLock: vi.fn(async (operation: (tx: object) => Promise<unknown>) => (
-        operation({})
-      )),
-    }));
 
     vi.doMock('../../../src/infrastructure', () => ({
       initializeDistributedLock: vi.fn(),

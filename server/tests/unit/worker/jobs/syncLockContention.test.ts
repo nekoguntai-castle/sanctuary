@@ -15,20 +15,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
   mockUpdate, mockFindByIdWithSelect, mockPublishLifecycle, mockBroadcastWalletLog,
-  mockFindStale, mockFindStuckWithCutoff,
 } = vi.hoisted(() => ({
   mockUpdate: vi.fn(),
   mockFindByIdWithSelect: vi.fn(),
   mockPublishLifecycle: vi.fn(),
   mockBroadcastWalletLog: vi.fn(),
-  mockFindStale: vi.fn(),
-  mockFindStuckWithCutoff: vi.fn(),
 }));
-const mockReadStaleWalletSchedulePolicy = vi.hoisted(() => vi.fn());
 
-vi.mock('../../../../src/repositories/walletSyncSchedulePolicyRepository', () => ({
-  readStaleWalletSchedulePolicy: mockReadStaleWalletSchedulePolicy,
-}));
 
 vi.mock('../../../../src/repositories', () => ({
   walletRepository: {
@@ -61,8 +54,6 @@ vi.mock('../../../../src/repositories', () => ({
       };
     },
     findByIdWithSelect: mockFindByIdWithSelect,
-    findStale: mockFindStale,
-    findStuckWithCutoff: mockFindStuckWithCutoff,
   },
   transactionRepository: { findWalletIdsWithPendingConfirmations: vi.fn() },
   resyncRepository: {
@@ -115,7 +106,6 @@ vi.mock('../../../../src/services/sync/syncLifecyclePublisher', () => ({
 }));
 
 import {
-  createCheckStaleWalletsJob,
   resolveSyncLockRetryStartedAt,
   syncWalletJob,
 } from '../../../../src/worker/jobs/syncJobs';
@@ -125,15 +115,10 @@ import {
   readSyncWalletJobData,
 } from '../../../../src/jobs/syncJobContract';
 
-const checkStaleWalletsJob = createCheckStaleWalletsJob();
-
 describe('sync lock contention is never a silent success', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockReadStaleWalletSchedulePolicy.mockResolvedValue({ mode: 'legacy_enabled' });
     mockUpdate.mockResolvedValue({});
-    mockFindStale.mockResolvedValue([]);
-    mockFindStuckWithCutoff.mockResolvedValue([]);
   });
 
   it('re-delays an ordinary sync instead of skipping it', () => {
@@ -142,7 +127,7 @@ describe('sync lock contention is never a silent success', () => {
     expect(delay).toBeGreaterThan(0);
   });
 
-  it('re-delays a stale-sweep sync instead of skipping it', () => {
+  it('re-delays a retained stale-reason sync instead of skipping it', () => {
     const delay = syncWalletJob.lockOptions?.retryDelayMsIfUnavailable?.({
       walletId: 'w2',
       reason: 'stale',
@@ -274,15 +259,7 @@ describe('sync lock contention is never a silent success', () => {
     });
   });
 
-  it('neutralizes retired stale work before any wallet-lock attempt', async () => {
-    mockReadStaleWalletSchedulePolicy.mockResolvedValue({
-      mode: 'forbidden',
-      tombstone: {
-        version: 1,
-        forbiddenAt: '2026-08-22T00:00:00.000Z',
-        compatibilityFloor: 2,
-      },
-    });
+  it('neutralizes retained stale work before any wallet-lock attempt', async () => {
     const job = {
       id: 'b64_c3luYzpzdGFsZTp3LTE',
       name: 'sync-wallet',
@@ -296,26 +273,18 @@ describe('sync lock contention is never a silent success', () => {
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
-  it('preserves stale work while the compatibility policy remains enabled', async () => {
+  it('lets explicit work through to the wallet-lock attempt', async () => {
     const job = {
       id: 'b64_c3luYzpzdGFsZTp3LTE',
       name: 'sync-wallet',
-      data: { version: 1, walletId: 'w-1', reason: 'stale' },
+      data: { version: 1, walletId: 'w-1', reason: 'manual' },
     } as any;
 
     await expect(syncWalletJob.lockOptions?.beforeLockAttempt?.(job))
       .resolves.toBeUndefined();
   });
 
-  it('fails closed on an indeterminate retained identity after retirement', async () => {
-    mockReadStaleWalletSchedulePolicy.mockResolvedValue({
-      mode: 'forbidden',
-      tombstone: {
-        version: 1,
-        forbiddenAt: '2026-08-22T00:00:00.000Z',
-        compatibilityFloor: 2,
-      },
-    });
+  it('fails closed on an indeterminate retained identity', async () => {
     const job = {
       id: 'b64_not+base64',
       name: 'sync-wallet',

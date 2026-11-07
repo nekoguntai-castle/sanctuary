@@ -18,7 +18,7 @@ import {
   STALE_WALLET_SCHEDULE_FORBIDDEN_KEY,
   WALLET_SYNC_ACTIVATION_KEY,
 } from '../../repositories/operationalSystemSettings';
-import { parseStaleWalletScheduleTombstone } from '../../repositories/walletSyncSchedulePolicyRepository';
+import { assertRetiredStaleScheduleMarker } from '../../repositories/retiredStaleScheduleMarker';
 import {
   assertCurrentBinarySupportsWalletSyncActivation,
   parseWalletSyncActivation,
@@ -102,11 +102,7 @@ function shouldRestoreSystemSetting(
     return true;
   }
   if (record.key === STALE_WALLET_SCHEDULE_FORBIDDEN_KEY) {
-    validateRestorableOperationalSetting(
-      record,
-      parseStaleWalletScheduleTombstone,
-      'Invalid durable stale-wallet schedule tombstone',
-    );
+    assertRetiredStaleScheduleMarker(record.value);
     return !preservedOperationalKeys.has(STALE_WALLET_SCHEDULE_FORBIDDEN_KEY);
   }
   if (record.key === WALLET_SYNC_ACTIVATION_KEY) {
@@ -114,15 +110,6 @@ function shouldRestoreSystemSetting(
     return !preservedOperationalKeys.has(WALLET_SYNC_ACTIVATION_KEY);
   }
   return false;
-}
-
-function validateRestorableOperationalSetting(
-  record: BackupRecord,
-  parse: (value: string) => unknown,
-  invalidMessage: string,
-): void {
-  if (typeof record.value !== 'string') throw new Error(invalidMessage);
-  parse(record.value);
 }
 
 function validateRestorableWalletSyncActivation(record: BackupRecord): void {

@@ -1060,6 +1060,10 @@ cd ~/sanctuary
 ./install.sh
 ```
 
+Upgrades are supported from v0.8.67 or later. Upgrade an older install to
+v0.8.67 (or any later release up to v0.8.84) first, then to the current
+release.
+
 ### Offline Bundle Upgrade
 
 For airgapped systems or machines that cannot reach GitHub, upload a

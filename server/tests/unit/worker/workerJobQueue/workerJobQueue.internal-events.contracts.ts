@@ -428,8 +428,8 @@ export const registerWorkerJobQueueInternalEventContracts = (getQueue: WorkerJob
 
       handlers.completed?.({
         id: 'recurring',
-        name: 'check-stale-wallets',
-        repeatJobKey: 'sync:check-stale-wallets',
+        name: 'fixture-recurring',
+        repeatJobKey: 'sync:fixture-recurring',
       });
       await Promise.resolve();
       await Promise.resolve();

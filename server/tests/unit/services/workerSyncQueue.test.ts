@@ -13,7 +13,6 @@ const mocks = vi.hoisted(() => ({
   mockQueueClose: vi.fn().mockResolvedValue(undefined),
   mockGetRedisClient: vi.fn(),
   mockIsRedisConnected: vi.fn(),
-  mockReadStaleWalletSchedulePolicy: vi.fn(),
 }));
 
 vi.mock("bullmq", () => ({
@@ -36,10 +35,6 @@ vi.mock("../../../src/infrastructure", () => ({
 
 vi.mock("../../../src/repositories/resyncRepository", () => ({
   reserveFullResyncGeneration: mocks.mockReserveFullResyncGeneration,
-}));
-
-vi.mock("../../../src/repositories/walletSyncSchedulePolicyRepository", () => ({
-  readStaleWalletSchedulePolicy: mocks.mockReadStaleWalletSchedulePolicy,
 }));
 
 vi.mock("../../../src/utils/logger", () => ({
@@ -106,7 +101,6 @@ describe("workerSyncQueue", () => {
       options: { host: "localhost", port: 6379, db: 0 },
     });
     mocks.mockIsRedisConnected.mockReturnValue(true);
-    mocks.mockReadStaleWalletSchedulePolicy.mockResolvedValue({ mode: "legacy_enabled" });
     await closeWorkerSyncQueue();
   });
 
@@ -706,38 +700,16 @@ describe("workerSyncQueue", () => {
     );
   });
 
-  it("does not replay stale-only work after durable scheduler retirement", async () => {
-    mocks.mockReadStaleWalletSchedulePolicy.mockResolvedValue({
-      mode: "forbidden",
-      tombstone: {
-        version: 1,
-        forbiddenAt: "2026-08-22T00:00:00.000Z",
-        compatibilityFloor: 2,
-      },
-    });
-
+  it.each([
+    ["stale", "stale-entry"],
+    ["custom-stale-sweep", "entry-stale-custom"],
+  ])("never replays stale-only work with reason %s", async (reason, entry) => {
     await expect(enqueueDeadLetterJob({
       ...syncDeadLetterEnvelope(),
       jobId: toBullMqJobId("sync:stale:wallet-1:123"),
-      data: { version: 1, walletId: "wallet-1", reason: "stale" },
-    }, "stale-entry")).resolves.toBe(false);
+      data: { version: 1, walletId: "wallet-1", reason },
+    }, entry)).resolves.toBe(false);
     expect(mocks.mockQueueAdd).not.toHaveBeenCalled();
-  });
-
-  it("preserves stale provenance in replay identity before later retirement", async () => {
-    await expect(enqueueDeadLetterJob({
-      ...syncDeadLetterEnvelope(),
-      jobId: toBullMqJobId("sync:stale:wallet-1:123"),
-      data: { version: 1, walletId: "wallet-1", reason: "custom-stale-sweep" },
-    }, "entry-stale-custom")).resolves.toBe(true);
-
-    expect(mocks.mockQueueAdd).toHaveBeenCalledWith(
-      "sync-wallet",
-      expect.objectContaining({ reason: "custom-stale-sweep" }),
-      expect.objectContaining({
-        jobId: toBullMqJobId("sync:stale:dead-letter-retry:entry-stale-custom"),
-      }),
-    );
   });
 
   it("does not replay a malformed sync identity with indeterminate provenance", async () => {

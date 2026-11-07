@@ -111,10 +111,6 @@ export type {
   SubscriptionCoverageReason,
 } from './subscriptionCoverageRepository';
 export {
-  walletSyncSchedulePolicyRepository,
-  default as walletSyncSchedulePolicyRepo,
-} from './walletSyncSchedulePolicyRepository';
-export {
   balanceCorrectionRepository,
   default as balanceCorrectionRepo,
 } from './balanceCorrectionRepository';

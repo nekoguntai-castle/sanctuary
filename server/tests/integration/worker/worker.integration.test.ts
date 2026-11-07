@@ -64,11 +64,13 @@ describe('worker integration', () => {
     expect(harness.registerWorkerJobs).toHaveBeenCalled();
     expect(harness.walletSyncRecoveryRuntime.start).toHaveBeenCalledOnce();
 
-    expect(harness.jobQueue.scheduleRecurring).toHaveBeenCalledWith(
-      expect.objectContaining({
-        schedulerId: 'sync:check-stale-wallets',
-        recurrence: { every: 300_000 },
-      }),
+    expect(harness.jobQueue.scheduleRecurring).not.toHaveBeenCalledWith(
+      expect.objectContaining({ schedulerId: 'sync:check-stale-wallets' }),
+    );
+    expect(harness.jobQueue.removeRecurring).toHaveBeenCalledWith(
+      'sync',
+      'check-stale-wallets',
+      { purgeQueued: true },
     );
     expect(harness.jobQueue.scheduleRecurring).toHaveBeenCalledWith(
       expect.objectContaining({

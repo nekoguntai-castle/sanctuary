@@ -21,6 +21,4 @@ export type {
 export type {
   SyncWalletJobData,
   SyncWalletJobResult,
-  CheckStaleWalletsJobData,
-  CheckStaleWalletsResult,
 } from '../jobs/syncJobContract';

@@ -6,9 +6,9 @@ const prefix = process.argv[2];
 const redisUrl = process.env.REDIS_URL;
 
 const definition: RecurringScheduleDefinition = {
-  schedulerId: 'sync:check-stale-wallets',
+  schedulerId: 'sync:heartbeat-fixture',
   queue: 'sync',
-  name: 'check-stale-wallets',
+  name: 'heartbeat-fixture',
   data: {},
   recurrence: { every: 90_000 },
   freshness: { maxAgeMs: 180_000, startupGraceMs: 120_000 },

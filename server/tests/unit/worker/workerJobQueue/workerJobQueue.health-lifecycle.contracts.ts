@@ -150,9 +150,9 @@ export const registerWorkerJobQueueHealthLifecycleContracts = (getQueue: WorkerJ
     it('records only matching BullMQ scheduler completions', async () => {
       await queue.initialize();
       await queue.scheduleRecurring({
-        schedulerId: 'sync:check-stale-wallets',
+        schedulerId: 'sync:fixture-recurring',
         queue: 'sync',
-        name: 'check-stale-wallets',
+        name: 'fixture-recurring',
         data: {},
         recurrence: { every: 90_000 },
         freshness: { maxAgeMs: 180_000, startupGraceMs: 120_000 },
@@ -168,7 +168,7 @@ export const registerWorkerJobQueueHealthLifecycleContracts = (getQueue: WorkerJ
 
       completedHandler({
         id: 'manual',
-        name: 'check-stale-wallets',
+        name: 'fixture-recurring',
         opts: {},
       });
       await Promise.resolve();
@@ -177,7 +177,7 @@ export const registerWorkerJobQueueHealthLifecycleContracts = (getQueue: WorkerJ
       completedHandler({
         id: 'wrong-name',
         name: 'sync-wallet',
-        repeatJobKey: 'sync:check-stale-wallets',
+        repeatJobKey: 'sync:fixture-recurring',
         data: recurringData,
         timestamp: 2_000,
         opts: { repeat: { every: 90_000 } },
@@ -190,8 +190,8 @@ export const registerWorkerJobQueueHealthLifecycleContracts = (getQueue: WorkerJ
       )[1];
       notificationsCompleted({
         id: 'wrong-queue',
-        name: 'check-stale-wallets',
-        repeatJobKey: 'sync:check-stale-wallets',
+        name: 'fixture-recurring',
+        repeatJobKey: 'sync:fixture-recurring',
         data: recurringData,
         timestamp: 2_000,
         opts: { repeat: { every: 90_000 } },
@@ -201,8 +201,8 @@ export const registerWorkerJobQueueHealthLifecycleContracts = (getQueue: WorkerJ
 
       completedHandler({
         id: 'recurring',
-        name: 'check-stale-wallets',
-        repeatJobKey: 'sync:check-stale-wallets',
+        name: 'fixture-recurring',
+        repeatJobKey: 'sync:fixture-recurring',
         data: recurringData,
         // BullMQ creates the first job before the generation is persisted.
         timestamp: 500,
@@ -228,20 +228,20 @@ export const registerWorkerJobQueueHealthLifecycleContracts = (getQueue: WorkerJ
       await queue.initialize();
       const callback = vi.fn();
 
-      queue.onJobCompleted('sync', 'check-stale-wallets', callback);
+      queue.onJobCompleted('sync', 'fixture-recurring', callback);
 
       const onCompleted = getOnCompleted('sync');
       // BullMQ Worker completed event: (job, returnvalue, prev)
-      onCompleted({ name: 'check-stale-wallets' }, { staleWalletIds: ['w1'] });
+      onCompleted({ name: 'fixture-recurring' }, { walletIds: ['w1'] });
 
-      expect(callback).toHaveBeenCalledWith({ staleWalletIds: ['w1'] });
+      expect(callback).toHaveBeenCalledWith({ walletIds: ['w1'] });
     });
 
     it('does not call callback for non-matching job names', async () => {
       await queue.initialize();
       const callback = vi.fn();
 
-      queue.onJobCompleted('sync', 'check-stale-wallets', callback);
+      queue.onJobCompleted('sync', 'fixture-recurring', callback);
 
       const onCompleted = getOnCompleted('sync');
       onCompleted({ name: 'sync-wallet' }, {});
@@ -253,11 +253,11 @@ export const registerWorkerJobQueueHealthLifecycleContracts = (getQueue: WorkerJ
       await queue.initialize();
       const callback = vi.fn().mockRejectedValue(new Error('callback failed'));
 
-      queue.onJobCompleted('sync', 'check-stale-wallets', callback);
+      queue.onJobCompleted('sync', 'fixture-recurring', callback);
 
       const onCompleted = getOnCompleted('sync');
       // Should not throw
-      onCompleted({ name: 'check-stale-wallets' }, {});
+      onCompleted({ name: 'fixture-recurring' }, {});
       await Promise.resolve();
     });
 
@@ -265,11 +265,11 @@ export const registerWorkerJobQueueHealthLifecycleContracts = (getQueue: WorkerJ
       await queue.initialize();
       const callback = vi.fn().mockImplementation(() => { throw new Error('sync error'); });
 
-      queue.onJobCompleted('sync', 'check-stale-wallets', callback);
+      queue.onJobCompleted('sync', 'fixture-recurring', callback);
 
       const onCompleted = getOnCompleted('sync');
       // Should not throw
-      onCompleted({ name: 'check-stale-wallets' }, {});
+      onCompleted({ name: 'fixture-recurring' }, {});
     });
 
     it('warns when queue does not exist', async () => {

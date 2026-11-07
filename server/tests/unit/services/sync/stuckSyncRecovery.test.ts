@@ -32,7 +32,7 @@ vi.mock('../../../../src/config', () => ({
 import {
   clearStuckSyncIfAuthorized,
   resetStuckSyncs,
-} from '../../../../src/services/sync/staleWalletChecker';
+} from '../../../../src/services/sync/stuckSyncRecovery';
 import { metricsService } from '../../../../src/observability/metrics';
 
 const clearedState = {
@@ -48,7 +48,7 @@ const clearedState = {
   syncStateVersion: 2,
 };
 
-describe('staleWalletChecker', () => {
+describe('stuckSyncRecovery', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     metricsService.reset();

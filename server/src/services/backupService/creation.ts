@@ -26,7 +26,7 @@ import {
   WALLET_SYNC_ACTIVATION_KEY,
   isOperationalSystemSettingKey,
 } from '../../repositories/operationalSystemSettings';
-import { parseStaleWalletScheduleTombstone } from '../../repositories/walletSyncSchedulePolicyRepository';
+import { assertRetiredStaleScheduleMarker } from '../../repositories/retiredStaleScheduleMarker';
 import {
   assertCurrentBinarySupportsWalletSyncActivation,
   parseWalletSyncActivation,
@@ -199,11 +199,7 @@ async function buildBackupMeta(
 function isOperationalRecord(table: string, record: BackupRecord): boolean {
   if (table !== 'systemSetting' || typeof record.key !== 'string') return false;
   if (record.key === STALE_WALLET_SCHEDULE_FORBIDDEN_KEY) {
-    validateOperationalSettingValue(
-      record,
-      parseStaleWalletScheduleTombstone,
-      'Invalid durable stale-wallet schedule tombstone',
-    );
+    assertRetiredStaleScheduleMarker(record.value);
     return false;
   }
   if (record.key === WALLET_SYNC_ACTIVATION_KEY) {
@@ -211,15 +207,6 @@ function isOperationalRecord(table: string, record: BackupRecord): boolean {
     return false;
   }
   return isOperationalSystemSettingKey(record.key);
-}
-
-function validateOperationalSettingValue(
-  record: BackupRecord,
-  parse: (value: string) => unknown,
-  invalidMessage: string,
-): void {
-  if (typeof record.value !== 'string') throw new Error(invalidMessage);
-  parse(record.value);
 }
 
 function validateWalletSyncActivationRecord(record: BackupRecord): void {

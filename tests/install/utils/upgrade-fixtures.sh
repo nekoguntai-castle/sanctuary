@@ -217,7 +217,6 @@ Upgrade fixtures:
                        (default: latest-stable) instead of the pre-ownership pin. Non-blocking
                        canary lane while #1057 is open.
   seeded-app-state     Explicit app-state fixture; useful when combined with other fixture names.
-  wallet-sync-retirement Legacy scheduler/job retirement from a below-floor source.
 
 Fixtures can be comma-separated, for example:
   --fixture browser-origin-ip,seeded-app-state
@@ -243,14 +242,12 @@ fixture_list_contains() {
 validate_upgrade_fixture() {
     local fixture_list="$1"
     local fixture
-    local fixture_count=0
 
     IFS=',' read -ra fixtures <<< "$fixture_list"
     for fixture in "${fixtures[@]}"; do
         fixture="${fixture//[[:space:]]/}"
-        fixture_count=$((fixture_count + 1))
         case "$fixture" in
-            baseline|browser-origin-ip|legacy-runtime-env|notification-delivery|optional-profiles|optional-owned-source|seeded-app-state|wallet-sync-retirement)
+            baseline|browser-origin-ip|legacy-runtime-env|notification-delivery|optional-profiles|optional-owned-source|seeded-app-state)
                 ;;
             "")
                 echo "Fixture list contains an empty fixture" >&2
@@ -262,12 +259,6 @@ validate_upgrade_fixture() {
                 ;;
         esac
     done
-
-    if [ "$fixture_count" -gt 1 ] \
-        && fixture_list_contains "$fixture_list" "wallet-sync-retirement"; then
-        echo "wallet-sync-retirement must run as an isolated fixture" >&2
-        return 1
-    fi
 }
 
 apply_upgrade_fixture_defaults() {
@@ -304,14 +295,6 @@ apply_upgrade_fixture_defaults() {
 
     if fixture_list_contains "$fixture_list" "seeded-app-state"; then
         UPGRADE_SEED_APP_STATE=true
-    fi
-
-    if fixture_list_contains "$fixture_list" "wallet-sync-retirement"; then
-        # The fixture carries no wallet/address coverage. Its dedicated helper
-        # fast-forwards the live observed header target so this lane can prove
-        # scheduler retirement without duplicating the header-reconciliation lane.
-        UPGRADE_SEED_APP_STATE=false
-        UPGRADE_RUN_BROWSER_SMOKE=false
     fi
 
     export UPGRADE_ENABLE_MONITORING

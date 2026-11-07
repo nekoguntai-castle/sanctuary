@@ -94,7 +94,6 @@ function repositoryMock() {
   return {
     findIncrementalSyncIntent: vi.fn(),
     requestIncrementalSync: vi.fn(),
-    requestRetainedStaleIncrementalSync: vi.fn(),
     claimIncrementalSync: vi.fn(),
     completeIncrementalSync: vi.fn(),
     releaseIncrementalSyncForRetry: vi.fn(),
@@ -272,51 +271,6 @@ describe('syncIntentAdmission', () => {
     expect(enqueueWakeup).not.toHaveBeenCalled();
   });
 
-  it('does not create intent when retained stale admission loses the retirement race', async () => {
-    const repository = repositoryMock();
-    vi.mocked(repository.requestRetainedStaleIncrementalSync).mockResolvedValue({
-      status: 'retired',
-    });
-    const admission = createAdmission(repository);
-
-    await expect(admission.requestRetainedStale('wallet-1')).resolves.toEqual({
-      status: 'retired',
-    });
-    expect(repository.requestIncrementalSync).not.toHaveBeenCalled();
-    expect(publishTransition).not.toHaveBeenCalled();
-    expect(enqueueWakeup).not.toHaveBeenCalled();
-  });
-
-  it('does not persist retained stale intent before activation is active', async () => {
-    const repository = repositoryMock();
-    inspectActivation.mockResolvedValue(DORMANT);
-    const admission = createAdmission(repository);
-
-    await expect(admission.requestRetainedStale('wallet-1')).resolves.toEqual({
-      status: 'blocked',
-      activation: DORMANT,
-    });
-    expect(repository.requestRetainedStaleIncrementalSync).not.toHaveBeenCalled();
-    expect(enqueueWakeup).not.toHaveBeenCalled();
-  });
-
-  it('persists retained stale intent through the serialized repository boundary', async () => {
-    const repository = repositoryMock();
-    vi.mocked(repository.requestRetainedStaleIncrementalSync).mockResolvedValue({
-      status: 'requested',
-      state: intentState(),
-    });
-    enqueueWakeup.mockResolvedValue(true);
-    const admission = createAdmission(repository);
-
-    await expect(admission.requestRetainedStale('wallet-1')).resolves.toMatchObject({
-      status: 'requested',
-      wakeup: 'enqueued',
-    });
-    expect(repository.requestRetainedStaleIncrementalSync).toHaveBeenCalledWith('wallet-1');
-    expect(publishTransition).toHaveBeenCalledOnce();
-  });
-
   it('persists retained full-resync work while activation is dormant without enqueueing it', async () => {
     requestFullResyncGeneration.mockResolvedValue({
       status: 'merged',
@@ -362,23 +316,6 @@ describe('syncIntentAdmission', () => {
     expect(enqueueFullResyncWakeup).toHaveBeenCalledWith(expect.objectContaining({
       reason: 'retained-full',
     }));
-  });
-
-  it('routes retirement-sensitive retained bridges through the serialized repository boundary', async () => {
-    const repository = repositoryMock();
-    vi.mocked(repository.requestRetainedStaleIncrementalSync).mockResolvedValue({
-      status: 'requested',
-      state: intentState(),
-    });
-    enqueueWakeup.mockResolvedValue(true);
-    const admission = createAdmission(repository);
-
-    await expect(admission.bridgeRetained('wallet-1', {
-      fullResync: false,
-      retirementSensitive: true,
-    })).resolves.toMatchObject({ status: 'requested', wakeup: 'enqueued' });
-    expect(repository.requestRetainedStaleIncrementalSync).toHaveBeenCalledWith('wallet-1');
-    expect(repository.requestIncrementalSync).not.toHaveBeenCalled();
   });
 
   it('uses a stable bridge reason when an active retained full resync has none', async () => {

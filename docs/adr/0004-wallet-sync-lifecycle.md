@@ -6,7 +6,7 @@
 - **Owner:** Sanctuary maintainers
 - **Supersedes:** none
 - **Superseded by:** none
-- **Amended:** 2026-11-04 (re-admission after activation; see "Re-admission after activation")
+- **Amended:** 2026-11-04 (re-admission after activation; see "Re-admission after activation"); 2026-11-07 (stale-scheduler compatibility layer removed; see "Compatibility layer removal")
 - **Related:** `config/wallet-sync-lifecycle-contract.json`, `server/ARCHITECTURE.md`, `server/src/jobs/syncJobContract.ts`, `server/src/worker/recurringSchedules.ts`
 
 ## Context
@@ -168,7 +168,9 @@ network set. Durable per-network readiness and reorganization evidence are the
 authoritative scheduler-retirement gate.
 
 This ADR and `config/wallet-sync-lifecycle-contract.json` establish the target and
-freeze the remaining compatibility exceptions. Scheduler retirement serializes
+freeze the remaining compatibility exceptions. The next two paragraphs describe
+the cutover as it shipped in v0.8.67 through v0.8.84; the layer they describe
+was later removed (see "Compatibility layer removal"). Scheduler retirement serializes
 the exact per-network readiness projection with address, checkpoint, failure,
 header, coverage, reconciliation, and confirmation-retry writers by taking the
 global retirement advisory lock and one fixed-order PostgreSQL table barrier.
@@ -185,6 +187,34 @@ cutover, while retained intent persistence rechecks the marker in the same locke
 database transaction. Once the marker exists these paths cannot create new
 elapsed-age work. Deprecated stale-threshold variables emit name-only warnings
 during the compatibility window. `cutoverComplete` is true.
+
+### Compatibility layer removal
+
+*Amended 2026-11-07.* The marker-absent compatibility layer, the cutover that
+wrote the marker, the `check-stale-wallets` handler, and the worker's elapsed-age
+stuck-flag sweep inside it were removed. Every supported upgrade source (v0.8.67
+or later) already runs the cutover itself, so nothing in the current binary
+reads or writes `operational.wallet-sync.check-stale-wallets-forbidden.v1`, and
+the `wallet-sync-retirement` upgrade lane (v0.8.66 source) was retired with it.
+v0.8.67 is the oldest supported upgrade source.
+
+What remains is deliberately small:
+
+- every recurring-schedule reconciliation removes the `check-stale-wallets`
+  repeatable (`RETIRED_STALE_WALLET_SCHEDULE`) and purges queued stale-only jobs
+  before any desired schedule is written, so an install that never completed
+  the cutover is cleaned without consulting the marker;
+- retained `sync-wallet` jobs that `staleWalletJobPolicy` classifies as stale are
+  neutralized unconditionally (an indeterminate identity fails closed), and a
+  stale dead-letter entry is never replayed raw;
+- backups still carry a well-formed marker and restore never removes one already
+  present, because v0.8.67 through v0.8.84 binaries read it on rollback; restore
+  also still takes the retirement advisory lock those binaries use for cutover;
+- workers still advertise the scheduler-retirement floor in heartbeats and
+  restart markers, whose wire format those binaries parse.
+
+The API process's in-process stuck-flag repair (`stuckSyncRecovery.ts`, run only
+while the worker is unhealthy) is unrelated to the scheduler and is kept.
 
 Public status is a token-free projection of the same versioned wallet row. REST
 status plus wallet list/detail responses, canonical WebSocket snapshots, and the
@@ -221,8 +251,9 @@ such execution can exist:
 - **Fenced restart evidence.** The boot key stores
   `epoch|mutationFloor|retirementFloor`. A successor's first applied write
   records `fenced|m|r`, naming its exact predecessor's advertised floors; each
-  reader judges that marker against its own required floor, so the
-  scheduler-retirement reader still blocks a predecessor below its floor.
+  reader judges that marker against its own required floor. (This binary no
+  longer has a scheduler-retirement reader; it still writes the retirement
+  floor because older binaries read it.)
   A predecessor of unknown floor keeps the blocking `restart`/`collision`
   marker. A later write that finds a foreign epoch is a live duplicate of the
   slot and always records a blocking `collision`. Markers never get weaker: a
@@ -276,7 +307,7 @@ activation remains unsupported.
 | `WSYNC-ADMISSION-001` | Production producers and recovery use one gate-enforced durable admission module; compatibility exceptions cannot grow. |
 | `WSYNC-WORKER-001` | The worker is the sole low-level executor and checkpoint-subscription owner; only its bounded runtime may consume the enrollment coordinator and checkpoint writers. |
 | `WSYNC-COMPAT-001` | Unversioned/v1 and retained v2 remain readable only as durable-intent bridges; they cannot enter the unfenced executor. Canonical emission uses floor-bound v3, which a pre-floor worker rejects before locking; unknown versions fail closed. |
-| `WSYNC-STALE-001` | The stale scheduler is durably forbidden after an atomic activation/readiness cutover; marker-absent compatibility is isolated, serialized with cutover, and cannot recreate elapsed-age work afterward. |
+| `WSYNC-STALE-001` | No elapsed-age scheduler exists. Every recurring reconciliation removes the retired `check-stale-wallets` repeatable and stale-only queued work before scheduling, retained stale jobs never execute, and backups keep the retired marker for rollback binaries. |
 
 ## Consequences
 
@@ -287,9 +318,9 @@ fail required CI. Removing a listed legacy path also fails until the contract is
 updated in the same reviewed change, preventing stale exceptions from disguising
 progress.
 
-The remaining compatibility ledger keeps retained wire readers and the
-marker-absent rollback bridge reviewable while preventing the retired producer
-surface from expanding.
+The remaining compatibility ledger keeps retained wire readers and the retired
+schedule purge reviewable while preventing the retired producer surface from
+expanding.
 
 ## Rollout and rollback
 
@@ -313,3 +344,9 @@ recreate the schedule during recurring reconciliation and is unsupported.
 The marker is included in complete backup payloads, restored into an empty
 recovery database only after strict schema validation, and may never replace or
 remove a marker already present in the live deployment.
+
+Since the compatibility layer was removed, upgrades must start from v0.8.67 or
+later, and rollback is supported only to v0.8.67 or later. A binary from that
+range finds the marker its own cutover wrote (or that a backup carried) and keeps
+the schedule forbidden; on an install created by a later release it runs its own
+cutover.

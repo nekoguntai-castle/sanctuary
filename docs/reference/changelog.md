@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - CI: the critical mutation gate's shard 1 ran 38-59 minutes against its 60-minute deadline and timed out on busy runner hosts, while shard 2 finished in about 75 seconds. `xpubConversion.ts`, about 55% of shard 1's test executions, now runs in shard 2, so no shard is expected to need more than about 30 minutes uncontended.
 
+### Removed
+
+- The stale-wallet scheduler compatibility layer that v0.8.67 retired (#933): marker-absent `check-stale-wallets` scheduling, startup catch-up, the cutover and its marker policy, the `check-stale-wallets` handler, and the unused `SYNC_STALE_BATCH_SIZE`, `SYNC_STAGGER_DELAY_MS` and `SYNC_STARTUP_CATCH_UP_*` settings, which already only logged a deprecation warning. Every recurring-schedule reconciliation still removes a leftover `check-stale-wallets` repeatable and stale-only queued jobs, and backups keep the retired marker for rollback to v0.8.67–v0.8.84. **Upgrades are now supported from v0.8.67 or later**; the v0.8.66 `wallet-sync-retirement` upgrade lane was removed.
+
 ### Fixed
 
 - Wallet sync status no longer marks a quiet wallet stale because time has passed. `isStale` on `GET /sync/status/:walletId` is now true only for a never-synced wallet or unprocessed requested sync work, matching the tip- and activity-driven sync model (ADR 0004). The ADR, operations runbook ("Is sync current?"), OpenAPI descriptions, schema comments and MCP wallet-health prompt now say that an old `lastSyncedAt` on a quiet wallet is expected.

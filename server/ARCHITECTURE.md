@@ -192,14 +192,13 @@ The error handler middleware (`src/errors/errorHandler.ts`) automatically conver
 
 Wallet synchronization follows the durable, activity-driven lifecycle defined
 by [ADR 0004](../docs/adr/0004-wallet-sync-lifecycle.md). Manual/API requests,
-initial sync, address activity, dead-letter retry, and the retained
-`check-stale-wallets` compatibility bridge can produce wallet-history work only
-through gate-enforced durable admission. Admission persists or merges the
-generation before BullMQ receives an at-least-once wake-up; neither producers
-nor bounded recovery have raw queue or repository authority. The elapsed-age
-schedule is now durably forbidden after an atomic readiness cutover. Its
-marker-absent compatibility producer and retained-completion bridge are isolated,
-share the retirement lock, and cannot create stale intent after the marker. The
+initial sync, address activity, and dead-letter retry can produce wallet-history
+work only through gate-enforced durable admission. Admission persists or merges
+the generation before BullMQ receives an at-least-once wake-up; neither
+producers nor bounded recovery have raw queue or repository authority. There is
+no elapsed-age schedule: recurring reconciliation removes the retired
+`check-stale-wallets` repeatable and stale-only queued work, and retained stale
+jobs complete without running. The
 executable inventory in
 `config/wallet-sync-lifecycle-contract.json` prevents bypasses from growing.
 

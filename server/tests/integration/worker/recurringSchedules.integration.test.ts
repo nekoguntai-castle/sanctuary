@@ -3,7 +3,10 @@ import { resolve } from 'node:path';
 import Redis from 'ioredis';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { CombinedConfig } from '../../../src/config';
-import { RecurringScheduleCoordinator } from '../../../src/worker/recurringSchedules';
+import {
+  RETIRED_STALE_WALLET_SCHEDULE,
+  RecurringScheduleCoordinator,
+} from '../../../src/worker/recurringSchedules';
 import { describeWithRedis } from '../setup/redis';
 import { toBullMqJobId } from '../../../src/jobs/bullMqJobIds';
 
@@ -98,14 +101,14 @@ describeWithRedis('recurring schedule Redis integration', () => {
     const prefix = `sanctuary:test:heartbeat:${process.pid}:${Date.now()}`;
     redis = new Redis(process.env.REDIS_URL!);
     const generationKey =
-      `${prefix}:recurring-generation:v1:sync%3Acheck-stale-wallets`;
+      `${prefix}:recurring-generation:v1:sync%3Aheartbeat-fixture`;
     const completionKey =
-      `${prefix}:recurring-heartbeat:v1:sync%3Acheck-stale-wallets`;
+      `${prefix}:recurring-heartbeat:v1:sync%3Aheartbeat-fixture`;
     await redis.set(
       generationKey,
       JSON.stringify({
         version: 1,
-        schedulerId: 'sync:check-stale-wallets',
+        schedulerId: 'sync:heartbeat-fixture',
         recurrenceFingerprint: 'every:90000',
         generationToken: 'malformed-generation',
         activatedAt: 1.5,
@@ -130,14 +133,14 @@ describeWithRedis('recurring schedule Redis integration', () => {
     ]);
     expect(firstRead.snapshot).toEqual(secondRead.snapshot);
     expect(
-      firstRead.snapshot.records['sync:check-stale-wallets'].lastCompletedAt,
+      firstRead.snapshot.records['sync:heartbeat-fixture'].lastCompletedAt,
     ).toEqual(expect.any(Number));
     expect(
-      firstRead.snapshot.records['sync:check-stale-wallets'].activatedAt,
+      firstRead.snapshot.records['sync:heartbeat-fixture'].activatedAt,
     ).toEqual(expect.any(Number));
     expect(
       Number.isInteger(
-        firstRead.snapshot.records['sync:check-stale-wallets'].activatedAt,
+        firstRead.snapshot.records['sync:heartbeat-fixture'].activatedAt,
       ),
     ).toBe(true);
 
@@ -159,9 +162,9 @@ describeWithRedis('recurring schedule Redis integration', () => {
     afterExpiry.send('read');
     const expiredRead = await waitForMessage(afterExpiry, 'snapshot');
     const expiredRecord =
-      expiredRead.snapshot.records['sync:check-stale-wallets'];
+      expiredRead.snapshot.records['sync:heartbeat-fixture'];
     expect(expiredRecord.activatedAt).toBe(
-      firstRead.snapshot.records['sync:check-stale-wallets'].activatedAt,
+      firstRead.snapshot.records['sync:heartbeat-fixture'].activatedAt,
     );
     expect(expiredRecord.lastCompletedAt).toBeUndefined();
 
@@ -277,7 +280,6 @@ describeWithRedis('recurring schedule Redis integration', () => {
         return {
           autopilotEnabled,
           intelligenceEnabled: false,
-          staleWalletScheduleForbidden: false,
         };
       },
     );
@@ -328,7 +330,7 @@ describeWithRedis('recurring schedule Redis integration', () => {
     );
   });
 
-  it('removes the legacy schedule and only stale prestart work when forbidden', async () => {
+  it('removes a legacy schedule and only stale prestart work left by a pre-cutover install', async () => {
     redis = new Redis(process.env.REDIS_URL!);
     vi.doMock('../../../src/infrastructure', () => ({
       getRedisClient: () => redis,
@@ -349,19 +351,20 @@ describeWithRedis('recurring schedule Redis integration', () => {
     const activeQueues = queueInstances.map(({ queue: instance }) => instance!);
     allBullQueues = activeQueues;
     const syncQueue = activeQueues.find((instance) => instance.name === 'sync')!;
-    let staleWalletScheduleForbidden = false;
     const coordinator = new RecurringScheduleCoordinator(
       queue,
       config,
       async () => ({
         autopilotEnabled: false,
         intelligenceEnabled: false,
-        staleWalletScheduleForbidden,
       }),
     );
-    await expect(coordinator.reconcile()).resolves.toEqual(
-      expect.objectContaining({ healthy: true }),
-    );
+    // Seed the repeatable exactly as a pre-cutover worker registered it.
+    await expect(queue.scheduleRecurring(RETIRED_STALE_WALLET_SCHEDULE))
+      .resolves.not.toMatchObject({ status: 'failed' });
+    expect((await syncQueue.getJobSchedulers()).some(
+      ({ name }) => name === 'check-stale-wallets',
+    )).toBe(true);
     await syncQueue.add('sync-wallet', { walletId: 'stale', reason: 'stale' }, {
       delay: 60_000,
       jobId: toBullMqJobId('sync:stale:wallet-stale:123'),
@@ -371,7 +374,6 @@ describeWithRedis('recurring schedule Redis integration', () => {
       jobId: toBullMqJobId('manual-sync:wallet-manual'),
     });
 
-    staleWalletScheduleForbidden = true;
     await expect(coordinator.reconcile()).resolves.toEqual(
       expect.objectContaining({
         healthy: true,
@@ -401,7 +403,7 @@ describeWithRedis('recurring schedule Redis integration', () => {
     ]);
   });
 
-  it('recovers an interrupted marker-to-purge boot and remains clean on a third boot', async () => {
+  it('recovers an interrupted stale-work purge and remains clean on a third boot', async () => {
     redis = new Redis(process.env.REDIS_URL!);
     vi.doMock('../../../src/infrastructure', () => ({
       getRedisClient: () => redis,
@@ -422,7 +424,6 @@ describeWithRedis('recurring schedule Redis integration', () => {
     const conditional = async () => ({
       autopilotEnabled: false,
       intelligenceEnabled: false,
-      staleWalletScheduleForbidden: true,
     });
 
     const first = await createQueue();

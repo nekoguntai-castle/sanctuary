@@ -37,7 +37,7 @@ vi.mock('../../../src/services/workerSyncQueue', () => ({
 }));
 
 vi.mock('../../../src/config', () => ({
-  getConfig: () => ({ sync: { syncStaggerDelayMs: 2000 } }),
+  getConfig: () => ({ sync: {} }),
 }));
 
 vi.mock('../../../src/middleware/auth', () => ({

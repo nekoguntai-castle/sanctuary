@@ -45,8 +45,9 @@ const StoredHeartbeatSchema = z
     // Optional so a rolling reader can retain old-worker evidence and fail the
     // activation check closed instead of treating the whole registry as corrupt.
     walletSyncMutationFenceFloor: z.number().int().positive().optional(),
-    // Optional so pre-retirement workers remain readable but block the
-    // independent scheduler-retirement fleet gate.
+    // Still advertised (and encoded in boot/restart markers) because v0.8.67
+    // through v0.8.84 binaries gate their scheduler cutover on it; this
+    // binary no longer reads it.
     walletSyncSchedulerRetirementFloor: z.number().int().positive().optional(),
     snapshot: WorkerDiagnosticsResponseSchema,
   })
@@ -182,29 +183,6 @@ export type WorkerMutationFenceReadiness = z.infer<
   typeof workerMutationFenceReadinessSchema
 >;
 
-export const workerSchedulerRetirementReadinessSchema = z.discriminatedUnion(
-  "ready",
-  [
-    z
-      .object({
-        ready: z.literal(true),
-        requiredFloor: z.literal(WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR),
-      })
-      .strict(),
-    z
-      .object({
-        ready: z.literal(false),
-        requiredFloor: z.literal(WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR),
-        reason: workerMutationFenceReadinessReasonSchema,
-      })
-      .strict(),
-  ],
-);
-
-export type WorkerSchedulerRetirementReadiness = z.infer<
-  typeof workerSchedulerRetirementReadinessSchema
->;
-
 interface RegistryMember {
   id: string;
   writtenAt: number;
@@ -219,8 +197,6 @@ type WorkerRegistryRead =
       restartObserved: boolean;
       /** Restart evidence a mutation-fence reader must treat as blocking. */
       mutationRestartBlocking: boolean;
-      /** Restart evidence a scheduler-retirement reader must treat as blocking. */
-      retirementRestartBlocking: boolean;
       /**
        * Gap evidence other than stale snapshots and blocking restart markers,
        * which readers add themselves (see readiness `taint`).
@@ -671,38 +647,6 @@ export class WorkerHeartbeatReader {
     });
   }
 
-  /** Exact proof that every live worker honors scheduler retirement. */
-  async readSchedulerRetirementReadiness(
-    nowMs = Date.now(),
-  ): Promise<WorkerSchedulerRetirementReadiness> {
-    const registry = await this.readRegistry(nowMs);
-    if (registry.observation !== "observed") {
-      return blockedSchedulerRetirementReadiness(registry.observation);
-    }
-    if (registry.members.length === 0) {
-      return blockedSchedulerRetirementReadiness("no_workers");
-    }
-    if (!registry.complete) {
-      return blockedSchedulerRetirementReadiness("incomplete_fleet");
-    }
-    if (registry.retirementRestartBlocking) {
-      return blockedSchedulerRetirementReadiness("restart_observed");
-    }
-    if (
-      registry.records.some(
-        (record) =>
-          (record.walletSyncSchedulerRetirementFloor ?? 0) <
-          WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR,
-      )
-    ) {
-      return blockedSchedulerRetirementReadiness("worker_below_floor");
-    }
-    return workerSchedulerRetirementReadinessSchema.parse({
-      ready: true,
-      requiredFloor: WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR,
-    });
-  }
-
   private async readRegistry(nowMs: number): Promise<WorkerRegistryRead> {
     let client: Redis | null = null;
     try {
@@ -742,7 +686,6 @@ export class WorkerHeartbeatReader {
         records: [],
         restartObserved: false,
         mutationRestartBlocking: false,
-        retirementRestartBlocking: false,
         tainted: false,
         registryIncarnation: null,
         complete: false,
@@ -774,7 +717,6 @@ export class WorkerHeartbeatReader {
     const records: StoredHeartbeat[] = [];
     let restartObserved = false;
     let mutationRestartBlocking = false;
-    let retirementRestartBlocking = false;
     let missing = members.length > MAX_REPLICAS;
     // Every gap except an expired or stale snapshot taints readiness.
     let tainted = missing;
@@ -792,7 +734,6 @@ export class WorkerHeartbeatReader {
       );
       restartObserved ||= marker.observed;
       mutationRestartBlocking ||= marker.mutationBlocking;
-      retirementRestartBlocking ||= marker.retirementBlocking;
       if (marker.duplicate) {
         missing = true;
         tainted = true;
@@ -845,7 +786,6 @@ export class WorkerHeartbeatReader {
       records,
       restartObserved,
       mutationRestartBlocking,
-      retirementRestartBlocking,
       tainted,
       registryIncarnation,
       complete,
@@ -868,12 +808,11 @@ function blockedReadiness(
 interface RestartMarkerEvidence {
   observed: boolean;
   mutationBlocking: boolean;
-  retirementBlocking: boolean;
   duplicate: boolean;
 }
 
 const NO_RESTART: RestartMarkerEvidence = {
-  observed: false, mutationBlocking: false, retirementBlocking: false, duplicate: false,
+  observed: false, mutationBlocking: false, duplicate: false,
 };
 
 /**
@@ -888,26 +827,14 @@ function classifyRestartMarker(marker: string | null): RestartMarkerEvidence {
     return {
       observed: true,
       mutationBlocking: Number(fenced[1]) < WALLET_SYNC_MUTATION_FENCE_FLOOR,
-      retirementBlocking: Number(fenced[2]) < WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR,
       duplicate: false,
     };
   }
   return {
     observed: true,
     mutationBlocking: true,
-    retirementBlocking: true,
     duplicate: marker === RESTART_MARKER_COLLISION,
   };
-}
-
-function blockedSchedulerRetirementReadiness(
-  reason: z.infer<typeof workerMutationFenceReadinessReasonSchema>,
-): WorkerSchedulerRetirementReadiness {
-  return workerSchedulerRetirementReadinessSchema.parse({
-    ready: false,
-    requiredFloor: WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR,
-    reason,
-  });
 }
 
 function toFleetSnapshot(

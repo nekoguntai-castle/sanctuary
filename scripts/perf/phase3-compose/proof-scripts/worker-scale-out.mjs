@@ -100,7 +100,6 @@ await maintenanceEvents.waitUntilReady();
 
 async function readRepeatableJobs() {
   const expected = {
-    sync: ['check-stale-wallets'],
     confirmations: ['update-all-confirmations'],
     maintenance: [
       'cleanup:expired-drafts',

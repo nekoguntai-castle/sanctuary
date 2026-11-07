@@ -459,7 +459,7 @@ export async function resetAllStuckSyncFlags(): Promise<number> {
  *
  * The retry ladder is driven by an in-heap `setTimeout`, so a restart discards
  * it silently and leaves `lastSyncStatus = 'retrying'` with no timer, no job
- * and no reaper that selects it - `findStuckWithCutoff` requires
+ * and no reaper that selects it - `findStuckSyncing` requires
  * `syncInProgress = true`, which a retrying row never has. The badge then reads
  * "Retrying" forever over work nothing is doing.
  *
@@ -519,59 +519,6 @@ export async function findStuckSyncing(): Promise<Array<{
     // Bound lock-authority work per sweep. Cleared rows leave this ordered
     // population, so subsequent sweeps deterministically advance through it.
     take: 100,
-  });
-}
-
-/**
- * Find stale wallets that need syncing (not synced recently or never synced)
- */
-export async function findStale(options: {
-  staleThresholdMs: number;
-  maxResults?: number;
-  orderBy?: Prisma.WalletOrderByWithRelationInput[];
-}): Promise<Array<{ id: string; name: string; lastSyncedAt: Date | null }>> {
-  return prisma.wallet.findMany({
-    where: {
-      OR: [
-        { lastSyncedAt: null },
-        { lastSyncedAt: { lt: new Date(Date.now() - options.staleThresholdMs) } },
-      ],
-      syncInProgress: false,
-    },
-    select: { id: true, name: true, lastSyncedAt: true },
-    orderBy: options.orderBy,
-    take: options.maxResults,
-  });
-}
-
-/**
- * Find stuck wallets by the current attempt start time. Null start times are
- * legacy candidates and still require the caller's lock-authority probe.
- */
-export async function findStuckWithCutoff(
-  cutoff: Date
-): Promise<Array<{
-  id: string;
-  name: string;
-  syncExecutionOwner: string | null;
-  syncStartedAt: Date | null;
-  syncStateVersion: number;
-}>> {
-  return prisma.wallet.findMany({
-    where: {
-      syncInProgress: true,
-      OR: [
-        { syncStartedAt: { lt: cutoff } },
-        { syncStartedAt: null },
-      ],
-    },
-    select: {
-      id: true,
-      name: true,
-      syncExecutionOwner: true,
-      syncStartedAt: true,
-      syncStateVersion: true,
-    },
   });
 }
 
@@ -895,8 +842,6 @@ export const walletRepository = {
   resetAllStuckSyncFlags,
   demoteStrandedInlineRetries,
   findStuckSyncing,
-  findStale,
-  findStuckWithCutoff,
   findAllWithSelect,
   findByIdWithAccessAndInclude,
   deleteById,

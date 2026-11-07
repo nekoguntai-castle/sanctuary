@@ -134,15 +134,10 @@ export interface MaintenanceConfig {
  * Sync service configuration
  */
 export interface SyncConfig {
-  intervalMs: number;                    // Full sync check interval (default: 5 minutes)
+  intervalMs: number;                    // In-process stuck-flag repair interval while the worker is down (default: 5 minutes)
   confirmationUpdateIntervalMs: number;  // Confirmation update interval (default: 2 minutes)
-  staleThresholdMs: number;              // Consider wallet stale after this time (default: 10 minutes)
-  staleBatchSize: number;               // Max stale wallets to queue per worker pass (default: 50)
+  staleThresholdMs: number;              // Support-package sync-age bucket threshold; never triggers a sync (default: 10 minutes)
   maxConcurrentSyncs: number;            // Max wallets syncing at once (default: 1)
-  syncStaggerDelayMs: number;            // Delay between stale wallet sync jobs (default: 2s)
-  startupCatchUpBatchSize: number;      // Startup stale-wallet catch-up batch size (default: 250)
-  startupCatchUpDelayMs: number;        // Delay before startup catch-up begins (default: 10s)
-  startupCatchUpStaggerDelayMs: number; // Delay between startup catch-up sync jobs (default: 250ms)
   maxRetryAttempts: number;              // Max retries on failure (default: 3)
   lockContentionRetryDelayMs: number;    // Wait before re-arming a retry blocked by a held lock
   retryDelaysMs: number[];               // Exponential backoff delays

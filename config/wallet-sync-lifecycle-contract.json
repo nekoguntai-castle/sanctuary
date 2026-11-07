@@ -68,9 +68,9 @@
     "recoveryCoordinatorModule": "server/src/worker/syncIntentRecovery.ts",
     "subscriptionEnrollmentState": "worker_owned_bounded_runtime_enabled",
     "staleScheduleName": "check-stale-wallets",
-    "staleScheduleState": "durably_forbidden_compatibility_only",
-    "durableDisablePolicyState": "atomic_readiness_cutover_and_immutable_floor_active",
-    "rollbackFloor": "all_running_binaries_must_honor_the_durable_forbidden_marker_before_cutover",
+    "staleScheduleState": "removed_redis_residue_purged_every_reconcile",
+    "durableDisablePolicyState": "removed_marker_carried_by_backup_for_rollback_binaries",
+    "rollbackFloor": "upgrade_sources_must_be_v0.8.67_or_later",
     "legacyEntriesAreTemporary": true
   },
   "requiredInvariantIds": [
@@ -248,16 +248,8 @@
         "role": "canonical_admin_full_resync_dead_letter_retry_admission"
       },
       {
-        "sink": "admission.requestRetainedStale",
-        "file": "server/src/worker/staleWalletScheduleCompatibility.ts",
-        "enclosingFunction": "admitRetainedStaleWallets",
-        "count": 1,
-        "trigger": "legacy_stale_compatibility",
-        "role": "retirement_serialized_stale_completion_bridge"
-      },
-      {
         "sink": "admission.reset",
-        "file": "server/src/services/sync/staleWalletChecker.ts",
+        "file": "server/src/services/sync/stuckSyncRecovery.ts",
         "enclosingFunction": "clearStuckSyncIfAuthorized",
         "count": 1,
         "trigger": "stale_attempt_repair",
@@ -270,14 +262,6 @@
         "count": 1,
         "trigger": "explicit_user_request",
         "role": "manual_lease_revoking_reset"
-      },
-      {
-        "sink": "admission.reset",
-        "file": "server/src/worker/jobs/syncJobs.ts",
-        "enclosingFunction": "resetStuckSyncFlags",
-        "count": 1,
-        "trigger": "stale_attempt_repair",
-        "role": "lock_owned_lease_revoking_stale_reset"
       },
       {
         "sink": "admission.wake",
@@ -525,12 +509,8 @@
             "role": "neutral_wire_contract"
           },
           {
-            "file": "server/src/worker/jobs/syncJobs.ts",
-            "role": "legacy_stale_consumer"
-          },
-          {
-            "file": "server/src/worker/staleWalletScheduleCompatibility.ts",
-            "role": "marker_locked_compatibility_and_purge_boundary"
+            "file": "server/src/worker/recurringSchedules.ts",
+            "role": "retired_schedule_purge_definition"
           }
         ]
       },
@@ -638,8 +618,8 @@
             "role": "canonical_scheduler_retirement_floor"
           },
           {
-            "file": "server/src/repositories/walletSyncSchedulePolicyRepository.ts",
-            "role": "durable_tombstone_compatibility_floor"
+            "file": "server/src/repositories/retiredStaleScheduleMarker.ts",
+            "role": "rollback_marker_backup_validation"
           },
           {
             "file": "server/src/services/workerHeartbeatRegistry.ts",
@@ -653,10 +633,6 @@
           {
             "file": "server/src/services/supportPackage/collectors/notificationWorkerFleet.ts",
             "role": "existing_notification_fleet_support_reader"
-          },
-          {
-            "file": "server/src/services/sync/schedulerRetirementCutover.ts",
-            "role": "scheduler_retirement_fleet_readiness_reader"
           },
           {
             "file": "server/src/services/sync/walletSyncActivationGate.ts",
@@ -890,19 +866,6 @@
         ]
       },
       {
-        "symbol": "findStale",
-        "entries": [
-          {
-            "file": "server/src/repositories/walletRepository.ts",
-            "role": "legacy_age_query"
-          },
-          {
-            "file": "server/src/worker/jobs/syncJobs.ts",
-            "role": "legacy_worker_age_trigger"
-          }
-        ]
-      },
-      {
         "symbol": "findSubscriptionCheckpointOwners",
         "entries": [
           {
@@ -1044,7 +1007,7 @@
             "role": "post_commit_initial_generation_wakeup"
           },
           {
-            "file": "server/src/services/sync/staleWalletChecker.ts",
+            "file": "server/src/services/sync/stuckSyncRecovery.ts",
             "role": "lock_owned_lease_revoking_compatibility_reset"
           },
           {
@@ -1068,10 +1031,6 @@
             "role": "legacy_lock_owned_lease_revoking_cleanup"
           },
           {
-            "file": "server/src/worker/staleWalletScheduleCompatibility.ts",
-            "role": "retirement_serialized_compatibility_admission"
-          },
-          {
             "file": "server/src/worker/subscriptionCheckpointRuntime.ts",
             "role": "post_commit_checkpoint_intent_wakeup"
           },
@@ -1088,10 +1047,6 @@
       {
         "symbol": "walletSyncActivationGate",
         "entries": [
-          {
-            "file": "server/src/services/sync/schedulerRetirementCutover.ts",
-            "role": "atomic_scheduler_cutover_authority"
-          },
           {
             "file": "server/src/services/sync/syncIntentAdmission.ts",
             "role": "gate_enforced_admission"
@@ -1117,10 +1072,6 @@
       {
         "symbol": "walletSyncActivationPolicyRepository",
         "entries": [
-          {
-            "file": "server/src/repositories/schedulerRetirementCutoverRepository.ts",
-            "role": "atomic_activation_policy_cutover_reader"
-          },
           {
             "file": "server/src/repositories/walletSyncActivationPolicyRepository.ts",
             "role": "immutable_activation_policy_definition"
@@ -1168,14 +1119,6 @@
           {
             "file": "server/src/repositories/operationalSystemSettings.ts",
             "role": "durable_forbidden_marker_key"
-          },
-          {
-            "file": "server/src/worker/jobs/syncJobs.ts",
-            "role": "legacy_stale_consumer_diagnostic"
-          },
-          {
-            "file": "server/src/worker/staleWalletScheduleCompatibility.ts",
-            "role": "durably_marker_guarded_compatibility_boundary"
           }
         ]
       },
@@ -1198,10 +1141,6 @@
           {
             "file": "server/src/jobs/staleWalletJobPolicy.ts",
             "role": "compatibility_stale_child_classifier"
-          },
-          {
-            "file": "server/src/services/workerSyncQueue.ts",
-            "role": "retained_stale_dead_letter_provenance"
           }
         ]
       }

@@ -14,7 +14,6 @@ import {
   getSyncLockRetryWindowMs,
   getSyncLockTtlMs,
   hasSupportedSyncJobContractVersion,
-  isCheckStaleWalletsJobData,
   isSyncWalletJobData,
   isSyncWalletJobLockData,
   isUpdateAllConfirmationsJobData,
@@ -354,13 +353,7 @@ describe('sync job contract', () => {
     })).toBe(true);
   });
 
-  it('validates live stale and confirmation commands across the v1 boundary', () => {
-    expect(isCheckStaleWalletsJobData({ reason: 'legacy' })).toBe(true);
-    expect(isCheckStaleWalletsJobData({ version: 1, maxWallets: 10 })).toBe(true);
-    expect(isCheckStaleWalletsJobData({ staggerDelayMs: 250 })).toBe(true);
-    expect(isCheckStaleWalletsJobData({ version: 2 })).toBe(false);
-    expect(isCheckStaleWalletsJobData({ staleThresholdMs: 'soon' })).toBe(false);
-    expect(isCheckStaleWalletsJobData({ priority: 'urgent' })).toBe(false);
+  it('validates live confirmation commands across the v1 boundary', () => {
     expect(isUpdateConfirmationsJobData({ height: 100 })).toBe(true);
     expect(isUpdateConfirmationsJobData({ version: 1, hash: 'abc' })).toBe(true);
     expect(isUpdateConfirmationsJobData({

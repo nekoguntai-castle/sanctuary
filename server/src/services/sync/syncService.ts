@@ -18,7 +18,7 @@ import type { SyncExecutionOwner, SyncPriority } from '@sanctuary/shared/constan
 import type { SyncState, SyncResult, SyncHealthMetrics, PollingMode } from './types';
 import { classifyWalletSyncFailure } from './failureClassification';
 import { hasDurablePendingSync } from './syncIntentState';
-import { clearStuckSyncIfAuthorized } from './staleWalletChecker';
+import { clearStuckSyncIfAuthorized } from './stuckSyncRecovery';
 import {
   refreshAllPendingConfirmations,
   type PendingConfirmationRefreshResult,
@@ -99,7 +99,7 @@ class SyncService {
       : 'disabled';
 
     // Decide initial polling mode based on worker health.
-    // If the worker is healthy it owns stale-wallet checks and confirmation updates;
+    // If the worker is healthy it owns stuck-flag repair and confirmation updates;
     // the API server only runs them when the worker is down.
     const workerHealthy = getWorkerHealthStatus().healthy;
     if (workerHealthy) {
@@ -270,7 +270,7 @@ class SyncService {
   }
 
   /**
-   * Start in-process polling intervals (stale wallet checks + confirmation updates).
+   * Start in-process polling intervals (stuck-flag repair + confirmation updates).
    * Guarded against double-start.
    */
   private startPollingIntervals(): void {

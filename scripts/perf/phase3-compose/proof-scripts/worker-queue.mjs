@@ -54,18 +54,6 @@ for (const queueName of queueNames) {
 
 const jobDefinitions = [
   {
-    category: 'sync',
-    queue: 'sync',
-    name: 'check-stale-wallets',
-    data: {
-      staleThresholdMs: 0,
-      maxWallets: 0,
-      priority: 'low',
-      staggerDelayMs: 0,
-      reason: 'phase3-worker-queue-proof',
-    },
-  },
-  {
     category: 'confirmations',
     queue: 'confirmations',
     name: 'update-all-confirmations',

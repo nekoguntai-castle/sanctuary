@@ -47,11 +47,7 @@ vi.mock('../../../../src/services/sync/syncIntentAdmission', () => ({
 // The stale reaper probes each wallet's sync lock before force-clearing its
 // flag, so the lock authority has to answer in unit tests.
 const mockIsLocked = vi.hoisted(() => vi.fn<(key: string) => Promise<boolean>>());
-const mockReadStaleWalletSchedulePolicy = vi.hoisted(() => vi.fn());
 
-vi.mock('../../../../src/repositories/walletSyncSchedulePolicyRepository', () => ({
-  readStaleWalletSchedulePolicy: mockReadStaleWalletSchedulePolicy,
-}));
 
 vi.mock('../../../../src/infrastructure/distributedLock', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -94,10 +90,8 @@ vi.mock('../../../../src/config', () => ({
   getConfig: vi.fn(() => ({
     sync: {
       staleThresholdMs: 600000, // 10 minutes
-      staleBatchSize: 75,
       maxConcurrentSyncs: 5,
       maxSyncDurationMs: 120000,
-      syncStaggerDelayMs: 2000,
     },
     bitcoin: {
       network: 'mainnet',
@@ -168,7 +162,6 @@ describe('Sync Jobs', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     syncJobPrismaMocks.walletFindUnique.mockResolvedValue({ network: 'mainnet' });
-    mockReadStaleWalletSchedulePolicy.mockResolvedValue({ mode: 'legacy_enabled' });
     let stateVersion = 0;
     syncJobPrismaMocks.walletUpdate.mockImplementation(async (args: unknown) => (
       persistedSyncState(args, ++stateVersion)
@@ -205,7 +198,6 @@ describe('Sync Jobs', () => {
 
     expect(jobs.map(({ name }) => name)).toEqual([
       'sync-wallet',
-      'check-stale-wallets',
       'update-confirmations',
       'update-all-confirmations',
     ]);
@@ -298,7 +290,6 @@ describe('Sync Jobs', () => {
       expect(syncIntentMocks.bridgeRetained).toHaveBeenCalledWith('wallet-retained', {
         fullResync,
         reason: data.reason,
-        ...(data.reason === 'stale' ? { retirementSensitive: true } : {}),
       });
       expect(syncIntentMocks.claimFresh).not.toHaveBeenCalled();
       expect(syncIntentMocks.reclaimExpired).not.toHaveBeenCalled();
@@ -739,10 +730,8 @@ describe('Sync Jobs', () => {
       vi.mocked(getConfig).mockReturnValueOnce({
         sync: {
           staleThresholdMs: 600_000,
-          staleBatchSize: 75,
           maxConcurrentSyncs: 5,
           maxSyncDurationMs: 600_000,
-          syncStaggerDelayMs: 2_000,
         },
         bitcoin: { network: 'mainnet' },
       } as ReturnType<typeof getConfig>);
@@ -1192,15 +1181,7 @@ describe('Sync Jobs', () => {
       expect(syncIntentMocks.bridgeRetained).not.toHaveBeenCalled();
     });
 
-    it('neutralizes retained stale-only work after durable retirement', async () => {
-      mockReadStaleWalletSchedulePolicy.mockResolvedValue({
-        mode: 'forbidden',
-        tombstone: {
-          version: 1,
-          forbiddenAt: '2026-08-22T00:00:00.000Z',
-          compatibilityFloor: 2,
-        },
-      });
+    it('neutralizes retained stale-only work', async () => {
       const job = {
         id: 'b64_c3luYzpzdGFsZTp3YWxsZXQtMTox',
         name: 'sync-wallet',

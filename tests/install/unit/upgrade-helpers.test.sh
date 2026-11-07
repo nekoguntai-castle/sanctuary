@@ -15,7 +15,6 @@ source "$PROJECT_ROOT/tests/install/utils/upgrade-test-defaults.sh"
 source "$PROJECT_ROOT/tests/install/utils/upgrade-source-refs.sh"
 source "$PROJECT_ROOT/tests/install/utils/upgrade-selection.sh"
 source "$PROJECT_ROOT/tests/install/utils/upgrade-fixtures.sh"
-source "$PROJECT_ROOT/tests/install/utils/upgrade-wallet-sync-retirement-helpers.sh"
 source "$PROJECT_ROOT/tests/install/utils/collect-upgrade-artifacts.sh"
 source "$PROJECT_ROOT/tests/install/utils/upgrade-assertions.sh"
 
@@ -420,10 +419,10 @@ test_fixture_defaults_are_composable() {
   assert_equals "upgrade-fixture-unit-prometheus" "$PROMETHEUS_CONTAINER_NAME" "optional fixture should isolate Prometheus container name"
   assert_equals "upgrade-fixture-unit-tor" "$TOR_CONTAINER_NAME" "optional fixture should isolate Tor container name"
 
-  validate_upgrade_fixture "wallet-sync-retirement"
-  apply_upgrade_fixture_defaults "wallet-sync-retirement"
-  assert_equals "false" "$UPGRADE_SEED_APP_STATE" "retirement fixture should isolate exact empty-network readiness"
-  assert_equals "false" "$UPGRADE_RUN_BROWSER_SMOKE" "retirement fixture should skip unrelated browser smoke"
+  if validate_upgrade_fixture "wallet-sync-retirement" >/dev/null 2>&1; then
+    echo -e "${RED}ASSERTION FAILED:${NC} removed retirement fixture should be rejected"
+    return 1
+  fi
 }
 
 test_baseline_browser_host_uses_upgrade_network_default() {
@@ -510,8 +509,8 @@ test_optional_profiles_is_in_release_coverage() {
     "optional upgrade should verify MCP health on both sides of the upgrade" || failures=1
   assert_contains "$upgrade_contents" $'export COMPOSE_PROFILES=mcp\n            run_project_compose "$PROJECT_ROOT" stop' \
     "optional upgrade should stop the complete source profile stack" || failures=1
-  assert_contains "$extended_fixtures" 'wallet-sync-retirement 33' \
-    "install extended upgrades should include wallet-sync retirement once" || failures=1
+  assert_not_contains "$extended_fixtures" 'wallet-sync-retirement' \
+    "install extended upgrades should not run the removed v0.8.66 retirement fixture" || failures=1
 
   return "$failures"
 }
@@ -523,8 +522,8 @@ test_active_extended_fixture_selection_contract() {
   local runner_contents
   local failures=0
 
-  expected_records=$'browser-origin-ip 30\nlegacy-runtime-env 24\nnotification-delivery 27\noptional-profiles 21\nwallet-sync-retirement 33'
-  expected_csv='browser-origin-ip,legacy-runtime-env,notification-delivery,optional-profiles,wallet-sync-retirement'
+  expected_records=$'browser-origin-ip 30\nlegacy-runtime-env 24\nnotification-delivery 27\noptional-profiles 21'
+  expected_csv='browser-origin-ip,legacy-runtime-env,notification-delivery,optional-profiles'
   runner_records="$("$PROJECT_ROOT/scripts/ci/run-extended-upgrade-fixtures.sh" --list)"
   runner_contents="$(cat "$PROJECT_ROOT/scripts/ci/run-extended-upgrade-fixtures.sh")"
 
@@ -538,10 +537,6 @@ test_active_extended_fixture_selection_contract() {
     "extended fixture parent should initialize strict Compose identity for failure diagnostics" || failures=1
   assert_equals "24" "$(upgrade_extended_fixture_port_offset legacy-runtime-env)" \
     "fixture port offsets should be table lookups, not selected-list positions" || failures=1
-  assert_equals "33" "$(upgrade_extended_fixture_port_offset wallet-sync-retirement)" \
-    "retirement fixture should retain its dedicated port offset" || failures=1
-  assert_equals "v0.8.66" "$(upgrade_extended_fixture_source_ref wallet-sync-retirement latest-stable)" \
-    "retirement fixture should remain pinned to the exact legacy source" || failures=1
   assert_equals "release/v0.8.39" "$(upgrade_extended_fixture_source_ref browser-origin-ip release/v0.8.39)" \
     "other fixtures should retain the selected shared source" || failures=1
   # optional-profiles is pinned pre-ownership on purpose. Ownership shipped IN
@@ -750,11 +745,6 @@ test_upgrade_selection_rejects_invalid_values() {
     failures=1
   fi
 
-  if validate_upgrade_fixture "wallet-sync-retirement,notification-delivery" >/dev/null 2>&1; then
-    echo -e "${RED}ASSERTION FAILED:${NC} retirement fixture composition should be rejected"
-    failures=1
-  fi
-
   return "$failures"
 }
 
@@ -861,26 +851,24 @@ test_upgrade_selection_manifest_records_resolved_refs() {
     "manifest should record the pinned optional-profiles source" || failures=1
   assert_contains "$contents" "- browser-origin-ip: port offset 30; source ref v0.8.39" \
     "manifest should include active fixture registry metadata" || failures=1
-  assert_contains "$contents" "- wallet-sync-retirement: port offset 33; source ref v0.8.66" \
-    "manifest should record the pinned retirement source" || failures=1
 
-  git -C "$repo" tag v0.8.66
+  git -C "$repo" tag v0.8.69
   upgrade_write_selection_manifest \
     "$repo" \
-    "$artifact_dir/wallet-only" \
+    "$artifact_dir/optional-only" \
     "" \
-    "wallet-sync-retirement" \
+    "optional-profiles" \
     "latest-stable" \
     "12346"
-  contents="$(cat "$artifact_dir/wallet-only/selection-manifest.md")"
+  contents="$(cat "$artifact_dir/optional-only/selection-manifest.md")"
   assert_contains "$contents" "- Default extended source ref: latest-stable" \
     "manifest should label the shared source as a default, not the effective source" || failures=1
-  assert_contains "$contents" '### wallet-sync-retirement' \
+  assert_contains "$contents" '### optional-profiles' \
     "manifest should identify the selected pinned fixture" || failures=1
-  assert_contains "$contents" '- effective source ref: `v0.8.66`' \
-    "manifest should record the wallet fixture effective source" || failures=1
-  assert_contains "$contents" 'selector: `v0.8.66`' \
-    "manifest should resolve the wallet fixture pin" || failures=1
+  assert_contains "$contents" '- effective source ref: `v0.8.69`' \
+    "manifest should record the pinned fixture effective source" || failures=1
+  assert_contains "$contents" 'selector: `v0.8.69`' \
+    "manifest should resolve the pinned fixture" || failures=1
   assert_not_contains "$contents" '## Extended Source Ref' \
     "manifest should not present the shared default as the selected source" || failures=1
 
@@ -1763,99 +1751,6 @@ test_upgrade_harness_covers_wallet_sync_state_migration() {
     "fixture should pin its rows past the stale-sweep window" || failures=1
   assert_contains "$helper_contents" "was synced after the upgrade" \
     "fixture should fail loudly if the stale-sweep pin ever stops holding" || failures=1
-
-  return "$failures"
-}
-
-test_upgrade_harness_covers_wallet_sync_retirement() {
-  local contents helper_contents verify_body
-  local prove_line stop_line activate_line readiness_line start_line
-  local legacy_root="$TEST_TMP_DIR/legacy"
-  local floor_root="$TEST_TMP_DIR/floor"
-  local failures=0
-
-  mkdir -p "$legacy_root/server/src/repositories" "$floor_root/server/src/repositories"
-  printf '%s\n' 'export const unrelated = true;' \
-    > "$legacy_root/server/src/repositories/walletSyncSchedulePolicyRepository.ts"
-  printf '%s\n' 'export const WALLET_SYNC_SCHEDULE_COMPATIBILITY_FLOOR = 2 as const;' \
-    > "$floor_root/server/src/repositories/walletSyncSchedulePolicyRepository.ts"
-
-  if wallet_sync_source_supports_retirement_floor "$legacy_root"; then
-    echo -e "${RED}ASSERTION FAILED:${NC} legacy source must remain below the retirement floor"
-    failures=1
-  fi
-  wallet_sync_source_supports_retirement_floor "$floor_root" || failures=1
-
-  contents="$(cat "$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh")"
-  helper_contents="$(cat "$PROJECT_ROOT/tests/install/utils/upgrade-wallet-sync-retirement-helpers.sh")"
-  assert_contains "$contents" 'source "$SCRIPT_DIR/../utils/upgrade-wallet-sync-retirement-helpers.sh"' \
-    "upgrade harness should load the scheduler-retirement fixture" || failures=1
-  assert_contains "$contents" 'run_test "Verify Wallet Sync Scheduler Retirement" test_verify_wallet_sync_retirement_upgrade' \
-    "upgrade suite should execute the retirement proof" || failures=1
-  assert_contains "$contents" 'Skipping generic recurring-staleness aging; baseline lanes own that proof' \
-    "retirement fixture should not depend on an unrelated webhook completion" || failures=1
-  assert_contains "$helper_contents" 'sync:check-stale-wallets' \
-    "retirement fixture should seed and inspect the legacy scheduler" || failures=1
-  assert_contains "$helper_contents" 'Number(sourceScheduler.every) !== 5 * 60 * 1000' \
-    "retirement fixture should retain and verify the exact v0.8.66 cadence" || failures=1
-  assert_contains "$helper_contents" 'WALLET_SYNC_RETIREMENT_SOURCE_WORKER_IMAGE=' \
-    "retirement fixture should capture the exact below-floor image" || failures=1
-  assert_contains "$helper_contents" 'prove_below_floor_rollback_is_unsupported' \
-    "retirement fixture should execute the post-marker rollback-floor proof" || failures=1
-  assert_contains "$helper_contents" 'Executable rollback-floor proof reproduced the forbidden v0.8.66 scheduler' \
-    "retirement fixture should require below-floor incompatibility evidence" || failures=1
-  assert_contains "$helper_contents" 'rollback_env="$TEST_RUNTIME_DIR/wallet-sync-retirement-rollback.env"' \
-    "rollback proof secrets should stay inside harness-owned runtime cleanup" || failures=1
-  assert_contains "$helper_contents" 'ownership_label_args compose_container exact_delete' \
-    "coordinated rollback proof container must carry the cleanup ownership tuple" || failures=1
-  assert_contains "$helper_contents" 'docker create --rm' \
-    "rollback proof should create a recoverable coordinator-owned transient container" || failures=1
-  assert_contains "$helper_contents" 'resolve_registered_created_container' \
-    "rollback proof should register the exact created tuple before start" || failures=1
-  assert_contains "$helper_contents" 'retire_install_container "$rollback_container_id" stop' \
-    "rollback proof should reconcile retirement of the immutable returned container ID" || failures=1
-  assert_contains "$helper_contents" 'install -m 600 /dev/null "$rollback_env"' \
-    "rollback proof should create its secret file securely before populating it" || failures=1
-  assert_contains "$helper_contents" 'reason: "manual"' \
-    "retirement fixture should preserve manual work" || failures=1
-  assert_contains "$helper_contents" 'reason: "address_activity"' \
-    "retirement fixture should preserve activity work" || failures=1
-  assert_contains "$helper_contents" 'wait_for_wallet_sync_retirement_marker 180' \
-    "retirement fixture should wait for production cutover" || failures=1
-  assert_contains "$helper_contents" 'sourceHeartbeatMemberId=' \
-    "retirement fixture should capture the exact below-floor source member" || failures=1
-  assert_contains "$helper_contents" 'sourceHeartbeatSnapshotBase64=' \
-    "retirement fixture should preserve the exact legacy heartbeat payload" || failures=1
-  assert_contains "$helper_contents" 'readiness.reason !== "worker_below_floor"' \
-    "retirement fixture should prove the legacy capability floor blocks readiness" || failures=1
-  assert_not_contains "$helper_contents" '["incomplete_fleet", "worker_below_floor"]' \
-    "retirement fixture must not accept missing-heartbeat evidence as a floor proof" || failures=1
-  assert_contains "$helper_contents" 'zrem(registryKey, sourceMemberId)' \
-    "retirement fixture should fast-forward only the captured source member retention" || failures=1
-  assert_contains "$helper_contents" 'LOCK TABLE "network_header_checkpoints"' \
-    "retirement fixture should isolate its header-readiness fast-forward" || failures=1
-  assert_contains "$helper_contents" 'lastProcessedHeight: pending' \
-    "retirement fixture should promote the latest exact observed header target" || failures=1
-  assert_contains "$helper_contents" 'reconciliation.pendingTargetHeight' \
-    "retirement fixture should not discard a newer pending header observation" || failures=1
-  assert_contains "$helper_contents" 'scheduler retirement readiness fixture remained' \
-    "retirement fixture should require the production readiness projection" || failures=1
-  verify_body="$(awk '/^verify_wallet_sync_retirement_upgrade\(\) \{/{found=1} found{print} found&&/^\}/{exit}' \
-    "$PROJECT_ROOT/tests/install/utils/upgrade-wallet-sync-retirement-helpers.sh")"
-  prove_line="$(printf '%s\n' "$verify_body" | grep -n -m1 'prove_wallet_sync_retirement_floor_fixture || return 1' | cut -d: -f1)"
-  stop_line="$(printf '%s\n' "$verify_body" | grep -n -m1 'stop worker' | cut -d: -f1)"
-  activate_line="$(printf '%s\n' "$verify_body" | grep -n -m1 'activate_wallet_sync_retirement_fixture || return 1' | cut -d: -f1)"
-  readiness_line="$(printf '%s\n' "$verify_body" | grep -n -m1 'establish_wallet_sync_retirement_readiness_fixture || return 1' | cut -d: -f1)"
-  start_line="$(printf '%s\n' "$verify_body" | grep -n -m1 'start worker' | cut -d: -f1)"
-  if [ -z "$prove_line" ] || [ -z "$stop_line" ] || [ -z "$activate_line" ] \
-    || [ -z "$readiness_line" ] || [ -z "$start_line" ] \
-    || [ "$prove_line" -ge "$stop_line" ] || [ "$stop_line" -ge "$activate_line" ] \
-    || [ "$activate_line" -ge "$readiness_line" ] || [ "$readiness_line" -ge "$start_line" ]; then
-    echo -e "${RED}ASSERTION FAILED:${NC} retirement fixture must prove the floor, stop the worker, activate, establish readiness, then restart"
-    failures=1
-  fi
-  assert_contains "$helper_contents" 'restart worker' \
-    "retirement fixture should prove repeated startup at the floor" || failures=1
 
   return "$failures"
 }
@@ -2808,51 +2703,6 @@ test_backend_replacement_producer_rejects_uncoordinated_mutation() {
   }
 }
 
-test_rollback_floor_proof_rejects_uncoordinated_mutation() {
-  local call_log="$TEST_TMP_DIR/rollback-floor-uncoordinated.log"
-  local exit_code
-
-  set +e
-  (
-    unset SANCTUARY_CLEANUP_COORDINATED
-    docker() { printf 'docker:%s\n' "$*" >> "$call_log"; }
-    run_project_compose() { printf 'compose:%s\n' "$*" >> "$call_log"; }
-    prove_below_floor_rollback_is_unsupported
-  )
-  exit_code=$?
-  set -e
-
-  assert_equals "1" "$exit_code" \
-    "rollback-floor proof must reject missing coordinator authority" || return 1
-  [ ! -s "$call_log" ] || {
-    echo -e "${RED}ASSERTION FAILED:${NC} uncoordinated rollback-floor proof invoked Docker or Compose"
-    cat "$call_log"
-    return 1
-  }
-}
-
-test_rollback_worker_start_rejects_uncoordinated_mutation() {
-  local call_log="$TEST_TMP_DIR/rollback-worker-start-uncoordinated.log"
-  local exit_code
-
-  set +e
-  (
-    unset SANCTUARY_CLEANUP_COORDINATED
-    docker() { printf 'docker:%s\n' "$*" >> "$call_log"; }
-    start_below_floor_rollback_worker rollback-worker rollback-network rollback.env
-  )
-  exit_code=$?
-  set -e
-
-  assert_equals "1" "$exit_code" \
-    "rollback worker producer must reject missing coordinator authority" || return 1
-  [ ! -s "$call_log" ] || {
-    echo -e "${RED}ASSERTION FAILED:${NC} uncoordinated rollback worker start invoked Docker"
-    cat "$call_log"
-    return 1
-  }
-}
-
 test_backend_replacement_selects_shared_frontend_network() {
   local selected
 
@@ -2869,62 +2719,6 @@ test_backend_replacement_selects_shared_frontend_network() {
 
   assert_equals "sanctuary-network" "$selected" \
     "backend replacement should use the exact network shared with frontend"
-}
-
-test_rollback_floor_worker_network_is_shared_with_postgres() {
-  local selected
-
-  # The worker also joins the LLM egress network, which sorts first; the
-  # rollback worker must land on the network that reaches Postgres and Redis.
-  selected="$({
-    get_container_name() { printf 'proj-%s-1\n' "$1"; }
-    docker() {
-      case "${*: -1}" in
-        proj-worker-1) printf 'proj_llm-egress-network\nproj_sanctuary-network\n' ;;
-        proj-postgres-1) printf 'proj_sanctuary-network\n' ;;
-        *) return 1 ;;
-      esac
-    }
-    resolve_rollback_worker_network proj-worker-1
-  })" || return 1
-
-  assert_equals "proj_sanctuary-network" "$selected" \
-    "rollback worker must join the network the target worker shares with postgres"
-}
-
-test_rollback_floor_fails_closed_without_a_postgres_network() {
-  local call_log="$TEST_TMP_DIR/rollback-floor-no-shared-network.log"
-  local output exit_code
-
-  : > "$call_log"
-  set +e
-  output="$(
-    export SANCTUARY_CLEANUP_COORDINATED=1
-    WALLET_SYNC_RETIREMENT_SOURCE_WORKER_IMAGE=example/worker:0.8.66
-    TEST_RUNTIME_DIR="$TEST_TMP_DIR"
-    get_container_name() { printf 'proj-%s-1\n' "$1"; }
-    docker() {
-      printf 'docker:%s\n' "$*" >> "$call_log"
-      case "${*: -1}" in
-        proj-worker-1) printf 'proj_llm-egress-network\n' ;;
-        proj-postgres-1) printf 'proj_sanctuary-network\n' ;;
-        *) return 0 ;;
-      esac
-    }
-    run_project_compose() { printf 'compose:%s\n' "$*" >> "$call_log"; }
-    prove_below_floor_rollback_is_unsupported 2>&1
-  )"
-  exit_code=$?
-  set -e
-
-  assert_equals "1" "$exit_code" "rollback-floor proof must fail without a network shared with postgres" || return 1
-  assert_contains "$output" "could not resolve the target network" \
-    "rollback-floor proof should report the unresolved network" || return 1
-  if grep -q 'docker:create' "$call_log" || grep -q '^compose:' "$call_log"; then
-    echo -e "${RED}ASSERTION FAILED:${NC} rollback-floor proof mutated containers without a resolved network"
-    cat "$call_log"
-    return 1
-  fi
 }
 
 # --- D-14.C1-C4: the upgrade lane runs the target installer like an operator ---
@@ -3228,7 +3022,6 @@ main() {
   run_test "release tag workflows use distinct concurrency groups" test_release_tag_workflows_use_distinct_concurrency_groups
   run_test "upgrade harness covers historical transaction migrations" test_upgrade_harness_covers_historical_transaction_migrations
   run_test "upgrade harness covers wallet sync state migration" test_upgrade_harness_covers_wallet_sync_state_migration
-  run_test "upgrade harness covers wallet sync retirement" test_upgrade_harness_covers_wallet_sync_retirement
   run_test "upgrade harness never logs secret prefixes" test_upgrade_harness_never_logs_secret_prefixes
   run_test "runner lock helper uses cross-UID writable locks" test_runner_lock_helper_uses_cross_uid_writable_locks
   run_test "upgrade network defaults respect overrides" test_upgrade_network_defaults_respect_overrides
@@ -3285,11 +3078,7 @@ main() {
   run_test "backend replacement failure restores backend" test_backend_replacement_failure_restores_backend
   run_test "backend replacement rejects uncoordinated mutation" test_backend_replacement_rejects_uncoordinated_mutation
   run_test "backend replacement producer rejects uncoordinated mutation" test_backend_replacement_producer_rejects_uncoordinated_mutation
-  run_test "rollback-floor proof rejects uncoordinated mutation" test_rollback_floor_proof_rejects_uncoordinated_mutation
-  run_test "rollback worker start rejects uncoordinated mutation" test_rollback_worker_start_rejects_uncoordinated_mutation
   run_test "backend replacement selects shared frontend network" test_backend_replacement_selects_shared_frontend_network
-  run_test "rollback-floor worker network is shared with postgres" test_rollback_floor_worker_network_is_shared_with_postgres
-  run_test "rollback-floor fails closed without a postgres network" test_rollback_floor_fails_closed_without_a_postgres_network
   run_test "browser refresh smoke sends csrf header" test_browser_refresh_smoke_sends_csrf_header
   run_test "support package smoke confirms shareable aggregate" test_support_package_smoke_confirms_shareable_aggregate
   run_test "no undispatched upgrade fixture hooks" test_no_undispatched_fixture_hooks

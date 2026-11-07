@@ -1,7 +1,9 @@
 import type { CombinedConfig } from '../config';
 import {
+  CHECK_STALE_WALLETS_JOB_NAME,
   CONFIRMATIONS_QUEUE_NAME,
   SYNC_JOB_CONTRACT_VERSION,
+  SYNC_QUEUE_NAME,
   UPDATE_ALL_CONFIRMATIONS_JOB_NAME,
   type UpdateAllConfirmationsJobData,
 } from '../jobs/syncJobContract';
@@ -12,11 +14,6 @@ import type {
   RecurringScheduleResult,
   WorkerJobQueue,
 } from './workerJobQueue';
-import {
-  buildStaleWalletCompatibilitySchedule,
-  requireStaleWalletCompatibilitySchedule,
-  type WithStaleWalletRetirementLock,
-} from './staleWalletScheduleCompatibility';
 
 const MINUTE_MS = 60_000;
 export const RECURRING_SCHEDULE_RECONCILIATION_INTERVAL_MS = MINUTE_MS;
@@ -49,13 +46,10 @@ export interface RecurringScheduleCoordinatorState {
 interface ConditionalScheduleState {
   autopilotEnabled: boolean;
   intelligenceEnabled: boolean;
-  staleWalletScheduleForbidden: boolean;
 }
 
 const STALE_WALLET_PURGE_RESULT_ID = 'sync:stale-wallet-jobs';
 const STALE_WALLET_PURGE_MAX_PASSES = 5;
-
-export { requireStaleWalletCompatibilitySchedule as requireStaleWalletSchedule };
 
 function defineSchedule<T>(
   queue: string,
@@ -87,11 +81,24 @@ function utcCron(pattern: string): RecurringScheduleRecurrence {
   return { pattern, tz: 'UTC' };
 }
 
+/**
+ * The removed elapsed-age scheduler. Installs upgraded from a release that
+ * never completed the v0.8.67 cutover can still hold its repeatable and
+ * queued children in Redis, so every reconciliation removes them.
+ */
+export const RETIRED_STALE_WALLET_SCHEDULE = defineSchedule(
+  SYNC_QUEUE_NAME,
+  CHECK_STALE_WALLETS_JOB_NAME,
+  { version: SYNC_JOB_CONTRACT_VERSION },
+  // Removal and inspection match on queue and name only; the recurrence is a
+  // placeholder (the old schedule used SYNC_INTERVAL_MS, default 5 minutes).
+  every(5 * MINUTE_MS),
+);
+
 export function buildBaselineRecurringSchedules(
   config: CombinedConfig,
 ): RecurringScheduleDefinition[] {
   return [
-    buildStaleWalletCompatibilitySchedule(config),
     defineSchedule<UpdateAllConfirmationsJobData>(
       CONFIRMATIONS_QUEUE_NAME,
       UPDATE_ALL_CONFIRMATIONS_JOB_NAME,
@@ -277,7 +284,6 @@ export class RecurringScheduleCoordinator {
     private readonly queue: WorkerJobQueue,
     private readonly config: CombinedConfig,
     private readonly readConditionalState: () => Promise<ConditionalScheduleState>,
-    private readonly withRetirementLock?: WithStaleWalletRetirementLock,
   ) {}
 
   reconcile(): Promise<RecurringScheduleReconciliation> {
@@ -299,16 +305,7 @@ export class RecurringScheduleCoordinator {
 
   private async reconcileCurrentState(): Promise<RecurringScheduleReconciliation> {
     try {
-      const conditional = await this.readConditionalState();
-      const reconcile = (staleWalletScheduleForbidden: boolean) => (
-        this.reconcileConditionalState({
-          ...conditional,
-          staleWalletScheduleForbidden,
-        })
-      );
-      return this.withRetirementLock
-        ? await this.withRetirementLock(reconcile)
-        : await reconcile(conditional.staleWalletScheduleForbidden);
+      return await this.reconcileConditionalState(await this.readConditionalState());
     } catch (error) {
       this.state = {
         ...this.state,
@@ -322,7 +319,6 @@ export class RecurringScheduleCoordinator {
     conditional: ConditionalScheduleState,
   ): Promise<RecurringScheduleReconciliation> {
       const baseline = buildBaselineRecurringSchedules(this.config);
-      const staleWalletSchedule = requireStaleWalletCompatibilitySchedule(baseline);
       const desiredConditional = [
         ...(conditional.autopilotEnabled ? AUTOPILOT_RECURRING_SCHEDULES : []),
         ...(conditional.intelligenceEnabled
@@ -330,9 +326,7 @@ export class RecurringScheduleCoordinator {
           : []),
       ];
       const forbidden = [
-        ...(conditional.staleWalletScheduleForbidden
-          ? [staleWalletSchedule]
-          : []),
+        RETIRED_STALE_WALLET_SCHEDULE,
         ...(!conditional.autopilotEnabled
           ? AUTOPILOT_RECURRING_SCHEDULES
           : []),
@@ -340,29 +334,20 @@ export class RecurringScheduleCoordinator {
           ? INTELLIGENCE_RECURRING_SCHEDULES
           : []),
       ];
-      const desired = [
-        ...baseline.filter(
-          ({ schedulerId }) =>
-            !conditional.staleWalletScheduleForbidden ||
-            schedulerId !== staleWalletSchedule.schedulerId,
-        ),
-        ...desiredConditional,
-      ];
+      const desired = [...baseline, ...desiredConditional];
       // Keep the previously published state while the Redis round-trips run
       // so a no-op reconcile does not flap /ready, and so health never
       // inspects a half-applied definition set. Failures publish false below
       // (or via the catch in reconcileCurrentState).
       const removals = await removeRecurringSchedules(this.queue, forbidden);
-      if (conditional.staleWalletScheduleForbidden) {
-        removals[STALE_WALLET_PURGE_RESULT_ID] =
-          await purgeStaleWalletJobsUntilClean(this.queue);
-      }
+      removals[STALE_WALLET_PURGE_RESULT_ID] =
+        await purgeStaleWalletJobsUntilClean(this.queue);
       const removalHealthy = Object.values(removals).every(
         ({ status }) => status !== 'failed',
       );
-      // Once the irreversible tombstone exists, scheduling desired work while
-      // retired definitions or children may remain would violate the rollback
-      // floor. Keep startup/reconciliation fail-closed until removal succeeds.
+      // Scheduling desired work while retired definitions or children may
+      // remain would let stale work run. Keep startup/reconciliation
+      // fail-closed until removal succeeds.
       const reconciliation = removalHealthy
         ? await reconcileRecurringSchedules(this.queue, desired)
         : { healthy: false, results: {}, removals: {} };
