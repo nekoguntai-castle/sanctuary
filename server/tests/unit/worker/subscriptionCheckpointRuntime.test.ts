@@ -400,6 +400,7 @@ describe('subscriptionCheckpointRuntime', () => {
       scanned: 0,
       completed: 0,
       unavailable: 0,
+      intentsRaised: 0,
       syncIntents: [],
       dispatch: {
         intents: 0,
@@ -472,6 +473,7 @@ describe('subscriptionCheckpointRuntime', () => {
       scanned: 2,
       completed: 2,
       unavailable: 0,
+      intentsRaised: 2,
       nextCursor: 'address-2',
       dispatch: { intents: 2, published: 2, woken: 2 },
     });
@@ -628,6 +630,7 @@ describe('subscriptionCheckpointRuntime', () => {
       scanned: 1,
       completed: 1,
       unavailable: 0,
+      intentsRaised: 0,
       syncIntents: [],
       dispatch: { intents: 0 },
     });

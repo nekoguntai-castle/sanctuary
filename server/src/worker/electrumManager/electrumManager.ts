@@ -32,6 +32,8 @@ import type {
   BitcoinNetwork,
   NetworkState,
   ElectrumManagerCallbacks,
+  SubscriptionStatusRefreshPageOutcome,
+  SubscriptionStatusSource,
 } from './types';
 import { acquireSubscriptionLock, startLockRefresh, releaseSubscriptionLock } from './lockCoordination';
 import { connectNetwork, teardownNetworkState } from './networkConnection';
@@ -163,7 +165,7 @@ export class ElectrumSubscriptionManager {
       await subscribeAllAddresses(
         this.networks,
         this.addressToWallet,
-        this.callbacks.onSubscriptionStatuses,
+        this.observeStatuses('subscribe'),
         () => this.hasOwnership(ownershipEpoch),
       );
       if (!this.hasOwnership(ownershipEpoch)) {
@@ -349,7 +351,7 @@ export class ElectrumSubscriptionManager {
           net,
           this.networks,
           this.addressToWallet,
-          this.callbacks.onSubscriptionStatuses,
+          this.observeStatuses('reconnect'),
           { isActive: hasOwnership },
         );
       },
@@ -384,7 +386,7 @@ export class ElectrumSubscriptionManager {
       this.networks,
       this.addressToWallet,
       () => this.hasOwnership(ownershipEpoch),
-      this.callbacks.onSubscriptionStatuses,
+      this.observeStatuses('subscribe'),
     );
   }
 
@@ -403,24 +405,43 @@ export class ElectrumSubscriptionManager {
     return doReconcileSubscriptions(
       this.networks,
       this.addressToWallet,
-      this.callbacks.onSubscriptionStatuses,
+      this.observeStatuses('subscribe'),
       () => this.hasOwnership(ownershipEpoch),
     );
+  }
+
+  /** Bind the status callback to the path that observed the statuses. */
+  private observeStatuses(source: SubscriptionStatusSource) {
+    const callback = this.callbacks.onSubscriptionStatuses;
+    return callback
+      ? (network: BitcoinNetwork, statuses: Map<string, string | null>) => (
+        callback(network, statuses, source)
+      )
+      : undefined;
   }
 
   /** Re-read one fair authoritative status page so transient checkpoint writes self-heal. */
   async refreshSubscriptionStatusPage(
     network: BitcoinNetwork,
     options: { cursor?: string; limit: number },
-  ): Promise<{ scanned: number; nextCursor?: string }> {
+  ): Promise<{
+    scanned: number;
+    nextCursor?: string;
+    outcome: SubscriptionStatusRefreshPageOutcome;
+  }> {
     const ownershipEpoch = this.ownershipEpoch;
-    if (!this.hasOwnership(ownershipEpoch)) return { scanned: 0 };
+    const notOwner = { scanned: 0, outcome: 'skipped_not_owner' } as const;
+    if (!this.hasOwnership(ownershipEpoch)) return notOwner;
     const addresses = await addressRepository.findAllWithWalletNetworkPaginated({
       take: options.limit,
       ...(options.cursor !== undefined ? { cursor: options.cursor } : {}),
     });
-    if (!this.hasOwnership(ownershipEpoch)) return { scanned: 0 };
+    if (!this.hasOwnership(ownershipEpoch)) return notOwner;
     const state = this.networks.get(network);
+    // A disconnected network skips the subscribe but still advances the cursor:
+    // the reconnect resubscribe re-reads every tracked address and compares
+    // against the stored checkpoint, so nothing is missed (see ADR 0004).
+    const connected = Boolean(state?.connected);
     if (state?.connected) {
       const networkAddresses = addresses
         .filter((address) => (
@@ -430,12 +451,13 @@ export class ElectrumSubscriptionManager {
       await subscribeAddressBatch(state, networkAddresses, {
         resubscribe: true,
         isActive: () => this.hasOwnership(ownershipEpoch),
-        observeStatuses: this.callbacks.onSubscriptionStatuses,
+        observeStatuses: this.observeStatuses('refresh'),
       });
-      if (!this.hasOwnership(ownershipEpoch)) return { scanned: 0 };
+      if (!this.hasOwnership(ownershipEpoch)) return notOwner;
     }
     return {
       scanned: addresses.length,
+      outcome: connected ? 'refreshed' : 'skipped_disconnected',
       ...(addresses.length === options.limit
         ? { nextCursor: addresses[addresses.length - 1].id }
         : {}),

@@ -32,6 +32,11 @@ import { validateEncryptionKey } from './utils/encryption';
 import { metricsService } from './observability/metrics/registry';
 import { updateJobQueueMetrics } from './observability/metrics/helpers';
 import {
+  recordSubscriptionStatusMismatch,
+  type SubscriptionStatusSource,
+} from './observability/metrics/subscriptionStatusMetrics';
+import { createSubscriptionStatusRefreshTracker } from './worker/subscriptionStatusRefreshTracker';
+import {
   connectWithRetry,
   disconnect,
   getLastDatabaseHealth,
@@ -125,7 +130,6 @@ let networkHeaderReconciliationTimer: NodeJS.Timeout | null = null;
 let subscriptionCheckpointNetworkIndex = 0;
 let subscriptionStatusRefreshNetworkIndex = 0;
 const subscriptionCheckpointCursors = new Map<BitcoinNetwork, string>();
-const subscriptionStatusRefreshCursors = new Map<BitcoinNetwork, string>();
 const subscriptionStatusTails = new Map<string, Promise<void>>();
 let subscriptionCheckpointMutationTail: Promise<void> = Promise.resolve();
 let stopUiEventBridge: (() => Promise<void>) | null = null;
@@ -135,6 +139,9 @@ const RECONCILIATION_INTERVAL_MS = 15 * 60 * 1000;
 const SUBSCRIPTION_CHECKPOINT_INTERVAL_MS = 1_000;
 const SUBSCRIPTION_STATUS_REFRESH_INTERVAL_MS = 60_000;
 const SUBSCRIPTION_CHECKPOINT_PAGE_SIZE = 200;
+const subscriptionStatusRefreshTracker = createSubscriptionStatusRefreshTracker(
+  SUBSCRIPTION_CHECKPOINT_PAGE_SIZE,
+);
 const NETWORK_HEADER_RECONCILIATION_INTERVAL_MS = 5_000;
 
 /**
@@ -288,12 +295,14 @@ async function enrollWalletSubscriptions(
 async function recordSubscriptionStatuses(
   network: BitcoinNetwork,
   statuses: Map<string, string | null>,
+  source: SubscriptionStatusSource,
 ): Promise<void> {
   for (const [address, status] of statuses) {
     await recordSubscriptionStatus(
       network,
       addressToScriptHash(address, network),
       status,
+      source,
     );
   }
 }
@@ -302,13 +311,14 @@ async function recordSubscriptionStatus(
   network: BitcoinNetwork,
   scriptHash: string,
   observedStatus: string | null,
+  source: SubscriptionStatusSource,
 ): Promise<void> {
   // Shutdown closes admission before it snapshots the accepted tail map.
   if (isShuttingDown) return;
   const key = `${network}:${scriptHash}`;
   const previous = subscriptionStatusTails.get(key) ?? Promise.resolve();
   const current = previous.catch(() => undefined).then(() => (
-    recordSubscriptionStatusPages(network, scriptHash, observedStatus)
+    recordSubscriptionStatusPages(network, scriptHash, observedStatus, source)
   ));
   subscriptionStatusTails.set(key, current);
   try {
@@ -324,6 +334,7 @@ async function recordSubscriptionStatusPages(
   network: BitcoinNetwork,
   scriptHash: string,
   observedStatus: string | null,
+  source: SubscriptionStatusSource,
 ): Promise<void> {
   let cursor: string | undefined;
   do {
@@ -338,6 +349,7 @@ async function recordSubscriptionStatusPages(
       })
     ));
     logCheckpointDispatchFailures(`status:${network}:${scriptHash}`, result);
+    recordSubscriptionStatusMismatch(network, source, result.intentsRaised);
     cursor = result.scanned === SUBSCRIPTION_CHECKPOINT_PAGE_SIZE
       ? result.nextCursor
       : undefined;
@@ -603,7 +615,7 @@ function startReconciliationTimer(): void {
 function startSubscriptionStatusRefreshTimer(): void {
   subscriptionStatusRefreshTimer = setInterval(() => {
     if (isShuttingDown || !electrumManager?.isSubscriptionOwner()) {
-      subscriptionStatusRefreshCursors.clear();
+      subscriptionStatusRefreshTracker.clear();
       return;
     }
     if (subscriptionStatusRefreshInFlight) return;
@@ -611,17 +623,14 @@ function startSubscriptionStatusRefreshTimer(): void {
     const network = networks[subscriptionStatusRefreshNetworkIndex % networks.length];
     if (!network) return;
     subscriptionStatusRefreshInFlight = true;
-    const cursor = subscriptionStatusRefreshCursors.get(network);
+    const cursor = subscriptionStatusRefreshTracker.cursorFor(network);
     return electrumManager.refreshSubscriptionStatusPage(network, {
       ...(cursor !== undefined ? { cursor } : {}),
       limit: SUBSCRIPTION_CHECKPOINT_PAGE_SIZE,
     }).then((result) => {
-      if (result.scanned === SUBSCRIPTION_CHECKPOINT_PAGE_SIZE && result.nextCursor) {
-        subscriptionStatusRefreshCursors.set(network, result.nextCursor);
-      } else {
-        subscriptionStatusRefreshCursors.delete(network);
-      }
+      subscriptionStatusRefreshTracker.recordPage(network, result);
     }).catch((error) => {
+      subscriptionStatusRefreshTracker.recordFailure(network);
       log.error('Subscription status refresh failed', {
         error: getErrorMessage(error),
         network,
@@ -684,7 +693,7 @@ function handleAddressActivity(
   scriptHash: string,
   status: string | null,
 ): void {
-  void recordSubscriptionStatus(network, scriptHash, status).catch(error => {
+  void recordSubscriptionStatus(network, scriptHash, status, 'notification').catch(error => {
     log.error('Failed to persist address activity checkpoint', {
       error: getErrorMessage(error),
       network,
@@ -825,7 +834,7 @@ async function shutdown(signal: string, exitCode: 0 | 1 = 0): Promise<void> {
   await drainSubscriptionStatusTails(subscriptionStatusTails);
 
   subscriptionCheckpointCursors.clear();
-  subscriptionStatusRefreshCursors.clear();
+  subscriptionStatusRefreshTracker.clear();
   subscriptionCheckpointInFlight = false;
   subscriptionStatusRefreshInFlight = false;
   if (networkHeaderReconciliationRuntime) {

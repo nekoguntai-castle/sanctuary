@@ -256,6 +256,7 @@ export function registerElectrumManagerStartContracts() {
         expect(onSubscriptionStatuses).toHaveBeenCalledWith(
           'mainnet',
           new Map([['bc1qready', 'status']]),
+          'subscribe',
         );
       } finally {
         delete mockCallbacks.onNetworkReady;

@@ -111,7 +111,7 @@ const serverSources = (readdirSync(repoPath('server/src'), { recursive: true }) 
 /** The exported metric object for a Prometheus name, and whether anything writes it. */
 function metricProducerCalls(metricName: string): { binding: string; producers: number } {
   const declaration = new RegExp(
-    `export const (\\w+) = new (?:Counter|Histogram|Gauge)\\(\\{\\s*name: '${metricName}'`,
+    `(?:export )?const (\\w+) = new (?:Counter|Histogram|Gauge)\\(\\{\\s*name: '${metricName}'`,
   );
   const binding = serverSources
     .map(source => source.match(declaration)?.[1])
@@ -250,6 +250,45 @@ describe('wallet-sync operational observability', () => {
     expect(alertMetrics).toEqual(['sanctuary_wallet_syncs_total']);
 
     for (const metricName of [...alertMetrics, 'sanctuary_wallet_sync_duration_seconds']) {
+      const { binding, producers } = metricProducerCalls(metricName);
+      expect(producers, `${binding} (${metricName}) is declared but never written`)
+        .toBeGreaterThan(0);
+    }
+  });
+
+  it('pins the subscription status backstop alerts to fixed-label metrics', () => {
+    const group = alertRules.groups.find(candidate => candidate.name === 'sanctuary.subscription-status');
+    expect(group).toBeDefined();
+    const rule = (name: string): AlertRule => {
+      const found = group?.rules.find(candidate => candidate.alert === name);
+      expect(found, `missing alert: ${name}`).toBeDefined();
+      return found as AlertRule;
+    };
+
+    const stalled = rule('SubscriptionStatusRefreshStalled');
+    expect(stalled.expr).toContain(
+      'sanctuary_subscription_status_refresh_cycle_completed_timestamp_seconds',
+    );
+    expect(stalled.expr).toMatch(/>\s*21600\b/);
+
+    const missed = rule('SubscriptionStatusMissedNotifications');
+    expect(missed.expr).toContain('sanctuary_subscription_status_mismatches_total');
+    expect(missed.expr).toContain('source="refresh"');
+
+    const allowedLabels = new Set(['network', 'source', 'outcome']);
+    for (const { expr } of group?.rules ?? []) {
+      for (const label of queryLabelNames(expr)) {
+        expect(allowedLabels.has(label), `high-cardinality or unknown label: ${label}`).toBe(true);
+      }
+    }
+  });
+
+  it('has a server producer for every subscription status metric', () => {
+    for (const metricName of [
+      'sanctuary_subscription_status_mismatches_total',
+      'sanctuary_subscription_status_refresh_pages_total',
+      'sanctuary_subscription_status_refresh_cycle_completed_timestamp_seconds',
+    ]) {
       const { binding, producers } = metricProducerCalls(metricName);
       expect(producers, `${binding} (${metricName}) is declared but never written`)
         .toBeGreaterThan(0);

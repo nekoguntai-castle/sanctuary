@@ -388,13 +388,14 @@ function writeMultiNetworkFixture(root) {
       + '  async startWithLock() {\n'
       + '    const representedNetworkValues = await walletRepository.findRepresentedNetworks();\n'
       + '    representedNetworkValues.map(resolvePersistedBitcoinNetwork);\n'
-      + '    await subscribeAllAddresses(a, b, this.callbacks.onSubscriptionStatuses);\n'
+      + "    await subscribeAllAddresses(a, b, this.observeStatuses('subscribe'));\n"
       + '  }\n'
-      + '  async reconnect() { await subscribeNetworkAddresses(a, b, c, this.callbacks.onSubscriptionStatuses); }\n'
-      + '  async reconcileSubscriptions() { return doReconcileSubscriptions(a, b, this.callbacks.onSubscriptionStatuses); }\n'
-      + '  async subscribeWalletAddresses() { await this.ensureNetworkConnected(a); await doSubscribeWalletAddresses(a, b, c, d, this.callbacks.onSubscriptionStatuses); }\n'
+      + "  async reconnect() { await subscribeNetworkAddresses(a, b, c, this.observeStatuses('reconnect')); }\n"
+      + "  async reconcileSubscriptions() { return doReconcileSubscriptions(a, b, this.observeStatuses('subscribe')); }\n"
+      + "  async subscribeWalletAddresses() { await this.ensureNetworkConnected(a); await doSubscribeWalletAddresses(a, b, c, d, this.observeStatuses('subscribe')); }\n"
+      + '  observeStatuses(source) { const callback = this.callbacks.onSubscriptionStatuses; return callback && ((n, s) => callback(n, s, source)); }\n'
       + '  async subscribeCheckpointAddresses() { await this.ensureNetworkConnected(a, b, false); }\n'
-      + '  async refreshSubscriptionStatusPage() { await subscribeAddressBatch(a, b, { observeStatuses: this.callbacks.onSubscriptionStatuses }); }\n'
+      + "  async refreshSubscriptionStatusPage() { await subscribeAddressBatch(a, b, { observeStatuses: this.observeStatuses('refresh') }); }\n"
       + '  async ensureNetworkConnected() {}\n'
       + '  async doConnectNetwork() { const existing = this.networkConnections.get(a); if (existing) { await existing; return; } const connection = connectNetwork(); this.networkConnections.set(a, connection); try { await connection; } finally { if (this.networkConnections.get(a) === connection) this.networkConnections.delete(a); } }\n'
       + '  doScheduleReconnect() { scheduleReconnect(a, b, c, d, e, f, (network) => this.doConnectNetwork(network)); }\n'
@@ -753,7 +754,7 @@ test('rejects loss of represented-network and strict routing boundaries', () => 
     inertManagerTokens,
     'server/src/worker/electrumManager/electrumManager.ts',
     readFileSync(managerPath, 'utf8').replace(
-      'await subscribeAllAddresses(a, b, this.callbacks.onSubscriptionStatuses);',
+      "await subscribeAllAddresses(a, b, this.observeStatuses('subscribe'));",
       'void subscribeAllAddresses; void this.callbacks.onSubscriptionStatuses;',
     ),
   );
@@ -770,12 +771,29 @@ test('rejects loss of represented-network and strict routing boundaries', () => 
     missingRefreshObserver,
     'server/src/worker/electrumManager/electrumManager.ts',
     readFileSync(refreshManagerPath, 'utf8').replace(
-      'observeStatuses: this.callbacks.onSubscriptionStatuses',
+      "observeStatuses: this.observeStatuses('refresh')",
       'observeStatuses: undefined',
     ),
   );
   assert.ok(checkWalletSyncLifecycleContract(missingRefreshObserver).errors.some(
     (error) => error.includes('publish refresh statuses'),
+  ));
+
+  const inertObserver = createFixture();
+  const inertObserverPath = path.join(
+    inertObserver,
+    'server/src/worker/electrumManager/electrumManager.ts',
+  );
+  write(
+    inertObserver,
+    'server/src/worker/electrumManager/electrumManager.ts',
+    readFileSync(inertObserverPath, 'utf8').replace(
+      'const callback = this.callbacks.onSubscriptionStatuses;',
+      'const callback = undefined;',
+    ),
+  );
+  assert.ok(checkWalletSyncLifecycleContract(inertObserver).errors.some(
+    (error) => error.includes('observeStatuses must forward the status callback'),
   ));
 
   const unsafeManager = createFixture();

@@ -59,6 +59,7 @@ const mocks = vi.hoisted(() => {
         onSubscriptionStatuses?: (
           network: NetworkType,
           statuses: Map<string, string | null>,
+          source: 'subscribe' | 'reconnect' | 'refresh',
         ) => Promise<void>;
       }
     | undefined;
@@ -205,6 +206,9 @@ const mocks = vi.hoisted(() => {
     startCaptureParticipant: vi.fn(),
     stopCaptureParticipant: vi.fn(),
     syncIntentRequest: vi.fn(),
+    recordSubscriptionStatusMismatch: vi.fn(),
+    recordSubscriptionStatusRefreshPage: vi.fn(),
+    recordSubscriptionStatusRefreshCycleCompleted: vi.fn(),
   };
 });
 
@@ -330,6 +334,13 @@ vi.mock('../../../src/observability/metrics/walletSyncMetrics', () => ({
   recordWalletSyncCleanupOutcome: vi.fn(),
 }));
 
+vi.mock('../../../src/observability/metrics/subscriptionStatusMetrics', () => ({
+  recordSubscriptionStatusMismatch: mocks.recordSubscriptionStatusMismatch,
+  recordSubscriptionStatusRefreshPage: mocks.recordSubscriptionStatusRefreshPage,
+  recordSubscriptionStatusRefreshCycleCompleted:
+    mocks.recordSubscriptionStatusRefreshCycleCompleted,
+}));
+
 // The worker publishes its WebSocket events onto the Redis bridge. The real
 // module reaches the un-mocked infrastructure/redis and metrics graph.
 vi.mock('../../../src/websocket/redisBridge', () => ({
@@ -453,7 +464,7 @@ describe('worker entrypoint', () => {
       networks: { testnet: { connected: true } },
     });
     mocks.electrumInstance.reconcileSubscriptions.mockResolvedValue(undefined);
-    mocks.electrumInstance.refreshSubscriptionStatusPage.mockResolvedValue({ scanned: 0 });
+    mocks.electrumInstance.refreshSubscriptionStatusPage.mockResolvedValue({ scanned: 0, outcome: 'refreshed' });
     mocks.subscriptionCheckpointRuntime.enrollPendingPage.mockResolvedValue({
       scanned: 0,
       subscribed: 0,
@@ -472,6 +483,7 @@ describe('worker entrypoint', () => {
       scanned: 0,
       completed: 0,
       unavailable: 0,
+      intentsRaised: 0,
       syncIntents: [],
       dispatch: {
         intents: 0,
@@ -1143,8 +1155,8 @@ describe('worker entrypoint', () => {
       return { unref: vi.fn() } as any;
     }) as any);
     mocks.electrumInstance.refreshSubscriptionStatusPage
-      .mockResolvedValueOnce({ scanned: 200, nextCursor: 'address-200' })
-      .mockResolvedValueOnce({ scanned: 0 });
+      .mockResolvedValueOnce({ scanned: 200, nextCursor: 'address-200', outcome: 'refreshed' })
+      .mockResolvedValueOnce({ scanned: 0, outcome: 'refreshed' });
 
     await import('../../../src/worker.ts');
     await vi.dynamicImportSettled();
@@ -1169,6 +1181,141 @@ describe('worker entrypoint', () => {
     );
   });
 
+  async function captureStatusRefreshTimer(): Promise<() => Promise<void> | void> {
+    vi.spyOn(process, 'on').mockImplementation(((_event: string, _handler: (...args: any[]) => any) => (
+      process
+    )) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+    let statusRefreshCallback: (() => Promise<void> | void) | undefined;
+    vi.spyOn(global, 'setInterval').mockImplementation(((
+      callback: () => Promise<void> | void,
+      interval: number,
+    ) => {
+      if (interval === 60_000 && statusRefreshCallback === undefined) {
+        statusRefreshCallback = callback;
+      }
+      return { unref: vi.fn() } as any;
+    }) as any);
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+    expect(statusRefreshCallback).toBeDefined();
+    return statusRefreshCallback!;
+  }
+
+  it('tags every status observation source and counts only intent-raising completions', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((_event: string, _handler: (...args: any[]) => any) => (
+      process
+    )) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+    const callbacks = mocks.getElectrumCallbacks();
+    const address = 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx';
+    const statuses = new Map<string, string | null>([[address, 'c'.repeat(64)]]);
+    const result = (intentsRaised: number) => ({
+      scanned: 1,
+      completed: 1,
+      unavailable: 0,
+      intentsRaised,
+      syncIntents: [],
+      dispatch: {
+        intents: intentsRaised,
+        published: intentsRaised,
+        publicationFailed: 0,
+        woken: intentsRaised,
+        wakeUnavailable: 0,
+      },
+    });
+
+    for (const source of ['subscribe', 'reconnect', 'refresh'] as const) {
+      mocks.subscriptionCheckpointRuntime.recordStatusPage.mockResolvedValueOnce(result(1));
+      await callbacks?.onSubscriptionStatuses?.('testnet4', statuses, source);
+      expect(mocks.recordSubscriptionStatusMismatch).toHaveBeenLastCalledWith(
+        'testnet4',
+        source,
+        1,
+      );
+    }
+
+    mocks.subscriptionCheckpointRuntime.recordStatusPage.mockResolvedValueOnce(result(2));
+    callbacks?.onAddressActivity('testnet4', 'a'.repeat(64), 'c'.repeat(64));
+    await vi.waitFor(() => {
+      expect(mocks.recordSubscriptionStatusMismatch).toHaveBeenLastCalledWith(
+        'testnet4',
+        'notification',
+        2,
+      );
+    });
+
+    // A matching status raises no intent: the metric is told zero, which it ignores.
+    mocks.recordSubscriptionStatusMismatch.mockClear();
+    mocks.subscriptionCheckpointRuntime.recordStatusPage.mockResolvedValueOnce(result(0));
+    await callbacks?.onSubscriptionStatuses?.('testnet4', statuses, 'refresh');
+    expect(mocks.recordSubscriptionStatusMismatch).toHaveBeenCalledWith('testnet4', 'refresh', 0);
+    expect(mocks.recordSubscriptionStatusMismatch).not.toHaveBeenCalledWith(
+      expect.anything(), expect.anything(), expect.toSatisfy((n: number) => n > 0),
+    );
+
+    // The source is never persisted with the checkpoint observation.
+    for (const [input] of mocks.subscriptionCheckpointRuntime.recordStatusPage.mock.calls) {
+      expect(input).not.toHaveProperty('source');
+    }
+  });
+
+  it('records each refresh page outcome and stamps the cycle only when a clean pass wraps', async () => {
+    const tick = await captureStatusRefreshTimer();
+    const pages = mocks.electrumInstance.refreshSubscriptionStatusPage;
+
+    // Clean two-page pass: refreshed, then the short final page wraps the cursor.
+    pages
+      .mockResolvedValueOnce({ scanned: 200, nextCursor: 'address-200', outcome: 'refreshed' })
+      .mockResolvedValueOnce({ scanned: 10, outcome: 'refreshed' });
+    await tick();
+    expect(mocks.recordSubscriptionStatusRefreshCycleCompleted).not.toHaveBeenCalled();
+    await tick();
+    expect(mocks.recordSubscriptionStatusRefreshPage).toHaveBeenCalledTimes(2);
+    expect(mocks.recordSubscriptionStatusRefreshPage).toHaveBeenNthCalledWith(1, 'testnet3', 'refreshed');
+    expect(mocks.recordSubscriptionStatusRefreshCycleCompleted)
+      .toHaveBeenCalledExactlyOnceWith('testnet3', expect.any(Number));
+
+    // A pass that crossed a disconnected page still wraps its cursor but is not stamped.
+    mocks.recordSubscriptionStatusRefreshCycleCompleted.mockClear();
+    pages
+      .mockResolvedValueOnce({ scanned: 200, nextCursor: 'address-200', outcome: 'skipped_disconnected' })
+      .mockResolvedValueOnce({ scanned: 10, outcome: 'refreshed' });
+    await tick();
+    await tick();
+    expect(mocks.recordSubscriptionStatusRefreshPage).toHaveBeenCalledWith('testnet3', 'skipped_disconnected');
+    expect(mocks.recordSubscriptionStatusRefreshCycleCompleted).not.toHaveBeenCalled();
+
+    // The next clean pass is stamped again.
+    pages.mockResolvedValueOnce({ scanned: 0, outcome: 'refreshed' });
+    await tick();
+    expect(mocks.recordSubscriptionStatusRefreshCycleCompleted).toHaveBeenCalledOnce();
+
+    // Ownership loss mid-page.
+    mocks.recordSubscriptionStatusRefreshCycleCompleted.mockClear();
+    pages.mockResolvedValueOnce({ scanned: 0, outcome: 'skipped_not_owner' });
+    await tick();
+    expect(mocks.recordSubscriptionStatusRefreshPage).toHaveBeenLastCalledWith('testnet3', 'skipped_not_owner');
+    expect(mocks.recordSubscriptionStatusRefreshCycleCompleted).not.toHaveBeenCalled();
+  });
+
+  it('counts a failed refresh page, retries its cursor, and does not stamp the tainted pass', async () => {
+    const tick = await captureStatusRefreshTimer();
+    const pages = mocks.electrumInstance.refreshSubscriptionStatusPage;
+    pages
+      .mockResolvedValueOnce({ scanned: 200, nextCursor: 'address-200', outcome: 'refreshed' })
+      .mockRejectedValueOnce(new Error('electrum down'))
+      .mockResolvedValueOnce({ scanned: 5, outcome: 'refreshed' });
+    await tick();
+    await tick();
+    expect(mocks.recordSubscriptionStatusRefreshPage).toHaveBeenLastCalledWith('testnet3', 'failed');
+    await tick();
+    expect(pages).toHaveBeenNthCalledWith(3, 'testnet3', { cursor: 'address-200', limit: 200 });
+    expect(mocks.recordSubscriptionStatusRefreshCycleCompleted).not.toHaveBeenCalled();
+  });
+
   it('does not skip a managed network while a status refresh is still in flight', async () => {
     vi.spyOn(process, 'on').mockImplementation(((_event: string, _handler: (...args: any[]) => any) => (
       process
@@ -1185,17 +1332,17 @@ describe('worker entrypoint', () => {
       return { unref: vi.fn() } as any;
     }) as any);
     mocks.electrumInstance.getManagedNetworks.mockReturnValue(['mainnet', 'testnet3']);
-    let finishFirst!: (result: { scanned: number }) => void;
+    let finishFirst!: (result: { scanned: number; outcome: 'refreshed' }) => void;
     mocks.electrumInstance.refreshSubscriptionStatusPage
       .mockReturnValueOnce(new Promise((resolve) => { finishFirst = resolve; }))
-      .mockResolvedValueOnce({ scanned: 0 });
+      .mockResolvedValueOnce({ scanned: 0, outcome: 'refreshed' });
 
     await import('../../../src/worker.ts');
     await vi.dynamicImportSettled();
     const first = statusRefreshCallback!() as Promise<void>;
     expect(statusRefreshCallback!()).toBeUndefined();
     expect(mocks.electrumInstance.refreshSubscriptionStatusPage).toHaveBeenCalledOnce();
-    finishFirst({ scanned: 0 });
+    finishFirst({ scanned: 0, outcome: 'refreshed' });
     await first;
 
     await statusRefreshCallback!();

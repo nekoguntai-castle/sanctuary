@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The periodic subscription status refresh, which catches a missed Electrum scripthash notification (#908), is now visible. The worker exports `sanctuary_subscription_status_mismatches_total{network,source}` (status changes that raised sync intent, by `notification`, `subscribe`, `reconnect` or `refresh`), `sanctuary_subscription_status_refresh_pages_total{network,outcome}` and `sanctuary_subscription_status_refresh_cycle_completed_timestamp_seconds{network}`, plus the `SubscriptionStatusRefreshStalled` and `SubscriptionStatusMissedNotifications` alerts. A refresh pass that crosses a disconnected network, a lost ownership or a failed page no longer counts as a completed cycle. ADR 0004, the operations runbook ("Is sync current?") and `server/ARCHITECTURE.md` now describe the backstop. No schema change.
+
 ### Changed
 
 - CI: the critical mutation gate's shard 1 ran 38-59 minutes against its 60-minute deadline and timed out on busy runner hosts, while shard 2 finished in about 75 seconds. `xpubConversion.ts`, about 55% of shard 1's test executions, now runs in shard 2, so no shard is expected to need more than about 30 minutes uncontended.

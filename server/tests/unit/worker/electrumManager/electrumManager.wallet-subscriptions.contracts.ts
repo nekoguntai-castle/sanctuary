@@ -66,7 +66,7 @@ export function registerElectrumManagerWalletSubscriptionContracts() {
         await expect(manager.refreshSubscriptionStatusPage('mainnet', {
           cursor: 'address-0', limit: 1,
         }))
-          .resolves.toEqual({ scanned: 1, nextCursor: 'address-1' });
+          .resolves.toEqual({ scanned: 1, nextCursor: 'address-1', outcome: 'refreshed' });
 
         expect(mockClient.subscribeAddressBatch).toHaveBeenCalledWith(['addr1']);
         expect(vi.mocked(prisma.address.findMany)).toHaveBeenCalledWith(
@@ -76,6 +76,7 @@ export function registerElectrumManagerWalletSubscriptionContracts() {
         expect(onSubscriptionStatuses).toHaveBeenCalledWith(
           'mainnet',
           new Map([['addr1', 'refreshed-status']]),
+          'refresh',
         );
       } finally {
         delete mockCallbacks.onSubscriptionStatuses;
@@ -100,7 +101,7 @@ export function registerElectrumManagerWalletSubscriptionContracts() {
 
       try {
         await expect(manager.refreshSubscriptionStatusPage('mainnet', { limit: 200 }))
-          .resolves.toEqual({ scanned: 1 });
+          .resolves.toEqual({ scanned: 1, outcome: 'refreshed' });
         expect(onSubscriptionStatuses).not.toHaveBeenCalled();
       } finally {
         delete mockCallbacks.onSubscriptionStatuses;
@@ -128,7 +129,7 @@ export function registerElectrumManagerWalletSubscriptionContracts() {
 
       try {
         await expect(manager.refreshSubscriptionStatusPage('mainnet', { limit: 200 }))
-          .resolves.toEqual({ scanned: 0 });
+          .resolves.toEqual({ scanned: 0, outcome: 'skipped_not_owner' });
       } finally {
         delete mockCallbacks.onSubscriptionStatuses;
       }
@@ -148,12 +149,12 @@ export function registerElectrumManagerWalletSubscriptionContracts() {
       }] as any);
 
       await expect(manager.refreshSubscriptionStatusPage('mainnet', { limit: 200 }))
-        .resolves.toEqual({ scanned: 1 });
+        .resolves.toEqual({ scanned: 1, outcome: 'refreshed' });
     });
 
     it('bounds status refresh by exact ownership before and after its database page', async () => {
       await expect(manager.refreshSubscriptionStatusPage('mainnet', { limit: 200 }))
-        .resolves.toEqual({ scanned: 0 });
+        .resolves.toEqual({ scanned: 0, outcome: 'skipped_not_owner' });
       expect(vi.mocked(prisma.address.findMany)).not.toHaveBeenCalled();
 
       let finishPage!: (rows: unknown[]) => void;
@@ -170,7 +171,7 @@ export function registerElectrumManagerWalletSubscriptionContracts() {
       (manager as any).ownershipEpoch += 1;
       finishPage([]);
 
-      await expect(refresh).resolves.toEqual({ scanned: 0 });
+      await expect(refresh).resolves.toEqual({ scanned: 0, outcome: 'skipped_not_owner' });
       expect(mockClient.subscribeAddressBatch).not.toHaveBeenCalled();
     });
 
@@ -183,7 +184,7 @@ export function registerElectrumManagerWalletSubscriptionContracts() {
       }] as any);
 
       await expect(manager.refreshSubscriptionStatusPage('mainnet', { limit: 200 }))
-        .resolves.toEqual({ scanned: 1 });
+        .resolves.toEqual({ scanned: 1, outcome: 'skipped_disconnected' });
       expect(mockClient.subscribeAddressBatch).not.toHaveBeenCalled();
     });
 

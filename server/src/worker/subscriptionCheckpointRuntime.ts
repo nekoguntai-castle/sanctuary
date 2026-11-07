@@ -81,6 +81,8 @@ export interface RecordSubscriptionStatusPageResult {
   scanned: number;
   completed: number;
   unavailable: number;
+  /** Applied completions whose status change raised durable sync intent. */
+  intentsRaised: number;
   syncIntents: SubscriptionCheckpointSyncIntent[];
   dispatch: SubscriptionIntentDispatchResult;
   nextCursor?: string;
@@ -285,6 +287,7 @@ export function createSubscriptionCheckpointRuntime(
         scanned: 0,
         completed: 0,
         unavailable: 0,
+        intentsRaised: 0,
         syncIntents: [],
         dispatch: emptyDispatch(0),
       };
@@ -292,12 +295,14 @@ export function createSubscriptionCheckpointRuntime(
     const observedAt = observationTime(dependencies.now ?? (() => new Date()));
     const intents = new Map<string, SubscriptionCheckpointSyncIntent>();
     let completed = 0;
+    let intentsRaised = 0;
     for (const owner of owners) {
       if (dependencies.isActive && !dependencies.isActive()) break;
       try {
         const completion = await completeOwner(owner, input, observedAt);
         if (completion.status !== 'applied') continue;
         completed += 1;
+        if (completion.syncIntent) intentsRaised += 1;
         addIntent(intents, completion);
       } catch {
         // The checkpoint remains pending and is retried by bounded reconciliation.
@@ -309,6 +314,7 @@ export function createSubscriptionCheckpointRuntime(
       scanned: owners.length,
       completed,
       unavailable: owners.length - completed,
+      intentsRaised,
       syncIntents,
       dispatch: await dispatchIntents(dependencies, syncIntents),
       nextCursor: owners[owners.length - 1].addressId,

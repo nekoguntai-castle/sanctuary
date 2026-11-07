@@ -236,6 +236,27 @@ needs a wallet re-synced after a failure must raise durable intent, not wait
 for a timer. The operator checks are in
 [Is sync current?](../how-to/operations-runbooks.md#is-sync-current).
 
+### Missed-notification backstop
+
+Address activity depends on receiving each Electrum
+`blockchain.scripthash.subscribe` notification. The backstop for a missed one is
+a subscription status refresh (#908), not a wallet re-sync. Every 60 seconds the
+worker resubscribes one page of 200 addresses for one managed network,
+round-robin, which makes Electrum return each address's current status hash. A
+full pass takes about `ceil(addresses / 200)` minutes per network. Each status
+goes through the same checkpoint comparison as a live notification: durable sync
+intent is raised only when the observed status differs from the stored
+checkpoint (or an unknown status becomes non-null). A matching status writes
+nothing and raises nothing. Reconnect resubscribes every tracked address with the
+same comparison, so a refresh page skipped while a network is disconnected is
+covered when it returns. The refresh never re-syncs a wallet because time has
+passed. Its observation source (`notification`, `subscribe`, `reconnect`,
+`refresh`) is held in memory for metrics only and is not persisted. A non-zero
+`sanctuary_subscription_status_mismatches_total{source="refresh"}` means a
+notification was missed. See
+[Is sync current?](../how-to/operations-runbooks.md#is-sync-current) for the
+checks.
+
 ### Re-admission after activation
 
 *Amended 2026-11-04.* Before this amendment every reset of the stabilization

@@ -208,6 +208,16 @@ Sync is current when all of these hold:
 | Address subscriptions | `address_subscription_checkpoints` | `processedEnrollmentGeneration >= requestedEnrollmentGeneration` and `coverageGapStartedAt` is null |
 | Wallet intent | `wallets` | `processedIncrementalSyncGeneration = requestedIncrementalSyncGeneration`, `processedFullResyncGeneration = requestedFullResyncGeneration`, `syncActionRequiredAt` is null |
 | Last attempt | `wallets.lastSyncStatus` | `success` |
+| Refresh backstop | `sanctuary_subscription_status_refresh_cycle_completed_timestamp_seconds{network}` on the worker's `/metrics/prometheus` | Within the expected pass time, about `ceil(addresses / 200)` minutes per network times the number of managed networks. The `SubscriptionStatusRefreshStalled` alert fires after 6 hours. |
+| Missed notifications | `sanctuary_subscription_status_mismatches_total{network,source="refresh"}` | Flat. A sustained increase means the periodic subscription refresh found status changes that no live notification delivered (the `SubscriptionStatusMissedNotifications` warning). Sync still self-heals; check the Electrum server and subscription path. |
+
+The refresh backstop is the periodic re-read of subscribed address statuses that
+catches a missed Electrum notification (ADR 0004, "Missed-notification
+backstop"). It raises sync intent only on a status mismatch.
+`sanctuary_subscription_status_refresh_pages_total{network,outcome}` shows what
+each minute's page did: `refreshed`, `skipped_disconnected`, `skipped_not_owner`
+or `failed`. A pass that included a skipped or failed page does not update the
+cycle timestamp.
 
 `GET /api/v1/sync/status/:walletId` reports `isStale` when the wallet never
 synced or has unprocessed requested work, never from elapsed time. A blocked

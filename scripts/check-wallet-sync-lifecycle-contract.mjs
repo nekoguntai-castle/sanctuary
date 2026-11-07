@@ -1614,6 +1614,42 @@ function callHasObjectArgumentPropertyPath(call, propertyName, pathName) {
   ));
 }
 
+const STATUS_CALLBACK_PATH = 'this.callbacks.onSubscriptionStatuses';
+const STATUS_OBSERVER_PATH = 'this.observeStatuses';
+
+// The manager binds the status callback to its observation source through
+// `this.observeStatuses(source)`. That wrapper counts as the callback only while
+// its body still reads `this.callbacks.onSubscriptionStatuses`.
+function isStatusObserver(expression) {
+  const current = unwrapExpression(expression);
+  if (expressionPath(current) === STATUS_CALLBACK_PATH) return true;
+  return ts.isCallExpression(current)
+    && expressionPath(current.expression) === STATUS_OBSERVER_PATH;
+}
+
+function callHasStatusObserverArgument(call) {
+  return call.arguments.some(isStatusObserver);
+}
+
+function callHasStatusObserverProperty(call, propertyName) {
+  return call.arguments.some((argument) => (
+    ts.isObjectLiteralExpression(argument)
+    && argument.properties.some((property) => (
+      ts.isPropertyAssignment(property)
+      && staticPropertyText(property.name, new Map()) === propertyName
+      && isStatusObserver(property.initializer)
+    ))
+  ));
+}
+
+function statusObserverForwardsCallback(file, source) {
+  return collectContractNodes(file, source, (node) => (
+    ts.isPropertyAccessExpression(node)
+    && expressionPath(node) === STATUS_CALLBACK_PATH
+    && enclosingFunctionName(node) === 'observeStatuses'
+  )).length > 0;
+}
+
 function hasStrictRepresentedNetworkMap(file, source) {
   return collectContractNodes(file, source, (node) => (
     ts.isCallExpression(node)
@@ -1818,7 +1854,7 @@ function validateManagerStatusCalls(managerFile, manager, errors) {
     'doSubscribeWalletAddresses',
   ]) {
     if (!callsPath(managerFile, manager, callPath)
-      .some((call) => callHasArgumentPath(call, 'this.callbacks.onSubscriptionStatuses'))) {
+      .some(callHasStatusObserverArgument)) {
       errors.push(`multi-network subscription must forward authoritative statuses through ${callPath}`);
     }
   }
@@ -1831,13 +1867,13 @@ function validateManagerStatusCalls(managerFile, manager, errors) {
     manager,
     'subscribeAddressBatch',
     'refreshSubscriptionStatusPage',
-  ).some((call) => callHasObjectArgumentPropertyPath(
-    call,
-    'observeStatuses',
-    'this.callbacks.onSubscriptionStatuses',
-  ));
+  ).some((call) => callHasStatusObserverProperty(call, 'observeStatuses'));
   if (!refreshPublishesStatuses) {
     errors.push('multi-network subscription must publish refresh statuses through its callback');
+  }
+  if (callsPath(managerFile, manager, STATUS_OBSERVER_PATH).length > 0
+    && !statusObserverForwardsCallback(managerFile, manager)) {
+    errors.push('multi-network subscription observeStatuses must forward the status callback');
   }
   if (!hasStrictRepresentedNetworkMap(managerFile, manager)) {
     errors.push('multi-network subscription must strictly validate represented networks');

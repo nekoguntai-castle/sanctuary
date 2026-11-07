@@ -95,6 +95,17 @@ export {
   type WalletSyncCleanupOutcome,
 } from './walletSyncMetrics';
 
+// Subscription status backstop metrics
+export {
+  SUBSCRIPTION_STATUS_SOURCES,
+  SUBSCRIPTION_STATUS_REFRESH_OUTCOMES,
+  recordSubscriptionStatusMismatch,
+  recordSubscriptionStatusRefreshPage,
+  recordSubscriptionStatusRefreshCycleCompleted,
+  type SubscriptionStatusSource,
+  type SubscriptionStatusRefreshOutcome,
+} from './subscriptionStatusMetrics';
+
 // Electrum pool metrics
 export {
   electrumPoolConnections,

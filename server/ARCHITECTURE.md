@@ -253,6 +253,15 @@ pages; API and server processes cannot own that boundary. The
 executable lifecycle contract inventories both writers and the coordinator so a
 second production owner cannot appear.
 
+The worker runs these timers alongside wallet-sync recovery:
+
+| Timer | Interval | Purpose |
+| --- | --- | --- |
+| Subscription reconciliation | 15 min | Add or remove subscribed addresses to match the database |
+| Subscription checkpoint recovery | 1 s | Enroll one pending checkpoint page for one managed network |
+| Subscription status refresh | 60 s | Resubscribe one 200-address page for one managed network, round-robin, so a missed Electrum notification is caught by the checkpoint comparison. Observation sources and page outcomes are exported as `sanctuary_subscription_status_*` metrics |
+| Network header reconciliation | 5 s | Recover due durable header observations |
+
 The lifecycle cutover is complete. The worker advertises its capability floor
 before cutover inspection, serializes the final exact readiness projection with
 all readiness-table writers, writes the irreversible marker, then repeatably

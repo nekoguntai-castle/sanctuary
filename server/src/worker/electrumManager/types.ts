@@ -6,6 +6,7 @@
  */
 
 import type { ElectrumClient } from '../../services/bitcoin/electrum';
+import type { SubscriptionStatusSource } from '../../observability/metrics/subscriptionStatusMetrics';
 import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 import type {
   HeaderRangeFetcher,
@@ -13,6 +14,13 @@ import type {
 } from '../../services/sync/networkHeaderReconciler';
 
 export type BitcoinNetwork = NetworkType;
+export type { SubscriptionStatusSource };
+
+/** How one status-refresh page ended, as reported by the manager. */
+export type SubscriptionStatusRefreshPageOutcome =
+  | 'refreshed'
+  | 'skipped_disconnected'
+  | 'skipped_not_owner';
 
 export interface AddressWalletInfo {
   walletId: string;
@@ -46,10 +54,15 @@ export interface ElectrumManagerCallbacks {
   ) => void;
   /** Called after a network connection is ready, before current addresses are reconciled. */
   onNetworkReady?: (network: BitcoinNetwork) => Promise<void>;
-  /** Called with authoritative statuses returned while restoring subscriptions. */
+  /**
+   * Called with authoritative statuses returned while subscribing, reconnecting
+   * or refreshing. `source` says which path observed them; live notifications
+   * use `onAddressActivity` and are tagged by the worker.
+   */
   onSubscriptionStatuses?: (
     network: BitcoinNetwork,
     statuses: Map<string, string | null>,
+    source: SubscriptionStatusSource,
   ) => Promise<void>;
 }
 

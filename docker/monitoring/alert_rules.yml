@@ -187,6 +187,42 @@ groups:
           summary: "Repeated wallet sync timeouts"
           description: "At least three wallet sync attempts timed out within 15 minutes."
 
+  # The subscription status refresh is the backstop for a missed Electrum
+  # scripthash notification (ADR 0004). One 200-address page runs per minute,
+  # round-robin across managed networks, so a full pass takes about
+  # ceil(addresses / 200) minutes per network times the number of networks.
+  - name: sanctuary.subscription-status
+    interval: 30s
+    rules:
+      # The 6 hour floor covers roughly 70,000 addresses on a single network;
+      # raise it for larger installs. The series appears after a network's first
+      # completed pass, so a freshly restarted worker is not flagged early.
+      - alert: SubscriptionStatusRefreshStalled
+        expr: |
+          time() - max by (network) (
+            sanctuary_subscription_status_refresh_cycle_completed_timestamp_seconds
+          ) > 21600
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Subscription status refresh has not completed a pass"
+          description: "Network {{ $labels.network }} has not completed a full subscription status refresh pass for {{ $value | humanizeDuration }}. Check Electrum connectivity and worker subscription ownership."
+
+      # Sync self-heals through the refresh, so this is a warning: a sustained
+      # refresh-detected mismatch means live notifications are being dropped.
+      - alert: SubscriptionStatusMissedNotifications
+        expr: |
+          sum by (network) (
+            increase(sanctuary_subscription_status_mismatches_total{source="refresh"}[1h])
+          ) >= 3
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Electrum notifications are being missed"
+          description: "The subscription status refresh found {{ $value }} status changes on {{ $labels.network }} that no notification delivered in the last hour. Check the Electrum server and the subscription path."
+
   - name: sanctuary.websocket
     interval: 30s
     rules:

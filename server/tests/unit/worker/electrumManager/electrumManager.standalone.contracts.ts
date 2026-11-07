@@ -1182,10 +1182,67 @@ export function registerElectrumManagerStandaloneContracts() {
         expect(onSubscriptionStatuses).toHaveBeenCalledWith(
           'mainnet',
           new Map([['addr-manager-reconnect', 'status']]),
+          'reconnect',
         );
         expect(networks.get('mainnet')?.reconnectAttempts).toBe(0);
       } finally {
         delete mockCallbacks.onNetworkReady;
+        delete mockCallbacks.onSubscriptionStatuses;
+        vi.useRealTimers();
+      }
+    });
+
+    it('covers a status refresh skipped while disconnected with the reconnect resubscribe', async () => {
+      // Item 4 of the subscription-status-refresh plan: a refresh page that runs
+      // while a network is down advances its cursor without reading any status.
+      // The status that changed in that window must still reach the checkpoint
+      // comparison (which raises intent on a mismatch) when the network returns.
+      vi.useFakeTimers();
+      const networks = getNetworks();
+      const addressToWallet = getAddressToWallet();
+      const onSubscriptionStatuses = vi.fn().mockResolvedValue(undefined);
+      mockCallbacks.onSubscriptionStatuses = onSubscriptionStatuses;
+      networks.set('mainnet', {
+        network: 'mainnet',
+        client: mockClient as any,
+        connected: false,
+        subscribedToHeaders: false,
+        subscribedAddresses: new Set<string>(),
+        lastBlockHeight: 0,
+        reconnectTimer: null,
+        reconnectAttempts: 0,
+      });
+      addressToWallet.set(getAddressSubscriptionKey('mainnet', 'addr-gap'), {
+        walletId: 'wallet-gap', network: 'mainnet',
+      });
+      (manager as any).isRunningFlag = true;
+      (manager as any).subscriptionLock = { key: 'lock', token: 'token' };
+      vi.mocked(prisma.address.findMany).mockResolvedValueOnce([{
+        id: 'address-1', address: 'addr-gap', walletId: 'wallet-gap',
+        wallet: { network: 'mainnet' },
+      }] as any);
+
+      try {
+        await expect(manager.refreshSubscriptionStatusPage('mainnet', { limit: 1 }))
+          .resolves.toEqual({
+            scanned: 1, nextCursor: 'address-1', outcome: 'skipped_disconnected',
+          });
+        expect(mockClient.subscribeAddressBatch).not.toHaveBeenCalled();
+        expect(onSubscriptionStatuses).not.toHaveBeenCalled();
+
+        mockClient.subscribeAddressBatch.mockResolvedValueOnce(
+          new Map([['addr-gap', 'status-changed-while-down']]),
+        );
+        (manager as any).doScheduleReconnect('mainnet');
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(mockClient.subscribeAddressBatch).toHaveBeenCalledWith(['addr-gap']);
+        expect(onSubscriptionStatuses).toHaveBeenCalledExactlyOnceWith(
+          'mainnet',
+          new Map([['addr-gap', 'status-changed-while-down']]),
+          'reconnect',
+        );
+      } finally {
         delete mockCallbacks.onSubscriptionStatuses;
         vi.useRealTimers();
       }

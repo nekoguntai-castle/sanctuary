@@ -161,6 +161,7 @@ export function registerElectrumManagerReconcileContracts() {
         expect(onSubscriptionStatuses).toHaveBeenCalledWith(
           'mainnet',
           new Map([['addr-a', 'status-a'], ['addr-b', null]]),
+          'subscribe',
         );
       } finally {
         delete mockCallbacks.onSubscriptionStatuses;
