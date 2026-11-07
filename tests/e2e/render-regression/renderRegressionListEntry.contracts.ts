@@ -70,30 +70,62 @@ async function tabTo(page: Page, target: Locator) {
   })).toBe(true);
 }
 
-export async function renderWalletListActionsFit(page: Page, darkMode: boolean) {
+async function openSortedWalletList(page: Page, darkMode: boolean) {
   const unhandled = await setupListEntry(page, darkMode);
   await page.goto('/#/wallets');
   const main = page.getByRole('main');
   await main.getByRole('combobox').selectOption('balance-asc');
-  for (const layout of ['grid', 'table', 'grid']) {
-    const toggle = main.getByRole('button', { name: `Show wallet ${layout}` });
-    await toggle.click();
-    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
-    await expectTheme(page, darkMode);
-    for (const name of ['Show wallet grid', 'Show wallet table', 'Import', 'Create']) {
-      await expectFitsMain(page, main.getByRole('button', { name, exact: true }));
-    }
-    for (const title of ['Sync all Mainnet wallets', 'Full resync all Mainnet wallets']) {
-      await expectFitsMain(page, main.getByTitle(title, { exact: true }));
-    }
-    if (layout === 'grid') {
-      await expectFitsMain(page, main.getByRole('combobox'));
-      await expect(main.getByRole('combobox')).toHaveValue('balance-asc');
-    }
-    if (layout === 'table') await expectFitsMain(page, main.getByTitle('Configure columns'));
-    await expect.poll(() => main.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
-    await captureMain(page, `wallet-${layout}`);
+  return { main, unhandled };
+}
+
+async function showWalletLayout(main: Locator, layout: 'grid' | 'table') {
+  const toggle = main.getByRole('button', { name: `Show wallet ${layout}` });
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+}
+
+async function expectWalletLayoutFits(page: Page, main: Locator, darkMode: boolean, layout: 'grid' | 'table', captureName: string) {
+  await showWalletLayout(main, layout);
+  await expectTheme(page, darkMode);
+  for (const name of ['Show wallet grid', 'Show wallet table', 'Import', 'Create']) {
+    await expectFitsMain(page, main.getByRole('button', { name, exact: true }));
   }
+  for (const title of ['Sync all Mainnet wallets', 'Full resync all Mainnet wallets']) {
+    await expectFitsMain(page, main.getByTitle(title, { exact: true }));
+  }
+  if (layout === 'grid') {
+    await expectFitsMain(page, main.getByRole('combobox'));
+    await expect(main.getByRole('combobox')).toHaveValue('balance-asc');
+  }
+  if (layout === 'table') await expectFitsMain(page, main.getByTitle('Configure columns'));
+  await expect.poll(() => main.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
+  await captureMain(page, captureName);
+}
+
+// One layout per test keeps each journey well inside the default timeout on mobile-chrome. The return case still
+// passes through the table so it proves the sort selection survives the round trip back to the grid.
+export async function renderWalletListGridActionsFit(page: Page, darkMode: boolean) {
+  const { main, unhandled } = await openSortedWalletList(page, darkMode);
+  await expectWalletLayoutFits(page, main, darkMode, 'grid', 'wallet-grid');
+  expect(unhandled).toEqual([]);
+}
+
+export async function renderWalletListTableActionsFit(page: Page, darkMode: boolean) {
+  const { main, unhandled } = await openSortedWalletList(page, darkMode);
+  await expectWalletLayoutFits(page, main, darkMode, 'table', 'wallet-table');
+  expect(unhandled).toEqual([]);
+}
+
+export async function renderWalletListReturnToGridActionsFit(page: Page, darkMode: boolean) {
+  const { main, unhandled } = await openSortedWalletList(page, darkMode);
+  // Let the debounced table preference write complete, as it did when the table pass ran in full, so the grid
+  // click starts a second write after the server response has been merged.
+  const tableSaved = page.waitForResponse(response => response.url().endsWith('/auth/me/preferences')
+    && response.request().method() === 'PATCH'
+    && (response.request().postData() ?? '').includes('"layout":"table"'));
+  await showWalletLayout(main, 'table');
+  await tableSaved;
+  await expectWalletLayoutFits(page, main, darkMode, 'grid', 'wallet-grid-after-table');
   expect(unhandled).toEqual([]);
 }
 

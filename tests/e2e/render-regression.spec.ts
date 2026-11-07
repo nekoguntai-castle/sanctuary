@@ -92,7 +92,11 @@ for (const darkMode of [false, true]) {
         test('VC28-10 settings selectors meet contrast and preserve semantics', ({ page }) => secondaryText.renderSecondarySettingsSelectorContrast(page, darkMode));
         test('VC28-10 wallet access selectors meet contrast and preserve semantics', ({ page }) => secondaryText.renderSecondaryWalletAccessSelectorContrast(page, darkMode));
         test('VC28-10 address type selectors meet contrast and preserve semantics', ({ page }) => secondaryText.renderSecondaryAddressTypeSelectorContrast(page, darkMode));
-        test('VC28-10 secondary actions meet contrast and preserve outcomes', ({ page }) => secondaryText.renderSecondaryActionContrast(page, darkMode));
+        test('VC28-10 device back action meets contrast and preserves outcome', ({ page }) => secondaryText.renderSecondaryDeviceBackActionContrast(page, darkMode));
+        test('VC28-10 device add path action meets contrast and preserves outcome', ({ page }) => secondaryText.renderSecondaryDeviceAddPathActionContrast(page, darkMode));
+        test('VC28-10 create wallet cancel meets contrast and preserves outcome', ({ page }) => secondaryText.renderSecondaryCreateWalletCancelContrast(page, darkMode));
+        test('VC28-10 import wallet cancel meets contrast and preserves outcome', ({ page }) => secondaryText.renderSecondaryImportWalletCancelContrast(page, darkMode));
+        test('VC28-10 connect device back meets contrast and preserves outcome', ({ page }) => secondaryText.renderSecondaryConnectDeviceBackContrast(page, darkMode));
       }
       test('shared actions show readable keyboard focus', ({ page }) => choiceFocus.renderSharedActionKeyboardFocus(page, darkMode));
       test('selected settings tabs remain readable', ({ page }) => visualConsistency.renderSettingsSelectedContrast(page, darkMode));
@@ -114,7 +118,9 @@ for (const darkMode of [false, true]) {
     test.describe(`list entry ${darkMode ? 'dark' : 'light'} ${width}`, () => {
       test.use({ viewport: { width, height: 1000 } });
       setupRenderRegressionErrorChecks();
-      test('wallet actions fit grid and table', ({ page }) => listEntry.renderWalletListActionsFit(page, darkMode));
+      test('wallet actions fit grid', ({ page }) => listEntry.renderWalletListGridActionsFit(page, darkMode));
+      test('wallet actions fit table', ({ page }) => listEntry.renderWalletListTableActionsFit(page, darkMode));
+      test('wallet actions fit grid after table', ({ page }) => listEntry.renderWalletListReturnToGridActionsFit(page, darkMode));
       test('wallet cards support keyboard and pointer entry', ({ page }) => listEntry.renderWalletCardEntry(page, darkMode));
       test('grouped device cards separate entry from editing', ({ page }) => listEntry.renderGroupedDeviceEntry(page, darkMode));
     });

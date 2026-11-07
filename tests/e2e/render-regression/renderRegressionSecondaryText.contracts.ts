@@ -156,14 +156,16 @@ async function readActionStates(page: Page, readings: TextReading[], control: Lo
   await record(readings, control, `${name} keyboard focus`, owner);
 }
 
-async function measureDeviceActions(page: Page, readings: TextReading[]) {
+async function measureDeviceBack(page: Page, readings: TextReading[]) {
   await page.goto(`/#/devices/${DEVICE_ID}`);
   await settle(page);
   const back = page.getByRole('button', { name: 'Back to Devices', exact: true });
   await readActionStates(page, readings, back, 'Device Back to Devices', OWNERS.deviceHeader);
   await back.press('Enter');
   await expect(page).toHaveURL(/#\/devices$/);
+}
 
+async function measureDeviceAddPath(page: Page, readings: TextReading[]) {
   await page.goto(`/#/devices/${DEVICE_ID}`);
   await settle(page);
   const add = page.getByRole('button', { name: 'Add Derivation Path', exact: true });
@@ -238,13 +240,31 @@ export async function renderSecondaryAddressTypeSelectorContrast(page: Page, dar
   await finalizeContract(readings, 10, errors, unhandled);
 }
 
-export async function renderSecondaryActionContrast(page: Page, darkMode: boolean) {
+// Secondary actions are measured one control per test (3 readings each: resting, hover, keyboard focus), so each
+// journey stays well inside the default timeout on slower projects such as mobile-chrome.
+async function runActionContract(page: Page, darkMode: boolean, measure: (page: Page, readings: TextReading[]) => Promise<void>) {
   const { errors, unhandled } = await setup(page, darkMode);
   const readings: TextReading[] = [];
-  await measureDeviceActions(page, readings);
-  await measureWorkflowReturn(page, readings, '/wallets/create', OWNERS.createProgress, /#\/wallets$/);
-  await measureWorkflowReturn(page, readings, '/wallets/import', OWNERS.importProgress, /#\/wallets$/);
-  await measureWorkflowReturn(page, readings, '/devices/connect', OWNERS.connectHeader, /#\/devices$/);
+  await measure(page, readings);
+  await finalizeContract(readings, 3, errors, unhandled);
+}
 
-  await finalizeContract(readings, 15, errors, unhandled);
+export function renderSecondaryDeviceBackActionContrast(page: Page, darkMode: boolean) {
+  return runActionContract(page, darkMode, measureDeviceBack);
+}
+
+export function renderSecondaryDeviceAddPathActionContrast(page: Page, darkMode: boolean) {
+  return runActionContract(page, darkMode, measureDeviceAddPath);
+}
+
+export function renderSecondaryCreateWalletCancelContrast(page: Page, darkMode: boolean) {
+  return runActionContract(page, darkMode, (p, readings) => measureWorkflowReturn(p, readings, '/wallets/create', OWNERS.createProgress, /#\/wallets$/));
+}
+
+export function renderSecondaryImportWalletCancelContrast(page: Page, darkMode: boolean) {
+  return runActionContract(page, darkMode, (p, readings) => measureWorkflowReturn(p, readings, '/wallets/import', OWNERS.importProgress, /#\/wallets$/));
+}
+
+export function renderSecondaryConnectDeviceBackContrast(page: Page, darkMode: boolean) {
+  return runActionContract(page, darkMode, (p, readings) => measureWorkflowReturn(p, readings, '/devices/connect', OWNERS.connectHeader, /#\/devices$/));
 }
