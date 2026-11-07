@@ -75,6 +75,9 @@ class PriceService {
   private cacheDurationSec: number = CacheTTL.btcPrice; // 60 seconds default
   private registry: ProviderRegistry<IPriceProvider>;
   private initialized = false;
+  private initializationRequests = new Map<string, Promise<void>>();
+  /** Bumped by reload and shutdown so a slower in-flight initialization yields. */
+  private lifecycleGeneration = 0;
   private enabledProviderNames: PriceProviderName[] = [
     ...DEFAULT_ENABLED_PRICE_PROVIDER_NAMES,
   ];
@@ -96,10 +99,25 @@ class PriceService {
    */
   async initialize(): Promise<void> {
     if (this.initialized) return;
+    // Every concurrent first caller would otherwise create and health-check its
+    // own provider instances, each with its own rate-limit cooldown.
+    await singleFlight(this.initializationRequests, "initialize", () =>
+      this.initializeProviders(),
+    );
+  }
 
+  private async initializeProviders(): Promise<void> {
+    const generation = this.lifecycleGeneration;
+    const registry = this.registry;
     const config = await readPriceProviderConfig();
+    await initializePriceProviders(registry, config.enabled);
+    if (generation !== this.lifecycleGeneration) {
+      // A reload replaced this registry, or shutdown closed it, while it was
+      // being filled. Drop what was registered and keep the newer state.
+      await registry.shutdown();
+      return;
+    }
     this.enabledProviderNames = config.enabled;
-    await initializePriceProviders(this.registry, config.enabled);
     this.initialized = true;
     log.info("Price service initialized with provider registry");
   }
@@ -133,6 +151,7 @@ class PriceService {
     await initializePriceProviders(nextRegistry, enabledProviderNames);
 
     const previousRegistry = this.registry;
+    this.lifecycleGeneration += 1;
     this.registry = nextRegistry;
     this.enabledProviderNames = [...enabledProviderNames];
     this.initialized = true;
@@ -736,6 +755,7 @@ class PriceService {
    * Shutdown the service
    */
   async shutdown(): Promise<void> {
+    this.lifecycleGeneration += 1;
     await this.registry.shutdown();
     this.initialized = false;
     this.clearInFlightRequests();
@@ -743,6 +763,7 @@ class PriceService {
   }
 
   private clearInFlightRequests(): void {
+    this.initializationRequests.clear();
     this.providerPriceRequests.clear();
     this.aggregatedPriceRequests.clear();
     this.historicalPriceRequests.clear();

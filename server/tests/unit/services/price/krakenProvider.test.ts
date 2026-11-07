@@ -42,6 +42,25 @@ describe('KrakenPriceProvider', () => {
     expect(result.timestamp).toBeInstanceOf(Date);
   });
 
+  it.each([
+    ['USD', 'XXBTZUSD'],
+    ['JPY', 'XXBTZJPY'],
+    ['CHF', 'XBTCHF'],
+    ['AUD', 'XBTAUD'],
+  ])('requests the Kraken ticker pair Kraken lists for %s', async (currency, pair) => {
+    mockedAxios.get.mockResolvedValue({
+      data: { error: [], result: { [pair]: { c: ['50000.00', '0.1'], o: '50000.00' } } },
+    } as any);
+
+    const provider = new KrakenPriceProvider();
+    await provider.getPrice(currency);
+
+    expect(mockedAxios.get).toHaveBeenCalledWith(
+      'https://api.kraken.com/0/public/Ticker',
+      expect.objectContaining({ params: { pair } }),
+    );
+  });
+
   it('throws API-reported errors from Kraken', async () => {
     mockedAxios.get.mockResolvedValue({
       data: {

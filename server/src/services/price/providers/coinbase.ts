@@ -22,7 +22,7 @@ export class CoinbasePriceProvider extends BasePriceProvider {
     super({
       name: 'coinbase',
       priority: 70, // Fourth priority
-      supportedCurrencies: ['USD', 'EUR', 'GBP', 'CAD'],
+      supportedCurrencies: ['USD', 'EUR', 'GBP', 'CAD', 'CHF', 'AUD', 'JPY', 'CNY', 'KRW', 'INR'],
       registerCircuitBreaker: options.registerCircuitBreaker,
     });
   }

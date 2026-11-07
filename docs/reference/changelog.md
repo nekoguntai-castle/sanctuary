@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- CNY, INR and KRW prices went stale whenever CoinGecko rate-limited the server, because CoinGecko was their only provider. Coinbase now also serves CHF, AUD, JPY, CNY, KRW and INR, so every supported currency has a second source.
+- The price service could build its providers several times at startup. Concurrent first requests each ran initialization, so about ten CoinGecko instances each sent a startup health-check request and kept their own rate-limit cooldown, which tripped CoinGecko's limit immediately. Initialization now runs once and is shared.
+- Kraken prices for CHF and AUD always failed with `EQuery:Unknown asset pair`. Kraken lists those pairs as `XBTCHF` and `XBTAUD`, not `XXBTZCHF` and `XXBTZAUD`.
+
 ## [0.8.85] - 2026-11-06
 
 ### Added

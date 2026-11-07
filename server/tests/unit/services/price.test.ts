@@ -262,6 +262,76 @@ describe('Price Service', () => {
       expect(callsForOne).toBe(mockedAxios.get.mock.calls.length);
     });
 
+    it('should initialize providers once for concurrent first calls', async () => {
+      const { readPriceProviderConfig } = await import('../../../src/services/price/providerSettings');
+      mockedAxios.get.mockResolvedValue({ data: { USD: 50000 } });
+      vi.mocked(readPriceProviderConfig).mockClear();
+      const fresh = new PriceService();
+
+      await Promise.all(Array.from({ length: 10 }, () => fresh.initialize()));
+
+      expect(readPriceProviderConfig).toHaveBeenCalledTimes(1);
+      const coinGeckoSpotRequests = mockedAxios.get.mock.calls.filter(
+        ([url]) => String(url).includes('api.coingecko.com/api/v3/simple/price'),
+      );
+      expect(coinGeckoSpotRequests).toHaveLength(1);
+    });
+
+    it('should keep a reload that lands while initialization is in flight', async () => {
+      const { readPriceProviderConfig } = await import('../../../src/services/price/providerSettings');
+      mockedAxios.get.mockResolvedValue({ data: { USD: 50000 } });
+      let releaseConfig!: () => void;
+      vi.mocked(readPriceProviderConfig).mockImplementationOnce(() => new Promise((resolve) => {
+        releaseConfig = () => resolve({
+          version: 1,
+          enabled: ['mempool', 'coingecko', 'kraken', 'coinbase'],
+          updatedAt: '2026-04-29T00:00:00.000Z',
+          updatedBy: null,
+        } as any);
+      }));
+      const fresh = new PriceService();
+
+      const initializing = fresh.initialize();
+      await fresh.reloadProviders(['mempool']);
+      releaseConfig();
+      await initializing;
+
+      expect(fresh.getProviders()).toEqual(['mempool']);
+    });
+
+    it('should not mark the service initialized when shutdown lands during initialization', async () => {
+      const { readPriceProviderConfig } = await import('../../../src/services/price/providerSettings');
+      mockedAxios.get.mockResolvedValue({ data: { USD: 50000 } });
+      let releaseConfig!: () => void;
+      vi.mocked(readPriceProviderConfig).mockImplementationOnce(() => new Promise((resolve) => {
+        releaseConfig = () => resolve({
+          version: 1,
+          enabled: ['mempool'],
+          updatedAt: '2026-04-29T00:00:00.000Z',
+          updatedBy: null,
+        } as any);
+      }));
+      const fresh = new PriceService();
+
+      const initializing = fresh.initialize();
+      await fresh.shutdown();
+      releaseConfig();
+      await initializing;
+
+      expect(fresh.getProviders()).toEqual(['mempool', 'coingecko', 'kraken', 'coinbase']);
+      expect((fresh as unknown as { registry: { getAll(): unknown[] } }).registry.getAll()).toHaveLength(0);
+    });
+
+    it('should retry initialization after a failed attempt', async () => {
+      const { readPriceProviderConfig } = await import('../../../src/services/price/providerSettings');
+      mockedAxios.get.mockResolvedValue({ data: { USD: 50000 } });
+      vi.mocked(readPriceProviderConfig).mockRejectedValueOnce(new Error('settings unavailable'));
+      const fresh = new PriceService();
+
+      await expect(fresh.initialize()).rejects.toThrow('settings unavailable');
+      await expect(fresh.initialize()).resolves.toBeUndefined();
+    });
+
     it('should throw error for unsupported currency', async () => {
       await expect(priceService.getPrice('XYZ', false)).rejects.toThrow(
         'Currency XYZ is not supported by any provider'
@@ -387,8 +457,8 @@ describe('Price Service', () => {
     });
 
     it('should throw when provider does not support currency', async () => {
-      await expect(priceService.getPriceFrom('coinbase', 'JPY')).rejects.toThrow(
-        'Provider coinbase does not support currency JPY'
+      await expect(priceService.getPriceFrom('kraken', 'CNY')).rejects.toThrow(
+        'Provider kraken does not support currency CNY'
       );
     });
 

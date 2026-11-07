@@ -19,6 +19,15 @@ interface KrakenTickerResponse {
   };
 }
 
+/**
+ * Kraken lists newer fiat pairs without the legacy X/Z asset prefixes; the
+ * prefixed form returns "EQuery:Unknown asset pair" for these.
+ */
+const KRAKEN_PAIR_OVERRIDES: Readonly<Record<string, string>> = {
+  CHF: 'XBTCHF',
+  AUD: 'XBTAUD',
+};
+
 export class KrakenPriceProvider extends BasePriceProvider {
   constructor(options: PriceProviderRuntimeOptions = {}) {
     super({
@@ -30,7 +39,7 @@ export class KrakenPriceProvider extends BasePriceProvider {
   }
 
   protected async fetchPrice(currency: string): Promise<PriceData> {
-    const pair = `XXBTZ${currency}`;
+    const pair = KRAKEN_PAIR_OVERRIDES[currency] ?? `XXBTZ${currency}`;
 
     const data = await this.httpGet<KrakenTickerResponse>(
       'https://api.kraken.com/0/public/Ticker',

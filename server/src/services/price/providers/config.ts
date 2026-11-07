@@ -28,7 +28,7 @@ export const supportedCurrencies: Record<string, string[]> = {
     "INR",
   ],
   kraken: ["USD", "EUR", "GBP", "CAD", "CHF", "AUD", "JPY"],
-  coinbase: ["USD", "EUR", "GBP", "CAD"],
+  coinbase: ["USD", "EUR", "GBP", "CAD", "CHF", "AUD", "JPY", "CNY", "KRW", "INR"],
   binance: ["USD", "EUR", "GBP"],
 };
 
