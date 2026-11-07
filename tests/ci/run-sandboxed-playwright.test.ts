@@ -8,6 +8,7 @@ import {
   createBrowserPayload,
   engineSocketFromEnv,
   parseCommand,
+  readBrowserCpuThrottling,
   resolveOuterHostname,
   runSandboxedPlaywright
 } from "../../scripts/ci/run-sandboxed-playwright.mjs";
@@ -47,7 +48,7 @@ function childInspect(overrides: Record<string, unknown> = {}) {
       CapAdd: [],
       SecurityOpt: ["no-new-privileges", `seccomp=${PROFILE}`],
       Memory: 4_294_967_296,
-      NanoCpus: 2_000_000_000,
+      NanoCpus: 4_000_000_000,
       PidsLimit: 512,
       ShmSize: 536_870_912,
       Binds: [],
@@ -86,12 +87,13 @@ function imageInspect() {
   };
 }
 
-async function runWithFakeEngine({ failTest = false, failCleanup = false, retainAfterRemove = false, failRegistration = false, failCreateResponse = false, tamperOwnership = false, unexpectedServerExit = false, includeHostname = true, envHostname = OUTER_ID.slice(0, 12), kernelHost = OUTER_ID.slice(0, 12), ownershipEndpoint = OWNERSHIP.engineEndpoint } = {}) {
+async function runWithFakeEngine({ failTest = false, failCleanup = false, retainAfterRemove = false, failRegistration = false, failCreateResponse = false, tamperOwnership = false, unexpectedServerExit = false, includeHostname = true, envHostname = OUTER_ID.slice(0, 12), kernelHost = OUTER_ID.slice(0, 12), ownershipEndpoint = OWNERSHIP.engineEndpoint, stats = "ok" as "ok" | "fail" | "malformed" } = {}) {
   const output = await mkdtemp(path.join(os.tmpdir(), "sandboxed-playwright-test-"));
   temporaryDirectories.push(output);
   const env = { NODE_ENV: "test", DOCKER_HOST: "unix:///var/run/docker.sock", ...(includeHostname ? { HOSTNAME: envHostname } : {}), SANCTUARY_E2E_OUTPUT_DIR: output } as NodeJS.ProcessEnv;
   const commands: string[][] = [];
   const registered: string[] = [];
+  const statsRequests: string[] = [];
   let removed = false;
   let containerName = "";
   let finishAttach: (code: number) => void = () => {};
@@ -112,6 +114,12 @@ async function runWithFakeEngine({ failTest = false, failCleanup = false, retain
       if (failCreateResponse) throw new Error("injected create response failure");
       containerName = new URL(`http://engine${endpoint}`).searchParams.get("name") ?? "";
       return { Id: CHILD_ID };
+    }
+    if (method === "GET" && endpoint.includes("/stats")) {
+      statsRequests.push(endpoint);
+      if (stats === "fail") throw new Error("engine API GET /stats returned 500");
+      if (stats === "malformed") return { cpu_stats: { cpu_usage: { total_usage: 1 } } };
+      return { cpu_stats: { cpu_usage: { total_usage: 1_234_567_000 }, throttling_data: { periods: 90, throttled_periods: 7, throttled_time: 89_123_000 } } };
     }
     if (method === "GET") {
       if (removed) throw new Error("engine API GET returned 404");
@@ -148,7 +156,7 @@ async function runWithFakeEngine({ failTest = false, failCleanup = false, retain
   });
   promise.then(() => {}, () => {});
   const getContainerName = () => containerName;
-  return { promise, commands, output, registered, getContainerName, setContainerName: (value: string) => { containerName = value; } };
+  return { promise, commands, output, registered, statsRequests, getContainerName, setContainerName: (value: string) => { containerName = value; } };
 }
 
 describe("sandboxed Playwright runner", () => {
@@ -187,7 +195,8 @@ describe("sandboxed Playwright runner", () => {
       NetworkMode: `container:${OUTER_ID}`,
       CapDrop: ["ALL"],
       SecurityOpt: ["no-new-privileges", `seccomp=${PROFILE}`],
-      Memory: 4_294_967_296
+      Memory: 4_294_967_296,
+      NanoCpus: 4_000_000_000
     });
     expect(payload.HostConfig).not.toHaveProperty("Binds");
     expect(payload.HostConfig).not.toHaveProperty("Mounts");
@@ -248,6 +257,34 @@ describe("sandboxed Playwright runner", () => {
     const reportDirectory = (await readdir(output)).find(name => name.startsWith(".sandbox-browser-"));
     expect(reportDirectory).toBeDefined();
     expect(JSON.parse(await readFile(path.join(output, reportDirectory!, "browser-server-report.json"), "utf8")).ok).toBe(true);
+  });
+
+  it("records the child's CPU throttling before retirement without changing the result", async () => {
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const { promise, output, statsRequests } = await runWithFakeEngine();
+    const report = await promise;
+    expect(statsRequests).toEqual([`/v1.41/containers/${CHILD_ID}/stats?stream=false&one-shot=true`]);
+    expect(report).toMatchObject({ ok: true, cpuThrottling: { usage_usec: 1_234_567, nr_throttled: 7, throttled_usec: 89_123 } });
+    expect(stdout).toHaveBeenCalledWith("::notice title=CI browser CPU::browser child cpu.stat usage_usec=1234567 nr_throttled=7 throttled_usec=89123\n");
+    const reportDirectory = (await readdir(output)).find(name => name.startsWith(".sandbox-browser-"));
+    expect(JSON.parse(await readFile(path.join(output, reportDirectory!, "browser-server-report.json"), "utf8")).cpuThrottling.nr_throttled).toBe(7);
+  });
+
+  it.each(["fail", "malformed"] as const)("records null CPU throttling with a reason when stats are %s, and still cleans up", async mode => {
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const { promise, commands } = await runWithFakeEngine({ stats: mode });
+    const report = await promise;
+    expect(report).toMatchObject({ ok: true, exitCode: 0, cpuThrottling: null });
+    expect(report["cpuThrottlingReason"] as string).toMatch(mode === "fail" ? /returned 500/ : /throttled_periods/);
+    expect(stdout).toHaveBeenCalledWith(expect.stringContaining("::notice title=CI browser CPU::browser child cpu.stat unavailable ("));
+    expect(commands.at(-1)).toEqual(["rm", "--force", CHILD_ID]);
+  });
+
+  it("bounds a hung stats read and skips it when the server never started", async () => {
+    const hang = () => new Promise(() => {});
+    const ctx = { socket: "/s.sock", containerId: CHILD_ID, endpoint: "ws://127.0.0.1:1/x" };
+    expect(await readBrowserCpuThrottling(ctx, hang, 20)).toEqual({ cpuThrottling: null, reason: "engine stats timed out after 20ms" });
+    expect(await readBrowserCpuThrottling({ ...ctx, endpoint: null }, hang, 20)).toEqual({ cpuThrottling: null, reason: "browser container never started" });
   });
 
   it("refuses missing ownership authority before any engine command", async () => {

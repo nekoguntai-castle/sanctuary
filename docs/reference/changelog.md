@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- CI: the sandboxed Chromium child's CPU quota is raised from 2 to 4 CPUs (`BROWSER_CONTAINER_RESOURCES.NanoCpus`). Host snapshots showed the 2-CPU cap binding on every sandboxed browser run (20-98 s throttled per child), which made `wallet-lifecycle` run 190-257 s against 46-68 s before the sandbox and tripped its 240 s hard budget on a busy host. The sandbox restrictions and the performance budget are unchanged. The runner also records the child's `usage_usec`, `nr_throttled` and `throttled_usec` in the browser report (`cpuThrottling`) and prints a `CI browser CPU` notice beside the timing output.
+
 ### Fixed
 
 - CNY, INR and KRW prices went stale whenever CoinGecko rate-limited the server, because CoinGecko was their only provider. Coinbase now also serves CHF, AUD, JPY, CNY, KRW and INR, so every supported currency has a second source.

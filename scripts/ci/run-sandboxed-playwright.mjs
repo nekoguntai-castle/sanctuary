@@ -287,6 +287,44 @@ async function prepareSandbox(env, command, now, kernelHostname, ownershipLoader
   return { socket, profilePath, outerId, image, runId, ownership, output, reportDirectory, reportFile, name, payload, report, containerId: null };
 }
 
+const CPU_STATS_TIMEOUT_MS = 3_000;
+
+function nonNegativeInteger(value, name) {
+  if (!Number.isSafeInteger(value) || value < 0) throw new Error(`engine stats field ${name} is missing or invalid`);
+  return value;
+}
+
+// Best-effort evidence for the CPU quota: never throws and is bounded so it cannot delay cleanup.
+export async function readBrowserCpuThrottling(context, api, timeoutMs = CPU_STATS_TIMEOUT_MS) {
+  if (!context.containerId || !context.endpoint) return { cpuThrottling: null, reason: 'browser container never started' };
+  let timer;
+  try {
+    const stats = await Promise.race([
+      api(context.socket, 'GET', `/v1.41/containers/${context.containerId}/stats?stream=false&one-shot=true`, undefined, timeoutMs),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`engine stats timed out after ${timeoutMs}ms`)), timeoutMs); })
+    ]);
+    const throttling = stats?.cpu_stats?.throttling_data;
+    return {
+      cpuThrottling: {
+        usage_usec: Math.floor(nonNegativeInteger(stats?.cpu_stats?.cpu_usage?.total_usage, 'cpu_usage.total_usage') / 1000),
+        nr_throttled: nonNegativeInteger(throttling?.throttled_periods, 'throttling_data.throttled_periods'),
+        throttled_usec: Math.floor(nonNegativeInteger(throttling?.throttled_time, 'throttling_data.throttled_time') / 1000)
+      }
+    };
+  } catch (error) {
+    return { cpuThrottling: null, reason: errorMessage(error) };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function printCpuThrottling({ cpuThrottling, reason }) {
+  const detail = cpuThrottling
+    ? `usage_usec=${cpuThrottling.usage_usec} nr_throttled=${cpuThrottling.nr_throttled} throttled_usec=${cpuThrottling.throttled_usec}`
+    : `unavailable (${reason})`;
+  process.stdout.write(`::notice title=CI browser CPU::browser child cpu.stat ${detail}\n`);
+}
+
 async function createOwnedBrowserContainer(context, api, command, signal, registerContainer) {
   throwIfAborted(signal);
   let created;
@@ -395,6 +433,10 @@ export async function runSandboxedPlaywright(args, { env = process.env, api = re
   } catch (error) {
     failure = error;
   } finally {
+    const throttling = await readBrowserCpuThrottling(context, api);
+    context.report.cpuThrottling = throttling.cpuThrottling;
+    if (!throttling.cpuThrottling) context.report.cpuThrottlingReason = throttling.reason;
+    printCpuThrottling(throttling);
     cleanupFailure = await retireBrowserContainer(context, { api, command, assertBrowserChild });
   }
   const report = await writeSandboxReport(context, failure, cleanupFailure, now);

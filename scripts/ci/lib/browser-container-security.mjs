@@ -72,7 +72,7 @@ export function runBrowserEngineCli(socket, args, { timeoutMs = args[0] === 'cp'
 
 export const BROWSER_CONTAINER_RESOURCES = Object.freeze({
   Memory: 4_294_967_296,
-  NanoCpus: 2_000_000_000,
+  NanoCpus: 4_000_000_000,
   PidsLimit: 512,
   ShmSize: 536_870_912
 });
