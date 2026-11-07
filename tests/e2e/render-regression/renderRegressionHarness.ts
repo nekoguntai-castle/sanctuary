@@ -28,6 +28,20 @@ export const VISUAL_ASSERTION_OPTIONS = {
   maxDiffPixelRatio: 0.01,
 };
 
+// Wallet routes render only after app bootstrap, auth and the wallet fetch. On
+// a loaded runner that chain alone can outlast the 5s expect budget, so wait
+// for the fetch first and keep the 5s budget for what the page does next.
+export async function gotoAfterWalletFetch(page: Page, url: string): Promise<void> {
+  const walletId = /#\/wallets\/([^/?]+)/.exec(url)?.[1];
+  if (!walletId) throw new Error(`gotoAfterWalletFetch needs a /#/wallets/<id> URL, got ${url}`);
+  const walletLoaded = page.waitForResponse(response => (
+    response.request().method() === 'GET'
+    && new URL(response.url()).pathname.endsWith(`/wallets/${walletId}`)
+  ), { timeout: 20000 });
+  await page.goto(url);
+  await walletLoaded;
+}
+
 export async function expectChromiumMainScreenshot(page: Page, filename: string) {
   if (test.info().project.name !== 'chromium') {
     return;

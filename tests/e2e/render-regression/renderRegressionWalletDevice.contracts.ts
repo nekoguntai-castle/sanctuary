@@ -7,6 +7,7 @@ import {
   MAINNET_WALLET_ID,
   TESTNET_WALLET_ID,
   expectChromiumMainScreenshot,
+  gotoAfterWalletFetch,
   mockAuthenticatedApi,
   mockPublicApi,
 } from './renderRegressionHarness';
@@ -90,7 +91,7 @@ export async function renderSendTransactionRouteRendersTransactionTypeSelectionS
   const unhandledRequests = await mockAuthenticatedApi(page);
   const main = page.getByRole('main');
 
-  await page.goto(`/#/wallets/${MAINNET_WALLET_ID}/send`);
+  await gotoAfterWalletFetch(page, `/#/wallets/${MAINNET_WALLET_ID}/send`);
 
   await expect(main.getByRole('heading', { name: `Send from ${MAINNET_WALLET.name}` })).toBeVisible();
   await expect(main.getByRole('heading', { name: 'What would you like to do?' })).toBeVisible();
@@ -116,16 +117,8 @@ export async function renderSendTransactionRouteRedirectsViewersBackToWalletDeta
     },
   });
   const main = page.getByRole('main');
-  // The redirect waits on app bootstrap, auth and this wallet fetch. On a
-  // loaded runner that chain alone can outlast the 5s expect budget, so wait
-  // for the fetch first and keep the 5s budget for the redirect itself.
-  const walletLoaded = page.waitForResponse(response => (
-    response.request().method() === 'GET'
-    && new URL(response.url()).pathname.endsWith(`/wallets/${MAINNET_WALLET_ID}`)
-  ), { timeout: 20000 });
 
-  await page.goto(`/#/wallets/${MAINNET_WALLET_ID}/send`);
-  await walletLoaded;
+  await gotoAfterWalletFetch(page, `/#/wallets/${MAINNET_WALLET_ID}/send`);
 
   await expect(page).toHaveURL(new RegExp(`#\\/wallets\\/${MAINNET_WALLET_ID}$`));
   await expect(main.getByRole('heading', { name: MAINNET_WALLET.name })).toBeVisible();

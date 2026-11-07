@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { closeSidebar, openSidebar } from "../helpers";
+import { closeSidebar, openSidebar, waitForThemeUtilityPaint } from "../helpers";
 
 import {
   DEVICE_ID,
@@ -8,6 +8,7 @@ import {
   RENDER_FIXED_NOW,
   TESTNET_WALLET_ID,
   expectChromiumMainScreenshot,
+  gotoAfterWalletFetch,
   mockAuthenticatedApi,
   mockPublicApi,
 } from "./renderRegressionHarness";
@@ -121,7 +122,7 @@ export async function renderWalletDetailRendersTabShellsAndEmptyStateContent({
 }): Promise<void> {
   const unhandledRequests = await mockAuthenticatedApi(page);
 
-  await page.goto(`/#/wallets/${MAINNET_WALLET_ID}`);
+  await gotoAfterWalletFetch(page, `/#/wallets/${MAINNET_WALLET_ID}`);
 
   await expect(
     page.getByRole("heading", { name: "Render Main Wallet" }),
@@ -144,6 +145,9 @@ export async function renderWalletDetailRendersTabShellsAndEmptyStateContent({
   // width, so the unit tests stub it and this pins it.
   const statsGrid = page.getByTestId("transaction-stats-grid");
   await expect(statsGrid).toHaveAttribute("data-density", "compact");
+  // Tailwind's runtime loads after window load; measure only once it has
+  // painted, or the unstyled tiles report the wrong widths and heights.
+  await waitForThemeUtilityPaint(page);
   const geometry = await statsGrid.evaluate((el) => ({
     width: el.clientWidth,
     scrollWidth: el.scrollWidth,
