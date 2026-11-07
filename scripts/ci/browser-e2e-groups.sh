@@ -2,32 +2,45 @@
 set -euo pipefail
 
 readonly RENDER_SPEC='tests/e2e/render-regression.spec.ts'
-readonly GROUP_ADMIN_AUTH='admin-auth'
-readonly GROUP_WALLET_LIFECYCLE='wallet-lifecycle'
+readonly GROUP_ADMIN_OPERATIONS='admin-operations'
+readonly GROUP_AUTH_ACCESSIBILITY='auth-accessibility'
+readonly GROUP_WALLET_CREATE_IMPORT='wallet-create-import'
+readonly GROUP_WALLET_JOURNEYS='wallet-journeys'
 readonly GROUP_WALLET_TRANSACTIONS='wallet-transactions'
 readonly GROUP_WALLET_EXPERIENCE='wallet-experience'
 
 list_groups() {
   printf '%s\n' \
-    "$GROUP_ADMIN_AUTH" \
-    "$GROUP_WALLET_LIFECYCLE" \
+    "$GROUP_ADMIN_OPERATIONS" \
+    "$GROUP_AUTH_ACCESSIBILITY" \
+    "$GROUP_WALLET_CREATE_IMPORT" \
+    "$GROUP_WALLET_JOURNEYS" \
     "$GROUP_WALLET_TRANSACTIONS" \
     "$GROUP_WALLET_EXPERIENCE"
 }
 
 list_group_specs() {
   case "${1:-}" in
-    "$GROUP_ADMIN_AUTH")
+    # admin-auth and wallet-lifecycle were split by spec time measured in
+    # step 2 of docs/plans/browser-e2e-group-split.md: each ran 180-255 s
+    # against its 240 s hard budget on a host shared with mutation work.
+    "$GROUP_ADMIN_OPERATIONS")
+      printf '%s\n' \
+        tests/e2e/admin-drafts-smoke.spec.ts \
+        tests/e2e/admin-operations.spec.ts
+      ;;
+    "$GROUP_AUTH_ACCESSIBILITY")
       printf '%s\n' \
         tests/e2e/accessibility.spec.ts \
-        tests/e2e/admin-drafts-smoke.spec.ts \
-        tests/e2e/admin-operations.spec.ts \
         tests/e2e/auth.spec.ts
       ;;
-    "$GROUP_WALLET_LIFECYCLE")
+    "$GROUP_WALLET_CREATE_IMPORT")
       printf '%s\n' \
         tests/e2e/create-wallet-flow.spec.ts \
-        tests/e2e/import-wallet-flow.spec.ts \
+        tests/e2e/import-wallet-flow.spec.ts
+      ;;
+    "$GROUP_WALLET_JOURNEYS")
+      printf '%s\n' \
         tests/e2e/user-journeys.spec.ts \
         tests/e2e/wallet-remediation.spec.ts
       ;;

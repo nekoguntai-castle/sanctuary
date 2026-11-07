@@ -4,9 +4,21 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GROUP_SCRIPT="$ROOT_DIR/scripts/ci/browser-e2e-groups.sh"
 SUBJECT_SCRIPT="$ROOT_DIR/scripts/ci/run-browser-e2e-subject.sh"
+BUDGET_FILE="$ROOT_DIR/.github/ci-performance-budget.json"
 fail() {
   echo "FAIL: $*" >&2
   exit 1
+}
+
+assert_group_specs() {
+  local group="$1"
+  shift
+  local expected actual
+
+  expected="$(printf '%s\n' "$@")"
+  actual="$("$GROUP_SCRIPT" "$group")"
+  [ "$actual" = "$expected" ] ||
+    fail "group $group has specs: $(tr '\n' ' ' <<< "$actual")"
 }
 
 assert_not_contains() {
@@ -103,21 +115,42 @@ assert_subject_refuses_unassigned_spec() {
 }
 
 main() {
-  local groups specs repo_count assigned_count
+  local groups specs repo_count assigned_count budget_groups stale_groups
 
   "$GROUP_SCRIPT" --check
   groups="$("$GROUP_SCRIPT" --groups)"
 
-  grep -Fxq 'admin-auth' <<< "$groups" || fail 'missing admin-auth group'
-  grep -Fxq 'wallet-lifecycle' <<< "$groups" || fail 'missing wallet-lifecycle group'
-  grep -Fxq 'wallet-transactions' <<< "$groups" || fail 'missing wallet-transactions group'
-  grep -Fxq 'wallet-experience' <<< "$groups" || fail 'missing wallet-experience group'
+  [ "$groups" = $'admin-operations\nauth-accessibility\nwallet-create-import\nwallet-journeys\nwallet-transactions\nwallet-experience' ] ||
+    fail "unexpected browser E2E groups: $(tr '\n' ' ' <<< "$groups")"
 
-  # Keep the long navigation journeys in the lighter lifecycle group so both
-  # groups retain headroom under the same wall-clock gate.
-  grep -Fxq 'tests/e2e/user-journeys.spec.ts' <<< "$("$GROUP_SCRIPT" wallet-lifecycle)" ||
-    fail 'user journeys must run with wallet lifecycle flows'
+  # The splits follow spec time measured in docs/plans/browser-e2e-group-split.md
+  # (step 2) so each group keeps headroom under the same hard budget on a
+  # co-scheduled host.
+  assert_group_specs admin-operations \
+    tests/e2e/admin-drafts-smoke.spec.ts tests/e2e/admin-operations.spec.ts
+  assert_group_specs auth-accessibility \
+    tests/e2e/accessibility.spec.ts tests/e2e/auth.spec.ts
+  assert_group_specs wallet-create-import \
+    tests/e2e/create-wallet-flow.spec.ts tests/e2e/import-wallet-flow.spec.ts
+  assert_group_specs wallet-journeys \
+    tests/e2e/user-journeys.spec.ts tests/e2e/wallet-remediation.spec.ts
   assert_not_contains "$("$GROUP_SCRIPT" wallet-experience)" 'tests/e2e/user-journeys.spec.ts'
+
+  # time-command.sh treats a label with no budget entry as unbudgeted, so a
+  # group without one would silently lose its hard limit.
+  while IFS= read -r group; do
+    jq -e --arg name "browser-flow E2E $group" \
+      '.budgets[$name] | .warnSeconds == 120 and .hardSeconds == 240' \
+      "$BUDGET_FILE" >/dev/null ||
+      fail "browser E2E group $group needs a 120 s / 240 s budget entry"
+  done <<< "$groups"
+  # Assigned outside any condition so a jq error aborts the test instead of
+  # silently passing the check.
+  budget_groups="$(jq -r '.budgets | keys[] | select(startswith("browser-flow E2E "))' "$BUDGET_FILE" |
+    sed 's/^browser-flow E2E //')"
+  stale_groups="$(grep -Fxv -f <(printf '%s\n' "$groups") <<< "$budget_groups" || true)"
+  [ -z "$stale_groups" ] ||
+    fail "budget file has browser-flow E2E entries for removed groups: $(tr '\n' ' ' <<< "$stale_groups")"
 
   specs="$({
   while IFS= read -r group; do

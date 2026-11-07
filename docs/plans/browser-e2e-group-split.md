@@ -1,6 +1,6 @@
 # Browser E2E Group Split
 
-Status: in progress (steps 1, 2 and 4 done; step 3 next, and it now covers `admin-auth`)
+Status: in progress (steps 1–4 implemented; acceptance needs three green runs after the split)
 Date: 2026-11-07
 Follows: #1476 (4-CPU browser child), #1477 (live `CI browser CPU` notice);
 step 4 of `docs/plans/browser-sandbox-cpu-headroom.md`
@@ -147,6 +147,14 @@ Step 2 did this for `admin-auth`. The measured split is `admin-operations` +
 Each half then sits well under the 180 s acceptance line, with the 8–11 s group
 overhead on top. `wallet-transactions` (159–162 s) and `wallet-experience`
 (140–148 s) stay as they are.
+
+Done: the four groups became six, in this order: `admin-operations`,
+`auth-accessibility`, `wallet-create-import`, `wallet-journeys`,
+`wallet-transactions`, `wallet-experience`. Each new label has a 120 s / 240 s
+budget entry and the old two are gone. `tests/ci/browser-e2e-groups.test.sh`
+now pins the group list and each new group's specs, and fails if a group has no
+budget entry or the budget file names a group that no longer exists. The job
+pays two extra group overheads, about 20 s.
 
 ### 4. Track the retried spec separately
 

@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - CI: `Full Browser E2E` keeps each group's Playwright per-spec timing. Playwright clears `test-results/` before every group, so the `playwright-results-browser` artifact held only the last group's `playwright-timing.{json,md}`. Each group now writes to `.tmp/ci-timing/browser/<group>/`, uploaded on every run as `playwright-timing-browser`. This is step 1 of `docs/plans/browser-e2e-group-split.md`.
+- CI: the `admin-auth` and `wallet-lifecycle` browser-flow groups are each split in two by measured spec time, into `admin-operations`, `auth-accessibility`, `wallet-create-import` and `wallet-journeys`. On hosts shared with mutation work they ran 180-200 s and 214-255 s against a 240 s hard budget, and `wallet-lifecycle` failed it once. Every group keeps the same 120 s / 240 s budget, and the group test now fails if a group has no budget entry. Step 3 of `docs/plans/browser-e2e-group-split.md`.
 
 ## [0.8.86] - 2026-11-07
 
