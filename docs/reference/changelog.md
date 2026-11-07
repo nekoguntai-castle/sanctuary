@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.86] - 2026-11-07
+
 ### Changed
 
 - CI: the sandboxed Chromium child's CPU quota is raised from 2 to 4 CPUs (`BROWSER_CONTAINER_RESOURCES.NanoCpus`). Host snapshots showed the 2-CPU cap binding on every sandboxed browser run (20-98 s throttled per child), which made `wallet-lifecycle` run 190-257 s against 46-68 s before the sandbox and tripped its 240 s hard budget on a busy host. The sandbox restrictions and the performance budget are unchanged. The runner also records the child's `usage_usec`, `nr_throttled` and `throttled_usec` in the browser report (`cpuThrottling`) and prints a `CI browser CPU` notice beside the timing output.
@@ -1259,7 +1261,8 @@ upgrade browser-smoke and 2FA preservation assertions.
 
 - Removed navigation-triggered syncs in favor of worker-driven sync
 
-[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.85...HEAD
+[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.86...HEAD
+[0.8.86]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.85...v0.8.86
 [0.8.85]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.84...v0.8.85
 [0.8.84]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.83...v0.8.84
 [0.8.83]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.82...v0.8.83
