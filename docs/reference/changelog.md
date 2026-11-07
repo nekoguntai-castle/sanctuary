@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.85] - 2026-11-06
+
 ### Added
 
 - The periodic subscription status refresh, which catches a missed Electrum scripthash notification (#908), is now visible. The worker exports `sanctuary_subscription_status_mismatches_total{network,source}` (status changes that raised sync intent, by `notification`, `subscribe`, `reconnect` or `refresh`), `sanctuary_subscription_status_refresh_pages_total{network,outcome}` and `sanctuary_subscription_status_refresh_cycle_completed_timestamp_seconds{network}`, plus the `SubscriptionStatusRefreshStalled` and `SubscriptionStatusMissedNotifications` alerts. A refresh pass that crosses a disconnected network, a lost ownership or a failed page no longer counts as a completed cycle. ADR 0004, the operations runbook ("Is sync current?") and `server/ARCHITECTURE.md` now describe the backstop. No schema change.
@@ -21,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- CoinGecko rate limiting no longer starves price lookups. Spot prices for all requested currencies are now fetched in one batched request instead of one request per currency, and an HTTP 429 puts the provider in a cooldown that honours `Retry-After` (capped at 15 minutes) instead of retrying into the limit, so other providers answer meanwhile (#1467).
 - Wallet sync status no longer marks a quiet wallet stale because time has passed. `isStale` on `GET /sync/status/:walletId` is now true only for a never-synced wallet or unprocessed requested sync work, matching the tip- and activity-driven sync model (ADR 0004). The ADR, operations runbook ("Is sync current?"), OpenAPI descriptions, schema comments and MCP wallet-health prompt now say that an old `lastSyncedAt` on a quiet wallet is expected.
 
 ## [0.8.84] - 2026-11-05
@@ -1245,7 +1248,8 @@ upgrade browser-smoke and 2FA preservation assertions.
 
 - Removed navigation-triggered syncs in favor of worker-driven sync
 
-[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.84...HEAD
+[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.85...HEAD
+[0.8.85]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.84...v0.8.85
 [0.8.84]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.83...v0.8.84
 [0.8.83]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.82...v0.8.83
 [0.8.82]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.81...v0.8.82
