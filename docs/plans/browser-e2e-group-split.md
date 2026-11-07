@@ -1,6 +1,6 @@
 # Browser E2E Group Split
 
-Status: in progress (step 1 implemented; step 4 done by #1479)
+Status: in progress (steps 1, 2 and 4 done; step 3 next, and it now covers `admin-auth`)
 Date: 2026-11-07
 Follows: #1476 (4-CPU browser child), #1477 (live `CI browser CPU` notice);
 step 4 of `docs/plans/browser-sandbox-cpu-headroom.md`
@@ -77,6 +77,50 @@ of them co-scheduled with a mutation job. Use the two existing projects. Also
 record the fixed per-group overhead: the time from the group's start to its
 first test, plus teardown. Record the numbers in this plan.
 
+Done, from the `playwright-timing-browser` artifacts of #1481's three runs
+(2026-11-07). Every run shared its host with mutation work, which happens on
+every PR because mutation and browser jobs start together. No test retried in
+any of them, and the child reported `nr_throttled=0` in every group.
+
+| Run (job) | Host context | `wallet-lifecycle` group | of which tests |
+|---|---|---:|---:|
+| 22812 (282758) | sora, Critical Mutation Gate shard 3 + `mutation-proofs-fee`, load 14.2, CPU PSI some 11% | **255 s, hard-budget failure** | 244 s |
+| 22833 (283029) | x300, shard 1 + `mutation-proofs-binding`, load 14.2, CPU PSI some 8.6% | 220 s | 210 s |
+| 22845 (283170) | sora, shard 3, load 9.2, CPU PSI some 2.3% | 214 s | 206 s |
+
+The group's fixed overhead (sandbox create, Playwright start, report,
+teardown) is the difference: **8–11 s**.
+
+`wallet-lifecycle` per spec, both projects (s):
+
+| Spec | 22812 | 22833 | 22845 |
+|---|---:|---:|---:|
+| `user-journeys.spec.ts` | 92 | 79 | 73 |
+| `create-wallet-flow.spec.ts` | 80 | 70 | 75 |
+| `import-wallet-flow.spec.ts` | 48 | 41 | 39 |
+| `wallet-remediation.spec.ts` | 23 | 20 | 18 |
+| create + import | **128** | **111** | **115** |
+| journeys + remediation | **115** | **99** | **92** |
+
+The other groups (group time, s):
+
+| Group | 22812 | 22833 | 22845 |
+|---|---:|---:|---:|
+| `admin-auth` | 180 | 200 | 193 |
+| `wallet-transactions` | not run | 162 | 159 |
+| `wallet-experience` | not run | 140 | 148 |
+
+(22812 stopped after `wallet-lifecycle` failed.) `admin-auth` is 180–200 s on
+every run, so it is within 25% of its 240 s hard budget and is split too, under
+the rule in step 3. Its specs (s):
+
+| Spec | 22812 | 22833 | 22845 |
+|---|---:|---:|---:|
+| `admin-operations.spec.ts` | 63 | 73 | 70 |
+| `accessibility.spec.ts` | 58 | 67 | 68 |
+| `auth.spec.ts` | 44 | 43 | 38 |
+| `admin-drafts-smoke.spec.ts` | 7 | 8 | 8 |
+
 ### 3. Split `wallet-lifecycle` by measured duration
 
 Split it into two groups of roughly equal measured time. The test counts point
@@ -97,6 +141,12 @@ step 2 decide. Name the groups by what they cover (for example
 
 Splitting the other groups is out of scope unless step 2 puts one of them
 within 25% of the hard budget on a co-scheduled host.
+
+Step 2 did this for `admin-auth`. The measured split is `admin-operations` +
+`admin-drafts-smoke` (70–81 s) against `auth` + `accessibility` (102–110 s).
+Each half then sits well under the 180 s acceptance line, with the 8–11 s group
+overhead on top. `wallet-transactions` (159–162 s) and `wallet-experience`
+(140–148 s) stay as they are.
 
 ### 4. Track the retried spec separately
 
