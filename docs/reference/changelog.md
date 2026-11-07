@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- CI: `Full Browser E2E` keeps each group's Playwright per-spec timing. Playwright clears `test-results/` before every group, so the `playwright-results-browser` artifact held only the last group's `playwright-timing.{json,md}`. Each group now writes to `.tmp/ci-timing/browser/<group>/`, uploaded on every run as `playwright-timing-browser`. This is step 1 of `docs/plans/browser-e2e-group-split.md`.
+
 ## [0.8.86] - 2026-11-07
 
 ### Changed

@@ -1,6 +1,6 @@
 # Browser E2E Group Split
 
-Status: proposed
+Status: in progress (step 1 implemented; step 4 done by #1479)
 Date: 2026-11-07
 Follows: #1476 (4-CPU browser child), #1477 (live `CI browser CPU` notice);
 step 4 of `docs/plans/browser-sandbox-cpu-headroom.md`
@@ -67,6 +67,9 @@ Playwright's cleanup can't remove it. Upload that directory on every run, next t
 `playwright-results-browser`, with short retention. This is cheap and also helps
 diagnose any later budget failure.
 
+Done: each group writes to `.tmp/ci-timing/browser/<group>/`, uploaded as
+`playwright-timing-browser` (`if: always()`, 14-day retention).
+
 ### 2. Measure
 
 Collect per-spec durations for `wallet-lifecycle` from at least three runs, one
@@ -99,6 +102,9 @@ within 25% of the hard budget on a co-scheduled host.
 
 File the `node-status-card-responsive` retry as its own issue with the trace
 from the retry artifact. A flaky test belongs in a test fix, not a group split.
+
+Done: #1479 fixed the `node-status-card-responsive` overflow retry (and a
+`send` redirect retry) directly, so no separate issue was filed.
 
 ## Not doing
 

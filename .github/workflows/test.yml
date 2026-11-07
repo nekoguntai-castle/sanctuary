@@ -1590,6 +1590,16 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
+      - name: Upload per-group Playwright timing
+        if: always()
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: playwright-timing-browser
+          path: .tmp/ci-timing/browser/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
+
   full-render-e2e-tests:
     name: Full Render E2E Tests
     if: >-

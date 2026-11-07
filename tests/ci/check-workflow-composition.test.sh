@@ -2555,6 +2555,28 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "Upload browser E2E diagnostics" \
   "ci-diagnostics-browser-e2e"
 
+# Playwright clears test-results/ before every group, so per-spec timing is
+# kept per group outside it and uploaded on every run (group split plan step 1).
+assert_contains_in_order "$BROWSER_E2E_SUBJECT" \
+  "browser E2E subject writes per-group Playwright timing outside test-results" \
+  'readonly timing_root="$PROJECT_ROOT/.tmp/ci-timing/browser"' \
+  'while IFS= read -r browser_group; do' \
+  'PLAYWRIGHT_TIMING_OUTPUT_DIR="$timing_root/$browser_group"' \
+  'run-sandboxed-playwright.mjs'
+assert_named_job_step_config "$TEST_WORKFLOW" \
+  "full browser E2E uploads per-group Playwright timing" \
+  full-browser-e2e-tests "Upload per-group Playwright timing" \
+  'uses: ./.github/actions/upload-artifact' \
+  'name: playwright-timing-browser' \
+  'path: .tmp/ci-timing/browser/' \
+  'if-no-files-found: ignore' \
+  'include-hidden-files: true' \
+  'retention-days: 14'
+assert_named_job_step_contains "$TEST_WORKFLOW" full-browser-e2e-tests \
+  "Upload per-group Playwright timing" \
+  "full browser E2E uploads per-group Playwright timing on every run" \
+  'if: always()'
+
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full render E2E diagnostics" \
   "full-render-e2e-tests:" \

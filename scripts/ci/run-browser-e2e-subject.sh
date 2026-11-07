@@ -83,6 +83,11 @@ for attempt in $(seq 1 60); do
   sleep 2
 done
 
+# Playwright clears test-results/ before every group, which would leave only
+# the last group's per-spec timing. Each group writes its own timing directory
+# here instead, and the workflow uploads it on every run.
+readonly timing_root="$PROJECT_ROOT/.tmp/ci-timing/browser"
+
 while IFS= read -r browser_group; do
   echo "::group::Browser E2E ${browser_group}"
   mapfile -t browser_specs < <("$SCRIPT_DIR/browser-e2e-groups.sh" "$browser_group")
@@ -95,6 +100,7 @@ while IFS= read -r browser_group; do
   printf 'Running browser-flow E2E group %s:\n' "$browser_group"
   printf '  %s\n' "${browser_specs[@]}"
   VITE_API_URL="${BROWSER_E2E_API_URL:?}" \
+    PLAYWRIGHT_TIMING_OUTPUT_DIR="$timing_root/$browser_group" \
     "$SCRIPT_DIR/retry-playwright-infrastructure-failure.sh" "browser-flow E2E ${browser_group}" \
       "$SCRIPT_DIR/time-command.sh" "browser-flow E2E ${browser_group}" \
       node "$SCRIPT_DIR/run-sandboxed-playwright.mjs" -- \
