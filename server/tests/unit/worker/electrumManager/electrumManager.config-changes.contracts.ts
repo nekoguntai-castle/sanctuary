@@ -5,6 +5,7 @@ import {
   mockClient,
   mockConfigChangeUnsubscribe,
   mockDistributedEventBus,
+  mockResyncUnsubscribe,
   mockLog,
 } from './electrumManagerTestHarness';
 import prisma from '../../../../src/models/prisma';
@@ -199,6 +200,10 @@ export function registerElectrumManagerConfigChangeContracts() {
 
         expect(mockDistributedEventBus.on).toHaveBeenCalledTimes(2);
         expect(mockConfigChangeUnsubscribe).toHaveBeenCalledTimes(2);
+        // Regression: the worker, which owns the subscriptions, also resyncs a
+        // config change it may have missed while Redis was unreachable.
+        expect(mockDistributedEventBus.onResync).toHaveBeenCalledTimes(2);
+        expect(mockResyncUnsubscribe).toHaveBeenCalledTimes(2);
       } finally {
         vi.mocked(acquireLock).mockReset();
       }

@@ -27,6 +27,7 @@ import { reloadElectrumServers } from '../../services/bitcoin/electrumPool';
 import {
   ELECTRUM_CONFIG_CHANGED_EVENT,
   createElectrumConfigChangeHandler,
+  createElectrumConfigResync,
 } from '../../services/bitcoin/electrumConfigChanges';
 import { HEALTH_CHECK_INTERVAL_MS, ELECTRUM_SUBSCRIPTION_LOCK_RETRY_MS } from './types';
 import type {
@@ -82,10 +83,16 @@ export class ElectrumSubscriptionManager {
   async start(): Promise<void> {
     this.explicitlyStopped = false;
     if (!this.configChangeUnsubscribe) {
-      this.configChangeUnsubscribe = getDistributedEventBus().on(
-        ELECTRUM_CONFIG_CHANGED_EVENT,
-        (change) => this.handleConfigChange(change),
-      );
+      const bus = getDistributedEventBus();
+      const resync = createElectrumConfigResync(this.handleConfigChange, log);
+      void resync.prime();
+      const unsubscribers = [
+        bus.on(ELECTRUM_CONFIG_CHANGED_EVENT, (change) => this.handleConfigChange(change)),
+        // A change missed while Redis was unreachable would leave the owned
+        // subscriptions on the old config.
+        bus.onResync(resync.resync),
+      ];
+      this.configChangeUnsubscribe = () => unsubscribers.forEach((unsubscribe) => unsubscribe());
     }
     if (this.isRunningFlag) {
       log.warn('Electrum manager already running');

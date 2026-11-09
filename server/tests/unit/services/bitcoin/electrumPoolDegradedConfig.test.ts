@@ -31,6 +31,8 @@ vi.mock('../../../../src/utils/logger', () => ({
 
 import {
   getElectrumPoolForNetwork,
+  getElectrumPoolForNetworkAndFeatures,
+  reloadElectrumServers,
   resetElectrumPoolForNetwork,
 } from '../../../../src/services/bitcoin/electrumPool/poolRegistry';
 
@@ -143,5 +145,110 @@ describe('network pool built from a failed config read', () => {
     await flush();
 
     expect(mocks.load).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('feature-scoped pool built from a failed config read', () => {
+  // Regression: the re-probe covered only network pools, so a silent-payments
+  // pool built from empty defaults kept them until a reset or restart.
+  beforeEach(async () => {
+    await resetElectrumPoolForNetwork('testnet3');
+    vi.clearAllMocks();
+    vi.restoreAllMocks();
+  });
+
+  const getSilentPaymentsPool = () => getElectrumPoolForNetworkAndFeatures('testnet3', ['silent_payments_v0']);
+
+  it('retires the pool once the config is readable, so the next caller rebuilds it with its scope', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(6_000_000);
+    mocks.load.mockResolvedValueOnce(failedLoad);
+    const degraded = await getSilentPaymentsPool();
+
+    expect(await getSilentPaymentsPool()).toBe(degraded); // within the retry interval
+    await flush();
+    expect(mocks.load).toHaveBeenCalledTimes(1);
+
+    now.mockReturnValue(6_000_000 + 31_000);
+    mocks.load.mockResolvedValue(goodLoad);
+    expect(await getSilentPaymentsPool()).toBe(degraded);
+    await flush();
+
+    expect(mocks.load).toHaveBeenLastCalledWith('testnet3', expect.objectContaining({
+      requiredFeatures: ['silent_payments_v0'],
+    }));
+    expect(degraded.shutdown).toHaveBeenCalledTimes(1);
+    expect(mocks.reloadServers).not.toHaveBeenCalled(); // reloadServers ignores the feature scope
+
+    const rebuilt = await getSilentPaymentsPool();
+    expect(rebuilt).not.toBe(degraded);
+    now.mockReturnValue(6_000_000 + 120_000);
+    expect(await getSilentPaymentsPool()).toBe(rebuilt); // healthy: no further probes
+    await flush();
+    expect(rebuilt.shutdown).not.toHaveBeenCalled();
+  });
+
+  it('keeps the degraded pool while the config stays unreadable', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(7_000_000);
+    mocks.load.mockResolvedValue(failedLoad);
+    const degraded = await getSilentPaymentsPool();
+
+    now.mockReturnValue(7_000_000 + 31_000);
+    await getSilentPaymentsPool();
+    await flush();
+
+    expect(mocks.load).toHaveBeenCalledTimes(2);
+    expect(degraded.shutdown).not.toHaveBeenCalled();
+    expect(await getSilentPaymentsPool()).toBe(degraded);
+  });
+
+  it('keeps probing another network that stays degraded across a reset', async () => {
+    await resetElectrumPoolForNetwork('signet');
+    const now = vi.spyOn(Date, 'now').mockReturnValue(9_000_000);
+    mocks.load.mockResolvedValue(failedLoad);
+    await getElectrumPoolForNetwork('signet');
+    await getSilentPaymentsPool();
+    await resetElectrumPoolForNetwork('testnet3');
+
+    now.mockReturnValue(9_000_000 + 31_000);
+    mocks.load.mockClear();
+    await getElectrumPoolForNetwork('signet');
+    await flush();
+
+    expect(mocks.load).toHaveBeenCalledWith('signet', expect.objectContaining({ serverUsage: 'general' }));
+    await resetElectrumPoolForNetwork('signet');
+  });
+
+  it('forgets a degraded feature pool retired by a server reload', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(10_000_000);
+    mocks.load.mockResolvedValueOnce(failedLoad);
+    const degraded = await getSilentPaymentsPool();
+
+    await reloadElectrumServers(); // every pool, including feature pools with no network pool
+    expect(degraded.shutdown).toHaveBeenCalledTimes(1);
+
+    mocks.load.mockResolvedValue(goodLoad);
+    const fresh = await getSilentPaymentsPool();
+    now.mockReturnValue(10_000_000 + 31_000);
+    mocks.load.mockClear();
+    await getSilentPaymentsPool();
+    await flush();
+    expect(mocks.load).not.toHaveBeenCalled(); // nothing degraded left to probe
+    expect(fresh.shutdown).not.toHaveBeenCalled();
+  });
+
+  it('forgets a degraded feature pool when its network is reset', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(8_000_000);
+    mocks.load.mockResolvedValueOnce(failedLoad);
+    await getSilentPaymentsPool();
+    await resetElectrumPoolForNetwork('testnet3');
+
+    mocks.load.mockResolvedValue(goodLoad);
+    const fresh = await getSilentPaymentsPool();
+    now.mockReturnValue(8_000_000 + 31_000);
+    await getSilentPaymentsPool();
+    await flush();
+
+    expect(mocks.load).toHaveBeenCalledTimes(2); // no probe for the forgotten pool
+    expect(fresh.shutdown).not.toHaveBeenCalled();
   });
 });

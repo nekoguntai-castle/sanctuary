@@ -25,6 +25,15 @@ const distributedBus = vi.hoisted(() => {
         [...(remoteHandlers.get(event) ?? [])].map(handler => handler(data)),
       );
     },
+    resyncHandlers: new Set<() => unknown>(),
+    onResync: vi.fn((handler: () => unknown) => {
+      distributedBus.resyncHandlers.add(handler);
+      return () => distributedBus.resyncHandlers.delete(handler);
+    }),
+    /** This process may have missed messages (subscriber reconnect, peer publish failure). */
+    resync: async () => {
+      await Promise.all([...distributedBus.resyncHandlers].map(handler => handler()));
+    },
     on: vi.fn((event: string, handler: Handler) => {
       const listeners = handlers.get(event) ?? new Set<Handler>();
       listeners.add(handler);
@@ -43,6 +52,7 @@ const cacheMocks = vi.hoisted(() => ({
   wallet: {
     deletePattern: vi.fn().mockResolvedValue(0),
     delete: vi.fn().mockResolvedValue(true),
+    clear: vi.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -50,6 +60,7 @@ vi.mock('../../../src/infrastructure', () => ({
   getDistributedEventBus: () => ({
     on: distributedBus.on,
     onRemote: distributedBus.onRemote,
+    onResync: distributedBus.onResync,
     emit: distributedBus.publish,
   }),
 }));
@@ -156,6 +167,30 @@ describe('cache invalidation event-bus ownership', () => {
       event: 'cache:invalidated',
       data: { scope: 'wallet', walletId: 'closing-wallet' },
     });
+  });
+
+  // Regression: an invalidation published while this replica's subscriber was
+  // disconnected (or that another process failed to publish) was lost, and the
+  // entries it named stayed stale until their TTL.
+  it('drops every wallet entry when it may have missed invalidations', async () => {
+    const cache = await import('../../../src/services/cache');
+    initializeCacheInvalidation();
+
+    await distributedBus.resync();
+
+    expect(cacheMocks.wallet.clear).toHaveBeenCalledTimes(1);
+    // Short-TTL price/fee entries are kept: clearing price also drops its stale fallback.
+    expect(cache.priceCache.clear).not.toHaveBeenCalled();
+    expect(cache.feeCache.clear).not.toHaveBeenCalled();
+  });
+
+  it('stops resyncing after shutdown', async () => {
+    initializeCacheInvalidation();
+    shutdownCacheInvalidation();
+
+    await distributedBus.resync();
+
+    expect(cacheMocks.wallet.clear).not.toHaveBeenCalled();
   });
 
   it('applies wallet invalidations published by other processes', async () => {

@@ -182,7 +182,7 @@ export const createWorkerTestHarness = async (
     shutdownRedis: vi.fn(async () => undefined),
     isRedisConnected: vi.fn(() => redisConnected),
     shutdownDistributedLock: vi.fn(() => undefined),
-    getDistributedEventBus: () => ({ on: vi.fn(), emit: vi.fn() }),
+    getDistributedEventBus: () => ({ on: vi.fn(() => () => undefined), onRemote: vi.fn(() => () => undefined), onResync: vi.fn(() => () => undefined), emit: vi.fn() }),
     shutdownNotificationDispatcher: vi.fn(async () => undefined),
   }));
 

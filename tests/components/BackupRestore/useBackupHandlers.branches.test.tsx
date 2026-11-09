@@ -70,6 +70,7 @@ const makeFile = (contents: string, name = 'backup.json') => ({
 describe('useBackupHandlers branch coverage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(localStorage.getItem).mockImplementation(() => null);
     localStorage.clear();
     preference.value = false;
     vi.useFakeTimers();
@@ -115,7 +116,76 @@ describe('useBackupHandlers branch coverage', () => {
 
     expect(preference.key).toBe('viewSettings.backup.completeModalDismissed');
     expect(preference.set).toHaveBeenCalledWith(true);
-    expect(localStorage.getItem('sanctuary_backup_modal_dismissed')).toBeNull();
+    expect(localStorage.setItem).not.toHaveBeenCalledWith('sanctuary_backup_modal_dismissed', expect.anything());
+  });
+
+  // Regression: moving the flag to user preferences dropped the old
+  // localStorage choice, so admins who had ticked "don't show again" saw the
+  // modal again. Carry it over once, then remove the shared browser key.
+  const LEGACY_KEY = 'sanctuary_backup_modal_dismissed';
+  const withLegacyFlag = (value: string | null) => {
+    vi.mocked(localStorage.getItem).mockImplementation((key: string) => (key === LEGACY_KEY ? value : null));
+  };
+
+  it('carries an existing browser dismissal over, removing the key once the preference reads back', () => {
+    withLegacyFlag('true');
+
+    const { rerender } = renderHook(() => useBackupHandlers(null));
+
+    expect(preference.set).toHaveBeenCalledWith(true);
+    expect(localStorage.removeItem).not.toHaveBeenCalled(); // not applied yet
+
+    rerender(); // the (optimistic) preference now reads back as dismissed
+    expect(localStorage.removeItem).toHaveBeenCalledWith(LEGACY_KEY);
+    expect(preference.set).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the browser key while the preference does not read back as set', () => {
+    withLegacyFlag('true');
+    preference.set.mockImplementationOnce(() => undefined); // not applied
+
+    const { rerender } = renderHook(() => useBackupHandlers(null));
+    rerender();
+
+    expect(localStorage.removeItem).not.toHaveBeenCalled();
+  });
+
+  it('tolerates a browser store that refuses removal', () => {
+    withLegacyFlag('true');
+    preference.value = true;
+    vi.mocked(localStorage.removeItem).mockImplementationOnce(() => {
+      throw new Error('SecurityError');
+    });
+
+    expect(() => renderHook(() => useBackupHandlers(null))).not.toThrow();
+  });
+
+  it('only removes the browser key when the preference is already set', () => {
+    withLegacyFlag('true');
+    preference.value = true;
+
+    renderHook(() => useBackupHandlers(null));
+
+    expect(preference.set).not.toHaveBeenCalled();
+    expect(localStorage.removeItem).toHaveBeenCalledWith(LEGACY_KEY);
+  });
+
+  it('leaves the preference alone without a browser dismissal', () => {
+    withLegacyFlag(null);
+
+    renderHook(() => useBackupHandlers(null));
+
+    expect(preference.set).not.toHaveBeenCalled();
+    expect(localStorage.removeItem).not.toHaveBeenCalledWith(LEGACY_KEY);
+  });
+
+  it('ignores an unreadable browser store', () => {
+    vi.mocked(localStorage.getItem).mockImplementation(() => {
+      throw new Error('SecurityError');
+    });
+
+    expect(() => renderHook(() => useBackupHandlers(null))).not.toThrow();
+    expect(preference.set).not.toHaveBeenCalled();
   });
 
   it('covers create backup success path and non-Error fallback message', async () => {

@@ -42,10 +42,24 @@ import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
 import { safeJsonParseUntyped } from '../utils/safeJson';
 import type { EventName, EventTypes, EventHandler } from './eventBus';
+import type { ResyncHandler } from './types';
+
+export type { ResyncHandler };
 
 const log = createLogger('INFRA:REDIS_EVENT_BUS');
 
 const CHANNEL_PREFIX = 'sanctuary:events:';
+const CHANNEL_PATTERN = `${CHANNEL_PREFIX}*`;
+
+/**
+ * Redis pub/sub is at-most-once: a message published while a subscriber is
+ * disconnected, or one whose publish failed, is gone. A process that may have
+ * missed messages runs its resync handlers instead (see `onResync`). This
+ * channel carries a peer's "I failed to publish" announcement.
+ */
+const RESYNC_CHANNEL = `${CHANNEL_PREFIX}__resync`;
+const RESYNC_ANNOUNCE_RETRY_MS = 5_000;
+const RESUBSCRIBE_RETRY_MS = 1_000;
 
 /**
  * Serializable event envelope for Redis transport
@@ -67,6 +81,17 @@ export class RedisEventBus {
   /** Only events received from other instances (see `onRemote`). */
   private remoteEmitter = new EventEmitter();
   private instanceId: string;
+  private resyncHandlers = new Set<ResyncHandler>();
+  private resyncRunning = false;
+  private resyncRequested = false;
+  /** When the most recent resync run started (0 = never). */
+  private lastResyncStartedAt = 0;
+  private subscriberDropped = false;
+  /** Earliest failed publish not yet covered by a sent announcement. */
+  private unannouncedFailureAt: number | null = null;
+  private resyncAnnounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private resubscribeTimer: ReturnType<typeof setTimeout> | null = null;
+  private shuttingDown = false;
   private metrics = {
     emitted: new Map<string, number>(),
     received: new Map<string, number>(),
@@ -87,7 +112,7 @@ export class RedisEventBus {
    * Set up Redis subscriber to receive events from other instances
    */
   private setupSubscriber(): void {
-    this.subscriber.psubscribe(`${CHANNEL_PREFIX}*`, (err) => {
+    this.subscriber.psubscribe(CHANNEL_PATTERN, (err) => {
       if (err) {
         log.error('Failed to subscribe to event channels', { error: err.message });
       } else {
@@ -104,6 +129,16 @@ export class RedisEventBus {
 
         // Skip events from this instance (already handled locally)
         if (envelope.instanceId === this.instanceId) {
+          return;
+        }
+
+        if (channel === RESYNC_CHANNEL) {
+          // After an outage every peer that failed a publish announces; a
+          // resync that started after the peer's first failure already covers it.
+          const failedAt = (envelope.data as { failedAt?: unknown } | null)?.failedAt;
+          if (typeof failedAt === 'number' && this.lastResyncStartedAt >= failedAt) return;
+          log.warn('Peer could not publish an event; resyncing', { fromInstance: envelope.instanceId });
+          void this.runResync();
           return;
         }
 
@@ -126,6 +161,114 @@ export class RedisEventBus {
     this.subscriber.on('error', (err) => {
       log.error('Redis subscriber error', { error: err.message });
     });
+
+    // Anything published while disconnected was missed. Resync only once the
+    // pattern subscription is confirmed again, so nothing published between the
+    // resync and the resubscribe is missed too.
+    this.subscriber.on('close', () => {
+      this.subscriberDropped = true;
+    });
+    this.subscriber.on('ready', () => {
+      if (!this.subscriberDropped) return;
+      this.subscriberDropped = false;
+      this.resubscribeThenResync();
+    });
+  }
+
+  /**
+   * ioredis already re-subscribes on reconnect; this repeat (a no-op for
+   * Redis) is queued behind it, so its ack confirms the subscription is back.
+   */
+  private resubscribeThenResync(): void {
+    this.subscriber.psubscribe(CHANNEL_PATTERN, (err) => {
+      if (err) {
+        log.error('Failed to resubscribe to event channels; retrying', { error: err.message });
+        if (this.shuttingDown || this.resubscribeTimer) return;
+        this.resubscribeTimer = setTimeout(() => {
+          this.resubscribeTimer = null;
+          this.resubscribeThenResync();
+        }, RESUBSCRIBE_RETRY_MS);
+        this.resubscribeTimer.unref?.();
+        return;
+      }
+      log.warn('Event subscriber reconnected; resyncing', { instanceId: this.instanceId });
+      void this.runResync();
+    });
+  }
+
+  /**
+   * Register a handler to run when this process may have missed events from
+   * other instances (its subscriber reconnected, or a peer reported a failed
+   * publish). It should rebuild whatever those events would have kept fresh.
+   */
+  onResync(handler: ResyncHandler): () => void {
+    this.resyncHandlers.add(handler);
+    return () => {
+      this.resyncHandlers.delete(handler);
+    };
+  }
+
+  /** Runs every handler; overlapping triggers coalesce into one more run. */
+  private async runResync(): Promise<void> {
+    if (this.resyncRunning) {
+      this.resyncRequested = true;
+      return;
+    }
+    this.resyncRunning = true;
+    try {
+      do {
+        this.resyncRequested = false;
+        this.lastResyncStartedAt = Date.now();
+        await Promise.all([...this.resyncHandlers].map(async (handler) => {
+          try {
+            await handler();
+          } catch (error) {
+            log.error('Error in event resync handler', { error: getErrorMessage(error) });
+          }
+        }));
+      } while (this.resyncRequested);
+    } finally {
+      this.resyncRunning = false;
+    }
+  }
+
+  /**
+   * Tell other instances to resync, retrying until the announcement is sent.
+   * One announcement covers every failure up to the moment it is sent; a later
+   * failure schedules another.
+   */
+  private announceResyncAfterPublishFailure(): void {
+    if (this.shuttingDown) return;
+    this.unannouncedFailureAt ??= Date.now();
+    this.scheduleResyncAnnouncement();
+  }
+
+  /** Call only with `unannouncedFailureAt` set. */
+  private scheduleResyncAnnouncement(): void {
+    if (this.resyncAnnounceTimer || this.shuttingDown) return;
+    this.resyncAnnounceTimer = setTimeout(() => {
+      const failedAt = this.unannouncedFailureAt as number;
+      this.unannouncedFailureAt = null;
+      const envelope: EventEnvelope = {
+        event: '__resync',
+        data: { failedAt },
+        instanceId: this.instanceId,
+        timestamp: Date.now(),
+      };
+      this.publisher.publish(RESYNC_CHANNEL, JSON.stringify(envelope)).then(
+        () => {
+          this.resyncAnnounceTimer = null;
+          if (this.unannouncedFailureAt !== null) this.scheduleResyncAnnouncement();
+        },
+        (error: unknown) => {
+          log.warn('Could not announce a resync; retrying', { error: getErrorMessage(error) });
+          this.resyncAnnounceTimer = null;
+          this.unannouncedFailureAt = Math.min(failedAt, this.unannouncedFailureAt ?? failedAt);
+          this.scheduleResyncAnnouncement();
+        },
+      );
+    }, RESYNC_ANNOUNCE_RETRY_MS);
+    this.resyncAnnounceTimer.unref?.();
   }
 
   /**
@@ -199,6 +342,7 @@ export class RedisEventBus {
     const channel = `${CHANNEL_PREFIX}${event}`;
     this.publisher.publish(channel, JSON.stringify(envelope)).catch((error) => {
       log.error('Failed to publish event to Redis', { event, error: getErrorMessage(error) });
+      this.announceResyncAfterPublishFailure();
     });
 
     log.debug(`Event emitted: ${event}`, { data });
@@ -229,7 +373,12 @@ export class RedisEventBus {
     };
 
     const channel = `${CHANNEL_PREFIX}${event}`;
-    await this.publisher.publish(channel, JSON.stringify(envelope));
+    try {
+      await this.publisher.publish(channel, JSON.stringify(envelope));
+    } catch (error) {
+      this.announceResyncAfterPublishFailure();
+      throw error;
+    }
 
     log.debug(`Async event emitted: ${event}`, { data });
   }
@@ -255,6 +404,7 @@ export class RedisEventBus {
     } else {
       this.localEmitter.removeAllListeners();
       this.remoteEmitter.removeAllListeners();
+      this.resyncHandlers.clear();
     }
   }
 
@@ -303,6 +453,13 @@ export class RedisEventBus {
    */
   async shutdown(): Promise<void> {
     log.info('Shutting down Redis event bus', { instanceId: this.instanceId });
+
+    this.shuttingDown = true;
+    if (this.resyncAnnounceTimer) clearTimeout(this.resyncAnnounceTimer);
+    if (this.resubscribeTimer) clearTimeout(this.resubscribeTimer);
+    this.resyncAnnounceTimer = null;
+    this.resubscribeTimer = null;
+    this.resyncHandlers.clear();
 
     await this.subscriber.punsubscribe();
     await this.subscriber.quit();

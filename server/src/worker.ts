@@ -81,6 +81,7 @@ import type {
 import { collectWalletSyncExecutionDiagnostics } from './worker/walletSyncExecutionRegistry';
 import { startCaptureParticipant, stopCaptureParticipant } from './services/supportPackage/captureRuntime';
 import { initializeRedisBridge, shutdownRedisBridge } from './websocket/redisBridge';
+import { initializeCacheInvalidation, shutdownCacheInvalidation } from './services/cacheInvalidation';
 import {
   createProductionWalletSyncRecoveryRuntime,
   type WalletSyncRecoveryRuntime,
@@ -396,6 +397,9 @@ async function startWorker(): Promise<void> {
   }
   initializeDistributedLock('redis-required');
   initializeNotificationTelemetry('worker');
+  // The worker detects most transaction and confirmation changes; publish the
+  // matching cache invalidations so API replicas drop their stale entries.
+  initializeCacheInvalidation();
 
   const uiEventBridgeStarted = startUiEventBridge();
   log.info('Redis connected');
@@ -908,6 +912,9 @@ async function shutdown(signal: string, exitCode: 0 | 1 = 0): Promise<void> {
     }
     stopUiEventBridge = null;
   }
+
+  // Flush pending cache-invalidation publishes while Redis is still open.
+  shutdownCacheInvalidation();
 
   // Shutdown distributed locking
   shutdownDistributedLock();

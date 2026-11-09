@@ -20,9 +20,28 @@ import { restoreWarningNotification, stashRestoreWarnings } from './restoreWarni
 
 const log = createLogger('BackupRestore');
 
-// Local storage key for "don't show again" preference
-// Per account (server-side preferences), not shared browser storage.
+// "Don't show again" for the backup-complete modal, per account (server-side
+// preferences), not shared browser storage.
 const BACKUP_MODAL_DISMISSED_PREFERENCE = 'viewSettings.backup.completeModalDismissed';
+// Where the choice used to live; carried over once, then removed.
+const LEGACY_BACKUP_MODAL_DISMISSED_KEY = 'sanctuary_backup_modal_dismissed';
+
+function hasLegacyBackupModalDismissal(): boolean {
+  try {
+    return localStorage.getItem(LEGACY_BACKUP_MODAL_DISMISSED_KEY) === 'true';
+  } catch (error) {
+    log.debug('Legacy backup modal preference unavailable', { error });
+    return false;
+  }
+}
+
+function removeLegacyBackupModalDismissal(): void {
+  try {
+    localStorage.removeItem(LEGACY_BACKUP_MODAL_DISMISSED_KEY);
+  } catch (error) {
+    log.debug('Could not remove legacy backup modal preference', { error });
+  }
+}
 
 type TimeoutHandle = ReturnType<typeof setTimeout>;
 
@@ -62,6 +81,18 @@ export function useBackupHandlers(encryptionKeys: EncryptionKeysResponse | null)
     BACKUP_MODAL_DISMISSED_PREFERENCE,
     false,
   );
+  // Carry an old browser-wide dismissal over, and remove the browser key once
+  // the preference reads back as set. Preference writes apply optimistically,
+  // so that is the next render; a save that later rolls back shows the modal
+  // once more, as if the dismissal had never been carried over.
+  useEffect(() => {
+    if (!hasLegacyBackupModalDismissal()) return;
+    if (backupModalDismissed) {
+      removeLegacyBackupModalDismissal();
+    } else {
+      setBackupModalDismissed(true);
+    }
+  }, [backupModalDismissed, setBackupModalDismissed]);
 
   // Clipboard state
   const [copiedKey, setCopiedKey] = useState<string | null>(null);

@@ -182,6 +182,8 @@ const mocks = vi.hoisted(() => {
     initializeDistributedLock: vi.fn(),
     initializeRedis: vi.fn(),
     shutdownRedis: vi.fn(),
+    initializeCacheInvalidation: vi.fn(),
+    shutdownCacheInvalidation: vi.fn(),
     isRedisConnected: vi.fn(),
     shutdownDistributedLock: vi.fn(),
     getDistributedEventBus: vi.fn(),
@@ -343,6 +345,11 @@ vi.mock('../../../src/observability/metrics/subscriptionStatusMetrics', () => ({
 
 // The worker publishes its WebSocket events onto the Redis bridge. The real
 // module reaches the un-mocked infrastructure/redis and metrics graph.
+vi.mock('../../../src/services/cacheInvalidation', () => ({
+  initializeCacheInvalidation: mocks.initializeCacheInvalidation,
+  shutdownCacheInvalidation: mocks.shutdownCacheInvalidation,
+}));
+
 vi.mock('../../../src/websocket/redisBridge', () => ({
   initializeRedisBridge: vi.fn(async () => undefined),
   shutdownRedisBridge: vi.fn(async () => undefined),
@@ -1498,6 +1505,36 @@ describe('worker entrypoint', () => {
       mocks.queueInstance.shutdown.mock.invocationCallOrder[0],
     );
     expect(mocks.walletSyncRecoveryRuntime.stop.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.shutdownRedis.mock.invocationCallOrder[0],
+    );
+  });
+
+  // Regression: the worker detects most confirmations and new transactions,
+  // but never published cache invalidations, so API replicas kept stale wallet
+  // summaries until their TTL.
+  it('publishes cache invalidations once Redis is up and stops before Redis closes', async () => {
+    const handlers: Record<string, Array<(...args: any[]) => any>> = {};
+    vi.spyOn(process, 'on').mockImplementation(((
+      event: string,
+      handler: (...args: any[]) => any,
+    ) => {
+      handlers[event] ??= [];
+      handlers[event].push(handler);
+      return process;
+    }) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+    await vi.waitFor(() => expect(mocks.initializeCacheInvalidation).toHaveBeenCalledOnce());
+    expect(mocks.initializeRedis.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.initializeCacheInvalidation.mock.invocationCallOrder[0],
+    );
+
+    await handlers.SIGTERM?.[0]();
+
+    expect(mocks.shutdownCacheInvalidation).toHaveBeenCalledOnce();
+    expect(mocks.shutdownCacheInvalidation.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.shutdownRedis.mock.invocationCallOrder[0],
     );
   });

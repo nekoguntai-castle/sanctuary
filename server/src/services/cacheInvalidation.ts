@@ -57,12 +57,12 @@ async function applyInvalidation(change: CacheInvalidation): Promise<void> {
 }
 
 /**
- * The wallet/price/fee caches are in-memory per API process. Apply a change
- * seen on this process's local bus here at once, then publish it so other API
- * replicas drop the same entries instead of waiting out the TTL. (Worker-owned
- * syncs reach every API process through `wallet:syncTransition`; the worker
- * does not run this module.) Publishes are coalesced per wallet/scope, because
- * one block can emit a `transaction:confirmed` per transaction.
+ * The wallet/price/fee caches are in-memory per process. Apply a change seen on
+ * this process's local bus here at once, then publish it so every other
+ * process (API replicas and the worker, which detects most transaction and
+ * confirmation changes) drops the same entries instead of waiting out the TTL.
+ * Publishes are coalesced per wallet/scope, because one block can emit a
+ * `transaction:confirmed` per transaction.
  */
 const PUBLISH_COALESCE_MS = 100;
 const pendingPublishes = new Map<string, CacheInvalidation>();
@@ -108,12 +108,24 @@ export function initializeCacheInvalidation(): void {
     })
   );
 
-  // Canonical persisted lifecycle transition. This also covers worker-owned
-  // syncs, which do not run in the API process that owns the wallet cache.
+  // Canonical persisted lifecycle transition, published for every sync
+  // (including worker-owned ones), whether or not it changed any transaction.
   unsubscribers.push(
     distributedEventBus.on('wallet:syncTransition', async ({ walletId }) => {
       log.debug(`Invalidating caches for wallet sync transition ${walletId}`);
       await invalidateWalletCaches(walletId);
+    })
+  );
+
+  // Pub/sub is at-most-once: after a possible gap (this subscriber reconnected,
+  // or a peer failed to publish) the wallet entries a missed invalidation named
+  // are unknown, so drop them all and let reads repopulate. Price and fee
+  // entries expire within a minute anyway, and clearing the price cache would
+  // also drop its stale-price fallback.
+  unsubscribers.push(
+    distributedEventBus.onResync(async () => {
+      log.info('Possibly missed cache invalidations; clearing the wallet cache');
+      await walletCache.clear();
     })
   );
 

@@ -45,30 +45,53 @@ const featurePoolInitPromises = new Map<string, Promise<ElectrumPool>>();
 const MAX_FEATURE_POOL_INSTANCES = 16;
 
 /**
- * Network pools built while the node-config read failed (empty defaults), with
- * when to re-read the config next. Without this the pool kept zero configured
- * servers until a reset or restart.
+ * Pools built while the node-config read failed (empty defaults), keyed by
+ * registry key (a network, or a feature-pool key). Without this a pool kept
+ * zero configured servers until a reset or restart. Each entry knows the scope
+ * to re-read and how to recover once that read succeeds.
  */
 export const DEGRADED_POOL_RETRY_MS = 30_000;
-const degradedNetworkPools = new Map<NetworkType, { pool: ElectrumPool; retryAt: number }>();
-const degradedPoolProbes = new Map<NetworkType, Promise<void>>();
+interface DegradedPool {
+  pool: ElectrumPool;
+  retryAt: number;
+  network: NetworkType;
+  scope: ElectrumPoolFeatureScope;
+  recover: () => Promise<void>;
+}
+const degradedPools = new Map<string, DegradedPool>();
+const degradedPoolProbes = new Map<string, Promise<void>>();
 
-function probeDegradedPool(network: NetworkType): void {
-  const degraded = degradedNetworkPools.get(network);
-  if (!degraded || degradedPoolProbes.has(network) || Date.now() < degraded.retryAt) return;
+/** Registry keys for a network: its network pool and every feature pool. */
+function isRegistryKeyFor(network: NetworkType, key: string): boolean {
+  return key === network || key.startsWith(`${network}:`);
+}
+
+function markDegraded(key: string, entry: Omit<DegradedPool, 'retryAt'>): void {
+  degradedPools.set(key, { ...entry, retryAt: Date.now() + DEGRADED_POOL_RETRY_MS });
+}
+
+function forgetDegraded(predicate: (key: string) => boolean): void {
+  for (const key of [...degradedPools.keys()]) {
+    if (predicate(key)) degradedPools.delete(key);
+  }
+}
+
+function probeDegradedPool(key: string): void {
+  const degraded = degradedPools.get(key);
+  if (!degraded || degradedPoolProbes.has(key) || Date.now() < degraded.retryAt) return;
   degraded.retryAt = Date.now() + DEGRADED_POOL_RETRY_MS;
 
-  void singleFlight(degradedPoolProbes, network, async () => {
-    const result = await loadPoolConfigFromDatabase(network, { serverUsage: 'general' });
+  void singleFlight(degradedPoolProbes, key, async () => {
+    const result = await loadPoolConfigFromDatabase(degraded.network, degraded.scope);
     if (result.loadFailed) return;
-    // Readable again: stop probing, and load the configured servers if this
-    // pool is still the registered one.
-    if (degradedNetworkPools.get(network)?.pool !== degraded.pool) return;
-    degradedNetworkPools.delete(network);
-    await degraded.pool.reloadServers();
-    log.info(`Electrum pool for ${network} reloaded after a failed config read`);
+    // Readable again: stop probing, and recover if this pool is still the
+    // registered one.
+    if (degradedPools.get(key)?.pool !== degraded.pool) return;
+    degradedPools.delete(key);
+    await degraded.recover();
+    log.info('Electrum pool recovered after a failed config read', { key });
   }).catch((error: unknown) => {
-    log.warn('Degraded Electrum pool config probe failed', { network, error: getErrorMessage(error) });
+    log.warn('Degraded Electrum pool config probe failed', { key, error: getErrorMessage(error) });
   });
 }
 
@@ -138,6 +161,7 @@ async function shutdownFeaturePoolEntries(
     }
     if (featurePools.get(key) === pool) {
       featurePools.delete(key);
+      if (degradedPools.get(key)?.pool === pool) degradedPools.delete(key);
     }
   }));
 }
@@ -211,14 +235,13 @@ export async function getElectrumPoolForNetwork(network: NetworkType): Promise<E
 
     log.info(`Initializing Electrum pool for network: ${network}`);
 
-    const { pool, serverCount, configLoadFailed } = await createPool(network, {
-      serverUsage: 'general',
-    });
+    const generalScope: ElectrumPoolFeatureScope = { serverUsage: 'general' };
+    const { pool, serverCount, configLoadFailed } = await createPool(network, generalScope);
 
     // Store in registry
     networkPools.set(network, pool);
     if (configLoadFailed) {
-      degradedNetworkPools.set(network, { pool, retryAt: Date.now() + DEGRADED_POOL_RETRY_MS });
+      markDegraded(network, { pool, network, scope: generalScope, recover: () => pool.reloadServers() });
     }
 
     // Also set as the global pool instance if this is mainnet (backward compat)
@@ -270,6 +293,7 @@ export async function getElectrumPoolForNetworkAndFeatures(
   );
   const existingPool = featurePools.get(key);
   if (existingPool) {
+    probeDegradedPool(key);
     return existingPool;
   }
 
@@ -290,13 +314,26 @@ export async function getElectrumPoolForNetworkAndFeatures(
       serverUsage,
     });
 
-    const { pool, serverCount } = await createPool(network, {
+    const featureScope: ElectrumPoolFeatureScope = {
       ...scope,
       requiredFeatures: normalizedFeatures,
       serverUsage,
-    });
+    };
+    const { pool, serverCount, configLoadFailed } = await createPool(network, featureScope);
     await trimFeaturePoolRegistry(MAX_FEATURE_POOL_INSTANCES - 1);
     featurePools.set(key, pool);
+    if (configLoadFailed) {
+      // `reloadServers()` would reload unscoped servers, so retire the pool
+      // instead; the next caller rebuilds it with this scope. Feature pools
+      // are fetched per use and never held (trim and reset retire them too),
+      // so a caller still holding this one finishes its request and drops it.
+      markDegraded(key, {
+        pool,
+        network,
+        scope: featureScope,
+        recover: () => shutdownFeaturePoolEntries([[key, pool]]),
+      });
+    }
     log.info('Feature-scoped Electrum pool initialized', {
       network,
       requiredFeatures: normalizedFeatures,
@@ -339,16 +376,16 @@ export async function resetElectrumPoolForNetwork(network: NetworkType): Promise
   if (pool) {
     await shutdownPoolSafely(pool, { network, scope: 'network' });
     networkPools.delete(network);
-    degradedNetworkPools.delete(network);
     if (poolInstance === pool) {
       poolInstance = null;
     }
     log.info(`Electrum pool for ${network} has been reset`);
   }
+  forgetDegraded((key) => isRegistryKeyFor(network, key));
   const featureEntries = [...featurePools.entries()]
-    .filter(([key]) => key.startsWith(`${network}:`));
+    .filter(([key]) => key !== network && isRegistryKeyFor(network, key));
   const featureInitKeys = [...featurePoolInitPromises.keys()]
-    .filter((key) => key.startsWith(`${network}:`));
+    .filter((key) => key !== network && isRegistryKeyFor(network, key));
   for (const key of featureInitKeys) {
     featurePoolInitPromises.delete(key);
   }
@@ -461,7 +498,7 @@ export async function shutdownElectrumPool(): Promise<void> {
   poolInitPromise = null;
   networkPoolInitPromises.clear();
   featurePoolInitPromises.clear();
-  degradedNetworkPools.clear();
+  degradedPools.clear();
 
   if (poolInstance) {
     await shutdownPoolSafely(poolInstance, { scope: 'global' });

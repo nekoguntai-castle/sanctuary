@@ -10,7 +10,10 @@ function createMockEventBus() {
       const current = listeners.get(event) ?? [];
       current.push(handler);
       listeners.set(event, current);
+      return () => undefined;
     }),
+    onRemote: vi.fn(() => () => undefined),
+    onResync: vi.fn(() => () => undefined),
     emit: vi.fn(async (event: string, payload: any) => {
       const handlers = listeners.get(event) ?? [];
       for (const handler of handlers) {

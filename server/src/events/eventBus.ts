@@ -28,7 +28,7 @@ import { EventEmitter } from 'events';
 import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
 import { Semaphore } from './semaphore';
-import type { EventTypes, EventName, EventHandler } from './types';
+import type { EventTypes, EventName, EventHandler, ResyncHandler } from './types';
 
 // Re-export all types so barrel index.ts stays unchanged
 export type {
@@ -119,6 +119,14 @@ class TypedEventBus {
    * distributed-bus API whether or not Redis is configured.
    */
   onRemote<E extends EventName>(_event: E, _handler: EventHandler<E>): () => void {
+    return () => undefined;
+  }
+
+  /**
+   * A single process never misses its own events, so there is nothing to
+   * resync; kept for API parity with the distributed bus.
+   */
+  onResync(_handler: ResyncHandler): () => void {
     return () => undefined;
   }
 

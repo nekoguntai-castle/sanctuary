@@ -121,6 +121,285 @@ describe('RedisEventBus', () => {
     expect(bus.getMetrics().received['wallet:synced']).toBe(1);
   });
 
+  describe('onResync', () => {
+    // Regression: Redis pub/sub is at-most-once. Events published while this
+    // process's subscriber was disconnected, or that a peer failed to publish,
+    // were lost silently, so caches and Electrum config stayed stale.
+    const flushTimers = () => new Promise((resolve) => setImmediate(resolve));
+
+    it('resyncs once the subscriber has reconnected and resubscribed', async () => {
+      const handler = vi.fn();
+      bus.onResync(handler);
+
+      subscriber.emit('ready'); // initial connection: nothing was missed
+      await flushTimers();
+      expect(handler).not.toHaveBeenCalled();
+
+      subscriber.emit('close');
+      subscriber.emit('ready');
+      await flushTimers();
+      expect(handler).not.toHaveBeenCalled(); // waits for the resubscribe ack
+
+      subscriber.triggerPsubscribe(null);
+      await flushTimers();
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it('resyncs when another instance announces a failed publish', async () => {
+      const handler = vi.fn();
+      const remote = vi.fn();
+      bus.onResync(handler);
+      bus.onRemote('sanctuary:resync' as any, remote);
+
+      subscriber.emit('pmessage', '*', 'sanctuary:events:__resync', JSON.stringify({
+        event: '__resync', data: null, instanceId: 'other-instance', timestamp: Date.now(),
+      }));
+      await flushTimers();
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(remote).not.toHaveBeenCalled();
+    });
+
+    it('announces a resync after a failed publish, retrying until it is sent', async () => {
+      vi.useFakeTimers();
+      try {
+        publisher.publish
+          .mockRejectedValueOnce(new Error('redis down')) // the event itself
+          .mockRejectedValueOnce(new Error('redis down')) // first announcement
+          .mockResolvedValue(1);
+
+        bus.emit('wallet:synced' as any, { walletId: 'w1' } as any);
+        await vi.advanceTimersByTimeAsync(0);
+        await vi.advanceTimersByTimeAsync(5_000);
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        const announcements = publisher.publish.mock.calls.filter(([channel]) => channel === 'sanctuary:events:__resync');
+        expect(announcements).toHaveLength(2);
+        await vi.advanceTimersByTimeAsync(20_000);
+        expect(publisher.publish.mock.calls.filter(([channel]) => channel === 'sanctuary:events:__resync')).toHaveLength(2);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('announces after a failed emitAsync publish and still rejects the caller', async () => {
+      vi.useFakeTimers();
+      try {
+        publisher.publish.mockRejectedValueOnce(new Error('redis down')).mockResolvedValue(1);
+
+        await expect(bus.emitAsync('wallet:synced' as any, { walletId: 'w1' } as any)).rejects.toThrow('redis down');
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(publisher.publish).toHaveBeenLastCalledWith('sanctuary:events:__resync', expect.any(String));
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    const announcement = (failedAt: unknown) => JSON.stringify({
+      event: '__resync', data: { failedAt }, instanceId: 'other-instance', timestamp: Date.now(),
+    });
+
+    it('skips an announcement that a resync started after the failure already covers', async () => {
+      const handler = vi.fn();
+      bus.onResync(handler);
+      const now = vi.spyOn(Date, 'now').mockReturnValue(10_000);
+      try {
+        subscriber.emit('close');
+        subscriber.emit('ready');
+        subscriber.triggerPsubscribe(null); // resync starts at 10_000
+        await flushTimers();
+        expect(handler).toHaveBeenCalledTimes(1);
+
+        // The peer failed during the outage, before this resync began.
+        subscriber.emit('pmessage', '*', 'sanctuary:events:__resync', announcement(9_000));
+        await flushTimers();
+        expect(handler).toHaveBeenCalledTimes(1);
+
+        // A failure after it is not covered.
+        subscriber.emit('pmessage', '*', 'sanctuary:events:__resync', announcement(11_000));
+        await flushTimers();
+        expect(handler).toHaveBeenCalledTimes(2);
+      } finally {
+        now.mockRestore();
+      }
+    });
+
+    it('announces a later failure separately, carrying its own failure time', async () => {
+      vi.useFakeTimers();
+      try {
+        vi.setSystemTime(1_000);
+        publisher.publish.mockRejectedValueOnce(new Error('redis down')).mockResolvedValue(1);
+        bus.emit('wallet:synced' as any, { walletId: 'w1' } as any);
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        publisher.publish.mockRejectedValueOnce(new Error('redis down'));
+        bus.emit('wallet:synced' as any, { walletId: 'w2' } as any);
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        const sent = publisher.publish.mock.calls
+          .filter(([channel]) => channel === 'sanctuary:events:__resync')
+          .map(([, body]) => JSON.parse(body as string).data.failedAt);
+        expect(sent).toEqual([1_000, 6_000]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('does not announce once shutting down', async () => {
+      vi.useFakeTimers();
+      try {
+        let rejectInFlight!: (error: Error) => void;
+        publisher.publish.mockImplementationOnce(() => new Promise((_, reject) => { rejectInFlight = reject; }));
+        bus.emit('wallet:synced' as any, { walletId: 'w1' } as any);
+
+        await bus.shutdown();
+        rejectInFlight(new Error('Connection is closed.'));
+        await vi.advanceTimersByTimeAsync(30_000);
+
+        expect(publisher.publish.mock.calls.filter(([channel]) => channel === 'sanctuary:events:__resync')).toHaveLength(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('retries a failed resubscribe while connected, then resyncs', async () => {
+      vi.useFakeTimers();
+      try {
+        const handler = vi.fn();
+        bus.onResync(handler);
+        subscriber.emit('close');
+        subscriber.emit('ready');
+        subscriber.triggerPsubscribe(new Error('resubscribe failed'));
+        expect(handler).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(1_000);
+        subscriber.triggerPsubscribe(null);
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(handler).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('coalesces triggers that arrive during a resync into one more run', async () => {
+      let release!: () => void;
+      const handler = vi.fn()
+        .mockImplementationOnce(() => new Promise<void>((resolve) => { release = resolve; }))
+        .mockResolvedValue(undefined);
+      bus.onResync(handler);
+      const trigger = () => subscriber.emit('pmessage', '*', 'sanctuary:events:__resync', announcement(Date.now() + 60_000));
+
+      trigger();
+      await flushTimers();
+      trigger();
+      trigger();
+      release();
+      await flushTimers();
+
+      expect(handler).toHaveBeenCalledTimes(2);
+    });
+
+    it('announces again for a failure during an in-flight announcement', async () => {
+      vi.useFakeTimers();
+      try {
+        vi.setSystemTime(1_000);
+        let finishAnnouncement!: (ok: boolean) => void;
+        publisher.publish
+          .mockRejectedValueOnce(new Error('redis down'))
+          .mockImplementationOnce(() => new Promise((resolve, reject) => {
+            finishAnnouncement = (ok) => (ok ? resolve(1) : reject(new Error('redis down')));
+          }))
+          .mockRejectedValueOnce(new Error('redis down'))
+          .mockResolvedValue(1);
+        bus.emit('wallet:synced' as any, { walletId: 'w1' } as any);
+        await vi.advanceTimersByTimeAsync(5_000); // announcement in flight
+        bus.emit('wallet:synced' as any, { walletId: 'w2' } as any); // fails at 6_000
+        await vi.advanceTimersByTimeAsync(0);
+        finishAnnouncement(false); // the first announcement fails too
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        const sent = publisher.publish.mock.calls
+          .filter(([channel]) => channel === 'sanctuary:events:__resync')
+          .map(([, body]) => JSON.parse(body as string).data.failedAt);
+        expect(sent).toEqual([1_000, 1_000]); // retried with the earliest failure
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('reschedules after a sent announcement when another failure arrived meanwhile', async () => {
+      vi.useFakeTimers();
+      try {
+        vi.setSystemTime(1_000);
+        let finishAnnouncement!: () => void;
+        publisher.publish
+          .mockRejectedValueOnce(new Error('redis down'))
+          .mockImplementationOnce(() => new Promise((resolve) => { finishAnnouncement = () => resolve(1); }))
+          .mockRejectedValueOnce(new Error('redis down'))
+          .mockResolvedValue(1);
+        bus.emit('wallet:synced' as any, { walletId: 'w1' } as any);
+        await vi.advanceTimersByTimeAsync(5_000);
+        bus.emit('wallet:synced' as any, { walletId: 'w2' } as any);
+        await vi.advanceTimersByTimeAsync(0);
+        finishAnnouncement();
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        const sent = publisher.publish.mock.calls
+          .filter(([channel]) => channel === 'sanctuary:events:__resync')
+          .map(([, body]) => JSON.parse(body as string).data.failedAt);
+        expect(sent).toEqual([1_000, 6_000]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('cancels pending announcement and resubscribe retries on shutdown', async () => {
+      vi.useFakeTimers();
+      try {
+        publisher.publish.mockRejectedValueOnce(new Error('redis down')).mockResolvedValue(1);
+        bus.emit('wallet:synced' as any, { walletId: 'w1' } as any);
+        await vi.advanceTimersByTimeAsync(0); // announcement timer pending
+        subscriber.emit('close');
+        subscriber.emit('ready');
+        subscriber.triggerPsubscribe(new Error('resubscribe failed')); // retry timer pending
+        subscriber.psubscribe.mockClear();
+
+        await bus.shutdown();
+        subscriber.triggerPsubscribe(new Error('late failure')); // no new retry once shutting down
+        await vi.advanceTimersByTimeAsync(30_000);
+
+        expect(publisher.publish.mock.calls.filter(([channel]) => channel === 'sanctuary:events:__resync')).toHaveLength(0);
+        expect(subscriber.psubscribe).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('ignores its own announcements, isolates handler errors and supports unsubscribe', async () => {
+      const failing = vi.fn().mockRejectedValue(new Error('boom'));
+      const unsubscribe = bus.onResync(failing);
+      const ok = vi.fn();
+      bus.onResync(ok);
+
+      subscriber.emit('close');
+      subscriber.emit('ready');
+      subscriber.triggerPsubscribe(null);
+      await flushTimers();
+      expect(ok).toHaveBeenCalledTimes(1);
+      expect(mockLogError).toHaveBeenCalled();
+
+      unsubscribe();
+      subscriber.emit('close');
+      subscriber.emit('ready');
+      subscriber.triggerPsubscribe(new Error('resubscribe failed'));
+      await flushTimers();
+      expect(ok).toHaveBeenCalledTimes(1); // no resync until subscribed
+      expect(failing).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('onRemote', () => {
     // Needed so a process can react to another instance's change without
     // re-running the change it already applied itself (e.g. node config reset).

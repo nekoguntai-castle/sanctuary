@@ -10,13 +10,19 @@ import { EventEmitter } from 'events';
 
 const configChangeMocks = vi.hoisted(() => {
   const mockConfigChangeUnsubscribe = vi.fn();
+  const mockResyncUnsubscribe = vi.fn();
   return {
     mockConfigChangeUnsubscribe,
-    mockDistributedEventBus: { on: vi.fn((_event: string, _handler: (change: unknown) => Promise<void>) => mockConfigChangeUnsubscribe) },
+    mockResyncUnsubscribe,
+    mockDistributedEventBus: {
+      on: vi.fn((_event: string, _handler: (change: unknown) => Promise<void>) => mockConfigChangeUnsubscribe),
+      onResync: vi.fn((_handler: () => Promise<void>) => mockResyncUnsubscribe),
+    },
     mockLog: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
   };
 });
 export const mockConfigChangeUnsubscribe = configChangeMocks.mockConfigChangeUnsubscribe;
+export const mockResyncUnsubscribe = configChangeMocks.mockResyncUnsubscribe;
 export const mockDistributedEventBus = configChangeMocks.mockDistributedEventBus;
 export const mockLog = configChangeMocks.mockLog;
 

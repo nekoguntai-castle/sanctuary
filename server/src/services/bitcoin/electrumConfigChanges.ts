@@ -7,7 +7,9 @@
  * remoteElectrumConfigChanges.ts.
  */
 
+import { createHash } from 'crypto';
 import { getDistributedEventBus } from '../../infrastructure';
+import { nodeConfigRepository } from '../../repositories/nodeConfigRepository';
 import type { SystemEvents } from '../../events/types';
 import { createLogger, type Logger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
@@ -106,5 +108,58 @@ export function createElectrumConfigChangeHandler(
         });
       });
     return chain;
+  };
+}
+
+/**
+ * A digest of the stored Node Config and Electrum server settings that a
+ * config change would apply. Health and capability columns, which probes
+ * rewrite on their own, are left out. Null when the config cannot be read.
+ */
+export async function readElectrumConfigFingerprint(): Promise<string | null> {
+  try {
+    const config = await nodeConfigRepository.findDefaultWithServers();
+    if (!config) return 'none';
+    const { servers, createdAt: _createdAt, updatedAt: _updatedAt, ...settings } = config;
+    const relevant = {
+      settings,
+      servers: servers.map(({ id, network, label, host, port, useSsl, priority, enabled, serverUsage }) => (
+        { id, network, label, host, port, useSsl, priority, enabled, serverUsage }
+      )),
+    };
+    return createHash('sha256').update(JSON.stringify(relevant)).digest('hex');
+  } catch (error) {
+    log.warn('Could not read the Electrum config fingerprint', { error: getErrorMessage(error) });
+    return null;
+  }
+}
+
+/**
+ * Resync for a process that may have missed a config change (see the event
+ * bus `onResync`). Reapplying is a full teardown of node clients and pools, so
+ * it runs only when the stored config differs from the one this process last
+ * applied; a Redis blip with no config edit costs one read. `prime()` records
+ * the config in effect when the process subscribes.
+ */
+export function createElectrumConfigResync(
+  handleChange: (change: ElectrumConfigChange) => Promise<void>,
+  logger: Logger,
+): { prime: () => Promise<void>; resync: () => Promise<void> } {
+  let applied: string | null = null;
+  return {
+    prime: async () => {
+      applied = await readElectrumConfigFingerprint();
+    },
+    resync: async () => {
+      const current = await readElectrumConfigFingerprint();
+      if (current !== null && current === applied) {
+        logger.debug('Electrum config unchanged since last applied; nothing to resync');
+        return;
+      }
+      logger.info('Electrum config may have changed while events were missed; reapplying');
+      await handleChange({ scope: 'node-config', network: null });
+      await handleChange({ scope: 'electrum-servers', network: null });
+      applied = current;
+    },
   };
 }

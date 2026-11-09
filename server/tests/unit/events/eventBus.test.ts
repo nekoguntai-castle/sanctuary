@@ -42,6 +42,14 @@ describe('EventBus', () => {
       expect(handler).not.toHaveBeenCalled();
       expect(unsubscribe()).toBeUndefined();
     });
+
+    it('has nothing to resync on the in-process bus', () => {
+      const handler = vi.fn();
+      const unsubscribe = testBus.onResync(handler);
+
+      expect(handler).not.toHaveBeenCalled();
+      expect(unsubscribe()).toBeUndefined();
+    });
   });
 
   describe('basic event emission', () => {

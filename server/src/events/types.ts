@@ -226,3 +226,6 @@ export type EventName = keyof EventTypes;
  * Event handler type
  */
 export type EventHandler<E extends EventName> = (data: EventTypes[E]) => void | Promise<void>;
+
+/** Runs when this process may have missed events from other instances. */
+export type ResyncHandler = () => void | Promise<void>;

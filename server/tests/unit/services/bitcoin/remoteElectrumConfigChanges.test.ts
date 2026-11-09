@@ -6,7 +6,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   handlers: new Map<string, (change: unknown) => Promise<void>>(),
+  resync: null as null | (() => Promise<void>),
   unsubscribe: vi.fn(),
+  unsubscribeResync: vi.fn(),
   resetNodeClient: vi.fn(async () => undefined),
   reloadElectrumServers: vi.fn(async () => undefined),
   log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -18,7 +20,15 @@ vi.mock('../../../../src/infrastructure', () => ({
       mocks.handlers.set(event, handler);
       return mocks.unsubscribe;
     },
+    onResync: (handler: () => Promise<void>) => {
+      mocks.resync = handler;
+      return mocks.unsubscribeResync;
+    },
   }),
+}));
+
+vi.mock('../../../../src/repositories/nodeConfigRepository', () => ({
+  nodeConfigRepository: { findDefaultWithServers: vi.fn(async () => null) },
 }));
 
 vi.mock('../../../../src/services/bitcoin/nodeClient', () => ({
@@ -44,6 +54,24 @@ describe('remote Electrum config changes in the API process', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.handlers.clear();
+    mocks.resync = null;
+  });
+
+  // Regression: a change published while this process's subscriber was
+  // disconnected (or that the writer failed to publish) was never applied.
+  it('reapplies the whole config when it may have missed a change', async () => {
+    const { nodeConfigRepository } = await import('../../../../src/repositories/nodeConfigRepository');
+    const { startRemoteElectrumConfigChanges, stopRemoteElectrumConfigChanges } = await load();
+    startRemoteElectrumConfigChanges();
+    await vi.waitFor(() => expect(nodeConfigRepository.findDefaultWithServers).toHaveBeenCalled()); // primed: none
+    vi.mocked(nodeConfigRepository.findDefaultWithServers).mockResolvedValueOnce({ id: 'default', servers: [] } as any);
+
+    await mocks.resync!();
+
+    expect(mocks.resetNodeClient).toHaveBeenCalledWith(undefined);
+    expect(mocks.reloadElectrumServers).toHaveBeenCalledWith(undefined);
+    stopRemoteElectrumConfigChanges();
+    expect(mocks.unsubscribeResync).toHaveBeenCalledTimes(1);
   });
 
   it('resets this process for node-config changes made by another process', async () => {
