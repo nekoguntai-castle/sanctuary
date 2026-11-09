@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.87] - 2026-11-09
+
 ### Changed
 
 - CI and build: every remaining `curl` that saves a release or toolchain archive now retries timeouts and HTTP 5xx errors (`--retry 3`; not `--retry-all-errors`, which the older curl in the `act-ubuntu` image rejects) and has connect and total timeouts: the Node and npm bootstrap, the go-runner and Ledger emulator images, the vendored Forgejo artifact build, the Bitcoin Core image build and the local gitleaks install. All of them already failed on HTTP errors and checked a digest or signature. `check-workflow-composition.test.sh` now fails on any new `curl` download that lacks `--fail` and `--retry`, unless it reads the HTTP status itself.
@@ -14,6 +16,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI: `Full Browser E2E` keeps each group's Playwright per-spec timing. Playwright clears `test-results/` before every group, so the `playwright-results-browser` artifact held only the last group's `playwright-timing.{json,md}`. Each group now writes to `.tmp/ci-timing/browser/<group>/`, uploaded on every run as `playwright-timing-browser`. This is step 1 of `docs/plans/browser-e2e-group-split.md`.
 - CI: the `admin-auth` and `wallet-lifecycle` browser-flow groups are each split in two by measured spec time, into `admin-operations`, `auth-accessibility`, `wallet-create-import` and `wallet-journeys`. On hosts shared with mutation work they ran 180-200 s and 214-255 s against a 240 s hard budget, and `wallet-lifecycle` failed it once. Every group keeps the same 120 s / 240 s budget, and the group test now fails if a group has no budget entry. Step 3 of `docs/plans/browser-e2e-group-split.md`.
 - CI: the `wallet-transactions` and `wallet-experience` browser-flow groups are split the same way, into `wallet-error-recovery`, `wallet-send`, `wallet-dashboard` and `wallet-settings`. After the first split they became the longest groups, at 189 s and 201 s on a host shared with mutation work. Full Browser E2E now runs eight groups, each at 120 s / 240 s.
+
+### Fixed
+
+- The API replicas and the worker no longer drift apart on state that one of them changed (#1489):
+  - Transaction confirmations in the API are counted from the durable network header checkpoint, not from the block height the process saw at startup.
+  - The price provider set is re-read every 30 s, so a change made through another process takes effect.
+  - Wallet, price and fee cache invalidations, and Electrum server configuration changes, now reach every API process over the Redis event bus.
+  - The LLM egress proxy's configuration is tracked in Redis, so a change to the AI settings always reaches the proxy, including disabling it. The credential is never sent while AI is disabled.
+  - Draft notifications are deduplicated across replicas with a Redis claim, released again if every channel failed.
+  - An Electrum pool built from a failed configuration read is marked degraded and re-probed every 30 s instead of being kept for good.
+  - A worker-health takeover needs 3 failed probes in a row instead of 1.
+  - A failed lazy import (hardware-wallet runtime, BitBox) is retried instead of being cached.
+  - A feature-flag database fallback no longer pins its value in the cache.
+  - Dismissing the backup-complete dialog is saved as a per-user preference instead of in the browser's localStorage. Users who had dismissed it before will see it once more.
+
+  No schema change.
 
 ## [0.8.86] - 2026-11-07
 
@@ -1269,7 +1287,8 @@ upgrade browser-smoke and 2FA preservation assertions.
 
 - Removed navigation-triggered syncs in favor of worker-driven sync
 
-[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.86...HEAD
+[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.87...HEAD
+[0.8.87]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.86...v0.8.87
 [0.8.86]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.85...v0.8.86
 [0.8.85]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.84...v0.8.85
 [0.8.84]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.83...v0.8.84
