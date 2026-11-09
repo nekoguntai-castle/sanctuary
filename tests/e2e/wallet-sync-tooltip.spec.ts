@@ -201,6 +201,11 @@ test.describe("wallet sync tooltip is not clipped by its card", () => {
 
     const trigger = page.getByRole("button", { name: /^Sync status:/ }).first();
     await expect(trigger).toBeVisible();
+    // Web fonts can swap in after the grid renders; the wider text rewraps the
+    // page header and pushes the card ~26px down. A hover made before that
+    // leaves the 14px icon out from under the pointer, so mouseleave closes the
+    // tooltip (CI run 22913). Hover only once the layout has its final fonts.
+    await page.evaluate(() => document.fonts.ready.then(() => undefined));
     await trigger.hover();
 
     const popup = page.getByTestId("tooltip-popup").first();
