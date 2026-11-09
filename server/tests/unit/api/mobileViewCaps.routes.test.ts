@@ -17,7 +17,7 @@ vi.mock('../../../src/services/wallet', async (importOriginal) => ({
   getUserWallets: mocks.getUserWallets,
 }));
 vi.mock('../../../src/services/cache', () => ({ walletCache: { get: vi.fn(), set: vi.fn() } }));
-vi.mock('../../../src/services/bitcoin/blockchain', () => ({ getCachedBlockHeight: vi.fn() }));
+vi.mock('../../../src/services/bitcoin/blockchain', () => ({ getConfirmationTipHeight: vi.fn() }));
 
 import crudRouter from '../../../src/api/wallets/crud';
 import crossWalletRouter from '../../../src/api/transactions/crossWallet';

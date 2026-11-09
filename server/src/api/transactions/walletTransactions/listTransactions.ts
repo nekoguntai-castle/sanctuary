@@ -14,7 +14,7 @@ import {
   bigIntToNumberOrZero,
 } from "../../../utils/errors";
 import { asyncHandler } from "../../../errors/errorHandler";
-import { getCachedBlockHeight } from "../../../services/bitcoin/blockchain";
+import { getConfirmationTipHeight } from "../../../services/bitcoin/blockchain";
 import { normalizeLegacyBitcoinNetwork } from "../../../services/bitcoin/networks";
 import { isPersistedTransactionType } from "@sanctuary/shared/constants/transactions";
 import { calculateConfirmations } from "./utils";
@@ -93,11 +93,11 @@ export function createListTransactionsRouter(): Router {
       });
       const network = normalizeLegacyBitcoinNetwork(wallet?.network, "mainnet");
 
-      // Get cached block height for this network (no network call)
-      const currentHeight = getCachedBlockHeight(network);
-
-      const transactions =
-        await transactionRepository.findByWalletIdWithDetails(walletId, {
+      // Durable header checkpoint height (shared with the worker), not this
+      // process's block-height cache, which only the worker advances.
+      const [currentHeight, transactions] = await Promise.all([
+        getConfirmationTipHeight(network),
+        transactionRepository.findByWalletIdWithDetails(walletId, {
           where,
           include: {
             address: {
@@ -122,7 +122,8 @@ export function createListTransactionsRouter(): Router {
           ],
           take: limit,
           skip: offset,
-        });
+        }),
+      ]);
 
       // Convert BigInt amounts to numbers
       // The amounts in the database are already correctly signed:
@@ -148,7 +149,7 @@ export function createListTransactionsRouter(): Router {
           fee: bigIntToNumber(tx.fee),
           balanceAfter: bigIntToNumber(tx.balanceAfter),
           blockHeight,
-          // Calculate confirmations dynamically from cached block height
+          // Calculate confirmations dynamically from the confirmation tip height
           // Falls back to stored value if cache not yet populated
           confirmations:
             currentHeight > 0

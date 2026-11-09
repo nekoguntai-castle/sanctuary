@@ -29,6 +29,7 @@ vi.mock("../../../../src/utils/logger", () => ({
 }));
 
 import {
+  readPersistedPriceProviderConfig,
   readPriceProviderConfig,
   setPriceProviderEnabled,
   writePriceProviderConfig,
@@ -161,6 +162,36 @@ describe("price provider settings", () => {
 
     expect(config.enabled).toEqual(["coinbase"]);
     expect(mockSystemSettings.setJson).not.toHaveBeenCalled();
+  });
+
+  describe("readPersistedPriceProviderConfig", () => {
+    it("returns the stored config", async () => {
+      mockSystemSettings.value = JSON.stringify({
+        version: 1,
+        enabled: ["mempool", "kraken"],
+        updatedAt: "2026-04-29T00:00:00.000Z",
+        updatedBy: "admin",
+      });
+
+      const config = await readPersistedPriceProviderConfig();
+
+      expect(config?.enabled).toEqual(["mempool", "kraken"]);
+    });
+
+    it("returns null without bootstrapping when no row exists", async () => {
+      await expect(readPersistedPriceProviderConfig()).resolves.toBeNull();
+      expect(mockSystemSettings.setJson).not.toHaveBeenCalled();
+    });
+
+    it("returns null for an invalid stored config instead of defaults", async () => {
+      mockSystemSettings.value = "not json";
+      await expect(readPersistedPriceProviderConfig()).resolves.toBeNull();
+    });
+
+    it("returns null when the database read fails", async () => {
+      mockSystemSettings.getValue.mockRejectedValueOnce(new Error("db down"));
+      await expect(readPersistedPriceProviderConfig()).resolves.toBeNull();
+    });
   });
 
   it("filters unknown and duplicate provider names on write", async () => {

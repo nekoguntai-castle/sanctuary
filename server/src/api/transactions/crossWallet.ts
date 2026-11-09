@@ -12,7 +12,7 @@ import { walletRepository, transactionRepository, utxoRepository } from '../../r
 import { buildWalletAccessWhere } from '../../repositories/accessControl';
 import { asyncHandler } from '../../errors/errorHandler';
 import { bigIntToNumber, bigIntToNumberOrZero } from '../../utils/errors';
-import { getCachedBlockHeight, type Network } from '../../services/bitcoin/blockchain';
+import { getConfirmationTipHeight, type Network } from '../../services/bitcoin/blockchain';
 import { computeVirtualSizeFromRawTx } from '../../services/bitcoin/transactionVsize';
 import { requireAuthenticatedUser } from '../../middleware/auth';
 import { walletCache } from '../../services/cache';
@@ -213,13 +213,20 @@ router.get('/transactions/recent', asyncHandler(async (req, res) => {
     });
   }
 
+  // One durable tip read per network (shared with the worker); this process's
+  // block-height cache is only advanced by the worker in its own process.
+  const networkOf = (walletId: string) => walletNetworkMap.get(walletId) || 'mainnet';
+  const networks = [...new Set(transactions.map(tx => networkOf(tx.walletId)))];
+  const tipHeights = new Map(await Promise.all(
+    networks.map(async network => [network, await getConfirmationTipHeight(network)] as const),
+  ));
+
   // Serialize transactions with wallet name included
   const serializedTransactions = transactions.map(tx => {
     const blockHeight = bigIntToNumber(tx.blockHeight);
     const rawAmount = bigIntToNumberOrZero(tx.amount);
-    // Get cached block height for this wallet's network (no network call)
-    const network = walletNetworkMap.get(tx.walletId) || 'mainnet';
-    const currentHeight = getCachedBlockHeight(network);
+    /* v8 ignore next -- every network was read into tipHeights above */
+    const currentHeight = tipHeights.get(networkOf(tx.walletId)) ?? 0;
     const state = txStateMap.get(`${tx.walletId}:${tx.txid}`);
 
     return {
@@ -228,7 +235,7 @@ router.get('/transactions/recent', asyncHandler(async (req, res) => {
       fee: bigIntToNumber(tx.fee),
       balanceAfter: bigIntToNumber(tx.balanceAfter),
       blockHeight,
-      // Calculate confirmations dynamically from cached block height for this network
+      // Calculate confirmations dynamically from the confirmation tip for this network
       confirmations: currentHeight > 0 ? calculateConfirmations(blockHeight, currentHeight) : tx.confirmations,
       labels: tx.transactionLabels.map((tl: any) => tl.label),
       transactionLabels: undefined,

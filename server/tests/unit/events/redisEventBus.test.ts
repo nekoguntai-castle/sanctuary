@@ -121,6 +121,56 @@ describe('RedisEventBus', () => {
     expect(bus.getMetrics().received['wallet:synced']).toBe(1);
   });
 
+  describe('onRemote', () => {
+    // Needed so a process can react to another instance's change without
+    // re-running the change it already applied itself (e.g. node config reset).
+    it('delivers events published by other instances', async () => {
+      const handler = vi.fn();
+      bus.onRemote('wallet:synced' as any, handler);
+
+      subscriber.emit('pmessage', '*', 'sanctuary:events:wallet:synced', JSON.stringify({
+        event: 'wallet:synced',
+        data: { walletId: 'w9' },
+        instanceId: 'other-instance',
+        timestamp: Date.now(),
+      }));
+      await Promise.resolve();
+
+      expect(handler).toHaveBeenCalledWith({ walletId: 'w9' });
+    });
+
+    it('does not deliver events this instance emitted', async () => {
+      const handler = vi.fn();
+      bus.onRemote('wallet:synced' as any, handler);
+
+      bus.emit('wallet:synced' as any, { walletId: 'w10' } as any);
+      await bus.emitAsync('wallet:synced' as any, { walletId: 'w11' } as any);
+      await Promise.resolve();
+
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it('isolates handler errors and supports unsubscribe', async () => {
+      const handler = vi.fn().mockRejectedValueOnce(new Error('boom'));
+      const unsubscribe = bus.onRemote('wallet:synced' as any, handler);
+      const message = JSON.stringify({
+        event: 'wallet:synced',
+        data: { walletId: 'w12' },
+        instanceId: 'other-instance',
+        timestamp: Date.now(),
+      });
+
+      subscriber.emit('pmessage', '*', 'sanctuary:events:wallet:synced', message);
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(bus.getMetrics().errors['wallet:synced']).toBe(1);
+
+      unsubscribe();
+      subscriber.emit('pmessage', '*', 'sanctuary:events:wallet:synced', message);
+      await Promise.resolve();
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('ignores distributed events from same instance', async () => {
     const handler = vi.fn();
     bus.on('wallet:synced' as any, handler);

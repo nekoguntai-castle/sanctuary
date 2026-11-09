@@ -8,6 +8,7 @@
 
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
+import { singleFlight } from '../../../utils/async';
 import { ElectrumPool } from './electrumPool';
 import { loadPoolConfigFromDatabase } from './poolConfig';
 import {
@@ -42,6 +43,34 @@ const networkPoolInitPromises = new Map<NetworkType, Promise<ElectrumPool>>();
 const featurePools = new Map<string, ElectrumPool>();
 const featurePoolInitPromises = new Map<string, Promise<ElectrumPool>>();
 const MAX_FEATURE_POOL_INSTANCES = 16;
+
+/**
+ * Network pools built while the node-config read failed (empty defaults), with
+ * when to re-read the config next. Without this the pool kept zero configured
+ * servers until a reset or restart.
+ */
+export const DEGRADED_POOL_RETRY_MS = 30_000;
+const degradedNetworkPools = new Map<NetworkType, { pool: ElectrumPool; retryAt: number }>();
+const degradedPoolProbes = new Map<NetworkType, Promise<void>>();
+
+function probeDegradedPool(network: NetworkType): void {
+  const degraded = degradedNetworkPools.get(network);
+  if (!degraded || degradedPoolProbes.has(network) || Date.now() < degraded.retryAt) return;
+  degraded.retryAt = Date.now() + DEGRADED_POOL_RETRY_MS;
+
+  void singleFlight(degradedPoolProbes, network, async () => {
+    const result = await loadPoolConfigFromDatabase(network, { serverUsage: 'general' });
+    if (result.loadFailed) return;
+    // Readable again: stop probing, and load the configured servers if this
+    // pool is still the registered one.
+    if (degradedNetworkPools.get(network)?.pool !== degraded.pool) return;
+    degradedNetworkPools.delete(network);
+    await degraded.pool.reloadServers();
+    log.info(`Electrum pool for ${network} reloaded after a failed config read`);
+  }).catch((error: unknown) => {
+    log.warn('Degraded Electrum pool config probe failed', { network, error: getErrorMessage(error) });
+  });
+}
 
 /**
  * Parse environment variables for pool configuration
@@ -128,8 +157,8 @@ async function trimFeaturePoolRegistry(maxPools: number): Promise<void> {
 async function createPool(
   network: NetworkType,
   scope: ElectrumPoolFeatureScope = {},
-): Promise<{ pool: ElectrumPool; serverCount: number }> {
-  const { config: dbConfig, servers, proxy } = await loadPoolConfigFromDatabase(
+): Promise<{ pool: ElectrumPool; serverCount: number; configLoadFailed: boolean }> {
+  const { config: dbConfig, servers, proxy, loadFailed } = await loadPoolConfigFromDatabase(
     network,
     scope,
   );
@@ -150,7 +179,7 @@ async function createPool(
   }
 
   await pool.initialize();
-  return { pool, serverCount: servers.length };
+  return { pool, serverCount: servers.length, configLoadFailed: loadFailed === true };
 }
 
 /**
@@ -162,6 +191,7 @@ export async function getElectrumPoolForNetwork(network: NetworkType): Promise<E
   // Fast path: pool already exists for this network
   const existingPool = networkPools.get(network);
   if (existingPool) {
+    probeDegradedPool(network);
     return existingPool;
   }
 
@@ -181,12 +211,15 @@ export async function getElectrumPoolForNetwork(network: NetworkType): Promise<E
 
     log.info(`Initializing Electrum pool for network: ${network}`);
 
-    const { pool, serverCount } = await createPool(network, {
+    const { pool, serverCount, configLoadFailed } = await createPool(network, {
       serverUsage: 'general',
     });
 
     // Store in registry
     networkPools.set(network, pool);
+    if (configLoadFailed) {
+      degradedNetworkPools.set(network, { pool, retryAt: Date.now() + DEGRADED_POOL_RETRY_MS });
+    }
 
     // Also set as the global pool instance if this is mainnet (backward compat)
     if (network === 'mainnet' && !poolInstance) {
@@ -306,6 +339,7 @@ export async function resetElectrumPoolForNetwork(network: NetworkType): Promise
   if (pool) {
     await shutdownPoolSafely(pool, { network, scope: 'network' });
     networkPools.delete(network);
+    degradedNetworkPools.delete(network);
     if (poolInstance === pool) {
       poolInstance = null;
     }
@@ -427,6 +461,7 @@ export async function shutdownElectrumPool(): Promise<void> {
   poolInitPromise = null;
   networkPoolInitPromises.clear();
   featurePoolInitPromises.clear();
+  degradedNetworkPools.clear();
 
   if (poolInstance) {
     await shutdownPoolSafely(poolInstance, { scope: 'global' });

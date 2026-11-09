@@ -183,13 +183,14 @@ describe('loadPoolConfigFromDatabase proxy credentials', () => {
     await expect(loadPoolConfigFromDatabase('mainnet')).rejects.toBeInstanceOf(ProxyConfigurationError);
   });
 
-  it('still resolves defaults for other load errors', async () => {
+  it('still resolves defaults for other load errors, flagged as a failed load', async () => {
     findDefaultWithServers.mockRejectedValue(new Error('db down'));
 
     await expect(loadPoolConfigFromDatabase('mainnet')).resolves.toEqual({
       config: {},
       servers: [],
       proxy: null,
+      loadFailed: true,
     });
   });
 });

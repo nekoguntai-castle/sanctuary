@@ -10,6 +10,13 @@ import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { BrowserRouter } from 'react-router-dom';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
+import { resetInMemoryUserPreferences } from '../../tests/mocks/inMemoryUserPreference';
+
+vi.mock('../../src/hooks/useUserPreference', () => import('../../tests/mocks/inMemoryUserPreference'));
+
+beforeEach(() => {
+  resetInMemoryUserPreferences();
+});
 
 // Mock admin API
 const mockCreateBackup = vi.fn();

@@ -14,6 +14,19 @@ const downloadSpies = vi.hoisted(() => ({
   downloadBlob: vi.fn(),
 }));
 
+const preference = vi.hoisted(() => ({
+  value: false,
+  key: '',
+  set: vi.fn((next: boolean) => { preference.value = next; }),
+}));
+
+vi.mock('../../../src/hooks/useUserPreference', () => ({
+  useUserPreference: (key: string) => {
+    preference.key = key;
+    return [preference.value, preference.set];
+  },
+}));
+
 const loggerSpies = vi.hoisted(() => ({
   error: vi.fn(),
   info: vi.fn(),
@@ -58,6 +71,7 @@ describe('useBackupHandlers branch coverage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    preference.value = false;
     vi.useFakeTimers();
 
     vi.mocked(adminApi.createBackup).mockResolvedValue(new Blob(['{}']) as never);
@@ -84,11 +98,28 @@ describe('useBackupHandlers branch coverage', () => {
     });
 
     expect(downloadSpies.downloadText).not.toHaveBeenCalled();
+    expect(preference.set).not.toHaveBeenCalled();
+  });
+
+  // Regression: "don't show again" lived in shared localStorage, so one
+  // admin's choice silenced the modal for every account in that browser.
+  it('stores "don\'t show again" in the signed-in user\'s preferences', () => {
+    const { result } = renderHook(() => useBackupHandlers(null));
+
+    act(() => {
+      result.current.setDontShowAgain(true);
+    });
+    act(() => {
+      result.current.dismissBackupCompleteModal();
+    });
+
+    expect(preference.key).toBe('viewSettings.backup.completeModalDismissed');
+    expect(preference.set).toHaveBeenCalledWith(true);
     expect(localStorage.getItem('sanctuary_backup_modal_dismissed')).toBeNull();
   });
 
   it('covers create backup success path and non-Error fallback message', async () => {
-    const getItemSpy = vi.spyOn(localStorage, 'getItem').mockReturnValue('true');
+    preference.value = true;
 
     const { result } = renderHook(() => useBackupHandlers(encryptionKeys));
 
@@ -108,7 +139,6 @@ describe('useBackupHandlers branch coverage', () => {
     expect(downloadSpies.downloadBlob).toHaveBeenCalledOnce();
     expect(result.current.backupSuccess).toBe(true);
     expect(result.current.showBackupCompleteModal).toBe(false);
-    getItemSpy.mockRestore();
 
     vi.mocked(adminApi.createBackup).mockRejectedValueOnce('nope' as never);
     await act(async () => {

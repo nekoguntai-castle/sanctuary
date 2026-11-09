@@ -19,6 +19,7 @@ import {
 import { createHash } from "crypto";
 import { decrypt } from "../../utils/encryption";
 import { getConfig } from "../../config";
+import { getRedisClient, isRedisConnected } from "../../infrastructure/redis";
 import type { AIConfig, ConfigSyncState } from "./types";
 import {
   AI_ACTIVE_PROVIDER_PROFILE_ID_KEY,
@@ -38,6 +39,40 @@ const log = createLogger("AI:CONFIG");
 
 // Re-sync config periodically to handle proxy restarts
 const CONFIG_RESYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+
+// One llm-egress-proxy serves every process (API replicas and the worker), and
+// it holds only the last config it was sent. This process's `configSyncState`
+// cannot see pushes from other processes, so the hash the proxy last received
+// is also recorded in Redis and a push is skipped only when both agree.
+const SHARED_PROXY_CONFIG_HASH_KEY = "ai:llm-egress-proxy:config-hash";
+const SHARED_PROXY_CONFIG_HASH_TTL_SEC = 24 * 60 * 60;
+
+/** `undefined` = no shared store (single process); `null` = unknown/missing. */
+async function readSharedProxyConfigHash(): Promise<string | null | undefined> {
+  const redis = getRedisClient();
+  if (!redis) return undefined;
+  if (!isRedisConnected()) return null; // unknown: push rather than skip
+  try {
+    return await redis.get(SHARED_PROXY_CONFIG_HASH_KEY);
+  } catch (error) {
+    log.warn("Could not read shared LLM egress proxy config marker", {
+      error: getErrorMessage(error),
+    });
+    return null;
+  }
+}
+
+async function recordSharedProxyConfigHash(hash: string): Promise<void> {
+  const redis = getRedisClient();
+  if (!redis || !isRedisConnected()) return;
+  try {
+    await redis.set(SHARED_PROXY_CONFIG_HASH_KEY, hash, "EX", SHARED_PROXY_CONFIG_HASH_TTL_SEC);
+  } catch (error) {
+    log.warn("Could not record shared LLM egress proxy config marker", {
+      error: getErrorMessage(error),
+    });
+  }
+}
 
 let configSyncState: ConfigSyncState = {
   lastHash: "",
@@ -153,19 +188,27 @@ function getActiveProviderCredentialSyncState(
   }
 }
 
+/** System settings that make up the config pushed to the LLM egress proxy. */
+export const AI_CONFIG_SETTING_KEYS: readonly string[] = [
+  "aiEnabled",
+  "aiEndpoint",
+  "aiModel",
+  AI_PROVIDER_PROFILES_KEY,
+  AI_ACTIVE_PROVIDER_PROFILE_ID_KEY,
+  AI_PROVIDER_CREDENTIALS_KEY,
+];
+
+/** A disabled config never carries the credential to the proxy. */
+function proxyConfigFor(config: AIConfig): AIConfig {
+  return config.enabled ? config : { ...config, apiKey: undefined };
+}
+
 /**
  * Get AI configuration from system settings
  */
 export async function getAIConfig(): Promise<AIConfig> {
   try {
-    const settings = await systemSettingRepository.findByKeys([
-      "aiEnabled",
-      "aiEndpoint",
-      "aiModel",
-      AI_PROVIDER_PROFILES_KEY,
-      AI_ACTIVE_PROVIDER_PROFILE_ID_KEY,
-      AI_PROVIDER_CREDENTIALS_KEY,
-    ]);
+    const settings = await systemSettingRepository.findByKeys([...AI_CONFIG_SETTING_KEYS]);
 
     let enabled = false;
     let endpoint = "";
@@ -296,7 +339,10 @@ export async function syncConfigToLlmEgressProxyResult(
     configSyncState.syncSuccess &&
     timeSinceLastSync < CONFIG_RESYNC_INTERVAL_MS
   ) {
-    return { success: true };
+    const sharedHash = await readSharedProxyConfigHash();
+    if (sharedHash === undefined || sharedHash === currentHash) {
+      return { success: true };
+    }
   }
 
   // Warn if no secret is configured
@@ -338,6 +384,7 @@ export async function syncConfigToLlmEgressProxyResult(
         reason: syncResult.reason,
       });
     } else {
+      await recordSharedProxyConfigHash(currentHash);
       log.info("AI config synced to LLM egress proxy");
     }
 
@@ -392,11 +439,12 @@ export async function ensureLlmProxyConfigured(
 
 /**
  * Force sync configuration to LLM egress proxy
- * Called when admin updates AI settings
+ * Called when admin updates AI settings (adminSettingsService), so a disable
+ * reaches the shared proxy at once and clears the credential it held.
  */
 export async function forceSyncConfig(): Promise<boolean> {
   const config = await getAIConfig();
-  return syncConfigToLlmEgressProxy(config, true);
+  return syncConfigToLlmEgressProxy(proxyConfigFor(config), true);
 }
 
 /**

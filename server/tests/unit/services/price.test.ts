@@ -88,6 +88,12 @@ const { mockProviderSettingsState } = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../src/services/price/providerSettings', () => ({
+  readPersistedPriceProviderConfig: vi.fn(async () => ({
+    version: 1,
+    enabled: mockProviderSettingsState.enabled,
+    updatedAt: '2026-04-29T00:00:00.000Z',
+    updatedBy: null,
+  })),
   readPriceProviderConfig: vi.fn(async () => ({
     version: 1,
     enabled: mockProviderSettingsState.enabled,
@@ -648,6 +654,83 @@ describe('Price Service', () => {
       await priceService.setProviderEnabled('binance', false, 'admin-1');
 
       expect(priceService.getProviders()).not.toContain('binance');
+    });
+  });
+
+  describe('cross-process provider config', () => {
+    // Regression: an admin toggle reloaded providers only in the API process
+    // that served it; the worker kept calling a disabled provider until restart.
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('picks up a provider change persisted by another process', async () => {
+      mockedAxios.get.mockResolvedValue({ data: { USD: 50000 } });
+      const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+      await priceService.getPrice('USD', false);
+      expect(priceService.getProviders()).toContain('kraken');
+
+      // Another process disables kraken and persists it.
+      mockProviderSettingsState.enabled = ['mempool', 'coingecko', 'coinbase'];
+      await priceService.getPrice('USD', false);
+      expect(priceService.getProviders()).toContain('kraken'); // within refresh interval
+
+      now.mockReturnValue(1_000_000 + 31_000);
+      await priceService.getPrice('USD', false);
+      expect(priceService.getProviders()).not.toContain('kraken');
+    });
+
+    it('does not revert a local reload that lands during the refresh read', async () => {
+      const { readPersistedPriceProviderConfig } = await import('../../../src/services/price/providerSettings');
+      mockedAxios.get.mockResolvedValue({ data: { USD: 50000 } });
+      const now = vi.spyOn(Date, 'now').mockReturnValue(4_000_000);
+      await priceService.getPrice('USD', false);
+
+      let releaseRead!: () => void;
+      vi.mocked(readPersistedPriceProviderConfig).mockImplementationOnce(() => new Promise((resolve) => {
+        releaseRead = () => resolve({
+          version: 1,
+          enabled: ['mempool', 'coingecko', 'kraken', 'coinbase'],
+          updatedAt: '2026-04-29T00:00:00.000Z',
+          updatedBy: null,
+        } as any);
+      }));
+      now.mockReturnValue(4_000_000 + 31_000);
+      const reading = priceService.getPrice('USD', false);
+      await Promise.resolve();
+      await priceService.reloadProviders(['mempool']); // admin toggle in this process
+      releaseRead();
+      await reading;
+
+      expect(priceService.getProviders()).toEqual(['mempool']);
+    });
+
+    it('keeps the current providers when a refresh reload fails', async () => {
+      mockedAxios.get.mockResolvedValue({ data: { USD: 50000 } });
+      const now = vi.spyOn(Date, 'now').mockReturnValue(3_000_000);
+      await priceService.getPrice('USD', false);
+      const before = priceService.getProviders();
+
+      mockProviderSettingsState.enabled = ['mempool'];
+      vi.spyOn(priceService, 'reloadProviders').mockRejectedValueOnce(new Error('init failed'));
+      now.mockReturnValue(3_000_000 + 31_000);
+
+      await expect(priceService.getPrice('USD', false)).resolves.toBeDefined();
+      expect(priceService.getProviders()).toEqual(before);
+    });
+
+    it('keeps the current providers when the persisted config cannot be read', async () => {
+      const { readPersistedPriceProviderConfig } = await import('../../../src/services/price/providerSettings');
+      mockedAxios.get.mockResolvedValue({ data: { USD: 50000 } });
+      const now = vi.spyOn(Date, 'now').mockReturnValue(2_000_000);
+      mockProviderSettingsState.enabled = ['mempool', 'coingecko'];
+      await priceService.reloadProviders(['mempool', 'coingecko']);
+
+      vi.mocked(readPersistedPriceProviderConfig).mockResolvedValueOnce(null);
+      now.mockReturnValue(2_000_000 + 31_000);
+      await priceService.getPrice('USD', false);
+
+      expect(priceService.getProviders()).toEqual(['mempool', 'coingecko']);
     });
   });
 

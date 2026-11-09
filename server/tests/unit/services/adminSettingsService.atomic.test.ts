@@ -2,6 +2,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ updateAtomically: vi.fn(), getAll: vi.fn(), findByKeys: vi.fn(), set: vi.fn(), clear: vi.fn() }));
 vi.mock('../../../src/repositories', () => ({ systemSettingRepository: mocks }));
 vi.mock('../../../src/services/email', () => ({ clearTransporterCache: mocks.clear }));
+vi.mock('../../../src/services/ai/config', () => ({ AI_CONFIG_SETTING_KEYS: ['aiEnabled', 'aiEndpoint', 'aiModel'], forceSyncConfig: async () => true }));
 vi.mock('../../../src/utils/encryption', () => ({ encrypt: (value: string) => `enc:${value}`, isEncrypted: (value: string) => value.startsWith('enc:') }));
 import { updateAdminSettings } from '../../../src/services/adminSettingsService';
 beforeEach(() => vi.resetAllMocks());

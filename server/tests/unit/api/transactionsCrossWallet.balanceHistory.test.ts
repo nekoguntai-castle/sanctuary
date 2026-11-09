@@ -4,7 +4,7 @@ import request from 'supertest';
 import { mockPrismaClient, resetPrismaMocks } from '../../mocks/prisma';
 
 const mocks = vi.hoisted(() => ({
-  getCachedBlockHeight: vi.fn(),
+  getConfirmationTipHeight: vi.fn(),
   cacheGet: vi.fn(),
   cacheSet: vi.fn(),
 }));
@@ -27,7 +27,7 @@ vi.mock('../../../src/models/prisma', async () => {
 });
 
 vi.mock('../../../src/services/bitcoin/blockchain', () => ({
-  getCachedBlockHeight: mocks.getCachedBlockHeight,
+  getConfirmationTipHeight: mocks.getConfirmationTipHeight,
 }));
 
 vi.mock('../../../src/utils/logger', () => ({
@@ -59,7 +59,7 @@ describe('GET /transactions/balance-history', () => {
   beforeEach(() => {
     resetPrismaMocks();
     vi.clearAllMocks();
-    mocks.getCachedBlockHeight.mockReturnValue(850000);
+    mocks.getConfirmationTipHeight.mockResolvedValue(850000);
     mocks.cacheGet.mockResolvedValue(null);
     mocks.cacheSet.mockResolvedValue(undefined);
     (mockPrismaClient as any).$queryRaw = vi.fn().mockResolvedValue([]);

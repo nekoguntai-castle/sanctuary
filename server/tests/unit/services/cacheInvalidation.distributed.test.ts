@@ -4,8 +4,27 @@ type Handler = (data: any) => unknown;
 
 const distributedBus = vi.hoisted(() => {
   const handlers = new Map<string, Set<Handler>>();
+  const remoteHandlers = new Map<string, Set<Handler>>();
   return {
     handlers,
+    remoteHandlers,
+    published: [] as Array<{ event: string; data: unknown }>,
+    onRemote: vi.fn((event: string, handler: Handler) => {
+      const listeners = remoteHandlers.get(event) ?? new Set<Handler>();
+      listeners.add(handler);
+      remoteHandlers.set(event, listeners);
+      return () => listeners.delete(handler);
+    }),
+    /** Distributed publish from this process (local echo not delivered to onRemote). */
+    publish: vi.fn(function publish(this: void, event: string, data: unknown) {
+      distributedBus.published.push({ event, data });
+    }),
+    /** Delivery of an event published by another instance. */
+    deliverRemote: async (event: string, data: unknown) => {
+      await Promise.all(
+        [...(remoteHandlers.get(event) ?? [])].map(handler => handler(data)),
+      );
+    },
     on: vi.fn((event: string, handler: Handler) => {
       const listeners = handlers.get(event) ?? new Set<Handler>();
       listeners.add(handler);
@@ -28,7 +47,11 @@ const cacheMocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../src/infrastructure', () => ({
-  getDistributedEventBus: () => distributedBus,
+  getDistributedEventBus: () => ({
+    on: distributedBus.on,
+    onRemote: distributedBus.onRemote,
+    emit: distributedBus.publish,
+  }),
 }));
 
 vi.mock('../../../src/services/cache', () => ({
@@ -56,6 +79,8 @@ describe('cache invalidation event-bus ownership', () => {
   beforeEach(() => {
     shutdownCacheInvalidation();
     distributedBus.handlers.clear();
+    distributedBus.remoteHandlers.clear();
+    distributedBus.published.length = 0;
     vi.clearAllMocks();
   });
 
@@ -85,5 +110,90 @@ describe('cache invalidation event-bus ownership', () => {
       expect.any(Function),
     );
     expect(eventBus.listenerCount('transaction:confirmed')).toBeGreaterThan(0);
+  });
+
+  // Regression: deletes, balance changes and transaction events invalidated
+  // only the in-memory wallet caches of the process that saw them, so other
+  // API replicas served stale balance history/stats until their TTL expired.
+  it('publishes local wallet invalidations for other processes', async () => {
+    initializeCacheInvalidation();
+
+    eventBus.emit('wallet:deleted', { walletId: 'deleted-wallet' } as any);
+
+    await vi.waitFor(() => {
+      expect(distributedBus.published).toContainEqual({
+        event: 'cache:invalidated',
+        data: { scope: 'wallet', walletId: 'deleted-wallet' },
+      });
+    });
+  });
+
+  it('coalesces a burst of invalidations into one publish per wallet', async () => {
+    initializeCacheInvalidation();
+
+    for (const txid of ['a', 'b', 'c']) {
+      eventBus.emit('transaction:confirmed', { walletId: 'busy-wallet', txid, confirmations: 1, blockHeight: 1 });
+    }
+    eventBus.emit('transaction:confirmed', { walletId: 'other-wallet', txid: 'd', confirmations: 1, blockHeight: 1 });
+
+    await vi.waitFor(() => {
+      expect(distributedBus.published).toHaveLength(2);
+    });
+    expect(distributedBus.published).toEqual(expect.arrayContaining([
+      { event: 'cache:invalidated', data: { scope: 'wallet', walletId: 'busy-wallet' } },
+      { event: 'cache:invalidated', data: { scope: 'wallet', walletId: 'other-wallet' } },
+    ]));
+  });
+
+  it('flushes pending publishes on shutdown', async () => {
+    initializeCacheInvalidation();
+    eventBus.emit('wallet:deleted', { walletId: 'closing-wallet' } as any);
+    await vi.waitFor(() => expect(cacheMocks.wallet.delete).toHaveBeenCalledWith('tx-stats:closing-wallet'));
+
+    shutdownCacheInvalidation();
+
+    expect(distributedBus.published).toContainEqual({
+      event: 'cache:invalidated',
+      data: { scope: 'wallet', walletId: 'closing-wallet' },
+    });
+  });
+
+  it('applies wallet invalidations published by other processes', async () => {
+    initializeCacheInvalidation();
+
+    await distributedBus.deliverRemote('cache:invalidated', { scope: 'wallet', walletId: 'remote-wallet' });
+
+    expect(cacheMocks.wallet.delete).toHaveBeenCalledWith('tx-stats:remote-wallet');
+    expect(distributedBus.published).toHaveLength(0); // never re-published
+  });
+
+  it('applies remote price and fee invalidations and ignores malformed ones', async () => {
+    const cache = await import('../../../src/services/cache');
+    initializeCacheInvalidation();
+
+    await distributedBus.deliverRemote('cache:invalidated', { scope: 'price' });
+    await distributedBus.deliverRemote('cache:invalidated', { scope: 'fees' });
+    await distributedBus.deliverRemote('cache:invalidated', { scope: 'wallet' });
+    await distributedBus.deliverRemote('cache:invalidated', { scope: 'wallet', walletId: '' });
+    await distributedBus.deliverRemote('cache:invalidated', { scope: 'everything' });
+    await distributedBus.deliverRemote('cache:invalidated', null);
+
+    expect(cache.priceCache.clear).toHaveBeenCalledTimes(1);
+    expect(cache.feeCache.clear).toHaveBeenCalledTimes(1);
+    expect(cacheMocks.wallet.delete).not.toHaveBeenCalled();
+  });
+
+  it('publishes local price and fee invalidations', async () => {
+    initializeCacheInvalidation();
+
+    eventBus.emit('blockchain:priceUpdated', { price: 1 } as any);
+    eventBus.emit('blockchain:feeEstimateUpdated', { fastest: 1 } as any);
+
+    await vi.waitFor(() => {
+      expect(distributedBus.published).toEqual(expect.arrayContaining([
+        { event: 'cache:invalidated', data: { scope: 'price' } },
+        { event: 'cache:invalidated', data: { scope: 'fees' } },
+      ]));
+    });
   });
 });

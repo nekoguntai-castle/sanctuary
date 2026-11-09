@@ -13,6 +13,7 @@ import { useAppNotifications } from '../../../contexts/AppNotificationContext';
 import { downloadText, downloadBlob } from '../../../utils/download';
 import { safeJsonParse } from '../../../utils/safeJson';
 import { useLatestRequest } from '../../../hooks/useLatestRequest';
+import { useUserPreference } from '../../../hooks/useUserPreference';
 import type { FetchToken } from '../../../hooks/requestOwnership';
 import { isRestoreOutcomeUnknown, RESTORE_OUTCOME_UNKNOWN_MESSAGE } from './restoreOutcome';
 import { restoreWarningNotification, stashRestoreWarnings } from './restoreWarningsHandoff';
@@ -20,7 +21,8 @@ import { restoreWarningNotification, stashRestoreWarnings } from './restoreWarni
 const log = createLogger('BackupRestore');
 
 // Local storage key for "don't show again" preference
-const BACKUP_MODAL_DISMISSED_KEY = 'sanctuary_backup_modal_dismissed';
+// Per account (server-side preferences), not shared browser storage.
+const BACKUP_MODAL_DISMISSED_PREFERENCE = 'viewSettings.backup.completeModalDismissed';
 
 type TimeoutHandle = ReturnType<typeof setTimeout>;
 
@@ -56,6 +58,10 @@ export function useBackupHandlers(encryptionKeys: EncryptionKeysResponse | null)
   // Post-backup modal state
   const [showBackupCompleteModal, setShowBackupCompleteModal] = useState(false);
   const [dontShowAgain, setDontShowAgain] = useState(false);
+  const [backupModalDismissed, setBackupModalDismissed] = useUserPreference(
+    BACKUP_MODAL_DISMISSED_PREFERENCE,
+    false,
+  );
 
   // Clipboard state
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -139,8 +145,7 @@ ENCRYPTION_SALT=${encryptionKeys.encryptionSalt}
       setDescription('');
 
       // Show backup complete modal if not dismissed
-      const isDismissed = localStorage.getItem(BACKUP_MODAL_DISMISSED_KEY) === 'true';
-      if (!isDismissed) {
+      if (!backupModalDismissed) {
         setShowBackupCompleteModal(true);
       }
 
@@ -280,7 +285,7 @@ ENCRYPTION_SALT=${encryptionKeys.encryptionSalt}
    */
   const dismissBackupCompleteModal = () => {
     if (dontShowAgain) {
-      localStorage.setItem(BACKUP_MODAL_DISMISSED_KEY, 'true');
+      setBackupModalDismissed(true);
     }
     setShowBackupCompleteModal(false);
     setDontShowAgain(false);

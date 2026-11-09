@@ -19,7 +19,7 @@ vi.mock('../../../../src/models/prisma', async () => {
 // Mock blockchain service
 vi.mock('../../../../src/services/bitcoin/blockchain', () => ({
   getBlockHeight: vi.fn().mockResolvedValue(850000),
-  getCachedBlockHeight: vi.fn().mockReturnValue(850000),
+  getConfirmationTipHeight: vi.fn().mockResolvedValue(850000),
   broadcastTransaction: vi.fn().mockResolvedValue('mock-txid'),
 }));
 

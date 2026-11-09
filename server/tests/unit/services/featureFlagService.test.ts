@@ -976,6 +976,21 @@ describe('Feature Flag Service', () => {
       });
     });
 
+    // Regression: the database fallback wrote into the local cache outside
+    // the snapshot machinery, so a process that never runs initialize()
+    // (no poll, no event install) kept that value forever.
+    it('does not pin a database fallback value in the local cache', async () => {
+      (featureFlagService as any).localCache.delete('aiAssistant');
+      mockCache.get.mockResolvedValue(null);
+      mockPrisma.featureFlag.findUnique.mockResolvedValueOnce({ key: 'aiAssistant', enabled: true });
+
+      await expect(featureFlagService.isEnabled('aiAssistant')).resolves.toBe(true);
+
+      mockPrisma.featureFlag.findUnique.mockResolvedValueOnce({ key: 'aiAssistant', enabled: false });
+      await expect(featureFlagService.isEnabled('aiAssistant')).resolves.toBe(false);
+      expect((featureFlagService as any).localCache.has('aiAssistant')).toBe(false);
+    });
+
     it('should fall back to environment config if database misses', async () => {
       mockCache.get.mockResolvedValue(null);
       mockPrisma.featureFlag.findUnique.mockResolvedValue(null);

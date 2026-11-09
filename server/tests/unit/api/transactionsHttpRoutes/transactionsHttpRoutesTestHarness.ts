@@ -3,7 +3,7 @@ import express, { type Express } from 'express';
 import { resetPrismaMocks } from '../../../mocks/prisma';
 
 const {
-  mockGetCachedBlockHeight,
+  mockGetConfirmationTipHeight,
   mockRecalculateWalletBalances,
   mockWalletCacheGet,
   mockWalletCacheSet,
@@ -35,7 +35,7 @@ const {
   mockBuildIntentPolicyInput,
   DefiniteBroadcastRejectionError,
 } = vi.hoisted(() => ({
-  mockGetCachedBlockHeight: vi.fn(),
+  mockGetConfirmationTipHeight: vi.fn(),
   mockRecalculateWalletBalances: vi.fn(),
   mockWalletCacheGet: vi.fn(),
   mockWalletCacheSet: vi.fn(),
@@ -132,7 +132,7 @@ vi.mock('../../../../src/middleware/walletAccess', () => ({
 }));
 
 vi.mock('../../../../src/services/bitcoin/blockchain', () => ({
-  getCachedBlockHeight: mockGetCachedBlockHeight,
+  getConfirmationTipHeight: mockGetConfirmationTipHeight,
   recalculateWalletBalances: mockRecalculateWalletBalances,
 }));
 
@@ -274,7 +274,7 @@ export function setupTransactionHttpRouteHooks(): void {
     resetPrismaMocks();
     vi.clearAllMocks();
 
-    mockGetCachedBlockHeight.mockReturnValue(850000);
+    mockGetConfirmationTipHeight.mockResolvedValue(850000);
     mockRecalculateWalletBalances.mockResolvedValue(undefined);
     mockWalletCacheGet.mockResolvedValue(null);
     mockWalletCacheSet.mockResolvedValue(undefined);
@@ -384,7 +384,7 @@ export function setupTransactionHttpRouteHooks(): void {
 }
 
 export {
-  mockGetCachedBlockHeight,
+  mockGetConfirmationTipHeight,
   mockRecalculateWalletBalances,
   mockWalletCacheGet,
   mockWalletCacheSet,

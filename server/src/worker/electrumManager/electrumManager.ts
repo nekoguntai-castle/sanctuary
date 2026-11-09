@@ -24,8 +24,10 @@ import {
 } from '../../infrastructure';
 import { resetNodeClient } from '../../services/bitcoin/nodeClient';
 import { reloadElectrumServers } from '../../services/bitcoin/electrumPool';
-import { ELECTRUM_CONFIG_CHANGED_EVENT } from '../../services/bitcoin/electrumConfigChanges';
-import { applyElectrumConfigChange, isElectrumConfigChange } from './configChanges';
+import {
+  ELECTRUM_CONFIG_CHANGED_EVENT,
+  createElectrumConfigChangeHandler,
+} from '../../services/bitcoin/electrumConfigChanges';
 import { HEALTH_CHECK_INTERVAL_MS, ELECTRUM_SUBSCRIPTION_LOCK_RETRY_MS } from './types';
 import type {
   AddressWalletInfo,
@@ -69,7 +71,6 @@ export class ElectrumSubscriptionManager {
   private explicitlyStopped = false;
   private networkConnections = new Map<BitcoinNetwork, Promise<void>>();
   private configChangeUnsubscribe: (() => void) | null = null;
-  private configChangeChain: Promise<void> = Promise.resolve();
 
   constructor(callbacks: ElectrumManagerCallbacks) {
     this.callbacks = callbacks;
@@ -191,34 +192,14 @@ export class ElectrumSubscriptionManager {
   }
 
   /**
-   * Apply a Node Config / Electrum server change published by the API.
-   * Changes are chained so they apply in arrival order and never interleave.
-   * A malformed payload is dropped before it reaches the chain, and a failed
-   * change is logged without rejecting the chain, so neither blocks later changes.
+   * Apply a Node Config / Electrum server change published by the API
+   * (serialized; see createElectrumConfigChangeHandler).
    */
-  private handleConfigChange(change: unknown): Promise<void> {
-    if (!isElectrumConfigChange(change)) {
-      log.warn('Ignoring malformed Electrum config change', {
-        scope: (change as { scope?: unknown } | null | undefined)?.scope,
-      });
-      return this.configChangeChain;
-    }
-    const { scope, network } = change;
-    this.configChangeChain = this.configChangeChain
-      .then(() => applyElectrumConfigChange(change, {
-        resetNodeClient,
-        reloadElectrumServers,
-        reconnectSubscriptions: (net) => this.reconnectSubscriptionsForConfigChange(net),
-      }))
-      .catch((error: unknown) => {
-        log.error('Failed to apply Electrum config change', {
-          scope,
-          network,
-          error: getErrorMessage(error),
-        });
-      });
-    return this.configChangeChain;
-  }
+  private readonly handleConfigChange = createElectrumConfigChangeHandler({
+    resetNodeClient,
+    reloadElectrumServers,
+    reconnectSubscriptions: (net) => this.reconnectSubscriptionsForConfigChange(net),
+  }, log);
 
   /**
    * After a node-config reset the subscription clients are closed (and the

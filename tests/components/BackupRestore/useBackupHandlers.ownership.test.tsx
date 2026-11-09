@@ -4,6 +4,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useBackupHandlers } from '../../../src/components/BackupRestore/hooks/useBackupHandlers';
 import * as adminApi from '../../../src/api/admin';
 import type { ValidationResult } from '../../../src/api/admin';
+import { resetInMemoryUserPreferences } from '../../../tests/mocks/inMemoryUserPreference';
+
+vi.mock('../../../src/hooks/useUserPreference', () => import('../../../tests/mocks/inMemoryUserPreference'));
+
+beforeEach(() => {
+  resetInMemoryUserPreferences();
+});
 
 const log = vi.hoisted(() => ({ error: vi.fn() }));
 vi.mock('../../../src/utils/logger', () => ({ createLogger: () => log }));

@@ -23,7 +23,11 @@ import {
   sanitizeAIProviderProfileSettingsUpdate,
 } from './ai/providerProfileSettings';
 import { AI_PROVIDER_CREDENTIALS_KEY } from './ai/providerCredentials';
+import { AI_CONFIG_SETTING_KEYS, forceSyncConfig } from './ai/config';
 import { isOperationalSystemSettingKey } from '../repositories/operationalSystemSettings';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('ADMIN:SVC_SETTINGS');
 
 type StoredSetting = {
   key: string;
@@ -89,9 +93,11 @@ export async function updateAdminSettings(updates: AdminSettingsUpdate): Promise
     throw new InvalidInputError(`System setting '${operationalKey}' is managed by the runtime`);
   }
   validateDustThreshold(updates);
+  let writtenKeys: string[] = [];
   const committed = await systemSettingRepository.updateAtomically(current => {
     validateConfirmationThresholds(updates, current);
     const normalized = normalizeAdminSettingsUpdates(updates, current);
+    writtenKeys = Object.keys(normalized);
     return Object.entries(normalized).map(([key, value]) => {
       const serialized = serializeSetting(key, value);
       return { key, value: serialized };
@@ -99,6 +105,14 @@ export async function updateAdminSettings(updates: AdminSettingsUpdate): Promise
   });
   if (Object.keys(updates).some(key => smtpKeys.includes(key))) {
     clearTransporterCache();
+  }
+  if (writtenKeys.some(key => AI_CONFIG_SETTING_KEYS.includes(key))) {
+    // Push the saved provider config (or its disablement) to the shared LLM
+    // egress proxy now, rather than leaving each process to notice later.
+    // Never throws; on failure each process's next AI call re-syncs.
+    if (!(await forceSyncConfig())) {
+      log.warn('AI config sync to the LLM egress proxy failed after settings update');
+    }
   }
   return buildAdminSettingsResponse(committed);
 }

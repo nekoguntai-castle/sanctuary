@@ -13,7 +13,7 @@ import {
   mockEstimateTransaction,
   mockEvaluatePolicies,
   mockFetch,
-  mockGetCachedBlockHeight,
+  mockGetConfirmationTipHeight,
   mockGetPSBTInfo,
   mockRecalculateWalletBalances,
   mockRecordUsage,
@@ -222,7 +222,7 @@ export function registerTransactionHttpReadTests(): void {
 
   it("falls back to mainnet network and stored confirmations when cached height is unavailable", async () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue(null);
-    mockGetCachedBlockHeight.mockReturnValueOnce(0);
+    mockGetConfirmationTipHeight.mockResolvedValueOnce(0);
     mockPrismaClient.transaction.findMany.mockResolvedValue([
       {
         id: "tx-mainnet-default",
@@ -246,7 +246,7 @@ export function registerTransactionHttpReadTests(): void {
     );
 
     expect(response.status).toBe(200);
-    expect(mockGetCachedBlockHeight).toHaveBeenCalledWith("mainnet");
+    expect(mockGetConfirmationTipHeight).toHaveBeenCalledWith("mainnet");
     expect(response.body[0].confirmations).toBe(7);
   });
 
@@ -254,7 +254,7 @@ export function registerTransactionHttpReadTests(): void {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({
       network: "testnet",
     });
-    mockGetCachedBlockHeight.mockReturnValueOnce(850000);
+    mockGetConfirmationTipHeight.mockResolvedValueOnce(850000);
     mockPrismaClient.transaction.findMany.mockResolvedValue([
       {
         id: "tx-zero-height",

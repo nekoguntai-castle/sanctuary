@@ -21,7 +21,7 @@ const makeSegwitPendingTransaction = (): bitcoin.Transaction => {
 };
 
 const mocks = vi.hoisted(() => ({
-  getCachedBlockHeight: vi.fn(),
+  getConfirmationTipHeight: vi.fn(),
   cacheGet: vi.fn(),
   cacheSet: vi.fn(),
 }));
@@ -44,7 +44,7 @@ vi.mock('../../../src/models/prisma', async () => {
 });
 
 vi.mock('../../../src/services/bitcoin/blockchain', () => ({
-  getCachedBlockHeight: mocks.getCachedBlockHeight,
+  getConfirmationTipHeight: mocks.getConfirmationTipHeight,
 }));
 
 vi.mock('../../../src/utils/logger', () => ({
@@ -76,7 +76,7 @@ describe('transactions cross-wallet routes', () => {
   beforeEach(() => {
     resetPrismaMocks();
     vi.clearAllMocks();
-    mocks.getCachedBlockHeight.mockReturnValue(850000);
+    mocks.getConfirmationTipHeight.mockResolvedValue(850000);
     mocks.cacheGet.mockResolvedValue(null);
     mocks.cacheSet.mockResolvedValue(undefined);
     (mockPrismaClient as any).$queryRaw = vi.fn().mockResolvedValue([]);
@@ -113,7 +113,7 @@ describe('transactions cross-wallet routes', () => {
         rbfStatus: null,
       },
     ]);
-    mocks.getCachedBlockHeight.mockReturnValue(850000);
+    mocks.getConfirmationTipHeight.mockResolvedValue(850000);
 
     const response = await request(app).get('/api/v1/transactions/recent').query({ limit: '5' });
 
@@ -168,7 +168,7 @@ describe('transactions cross-wallet routes', () => {
         rbfStatus: null,
       },
     ]);
-    mocks.getCachedBlockHeight.mockReturnValue(0);
+    mocks.getConfirmationTipHeight.mockResolvedValue(0);
 
     const response = await request(app)
       .get('/api/v1/transactions/recent')
@@ -208,7 +208,7 @@ describe('transactions cross-wallet routes', () => {
         rbfStatus: null,
       },
     ]);
-    mocks.getCachedBlockHeight.mockReturnValue(850000);
+    mocks.getConfirmationTipHeight.mockResolvedValue(850000);
 
     const response = await request(app).get('/api/v1/transactions/recent');
 
@@ -405,7 +405,7 @@ describe('transactions cross-wallet routes', () => {
         },
       },
     ]);
-    mocks.getCachedBlockHeight.mockReturnValue(850000);
+    mocks.getConfirmationTipHeight.mockResolvedValue(850000);
 
     const response = await request(app).get('/api/v1/transactions/recent');
 
@@ -523,7 +523,7 @@ describe('transactions cross-wallet routes', () => {
           rbfStatus: null,
         },
       ]);
-      mocks.getCachedBlockHeight.mockReturnValue(850000);
+      mocks.getConfirmationTipHeight.mockResolvedValue(850000);
 
       const response = await request(app)
         .get('/api/v1/transactions/recent')

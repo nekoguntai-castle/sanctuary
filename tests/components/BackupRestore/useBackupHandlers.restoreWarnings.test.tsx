@@ -8,6 +8,13 @@ import {
   AppNotificationProvider,
   useAppNotifications,
 } from '../../../src/contexts/AppNotificationContext';
+import { resetInMemoryUserPreferences } from '../../../tests/mocks/inMemoryUserPreference';
+
+vi.mock('../../../src/hooks/useUserPreference', () => import('../../../tests/mocks/inMemoryUserPreference'));
+
+beforeEach(() => {
+  resetInMemoryUserPreferences();
+});
 
 const HANDOFF_KEY = 'sanctuary_restore_warnings_handoff';
 

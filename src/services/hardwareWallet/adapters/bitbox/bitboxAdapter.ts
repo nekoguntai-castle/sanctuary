@@ -5,6 +5,7 @@
  * Supports BitBox02 Multi and BitBox02 Bitcoin-only editions.
  */
 
+import { memoizeUntilRejected } from '../../../../utils/memoizeUntilRejected';
 import { createLogger } from '../../../../utils/logger';
 import { isTestnetPath } from '../../pathUtils';
 import { BITBOX_VENDOR_ID, BITBOX_PRODUCT_ID } from './types';
@@ -24,30 +25,9 @@ type BitBoxApiModule = typeof import('bitbox02-api');
 type BitBoxPathUtilsModule = typeof import('./pathUtils');
 type BitBoxSignModule = typeof import('./signPsbt');
 
-let bitBoxApiModulePromise: Promise<BitBoxApiModule> | null = null;
-let bitBoxPathUtilsModulePromise: Promise<BitBoxPathUtilsModule> | null = null;
-let bitBoxSignModulePromise: Promise<BitBoxSignModule> | null = null;
-
-const loadBitBoxApiModule = async (): Promise<BitBoxApiModule> => {
-  if (!bitBoxApiModulePromise) {
-    bitBoxApiModulePromise = import('bitbox02-api');
-  }
-  return bitBoxApiModulePromise;
-};
-
-const loadBitBoxPathUtilsModule = async (): Promise<BitBoxPathUtilsModule> => {
-  if (!bitBoxPathUtilsModulePromise) {
-    bitBoxPathUtilsModulePromise = import('./pathUtils');
-  }
-  return bitBoxPathUtilsModulePromise;
-};
-
-const loadBitBoxSignModule = async (): Promise<BitBoxSignModule> => {
-  if (!bitBoxSignModulePromise) {
-    bitBoxSignModulePromise = import('./signPsbt');
-  }
-  return bitBoxSignModulePromise;
-};
+const loadBitBoxApiModule = memoizeUntilRejected<BitBoxApiModule>(() => import('bitbox02-api'));
+const loadBitBoxPathUtilsModule = memoizeUntilRejected<BitBoxPathUtilsModule>(() => import('./pathUtils'));
+const loadBitBoxSignModule = memoizeUntilRejected<BitBoxSignModule>(() => import('./signPsbt'));
 
 const isAbortError = async (error: unknown): Promise<boolean> => {
   try {

@@ -30,7 +30,7 @@ const mockCreateSigningIntent = vi.fn();
 const mockLoadSigningIntent = vi.fn();
 const mockValidateSignedArtifact = vi.fn();
 const mockFindDraftBySigningIntent = vi.fn();
-const mockGetCachedBlockHeight = vi.fn();
+const mockGetConfirmationTipHeight = vi.fn();
 const mockAuditLogFromRequest = vi.fn();
 
 vi.mock('../../../src/services/bitcoin/utils', async () => {
@@ -78,7 +78,7 @@ vi.mock('../../../src/services/bitcoin/blockchain', async () => {
   );
   return {
     ...actual,
-    getCachedBlockHeight: (...args: unknown[]) => mockGetCachedBlockHeight(...args),
+    getConfirmationTipHeight: (...args: unknown[]) => mockGetConfirmationTipHeight(...args),
   };
 });
 
@@ -128,7 +128,7 @@ describeWithDb('Transaction Creation and Cross-Wallet Integration', () => {
     vi.clearAllMocks();
 
     mockValidateAddress.mockReturnValue({ valid: true });
-    mockGetCachedBlockHeight.mockReturnValue(800000);
+    mockGetConfirmationTipHeight.mockResolvedValue(800000);
     mockAuditLogFromRequest.mockResolvedValue(undefined);
     mockCreateSigningIntent.mockResolvedValue({
       intentId: 'intent-1',

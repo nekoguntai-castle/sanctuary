@@ -62,7 +62,7 @@ describeWithDb('Transaction API Integration', () => {
 
     // Mock blockchain service functions
     vi.doMock('../../../src/services/bitcoin/blockchain', () => ({
-      getCachedBlockHeight: vi.fn().mockReturnValue(800000),
+      getConfirmationTipHeight: vi.fn().mockResolvedValue(800000),
       recalculateWalletBalances: vi.fn().mockResolvedValue(undefined),
       broadcastTransaction: vi.fn().mockResolvedValue({ txid: 'mock-broadcast-txid', broadcasted: true }),
     }));

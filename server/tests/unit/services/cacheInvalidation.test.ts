@@ -325,7 +325,7 @@ describe('CacheInvalidation', () => {
       initializeCacheInvalidation();
       expect(getCacheInvalidationStatus()).toEqual({
         initialized: true,
-        listeners: 9,
+        listeners: 10,
       });
 
       shutdownCacheInvalidation();

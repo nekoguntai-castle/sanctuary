@@ -4,12 +4,20 @@ const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
   systemSettingFindMany: vi.fn(),
   decrypt: vi.fn((value: string) => value),
+  // Shared Redis client for the proxy config marker; null = no Redis.
+  redisConnected: true,
+  redisClient: null as null | { get: (key: string) => Promise<string | null>; set: (key: string, value: string, ...args: never[]) => Promise<unknown> },
 }));
 
 vi.mock("../../../src/repositories", () => ({
   systemSettingRepository: {
     findByKeys: mocks.systemSettingFindMany,
   },
+}));
+
+vi.mock("../../../src/infrastructure/redis", () => ({
+  getRedisClient: () => mocks.redisClient,
+  isRedisConnected: () => mocks.redisClient !== null && mocks.redisConnected,
 }));
 
 vi.mock("../../../src/utils/logger", () => ({
@@ -64,6 +72,8 @@ export function setupAiServiceTest() {
     vi.clearAllMocks();
     vi.resetModules();
     mocks.systemSettingFindMany.mockResolvedValue([]);
+    mocks.redisClient = null;
+    mocks.redisConnected = true;
     mocks.fetch.mockReset();
     vi.stubGlobal("fetch", mocks.fetch as unknown as typeof fetch);
   });

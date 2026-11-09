@@ -124,6 +124,24 @@ export async function readPriceProviderConfig(
   }
 }
 
+/**
+ * Strict read of the persisted config for cross-process refresh. Unlike
+ * `readPriceProviderConfig`, it never substitutes bootstrap defaults: a
+ * missing, invalid or unreadable row returns null so a database blip cannot
+ * re-enable a provider an admin disabled.
+ */
+export async function readPersistedPriceProviderConfig(): Promise<PriceProviderConfig | null> {
+  try {
+    const rawValue = await getValue(SystemSettingKeys.PRICE_PROVIDER_CONFIG);
+    return rawValue === null ? null : parseStoredConfig(rawValue);
+  } catch (error) {
+    log.warn("Failed to read persisted price provider config", {
+      error: getErrorMessage(error),
+    });
+    return null;
+  }
+}
+
 export async function writePriceProviderConfig(
   enabledProviderNames: readonly string[],
   updatedBy: string | null = null,

@@ -114,6 +114,15 @@ class TypedEventBus {
   }
 
   /**
+   * Subscribe only to events from other instances. The in-process bus has no
+   * other instances, so this never fires; it exists so callers can use the
+   * distributed-bus API whether or not Redis is configured.
+   */
+  onRemote<E extends EventName>(_event: E, _handler: EventHandler<E>): () => void {
+    return () => undefined;
+  }
+
+  /**
    * Subscribe to an event (one-time)
    * Handlers are executed with concurrency limits
    */

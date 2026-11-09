@@ -203,31 +203,30 @@ function scopedPoolConfigFromNodeConfig(
   };
 }
 
+export interface PoolConfigLoadResult {
+  config: Partial<ElectrumPoolConfig>;
+  servers: ServerConfig[];
+  proxy: ProxyConfig | null;
+  /**
+   * The node-config read failed and the result is empty defaults. A pool built
+   * from it must re-read the config later (see poolRegistry), not keep it.
+   */
+  loadFailed?: true;
+}
+
 /**
  * Load pool configuration from database for a specific network.
  * Returns empty config when database settings are unavailable.
  */
-export async function loadPoolConfigFromDatabase(network?: NetworkType): Promise<{
-  config: Partial<ElectrumPoolConfig>;
-  servers: ServerConfig[];
-  proxy: ProxyConfig | null;
-}>;
+export async function loadPoolConfigFromDatabase(network?: NetworkType): Promise<PoolConfigLoadResult>;
 export async function loadPoolConfigFromDatabase(
   network: NetworkType,
   featureScope: ElectrumPoolFeatureScope,
-): Promise<{
-  config: Partial<ElectrumPoolConfig>;
-  servers: ServerConfig[];
-  proxy: ProxyConfig | null;
-}>;
+): Promise<PoolConfigLoadResult>;
 export async function loadPoolConfigFromDatabase(
   network: NetworkType = 'mainnet',
   featureScope: ElectrumPoolFeatureScope = {},
-): Promise<{
-  config: Partial<ElectrumPoolConfig>;
-  servers: ServerConfig[];
-  proxy: ProxyConfig | null;
-}> {
+): Promise<PoolConfigLoadResult> {
   const requiredFeatures = featureScope.requiredFeatures ?? [];
   const serverUsage = resolveFeaturePoolUsage(
     requiredFeatures,
@@ -254,6 +253,7 @@ export async function loadPoolConfigFromDatabase(
       throw error;
     }
     log.warn('Failed to load pool config from database, using defaults', { error: getErrorMessage(error), network });
+    return { config: {}, servers: [], proxy: null, loadFailed: true };
   }
 
   return { config: {}, servers: [], proxy: null };

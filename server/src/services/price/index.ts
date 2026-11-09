@@ -25,6 +25,7 @@ import {
   type PriceProviderName,
 } from "./providers";
 import {
+  readPersistedPriceProviderConfig,
   readPriceProviderConfig,
   setPriceProviderEnabled as persistPriceProviderEnabled,
 } from "./providerSettings";
@@ -71,6 +72,18 @@ interface CachedHistorical {
   currency: string;
 }
 
+/** How often a process re-checks the persisted provider config. */
+const PROVIDER_CONFIG_REFRESH_MS = 30_000;
+
+function sameProviderSet(
+  a: readonly PriceProviderName[],
+  b: readonly PriceProviderName[],
+): boolean {
+  if (a.length !== b.length) return false;
+  const set = new Set(b);
+  return a.every((name) => set.has(name));
+}
+
 class PriceService {
   private cacheDurationSec: number = CacheTTL.btcPrice; // 60 seconds default
   private registry: ProviderRegistry<IPriceProvider>;
@@ -82,6 +95,9 @@ class PriceService {
     ...DEFAULT_ENABLED_PRICE_PROVIDER_NAMES,
   ];
   private registryReload: Promise<void> = Promise.resolve();
+  /** When this process last compared its providers with the persisted config. */
+  private providerConfigCheckedAt = 0;
+  private providerConfigRefreshes = new Map<string, Promise<void>>();
   private providerPriceRequests = new Map<string, Promise<PriceData>>();
   private aggregatedPriceRequests = new Map<string, Promise<AggregatedPrice>>();
   private historicalPriceRequests = new Map<
@@ -119,6 +135,7 @@ class PriceService {
     }
     this.enabledProviderNames = config.enabled;
     this.initialized = true;
+    this.providerConfigCheckedAt = Date.now();
     log.info("Price service initialized with provider registry");
   }
 
@@ -128,6 +145,40 @@ class PriceService {
   private async ensureInitialized(): Promise<void> {
     if (!this.initialized) {
       await this.initialize();
+      return;
+    }
+    await this.refreshProvidersIfStale();
+  }
+
+  /**
+   * Admin toggles reload only the process that served them. Every other
+   * process (worker, other API replicas) converges here by re-reading the
+   * persisted config at most once per interval.
+   */
+  private async refreshProvidersIfStale(): Promise<void> {
+    if (Date.now() - this.providerConfigCheckedAt < PROVIDER_CONFIG_REFRESH_MS) return;
+    await singleFlight(this.providerConfigRefreshes, "refresh", () =>
+      this.refreshProvidersFromPersistedConfig(),
+    );
+  }
+
+  private async refreshProvidersFromPersistedConfig(): Promise<void> {
+    const generation = this.lifecycleGeneration;
+    const config = await readPersistedPriceProviderConfig();
+    this.providerConfigCheckedAt = Date.now();
+    // A reload in this process (e.g. an admin toggle) landed during the read:
+    // its config is newer than what was just read, so keep it.
+    if (generation !== this.lifecycleGeneration) return;
+    if (!config || sameProviderSet(config.enabled, this.enabledProviderNames)) return;
+    log.info("Price provider config changed in another process; reloading", {
+      providers: config.enabled,
+    });
+    try {
+      await this.reloadProviders(config.enabled);
+    } catch (error) {
+      log.warn("Price provider refresh failed; keeping current providers", {
+        error: getErrorMessage(error),
+      });
     }
   }
 
@@ -155,6 +206,7 @@ class PriceService {
     this.registry = nextRegistry;
     this.enabledProviderNames = [...enabledProviderNames];
     this.initialized = true;
+    this.providerConfigCheckedAt = Date.now();
     this.clearInFlightRequests();
     try {
       await this.clearCache();

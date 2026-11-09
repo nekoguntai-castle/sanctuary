@@ -448,6 +448,7 @@ n_src_utils_feeRate_ts["feeRate.ts"]
 n_src_utils_formatters_ts["formatters.ts"]
 n_src_utils_isoInstant_ts["isoInstant.ts"]
 n_src_utils_logger_ts["logger.ts"]
+n_src_utils_memoizeUntilRejected_ts["memoizeUntilRejected.ts"]
 n_src_utils_networkScopedDevices_ts["networkScopedDevices.ts"]
 n_src_utils_nodeGlobals_ts["nodeGlobals.ts"]
 n_src_utils_preferencePaths_ts["preferencePaths.ts"]
@@ -648,6 +649,7 @@ n_src_components_BackupRestore__collapsed-->n_src_components_ui__collapsed
 n_src_components_BackupRestore__collapsed-->n_src_contexts_AppNotificationContext_tsx
 n_src_components_BackupRestore__collapsed-->n_src_contexts_UserContext_tsx
 n_src_components_BackupRestore__collapsed-->n_src_hooks_useLatestRequest_ts
+n_src_components_BackupRestore__collapsed-->n_src_hooks_useUserPreference_ts
 n_src_components_BackupRestore__collapsed-->n_src_utils_download_ts
 n_src_components_BackupRestore__collapsed-->n_src_utils_logger_ts
 n_src_components_BackupRestore__collapsed-->n_src_utils_safeJson_ts
@@ -1247,6 +1249,7 @@ n_src_services_hardwareWallet__collapsed-->n_shared_utils_bitcoin_ts
 n_src_services_hardwareWallet__collapsed-->n_src_api_client_ts
 n_src_services_hardwareWallet__collapsed-->n_src_utils_bufferUtils_ts
 n_src_services_hardwareWallet__collapsed-->n_src_utils_logger_ts
+n_src_services_hardwareWallet__collapsed-->n_src_utils_memoizeUntilRejected_ts
 n_src_services_websocket_ts-->n_shared_types_websocket_ts
 n_src_services_websocket_ts-->n_src_utils_logger_ts
 n_src_themes_backgroundCategories_ts-->n_src_themes_patterns_ts

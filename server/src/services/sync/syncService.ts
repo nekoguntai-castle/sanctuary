@@ -26,6 +26,9 @@ import {
 
 const log = createLogger('SYNC:SVC');
 
+/** Consecutive failed worker health checks before the API takes over polling. */
+const WORKER_TAKEOVER_FAILURE_THRESHOLD = 3;
+
 class SyncService {
   private static instance: SyncService;
   private syncInterval: NodeJS.Timeout | null = null;
@@ -325,14 +328,20 @@ class SyncService {
   private evaluatePollingMode(): void {
     if (!this.state.isRunning) return;
 
-    const workerHealthy = getWorkerHealthStatus().healthy;
+    const workerHealth = getWorkerHealthStatus();
     const currentMode: PollingMode = this.state.pollingMode;
 
-    if (workerHealthy && currentMode === 'in-process') {
+    if (workerHealth.healthy && currentMode === 'in-process') {
       // Worker recovered — hand off polling
       this.stopPollingIntervals();
-    } else if (!workerHealthy && currentMode === 'worker-delegated') {
-      // Worker went down — take over polling
+    } else if (
+      !workerHealth.healthy
+      && currentMode === 'worker-delegated'
+      && workerHealth.failures >= WORKER_TAKEOVER_FAILURE_THRESHOLD
+    ) {
+      // Worker down across consecutive checks — take over polling. One failed
+      // probe is not enough: each API process probes on its own, and a single
+      // miss would flip it in and out of polling.
       this.startPollingIntervals();
     }
   }

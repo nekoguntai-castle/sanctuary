@@ -69,7 +69,7 @@ const {
     const result = await fn();
     return { success: true, result };
   }),
-  mockGetWorkerHealthStatus: vi.fn<() => { healthy: boolean }>().mockReturnValue({ healthy: false }),
+  mockGetWorkerHealthStatus: vi.fn<() => { healthy: boolean; failures?: number }>().mockReturnValue({ healthy: false, failures: 3 }),
   mockSyncLifecyclePublish: vi.fn<(...args: unknown[]) => Promise<void>>(),
   mockSyncIntentRequest: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   mockSyncIntentReset: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -326,7 +326,7 @@ export function resetSyncServiceState(syncService: SyncService): void {
 export function setDefaultSyncServiceMocks(): void {
   mockSubscriptionsEnabled.value = true;
   // Default worker health: unhealthy (in-process polling)
-  mockGetWorkerHealthStatus.mockReturnValue({ healthy: false });
+  mockGetWorkerHealthStatus.mockReturnValue({ healthy: false, failures: 3 });
 
   // Default mock implementations
   mockAcquireLock.mockResolvedValue({

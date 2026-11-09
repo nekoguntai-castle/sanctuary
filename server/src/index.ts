@@ -60,6 +60,10 @@ import { warmCaches } from './services/cache/cacheWarmer';
 import { walletLogBuffer } from './services/walletLogBuffer';
 import { deadLetterQueue } from './services/deadLetterQueue';
 import { initializeCacheInvalidation, shutdownCacheInvalidation } from './services/cacheInvalidation';
+import {
+  startRemoteElectrumConfigChanges,
+  stopRemoteElectrumConfigChanges,
+} from './services/bitcoin/remoteElectrumConfigChanges';
 import { updateActiveStatsMetrics } from './observability/metrics/helpers';
 import { getActiveStats } from './repositories/maintenanceRepository';
 import {
@@ -271,6 +275,7 @@ log.info('Worker-owned architecture: in-process maintenance fallback disabled');
     const redisDependentTasks: Promise<unknown>[] = [
       initializeRedisBridge(),
       (async () => { initializeCacheInvalidation(); })(),
+      (async () => { startRemoteElectrumConfigChanges(); })(),
       (async () => { rateLimitService.initialize(); })(),
       deadLetterQueue.start(),
     ];
@@ -368,6 +373,7 @@ const handleShutdown = createGracefulShutdownHandler({
   shutdownRedisDependencies: async () => {
     shutdownDistributedLock();
     shutdownCacheInvalidation();
+    stopRemoteElectrumConfigChanges();
     await shutdownRedisBridge();
     await shutdownNotificationTelemetry();
     shutdownNotificationDeadLetterAggregateWriter();

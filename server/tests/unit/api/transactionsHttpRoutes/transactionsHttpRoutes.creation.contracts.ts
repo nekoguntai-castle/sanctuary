@@ -14,7 +14,7 @@ import {
   mockEvaluatePolicies,
   mockFetch,
   mockFindAddressStrings,
-  mockGetCachedBlockHeight,
+  mockGetConfirmationTipHeight,
   mockGetPSBTInfo,
   mockRecalculateWalletBalances,
   mockRecordUsage,

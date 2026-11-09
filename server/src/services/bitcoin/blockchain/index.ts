@@ -40,6 +40,7 @@ export {
   getBlockTimestamp,
   type Network,
 } from '../utils/blockHeight';
+export { getConfirmationTipHeight } from '../utils/confirmationTip';
 export { recalculateWalletBalances, correctMisclassifiedConsolidations } from '../utils/balanceCalculation';
 export { ensureGapLimit } from '../sync/addressDiscovery';
 export {

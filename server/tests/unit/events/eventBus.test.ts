@@ -31,6 +31,19 @@ describe('EventBus', () => {
     vi.useRealTimers();
   });
 
+  describe('onRemote', () => {
+    it('never fires on the in-process bus, which has no other instances', async () => {
+      const handler = vi.fn();
+      const unsubscribe = testBus.onRemote('wallet:synced', handler);
+
+      testBus.emit('wallet:synced', { walletId: 'w1', balance: 0n, unconfirmedBalance: 0n, transactionCount: 0 } as any);
+      await Promise.resolve();
+
+      expect(handler).not.toHaveBeenCalled();
+      expect(unsubscribe()).toBeUndefined();
+    });
+  });
+
   describe('basic event emission', () => {
     it('should emit and receive events', async () => {
       const handler = vi.fn();

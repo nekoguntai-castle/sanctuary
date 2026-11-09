@@ -17,8 +17,19 @@ import {
 } from './channels';
 import { DRAFT_NOTIFICATION_DEDUPE_TTL_MS } from '../../constants/notifications';
 import { createLogger } from '../../utils/logger';
+import { getErrorMessage } from '../../utils/errors';
+import { randomUUID } from 'node:crypto';
+import { getRedisClient, isRedisConnected } from '../../infrastructure/redis';
 
 const log = createLogger('NOTIFY:SVC');
+const DRAFT_NOTIFICATION_DEDUPE_REDIS_PREFIX = 'notifications:draft-dedupe:';
+const RELEASE_OWN_CLAIM_SCRIPT = `
+  if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("del", KEYS[1])
+  end
+  return 0
+`;
+/** Fallback when Redis is unavailable; bounded per process. */
 const DRAFT_NOTIFICATION_DEDUPE_MAX_KEYS = 1_000;
 const recentDraftNotificationKeys = new Map<string, number>();
 
@@ -79,18 +90,30 @@ export async function notifyNewDraft(
 ): Promise<void> {
   log.debug(`Sending draft notification for wallet ${walletId}`);
 
-  if (draft.dedupeKey && isRecentDraftNotification(draft.dedupeKey)) {
+  const claim = draft.dedupeKey ? await claimDraftNotification(draft.dedupeKey) : null;
+  if (claim === 'duplicate') {
     log.info('Skipping duplicate draft notification', { walletId, draftId: draft.id, dedupeKey: draft.dedupeKey });
     return;
   }
 
   // Dispatch to all registered channels that support drafts
-  const results = await notificationChannelRegistry.notifyDraft(
-    walletId,
-    draft as DraftNotification,
-    createdByUserId,
-    createdByLabel
-  );
+  let results: NotificationResult[];
+  try {
+    results = await notificationChannelRegistry.notifyDraft(
+      walletId,
+      draft as DraftNotification,
+      createdByUserId,
+      createdByLabel
+    );
+  } catch (error) {
+    if (claim) await claim.release();
+    throw error;
+  }
+
+  // Nothing was delivered: let a retry through instead of suppressing it for the TTL.
+  if (claim && results.length > 0 && results.every(result => !result.success)) {
+    await claim.release();
+  }
 
   // Log results
   for (const result of results) {
@@ -98,6 +121,50 @@ export async function notifyNewDraft(
       log.error(`${result.channelId} draft notification failed: ${result.errors.join(', ')}`);
     }
   }
+}
+
+interface DraftNotificationClaim {
+  release: () => Promise<void>;
+}
+
+/**
+ * Claim a dedupe key for the TTL. Shared through Redis so the same draft
+ * reaching different processes notifies once; falls back to this process's
+ * memory when Redis is absent or failing.
+ */
+async function claimDraftNotification(
+  dedupeKey: string,
+): Promise<DraftNotificationClaim | 'duplicate'> {
+  const redis = getRedisClient();
+  if (redis && isRedisConnected()) {
+    const key = `${DRAFT_NOTIFICATION_DEDUPE_REDIS_PREFIX}${dedupeKey}`;
+    const token = randomUUID();
+    try {
+      const claimed = await redis.set(key, token, 'PX', DRAFT_NOTIFICATION_DEDUPE_TTL_MS, 'NX');
+      if (claimed === null) return 'duplicate';
+      return {
+        release: async () => {
+          try {
+            // Only our own claim: after a TTL expiry another process may hold the key.
+            await redis.eval(RELEASE_OWN_CLAIM_SCRIPT, 1, key, token);
+          } catch (error) {
+            log.warn('Could not release draft notification dedupe key', { error: getErrorMessage(error) });
+          }
+        },
+      };
+    } catch (error) {
+      log.warn('Shared draft notification dedupe unavailable; using process memory', {
+        error: getErrorMessage(error),
+      });
+    }
+  }
+
+  if (isRecentDraftNotification(dedupeKey)) return 'duplicate';
+  return {
+    release: async () => {
+      recentDraftNotificationKeys.delete(dedupeKey);
+    },
+  };
 }
 
 function isRecentDraftNotification(dedupeKey: string): boolean {

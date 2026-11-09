@@ -137,15 +137,6 @@
       "targetRemovalSlice": "fail-closed-safety-follow-up"
     },
     {
-      "file": "server/src/services/bitcoin/electrumPool/poolConfig.ts",
-      "functionName": "loadPoolConfigFromDatabase",
-      "issue": "non-terminal-catch",
-      "count": 1,
-      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
-      "owner": "fund-safety",
-      "targetRemovalSlice": "fail-closed-safety-follow-up"
-    },
-    {
       "file": "server/src/services/bitcoin/feeService.ts",
       "functionName": "getCurrentFeeEstimates",
       "issue": "non-terminal-catch",

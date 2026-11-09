@@ -64,6 +64,8 @@ export class RedisEventBus {
   private publisher: Redis;
   private subscriber: Redis;
   private localEmitter = new EventEmitter();
+  /** Only events received from other instances (see `onRemote`). */
+  private remoteEmitter = new EventEmitter();
   private instanceId: string;
   private metrics = {
     emitted: new Map<string, number>(),
@@ -77,6 +79,7 @@ export class RedisEventBus {
     this.instanceId = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     this.localEmitter.setMaxListeners(100);
+    this.remoteEmitter.setMaxListeners(100);
     this.setupSubscriber();
   }
 
@@ -114,6 +117,7 @@ export class RedisEventBus {
 
         // Emit to local handlers
         this.localEmitter.emit(eventName, envelope.data);
+        this.remoteEmitter.emit(eventName, envelope.data);
       } catch (error) {
         log.error('Failed to process distributed event', { error: getErrorMessage(error), message });
       }
@@ -128,14 +132,7 @@ export class RedisEventBus {
    * Subscribe to an event (receives from all instances)
    */
   on<E extends EventName>(event: E, handler: EventHandler<E>): () => void {
-    const wrappedHandler = async (data: EventTypes[E]) => {
-      try {
-        await handler(data);
-      } catch (error) {
-        log.error(`Error in event handler for ${event}`, { error: getErrorMessage(error) });
-        this.metrics.errors.set(event, (this.metrics.errors.get(event) || 0) + 1);
-      }
-    };
+    const wrappedHandler = this.isolateHandler(event, handler, 'event handler');
 
     this.localEmitter.on(event, wrappedHandler);
 
@@ -145,19 +142,41 @@ export class RedisEventBus {
   }
 
   /**
+   * Subscribe only to events published by other instances. Use it when this
+   * process already applied its own change before publishing, so reacting to
+   * the local echo would apply it twice.
+   */
+  onRemote<E extends EventName>(event: E, handler: EventHandler<E>): () => void {
+    const wrappedHandler = this.isolateHandler(event, handler, 'remote event handler');
+
+    this.remoteEmitter.on(event, wrappedHandler);
+
+    return () => {
+      this.remoteEmitter.off(event, wrappedHandler);
+    };
+  }
+
+  /**
    * Subscribe to an event (one-time)
    */
   once<E extends EventName>(event: E, handler: EventHandler<E>): void {
-    const wrappedHandler = async (data: EventTypes[E]) => {
+    this.localEmitter.once(event, this.isolateHandler(event, handler, 'one-time event handler'));
+  }
+
+  /** A handler failure is logged and counted, never thrown into the emitter. */
+  private isolateHandler<E extends EventName>(
+    event: E,
+    handler: EventHandler<E>,
+    kind: string,
+  ): (data: EventTypes[E]) => Promise<void> {
+    return async (data: EventTypes[E]) => {
       try {
         await handler(data);
       } catch (error) {
-        log.error(`Error in one-time event handler for ${event}`, { error: getErrorMessage(error) });
+        log.error(`Error in ${kind} for ${event}`, { error: getErrorMessage(error) });
         this.metrics.errors.set(event, (this.metrics.errors.get(event) || 0) + 1);
       }
     };
-
-    this.localEmitter.once(event, wrappedHandler);
   }
 
   /**
@@ -232,8 +251,10 @@ export class RedisEventBus {
   removeAllListeners<E extends EventName>(event?: E): void {
     if (event) {
       this.localEmitter.removeAllListeners(event);
+      this.remoteEmitter.removeAllListeners(event);
     } else {
       this.localEmitter.removeAllListeners();
+      this.remoteEmitter.removeAllListeners();
     }
   }
 

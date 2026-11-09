@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   encrypt: vi.fn((value: string) => `enc:${value}`),
   isEncrypted: vi.fn((value: string) => value.startsWith('enc:')),
   clearTransporterCache: vi.fn(),
+  forceSyncConfig: vi.fn(async () => true),
 }));
 
 vi.mock('../../../src/repositories', () => ({
@@ -25,6 +26,11 @@ vi.mock('../../../src/utils/encryption', () => ({
 
 vi.mock('../../../src/services/email', () => ({
   clearTransporterCache: mocks.clearTransporterCache,
+}));
+
+vi.mock('../../../src/services/ai/config', () => ({
+  AI_CONFIG_SETTING_KEYS: ['aiEnabled', 'aiEndpoint', 'aiModel', 'aiProviderProfiles', 'aiActiveProviderProfileId', 'aiProviderCredentials'],
+  forceSyncConfig: mocks.forceSyncConfig,
 }));
 
 const loadService = async () => {
@@ -287,5 +293,33 @@ describe('adminSettingsService', () => {
       message: "System setting 'operational.feature-runtime.generation' is managed by the runtime",
     });
     expect(mocks.set).not.toHaveBeenCalled();
+  });
+  // Regression: saving AI settings never pushed to the shared LLM egress
+  // proxy, so a disable left the endpoint and credential live in the proxy and
+  // other processes could keep a stale provider for minutes.
+  it('pushes the saved AI config to the LLM egress proxy', async () => {
+    const { updateAdminSettings } = await loadService();
+    mocks.getAll.mockResolvedValue([]);
+
+    await updateAdminSettings({ aiEnabled: false });
+
+    expect(mocks.forceSyncConfig).toHaveBeenCalledTimes(1);
+  });
+
+  it('still saves when the post-save AI config push fails', async () => {
+    const { updateAdminSettings } = await loadService();
+    mocks.getAll.mockResolvedValue([]);
+    mocks.forceSyncConfig.mockResolvedValueOnce(false);
+
+    await expect(updateAdminSettings({ aiModel: 'llama3.2' })).resolves.toBeDefined();
+  });
+
+  it('does not push to the LLM egress proxy for unrelated settings', async () => {
+    const { updateAdminSettings } = await loadService();
+    mocks.getAll.mockResolvedValue([]);
+
+    await updateAdminSettings({ registrationEnabled: true });
+
+    expect(mocks.forceSyncConfig).not.toHaveBeenCalled();
   });
 });

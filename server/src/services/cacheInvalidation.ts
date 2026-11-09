@@ -9,6 +9,7 @@ import { getDistributedEventBus } from '../infrastructure';
 import { eventBus } from '../events/eventBus';
 import { walletCache, feeCache, priceCache } from './cache';
 import { createLogger } from '../utils/logger';
+import type { SystemEvents } from '../events/types';
 
 const log = createLogger('CACHE_INVALIDATION:SVC');
 
@@ -31,6 +32,59 @@ async function invalidateWalletCaches(walletId: string): Promise<void> {
     walletCache.deletePattern('activity-summary:*'),
   ]);
   log.debug(`Invalidated wallet caches for ${walletId}`);
+}
+
+type CacheInvalidation = SystemEvents['cache:invalidated'];
+
+const CACHE_SCOPES: ReadonlySet<unknown> = new Set<CacheInvalidation['scope']>(['wallet', 'price', 'fees']);
+
+/** Pub/sub payloads cross a process boundary; apply only a known shape. */
+function isCacheInvalidation(value: unknown): value is CacheInvalidation {
+  if (typeof value !== 'object' || value === null) return false;
+  const { scope, walletId } = value as { scope?: unknown; walletId?: unknown };
+  if (!CACHE_SCOPES.has(scope)) return false;
+  return scope !== 'wallet' || (typeof walletId === 'string' && walletId.length > 0);
+}
+
+async function applyInvalidation(change: CacheInvalidation): Promise<void> {
+  if (change.scope === 'wallet') {
+    await invalidateWalletCaches(change.walletId!);
+  } else if (change.scope === 'price') {
+    await priceCache.clear();
+  } else {
+    await feeCache.clear();
+  }
+}
+
+/**
+ * The wallet/price/fee caches are in-memory per API process. Apply a change
+ * seen on this process's local bus here at once, then publish it so other API
+ * replicas drop the same entries instead of waiting out the TTL. (Worker-owned
+ * syncs reach every API process through `wallet:syncTransition`; the worker
+ * does not run this module.) Publishes are coalesced per wallet/scope, because
+ * one block can emit a `transaction:confirmed` per transaction.
+ */
+const PUBLISH_COALESCE_MS = 100;
+const pendingPublishes = new Map<string, CacheInvalidation>();
+let publishTimer: ReturnType<typeof setTimeout> | null = null;
+
+function flushPublishes(): void {
+  if (publishTimer) clearTimeout(publishTimer);
+  publishTimer = null;
+  const bus = getDistributedEventBus();
+  for (const change of pendingPublishes.values()) {
+    bus.emit('cache:invalidated', change);
+  }
+  pendingPublishes.clear();
+}
+
+async function invalidateEverywhere(change: CacheInvalidation): Promise<void> {
+  await applyInvalidation(change);
+  pendingPublishes.set(change.scope === 'wallet' ? `wallet:${change.walletId}` : change.scope, change);
+  if (!publishTimer) {
+    publishTimer = setTimeout(flushPublishes, PUBLISH_COALESCE_MS);
+    publishTimer.unref?.();
+  }
 }
 
 /**
@@ -67,7 +121,7 @@ export function initializeCacheInvalidation(): void {
   unsubscribers.push(
     eventBus.on('wallet:deleted', async ({ walletId }) => {
       log.debug(`Invalidating caches for deleted wallet ${walletId}`);
-      await invalidateWalletCaches(walletId);
+      await invalidateEverywhere({ scope: 'wallet', walletId });
     })
   );
 
@@ -75,7 +129,7 @@ export function initializeCacheInvalidation(): void {
   unsubscribers.push(
     eventBus.on('wallet:balanceChanged', async ({ walletId }) => {
       log.debug(`Invalidating caches for balance change in wallet ${walletId}`);
-      await invalidateWalletCaches(walletId);
+      await invalidateEverywhere({ scope: 'wallet', walletId });
     })
   );
 
@@ -83,21 +137,21 @@ export function initializeCacheInvalidation(): void {
   unsubscribers.push(
     eventBus.on('transaction:received', async ({ walletId }) => {
       log.debug(`Invalidating caches for received transaction in wallet ${walletId}`);
-      await invalidateWalletCaches(walletId);
+      await invalidateEverywhere({ scope: 'wallet', walletId });
     })
   );
 
   unsubscribers.push(
     eventBus.on('transaction:sent', async ({ walletId }) => {
       log.debug(`Invalidating caches for sent transaction in wallet ${walletId}`);
-      await invalidateWalletCaches(walletId);
+      await invalidateEverywhere({ scope: 'wallet', walletId });
     })
   );
 
   unsubscribers.push(
     eventBus.on('transaction:confirmed', async ({ walletId }) => {
       log.debug(`Invalidating caches for confirmed transaction in wallet ${walletId}`);
-      await invalidateWalletCaches(walletId);
+      await invalidateEverywhere({ scope: 'wallet', walletId });
     })
   );
 
@@ -105,14 +159,26 @@ export function initializeCacheInvalidation(): void {
   unsubscribers.push(
     eventBus.on('blockchain:priceUpdated', async () => {
       log.debug('Invalidating price cache for price update');
-      await priceCache.clear();
+      await invalidateEverywhere({ scope: 'price' });
     })
   );
 
   unsubscribers.push(
     eventBus.on('blockchain:feeEstimateUpdated', async () => {
       log.debug('Invalidating fee estimate cache');
-      await feeCache.clear();
+      await invalidateEverywhere({ scope: 'fees' });
+    })
+  );
+
+  // Invalidations published by other processes. `onRemote` skips this
+  // process's own publishes, which were already applied above.
+  unsubscribers.push(
+    distributedEventBus.onRemote('cache:invalidated', async (change) => {
+      if (!isCacheInvalidation(change)) {
+        log.warn('Ignoring malformed cache invalidation');
+        return;
+      }
+      await applyInvalidation(change);
     })
   );
 
@@ -130,6 +196,7 @@ export function shutdownCacheInvalidation(): void {
   }
 
   log.info('Shutting down cache invalidation listeners');
+  flushPublishes();
 
   for (const unsubscribe of unsubscribers) {
     unsubscribe();

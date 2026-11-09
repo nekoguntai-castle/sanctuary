@@ -10,7 +10,7 @@ export function registerSyncServicePollingModeTests(
 ): void {
   describe("polling mode", () => {
     it("should start in-process polling when worker is unhealthy", async () => {
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false });
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false, failures: 3 });
 
       await context.syncService.start();
 
@@ -70,7 +70,7 @@ export function registerSyncServicePollingModeTests(
         "worker-delegated",
       );
 
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false });
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false, failures: 3 });
       context.syncService["evaluatePollingMode"]();
 
       expect(context.syncService.getHealthMetrics().pollingMode).toBe(
@@ -80,8 +80,26 @@ export function registerSyncServicePollingModeTests(
       expect(context.syncService["confirmationInterval"]).not.toBeNull();
     });
 
+    // Regression: one failed probe (e.g. a load-balanced health URL landing
+    // on a restarting worker) flipped the API into in-process polling and
+    // back on the next check.
+    it("does not take over polling until the worker fails consecutive checks", async () => {
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: true, failures: 0 });
+      await context.syncService.start();
+
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false, failures: 1 });
+      context.syncService["evaluatePollingMode"]();
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false, failures: 2 });
+      context.syncService["evaluatePollingMode"]();
+      expect(context.syncService.getHealthMetrics().pollingMode).toBe("worker-delegated");
+
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false, failures: 3 });
+      context.syncService["evaluatePollingMode"]();
+      expect(context.syncService.getHealthMetrics().pollingMode).toBe("in-process");
+    });
+
     it("should transition from in-process to worker-delegated when worker recovers", async () => {
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false });
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false, failures: 3 });
       await context.syncService.start();
 
       expect(context.syncService.getHealthMetrics().pollingMode).toBe(
@@ -99,7 +117,7 @@ export function registerSyncServicePollingModeTests(
     });
 
     it("should not double-start polling intervals", async () => {
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false });
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false, failures: 3 });
       await context.syncService.start();
 
       const firstSyncInterval = context.syncService["syncInterval"];
@@ -114,7 +132,7 @@ export function registerSyncServicePollingModeTests(
     });
 
     it("should not evaluate polling mode when service is stopped", async () => {
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false });
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false, failures: 3 });
       await context.syncService.start();
       await context.syncService.stop();
 
@@ -137,7 +155,7 @@ export function registerSyncServicePollingModeTests(
     });
 
     it("should be no-op when worker stays unhealthy (already in-process)", async () => {
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false });
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false, failures: 3 });
       await context.syncService.start();
 
       const firstSyncInterval = context.syncService["syncInterval"];
@@ -168,7 +186,7 @@ export function registerSyncServicePollingModeTests(
         "worker-delegated",
       );
 
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false });
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false, failures: 3 });
       await vi.advanceTimersByTimeAsync(30_000);
 
       expect(context.syncService.getHealthMetrics().pollingMode).toBe(
@@ -186,7 +204,7 @@ export function registerSyncServicePollingModeTests(
       expect(context.syncService["syncInterval"]).toBeNull();
       expect(context.syncService["confirmationInterval"]).toBeNull();
 
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false });
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false, failures: 3 });
       await vi.advanceTimersByTimeAsync(30_000);
 
       expect(context.syncService.getHealthMetrics().pollingMode).toBe(
@@ -213,7 +231,7 @@ export function registerSyncServicePollingModeTests(
       mockGetWorkerHealthStatus.mockReturnValue({ healthy: true });
       await context.syncService.start();
 
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false });
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false, failures: 3 });
       context.syncService["evaluatePollingMode"]();
 
       expect(syncPollingModeTransitions.inc).toHaveBeenCalledWith({

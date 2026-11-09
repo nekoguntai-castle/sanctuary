@@ -179,6 +179,11 @@ export interface SystemEvents {
     scope: 'node-config' | 'electrum-servers';
     network: string | null;
   };
+  /** A process invalidated its in-memory caches; other processes do the same. */
+  'cache:invalidated': {
+    scope: 'wallet' | 'price' | 'fees';
+    walletId?: string;
+  };
 }
 
 /**

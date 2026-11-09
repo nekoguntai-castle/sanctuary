@@ -193,11 +193,12 @@ class FeatureFlagService {
       log.debug('Cache lookup failed, continuing to database', { error: getErrorMessage(error) });
     }
 
-    // Fall back to database
+    // Fall back to database. Not cached: the local cache is owned by snapshot
+    // installs (event + poll), and a value pinned here would never refresh in a
+    // process that does not run them.
     try {
       const flag = await featureFlagRepository.findByKey(key);
       if (flag) {
-        this.localCache.set(key, flag.enabled);
         return flag.enabled;
       }
     } catch (error) {
