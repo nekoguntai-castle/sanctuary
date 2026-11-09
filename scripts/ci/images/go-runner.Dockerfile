@@ -47,17 +47,17 @@ RUN set -eux; \
     if [ "$arch" != "amd64" ]; then \
       echo "go-runner image is pinned for amd64; got ${arch}" >&2; exit 1; \
     fi; \
-    curl -fsSL -o /tmp/node.tar.xz "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz"; \
+    curl -fsSL --connect-timeout 20 --max-time 300 --retry 3 --retry-delay 2 -o /tmp/node.tar.xz "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz"; \
     echo "${NODE_SHA256}  /tmp/node.tar.xz" | sha256sum -c -; \
     tar -C /usr/local --strip-components=1 -xJf /tmp/node.tar.xz; \
     rm -f /tmp/node.tar.xz; \
-    curl -fsSL -o /tmp/npm.tgz "https://registry.npmjs.org/npm/-/npm-${NPM_VERSION}.tgz"; \
+    curl -fsSL --connect-timeout 20 --max-time 300 --retry 3 --retry-delay 2 -o /tmp/npm.tgz "https://registry.npmjs.org/npm/-/npm-${NPM_VERSION}.tgz"; \
     echo "${NPM_SHA512}  /tmp/npm.tgz" | sha512sum -c -; \
     npm install --global --audit=false --fund=false /tmp/npm.tgz; \
     rm -f /tmp/npm.tgz; \
     test "$(node --version)" = "v${NODE_VERSION}"; \
     test "$(npm --version)" = "${NPM_VERSION}"; \
-    curl -fsSL -o /tmp/go.tar.gz "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"; \
+    curl -fsSL --connect-timeout 20 --max-time 300 --retry 3 --retry-delay 2 -o /tmp/go.tar.gz "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"; \
     echo "${GO_SHA256}  /tmp/go.tar.gz" | sha256sum -c -; \
     rm -rf /usr/local/go; \
     tar -C /usr/local -xzf /tmp/go.tar.gz; \

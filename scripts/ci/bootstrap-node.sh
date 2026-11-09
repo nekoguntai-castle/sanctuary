@@ -90,7 +90,7 @@ install_locked_node() {
   archive="$staging/node.tar.xz"
   extracted="$staging/extracted"
   mkdir -p "$extracted"
-  if ! curl --fail --silent --show-error --location --connect-timeout 10 --max-time 180 \
+  if ! curl --fail --silent --show-error --location --connect-timeout 10 --max-time 180 --retry 3 --retry-delay 2 \
     --output "$archive" "$archive_url"; then
     fail "download failed for $archive_url"
   fi
@@ -120,7 +120,7 @@ install_locked_npm() {
   active_staging="$(mktemp -d "${active_staging_parent}/.npm-${expected_npm_version}.XXXXXX")"
   staging="$active_staging"
   archive="$staging/npm.tgz"
-  if ! curl --fail --silent --show-error --location --connect-timeout 10 --max-time 180 \
+  if ! curl --fail --silent --show-error --location --connect-timeout 10 --max-time 180 --retry 3 --retry-delay 2 \
     --output "$archive" "$npm_archive_url"; then
     fail "download failed for $npm_archive_url"
   fi

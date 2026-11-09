@@ -28,7 +28,7 @@ fetch_and_extract() {
   local archive="$BUILD_ROOT/$repository.tar.gz"
   local source="$BUILD_ROOT/$repository"
 
-  curl --fail --silent --show-error --location \
+  curl --fail --silent --show-error --location --connect-timeout 20 --max-time 300 --retry 3 --retry-delay 2 \
     "https://data.forgejo.org/api/v1/repos/forgejo/$repository/archive/$commit.tar.gz" \
     --output "$archive"
   printf '%s  %s\n' "$expected_hash" "$archive" | sha256sum --check --status

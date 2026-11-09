@@ -4572,6 +4572,80 @@ echo "Failed: $FAIL"
 # A heredoc is acceptable when the interpreter carries -e, or the body sets it,
 # or the line explicitly ends in `|| true` (the four container-log dumps are
 # deliberately tolerant).
+# A curl that saves a file and does not read the HTTP status itself must fail
+# on an HTTP error and retry transient ones. Without both, a GitHub 504 page
+# was saved as a release archive and failed later as "not in gzip format"
+# (run 23026). Calls that pass -w/--write-out handle the status (and their own
+# retries, or must not retry a mutating request), so they are out of scope.
+list_unretried_curl_downloads() {
+  local root="$1"
+  local file
+
+  while IFS= read -r file; do
+    awk -v f="$file" '
+      { line = $0 }
+      cont != "" { line = cont " " line }
+      /\\[[:space:]]*$/ { sub(/\\[[:space:]]*$/, "", line); cont = line; next }
+      { cont = "" }
+      {
+        n = split(line, parts, /;|&&|\|\|?/)
+        for (i = 1; i <= n; i++) {
+          seg = " " parts[i] " "
+          if (seg !~ /[^[:alnum:]_-]curl[[:space:]]/) continue
+          if (seg !~ /[[:space:]](-[[:alpha:]]*o|--output)[[:space:]]/) continue
+          if (seg ~ /[[:space:]](-w|--write-out)[[:space:]]/) continue
+          if (seg ~ /[[:space:]](-o|--output)[[:space:]]+(-|\/dev\/null)[[:space:]]/) continue
+          if (seg ~ /[[:space:]](--fail|-[[:alpha:]]*f[[:alpha:]]*)[[:space:]]/ && seg ~ /[[:space:]]--retry[[:space:]]/) continue
+          gsub(/[[:space:]]+/, " ", seg)
+          print f ":" NR ":" substr(seg, 1, 160)
+        }
+      }' "$root/$file"
+  done < <(git -C "$root" ls-files -- .github scripts config '*Dockerfile*' |
+    grep -vE '(^|/)tests?/|\.(md|json|ts|mjs|cjs|js)$')
+}
+
+# curl gained --retry-all-errors in 7.71. bootstrap-node.sh also runs in the
+# act-ubuntu image, whose older curl rejects it ("option --retry-all-errors:
+# is unknown", job 285529), and the image Dockerfiles build on bases this repo
+# does not control. Plain --retry already covers timeouts and HTTP 5xx.
+list_retry_all_errors_outside_act_ubuntu_node() {
+  local root="$1"
+
+  git -C "$root" grep -n -e '--retry-all-errors' -- \
+    scripts/ci/bootstrap-node.sh scripts/ci/vendor scripts/bitcoin-core-docker \
+    scripts/quality.sh config/ledger-emulator scripts/ci/images/go-runner.Dockerfile || true
+}
+
+check_curl_downloads_retry() {
+  local label="release and toolchain downloads fail on HTTP errors and retry"
+  local offenders fixture
+
+  fixture="$(mktemp -d)"
+  git -C "$fixture" init -q
+  mkdir -p "$fixture/scripts"
+  printf '%s\n' 'curl -sSL \' '  -o /tmp/tool.tar.gz "https://example.invalid/tool.tar.gz"' > "$fixture/scripts/bad.sh"
+  printf '%s\n' 'curl -fsSL --retry 3 -o /tmp/a.tgz "$u"; curl -sS -o "$out" -w "%{http_code}" -X POST "$api"' > "$fixture/scripts/good.sh"
+  git -C "$fixture" add scripts
+  offenders="$(list_unretried_curl_downloads "$fixture")"
+  rm -rf "$fixture"
+  if [ "$offenders" != "scripts/bad.sh:2: curl -sSL -o /tmp/tool.tar.gz \"https://example.invalid/tool.tar.gz\" " ]; then
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: scanner fixture mismatch: $offenders")
+    echo "FAIL: $label (scanner fixture)" >&2
+    return
+  fi
+
+  offenders="$(list_unretried_curl_downloads "$REPO_ROOT"; list_retry_all_errors_outside_act_ubuntu_node "$REPO_ROOT")"
+  if [ -z "$offenders" ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: $label"
+  else
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: $(tr '\n' ';' <<< "$offenders")")
+    echo "FAIL: $label" >&2
+  fi
+}
+
 check_interpreter_heredocs() {
   local label="no workflow pipes an unguarded multi-command script into bash"
   local offenders=""
@@ -4716,6 +4790,7 @@ else
 fi
 
 check_interpreter_heredocs
+check_curl_downloads_retry
 
 if [ "$FAIL" -gt 0 ]; then
   echo

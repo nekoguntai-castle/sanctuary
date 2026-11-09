@@ -48,12 +48,12 @@ download_source() {
     local url="${BITCOIN_CORE_REPO}/bitcoin-core-${version}/${tarball}"
 
     echo "Downloading ${url}..."
-    curl -fSL -o "${tarball}" "${url}"
+    curl -fSL --connect-timeout 20 --max-time 300 --retry 3 --retry-delay 2 -o "${tarball}" "${url}"
 
     # Download SHA256SUMS and signatures
     echo "Downloading checksums and signatures..."
-    curl -fSL -o "SHA256SUMS" "${BITCOIN_CORE_REPO}/bitcoin-core-${version}/SHA256SUMS"
-    curl -fSL -o "SHA256SUMS.asc" "${BITCOIN_CORE_REPO}/bitcoin-core-${version}/SHA256SUMS.asc"
+    curl -fSL --connect-timeout 20 --max-time 300 --retry 3 --retry-delay 2 -o "SHA256SUMS" "${BITCOIN_CORE_REPO}/bitcoin-core-${version}/SHA256SUMS"
+    curl -fSL --connect-timeout 20 --max-time 300 --retry 3 --retry-delay 2 -o "SHA256SUMS.asc" "${BITCOIN_CORE_REPO}/bitcoin-core-${version}/SHA256SUMS.asc"
 
     echo "Download complete."
 }

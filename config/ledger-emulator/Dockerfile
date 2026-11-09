@@ -3,7 +3,7 @@ FROM ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder-lite@sha256:7eda772d
 ARG APP_COMMIT=2c7956fe566bd7f6f690288130033441fabc5f10
 ARG APP_TARBALL_SHA256=639773cc318ff608d59c546fcc9f64e540c923b29a4fccc71550e0ddba2d7ae7
 WORKDIR /build
-RUN curl --fail --location --silent --show-error \
+RUN curl --fail --location --silent --show-error --connect-timeout 20 --max-time 300 --retry 3 --retry-delay 2 \
       "https://github.com/LedgerHQ/app-bitcoin-new/archive/${APP_COMMIT}.tar.gz" \
       --output app-bitcoin.tar.gz \
     && echo "${APP_TARBALL_SHA256}  app-bitcoin.tar.gz" | sha256sum --check - \

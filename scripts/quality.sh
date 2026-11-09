@@ -167,7 +167,7 @@ install_gitleaks() {
   url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_${platform}.tar.gz"
 
   mkdir -p "$GITLEAKS_DIR"
-  curl -fsSL -o "$archive" "$url"
+  curl -fsSL --connect-timeout 20 --max-time 120 --retry 3 --retry-delay 2 -o "$archive" "$url"
   tar -xzf "$archive" -C "$GITLEAKS_DIR" gitleaks
   chmod +x "$GITLEAKS_DIR/gitleaks"
 }
