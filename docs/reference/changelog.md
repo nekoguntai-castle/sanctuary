@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- CI: the critical mutation shards warn at 2,700 s instead of 1,200 s. Since `xpubConversion.ts` moved to shard 2 (#1466), the three shards took 1,102-2,495 s over 20 runs (medians 1,705, 2,078 and 2,005 s) and none came within 18 minutes of the 60-minute deadline, but 59 of those 60 shard jobs logged the 1,200 s warning, so it carried no signal. A warning now means the shard is within 15 minutes of timing out.
+
 ## [0.8.87] - 2026-11-09
 
 ### Changed
