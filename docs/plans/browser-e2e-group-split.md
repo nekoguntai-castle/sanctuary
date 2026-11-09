@@ -1,6 +1,6 @@
 # Browser E2E Group Split
 
-Status: in progress (steps 1–4 implemented; acceptance needs three green runs after the split)
+Status: in progress (steps 1–5 implemented; acceptance needs three green runs on the eight-group layout)
 Date: 2026-11-07
 Follows: #1476 (4-CPU browser child), #1477 (live `CI browser CPU` notice);
 step 4 of `docs/plans/browser-sandbox-cpu-headroom.md`
@@ -163,6 +163,36 @@ from the retry artifact. A flaky test belongs in a test fix, not a group split.
 
 Done: #1479 fixed the `node-status-card-responsive` overflow retry (and a
 `send` redirect retry) directly, so no separate issue was filed.
+
+### 5. Split the remaining two groups
+
+The first green runs on the six-group layout:
+
+| Run (job) | Host context | admin-operations | auth-accessibility | wallet-create-import | wallet-journeys | wallet-transactions | wallet-experience |
+|---|---|---:|---:|---:|---:|---:|---:|
+| 22876 (283470), #1484 | beside mutation work | 80 | 119 | 113 | 98 | 158 | 147 |
+| 22913 (283883), scheduled | sora, beside Critical Mutation Gate shards 1 and 2, load 16–18, CPU PSI some ~11% | 80 | 149 | 148 | 131 | **189** | **201** |
+
+The four groups made by step 3 all stayed at least 91 s under the hard
+budget. The two groups left as they were did not: on 22913,
+`wallet-transactions` was 51 s under and `wallet-experience` 39 s under,
+which misses the 60 s acceptance margin. The child reported
+`nr_throttled=0` in every group, so this is host contention again.
+
+Per-spec time on 22913 (s): `error-recovery` 103, `send-transaction-flow`
+74; `dashboard-price-blocks` 65, `settings-persistence` 39,
+`node-status-card-responsive` 27, `wallet-sharing-privacy` 24,
+`wallet-sync-tooltip` 15, `wallet` 6, `console-drawer-smoke` 5,
+`network-sync-toggle-dark` 4. Fixed group overhead was about 12 s.
+
+Done: `wallet-transactions` became `wallet-error-recovery` (103 s) and
+`wallet-send` (74 s). `wallet-experience` became `wallet-dashboard`
+(`dashboard-price-blocks`, `wallet-sync-tooltip`, `console-drawer-smoke`,
+`network-sync-toggle-dark`: 89 s) and `wallet-settings`
+(`settings-persistence`, `node-status-card-responsive`,
+`wallet-sharing-privacy`, `wallet`: 96 s). The job now runs eight groups and
+pays two more group overheads, about 25 s. The acceptance runs start again
+from this layout.
 
 ## Not doing
 

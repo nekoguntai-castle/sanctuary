@@ -120,7 +120,7 @@ main() {
   "$GROUP_SCRIPT" --check
   groups="$("$GROUP_SCRIPT" --groups)"
 
-  [ "$groups" = $'admin-operations\nauth-accessibility\nwallet-create-import\nwallet-journeys\nwallet-transactions\nwallet-experience' ] ||
+  [ "$groups" = $'admin-operations\nauth-accessibility\nwallet-create-import\nwallet-journeys\nwallet-error-recovery\nwallet-send\nwallet-dashboard\nwallet-settings' ] ||
     fail "unexpected browser E2E groups: $(tr '\n' ' ' <<< "$groups")"
 
   # The splits follow spec time measured in docs/plans/browser-e2e-group-split.md
@@ -134,7 +134,14 @@ main() {
     tests/e2e/create-wallet-flow.spec.ts tests/e2e/import-wallet-flow.spec.ts
   assert_group_specs wallet-journeys \
     tests/e2e/user-journeys.spec.ts tests/e2e/wallet-remediation.spec.ts
-  assert_not_contains "$("$GROUP_SCRIPT" wallet-experience)" 'tests/e2e/user-journeys.spec.ts'
+  assert_group_specs wallet-error-recovery tests/e2e/error-recovery.spec.ts
+  assert_group_specs wallet-send tests/e2e/send-transaction-flow.spec.ts
+  assert_group_specs wallet-dashboard \
+    tests/e2e/console-drawer-smoke.spec.ts tests/e2e/dashboard-price-blocks.spec.ts \
+    tests/e2e/network-sync-toggle-dark.spec.ts tests/e2e/wallet-sync-tooltip.spec.ts
+  assert_group_specs wallet-settings \
+    tests/e2e/node-status-card-responsive.spec.ts tests/e2e/settings-persistence.spec.ts \
+    tests/e2e/wallet-sharing-privacy.spec.ts tests/e2e/wallet.spec.ts
 
   # time-command.sh treats a label with no budget entry as unbudgeted, so a
   # group without one would silently lose its hard limit.

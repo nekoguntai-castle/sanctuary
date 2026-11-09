@@ -6,8 +6,10 @@ readonly GROUP_ADMIN_OPERATIONS='admin-operations'
 readonly GROUP_AUTH_ACCESSIBILITY='auth-accessibility'
 readonly GROUP_WALLET_CREATE_IMPORT='wallet-create-import'
 readonly GROUP_WALLET_JOURNEYS='wallet-journeys'
-readonly GROUP_WALLET_TRANSACTIONS='wallet-transactions'
-readonly GROUP_WALLET_EXPERIENCE='wallet-experience'
+readonly GROUP_WALLET_ERROR_RECOVERY='wallet-error-recovery'
+readonly GROUP_WALLET_SEND='wallet-send'
+readonly GROUP_WALLET_DASHBOARD='wallet-dashboard'
+readonly GROUP_WALLET_SETTINGS='wallet-settings'
 
 list_groups() {
   printf '%s\n' \
@@ -15,8 +17,10 @@ list_groups() {
     "$GROUP_AUTH_ACCESSIBILITY" \
     "$GROUP_WALLET_CREATE_IMPORT" \
     "$GROUP_WALLET_JOURNEYS" \
-    "$GROUP_WALLET_TRANSACTIONS" \
-    "$GROUP_WALLET_EXPERIENCE"
+    "$GROUP_WALLET_ERROR_RECOVERY" \
+    "$GROUP_WALLET_SEND" \
+    "$GROUP_WALLET_DASHBOARD" \
+    "$GROUP_WALLET_SETTINGS"
 }
 
 list_group_specs() {
@@ -44,20 +48,28 @@ list_group_specs() {
         tests/e2e/user-journeys.spec.ts \
         tests/e2e/wallet-remediation.spec.ts
       ;;
-    "$GROUP_WALLET_TRANSACTIONS")
+    # wallet-transactions and wallet-experience were split the same way after
+    # they reached 189 s and 201 s on a co-scheduled host (run 22913).
+    "$GROUP_WALLET_ERROR_RECOVERY")
       printf '%s\n' \
-        tests/e2e/error-recovery.spec.ts \
+        tests/e2e/error-recovery.spec.ts
+      ;;
+    "$GROUP_WALLET_SEND")
+      printf '%s\n' \
         tests/e2e/send-transaction-flow.spec.ts
       ;;
-    "$GROUP_WALLET_EXPERIENCE")
+    "$GROUP_WALLET_DASHBOARD")
       printf '%s\n' \
         tests/e2e/console-drawer-smoke.spec.ts \
         tests/e2e/dashboard-price-blocks.spec.ts \
         tests/e2e/network-sync-toggle-dark.spec.ts \
+        tests/e2e/wallet-sync-tooltip.spec.ts
+      ;;
+    "$GROUP_WALLET_SETTINGS")
+      printf '%s\n' \
         tests/e2e/node-status-card-responsive.spec.ts \
         tests/e2e/settings-persistence.spec.ts \
         tests/e2e/wallet-sharing-privacy.spec.ts \
-        tests/e2e/wallet-sync-tooltip.spec.ts \
         tests/e2e/wallet.spec.ts
       ;;
     *)
