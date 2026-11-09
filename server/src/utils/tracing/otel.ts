@@ -37,7 +37,7 @@ export async function initializeOpenTelemetry(): Promise<void> {
     const { NodeSDK } = require('@opentelemetry/sdk-node');
     const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
     const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-    const { Resource } = require('@opentelemetry/resources');
+    const { resourceFromAttributes } = require('@opentelemetry/resources');
     /* eslint-enable @typescript-eslint/no-var-requires */
 
     const serviceName = process.env.OTEL_SERVICE_NAME || 'sanctuary-api';
@@ -51,7 +51,7 @@ export async function initializeOpenTelemetry(): Promise<void> {
 
     // Create the SDK with auto-instrumentation
     const sdk = new NodeSDK({
-      resource: new Resource({
+      resource: resourceFromAttributes({
         'service.name': serviceName,
         'service.version': serviceVersion,
         'deployment.environment': environment,
