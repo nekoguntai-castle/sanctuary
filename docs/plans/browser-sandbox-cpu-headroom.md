@@ -1,6 +1,6 @@
 # Browser Sandbox CPU Headroom
 
-Status: implemented (cap raised to 4 CPUs; awaiting post-merge confirmation runs)
+Status: done (2026-11-09; the margin criterion was met by `docs/plans/browser-e2e-group-split.md`)
 Date: 2026-11-06
 Follows: #1460 (verified Chromium sandbox in browser lanes)
 
@@ -125,6 +125,15 @@ The acceptance runs (three green runs, one co-scheduled with a mutation job) can
 Run 1 (#1476's own PR run 22696, job 281614, head cc8e5677b): green. The groups took 157 s (admin-auth), 157 s (wallet-lifecycle, 83 s under its 240 s budget), 142 s (wallet-transactions) and 136 s (wallet-experience). The one report left in `playwright-results-browser` (wallet-experience) records `usage_usec=237096124 nr_throttled=0 throttled_usec=0`, so the 4-CPU cap did not bind.
 
 That run showed a gap: `run-with-log.sh` forwards only allowlisted annotations to the live job log, so the `CI browser CPU` notice reached only `browser-flow-e2e.log`, which is uploaded only on failure. Playwright also clears `test-results/` before each group, so only the last group's report survives. `forward-live-annotations.mjs` now forwards the notice in its two fixed shapes, so every group's figure appears beside its `CI timing` line.
+
+Closed 2026-11-09. Since #1476, every group of every Browser E2E run reports
+`nr_throttled=0`, which meets the throttling criterion. The cap alone did not
+give the 60 s margin: `wallet-lifecycle` still reached 214–255 s on hosts shared
+with mutation work, with zero throttling. That is host contention, which step 4
+handed to `docs/plans/browser-e2e-group-split.md`. That plan split the groups,
+and `wallet-lifecycle` no longer exists. On its three acceptance runs (22958,
+22974, 23015), one of them beside mutation shard 3 on kumo, every group
+finished at least 100 s under the 240 s hard budget.
 
 ## Delivery
 

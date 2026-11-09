@@ -1,6 +1,6 @@
 # Browser E2E Group Split
 
-Status: in progress (steps 1–5 implemented; acceptance needs three green runs on the eight-group layout)
+Status: done (2026-11-09; acceptance met on runs 22958, 22974 and 23015)
 Date: 2026-11-07
 Follows: #1476 (4-CPU browser child), #1477 (live `CI browser CPU` notice);
 step 4 of `docs/plans/browser-sandbox-cpu-headroom.md`
@@ -213,6 +213,36 @@ from this layout.
   job, every browser-flow group finishes at least 60 s under its hard budget.
 - `browser-e2e-groups.sh --check` passes, every group label has a budget
   entry, and the CI lane tests are updated. Required PR checks are green.
+
+## Acceptance record
+
+Three green runs on the eight-group layout (group time, s; hard budget 240 s):
+
+| Group | 22958 (284292) | 22974 (284473) | 23015 (284921) |
+|---|---:|---:|---:|
+| `admin-operations` | 69 | 89 | 68 |
+| `auth-accessibility` | 98 | 114 | 100 |
+| `wallet-create-import` | 106 | 113 | 89 |
+| `wallet-journeys` | 90 | 78 | 75 |
+| `wallet-error-recovery` | 95 | 89 | 90 |
+| `wallet-send` | 63 | 47 | 47 |
+| `wallet-dashboard` | 69 | 57 | 55 |
+| `wallet-settings` | 79 | 65 | 62 |
+| slowest group, margin to hard budget | 106, **134 s** | 114, **126 s** | 100, **140 s** |
+
+Host context, from the runner snapshots:
+
+- 22958 (#1485): kumo, beside Critical Mutation Gate shard 3 and
+  `mutation-proofs-fee`, load up to 17.3, CPU PSI some up to 6.3%. This is the
+  co-scheduled run.
+- 22974 (PR "hover the sync tooltip only after web fonts settle"): sora,
+  beside `mutation-proofs-binding` for the first part, load up to 9.6.
+- 23015 (scheduled): x300, beside backend unit coverage shards, load up to 4.5.
+
+Every group finished at least 100 s under its hard budget, well past the 60 s
+criterion, and the child reported `nr_throttled=0` in every group of every run.
+The worst group is now 114 s, against 255 s for `wallet-lifecycle` before the
+split.
 
 ## Delivery
 
