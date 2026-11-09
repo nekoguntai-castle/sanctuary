@@ -4,7 +4,6 @@
  * Background jobs for wallet synchronization.
  * These jobs handle:
  * - Individual wallet sync
- * - Stale wallet detection and queueing
  * - Transaction confirmation updates
  */
 
@@ -406,10 +405,6 @@ export function createSyncWalletJob(
 
 /** Fail-closed metadata export retained for lock-policy consumers and tests. */
 export const syncWalletJob = createSyncWalletJob(unavailableRuntimeDependencies);
-
-// =============================================================================
-// Check Stale Wallets Job
-// =============================================================================
 
 // =============================================================================
 // Update Confirmations Job

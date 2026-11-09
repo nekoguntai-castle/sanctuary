@@ -1,6 +1,6 @@
 # Stale-Wallet Scheduler Removal
 
-Status: implemented in one local commit; PR not yet opened
+Status: done (#1471, first released in v0.8.85)
 Date: 2026-11-06
 Supersedes: the compatibility layer described in ADR 0004 ("Marker-absent
 compatibility scheduling, startup catch-up, and retained completion admission")
