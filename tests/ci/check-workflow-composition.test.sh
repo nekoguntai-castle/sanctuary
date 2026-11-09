@@ -3861,6 +3861,29 @@ assert_contains_in_order "$QUALITY_WORKFLOW" \
   "node --test tests/ci/subject-budget-boundaries.test.mjs" \
   "node --test tests/ci/nested-subject-deadline.test.mjs"
 
+# Release tool downloads must fail on an HTTP error, retry transient ones and
+# verify a pinned digest before extracting. Without -f, a GitHub 504 page was
+# saved as the archive and tar reported "not in gzip format" (run 23026).
+assert_named_job_step_contains_in_order "$QUALITY_WORKFLOW" "gitleaks" \
+  "Install gitleaks" \
+  "quality gitleaks install fails on HTTP errors, retries and verifies its digest" \
+  'curl -fsSL --connect-timeout 20 --max-time 120 --retry 5 --retry-all-errors --retry-delay 5' \
+  '-o /tmp/gitleaks.tar.gz' \
+  '"${GITLEAKS_LINUX_X64_SHA256}"' \
+  'sha256sum -c /tmp/gitleaks.sha256' \
+  'tar -xzf /tmp/gitleaks.tar.gz'
+assert_named_job_step_contains_in_order "$QUALITY_WORKFLOW" "workflow-action-runtime-guard" \
+  "Install actionlint + shellcheck" \
+  "quality actionlint install fails on HTTP errors, retries and verifies its digest" \
+  'curl -fsSL --connect-timeout 20 --max-time 120 --retry 5 --retry-all-errors --retry-delay 5' \
+  '-o /tmp/actionlint.tar.gz' \
+  'sha256sum -c /tmp/actionlint.sha256' \
+  'tar -xzf /tmp/actionlint.tar.gz'
+assert_contains_in_order "$QUALITY_WORKFLOW" \
+  "quality pins the gitleaks linux x64 archive digest beside its version" \
+  "GITLEAKS_VERSION: '8.30.1'" \
+  "GITLEAKS_LINUX_X64_SHA256: '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb'"
+
 assert_occurrence_count "$QUALITY_WORKFLOW" \
   "quality retains one classifier isolation boundary plus the syntax sweep" \
   "scripts/ci/run-standalone-test-command.sh" \
