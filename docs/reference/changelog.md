@@ -7,9 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.88] - 2026-11-09
+
 ### Changed
 
 - CI: the critical mutation shards warn at 2,700 s instead of 1,200 s. Since `xpubConversion.ts` moved to shard 2 (#1466), the three shards took 1,102-2,495 s over 20 runs (medians 1,705, 2,078 and 2,005 s) and none came within 18 minutes of the 60-minute deadline, but 59 of those 60 shard jobs logged the 1,200 s warning, so it carried no signal. A warning now means the shard is within 15 minutes of timing out.
+
+### Fixed
+
+- The API and the worker recover state they missed while the Redis event bus was down (#1492, following #1489):
+  - Redis pub/sub delivers at most once, so a process now resynchronises when its subscriber reconnects and when a peer announces that one of its publishes failed. Announcements retry every 5 s until shutdown, and a failed re-subscribe retries after 1 s.
+  - On resync the wallet cache is cleared. Price and fee entries are kept: they expire within 60 s, and the price cache also holds the stale-price fallback.
+  - On resync the API and the worker reapply the Electrum configuration only if the stored node and server settings differ from the ones they last applied, so a Redis blip no longer resets every Electrum connection.
+  - A feature Electrum pool (for example silent payments) built while the configuration could not be read is re-probed every 30 s and retired once the configuration is readable, so the next request rebuilds it for its own servers.
+  - The worker now runs cache invalidation, so confirmations and transactions it detects clear the API's cached wallet data.
+- The backup modal's "don't show again" choice saved in browser storage by older versions is carried over to the account preference, and the browser key is removed once the preference reads back as set (#1492).
 
 ## [0.8.87] - 2026-11-09
 
@@ -1291,7 +1303,8 @@ upgrade browser-smoke and 2FA preservation assertions.
 
 - Removed navigation-triggered syncs in favor of worker-driven sync
 
-[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.87...HEAD
+[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.88...HEAD
+[0.8.88]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.87...v0.8.88
 [0.8.87]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.86...v0.8.87
 [0.8.86]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.85...v0.8.86
 [0.8.85]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.84...v0.8.85
