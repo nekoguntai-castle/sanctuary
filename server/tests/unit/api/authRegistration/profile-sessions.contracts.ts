@@ -3,6 +3,8 @@ import { app } from './authRegistrationTestHarness';
 import request from 'supertest';
 import { mockPrismaClient } from '../../../mocks/prisma';
 import { Prisma } from '../../../../src/generated/prisma/client';
+import { OPERATOR_ATTESTED_EVIDENCE_LABEL } from '@sanctuary/shared/constants/hardwareWalletCapabilities';
+import { getConfig } from '../../../../src/config';
 
 export function registerAuthProfileSessionsTests(): void {
   describe('GET /auth/me - Get Current User', () => {
@@ -28,6 +30,38 @@ export function registerAuthProfileSessionsTests(): void {
       expect(response.body.username).toBe('testuser');
       expect(response.body.password).toBeUndefined();
       expect(response.body.usingDefaultPassword).toBe(false);
+      expect(response.body.hardwareWalletAttestation).toEqual({
+        vendors: [],
+        label: OPERATOR_ATTESTED_EVIDENCE_LABEL,
+      });
+    });
+
+    it('reports the operator-attested vendors for this instance', async () => {
+      mockPrismaClient.user.findUnique.mockResolvedValue({
+        id: 'test-user-id',
+        username: 'testuser',
+        email: 'test@example.com',
+        isAdmin: false,
+        preferences: null,
+        createdAt: new Date(),
+        twoFactorEnabled: false,
+        password: 'hashed-password-value',
+      });
+      mockPrismaClient.systemSetting.findUnique.mockResolvedValue(null);
+      const config = getConfig() as { hardwareWallet?: { operatorAttestedVendors: readonly string[] } };
+      config.hardwareWallet = { operatorAttestedVendors: ['trezor'] };
+
+      try {
+        const response = await request(app).get('/api/v1/auth/me');
+
+        expect(response.status).toBe(200);
+        expect(response.body.hardwareWalletAttestation).toEqual({
+          vendors: ['trezor'],
+          label: OPERATOR_ATTESTED_EVIDENCE_LABEL,
+        });
+      } finally {
+        delete config.hardwareWallet;
+      }
     });
 
     it('should detect when user is using default password', async () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('@sanctuary/shared/constants/hardwareWalletCapabilities', () => ({
-  getHardwareWalletCapabilityRow: ({ type, model }: { type?: string; model?: string }) => model ? ({
+vi.mock('@sanctuary/shared/constants/hardwareWalletCapabilities', () => {
+  const fixtureRow = ({ type, model }: { type?: string; model?: string }) => model ? ({
     vendor: type,
     enabled: true,
     reason: 'verified fixture',
@@ -9,8 +9,15 @@ vi.mock('@sanctuary/shared/constants/hardwareWalletCapabilities', () => ({
     vendor: type,
     enabled: false,
     reason: 'unresolved identity',
-  }),
-}));
+  });
+  return {
+    OPERATOR_ATTESTED_EVIDENCE_LABEL: 'attested fixture label',
+    resolveHardwareWalletCapability: (identity: { type?: string; model?: string }) => {
+      const row = fixtureRow(identity);
+      return { row, enabled: row.enabled, evidence: 'unverified' };
+    },
+  };
+});
 
 import { getDeviceCapabilities } from '../../../../../src/components/send/steps/review/deviceCapabilities';
 

@@ -1,8 +1,10 @@
 import { expect } from 'vitest';
+import { OPERATOR_ATTESTED_EVIDENCE_LABEL } from '@sanctuary/shared/constants/hardwareWalletCapabilities';
 
 export const AUTH_SESSION_USER_KEYS = [
   'email',
   'emailVerified',
+  'hardwareWalletAttestation',
   'id',
   'isAdmin',
   'preferences',
@@ -33,4 +35,9 @@ export function expectCanonicalAuthSessionUser(
   expect(user.preferences).toEqual(expected.preferences);
   expect(user.twoFactorEnabled).toBe(expected.twoFactorEnabled);
   expect(user.usingDefaultPassword).toBe(expected.usingDefaultPassword);
+  // Auth harnesses run with operator attestation off.
+  expect(user.hardwareWalletAttestation).toEqual({
+    vendors: [],
+    label: OPERATOR_ATTESTED_EVIDENCE_LABEL,
+  });
 }

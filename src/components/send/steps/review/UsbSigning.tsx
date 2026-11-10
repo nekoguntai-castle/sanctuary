@@ -8,6 +8,7 @@ import {
   QrCode,
 } from 'lucide-react';
 import { Button } from '../../../ui/Button';
+import { EvidenceNote } from '../../../ui/EvidenceNote';
 import type { Device } from '../../../../types';
 import { getDeviceCapabilities } from './deviceCapabilities';
 import { UNATTRIBUTED_SIGNATURE_ID } from '../../../../hooks/send/types';
@@ -71,6 +72,11 @@ export function UsbSigning({
         >
           {device.label}: {capabilities.blockedReason}
         </p>
+      ))}
+      {usbSigners.filter(({ capabilities }) => capabilities.evidenceLabel).map(({ device, capabilities }) => (
+        <EvidenceNote key={`evidence-${device.id}`}>
+          {device.label}: {capabilities.evidenceLabel}
+        </EvidenceNote>
       ))}
       {usbLocked && (
         <p className="text-xs text-sanctuary-500 dark:text-sanctuary-400" role="status">

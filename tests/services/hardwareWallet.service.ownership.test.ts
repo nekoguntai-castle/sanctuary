@@ -12,7 +12,17 @@ const { mockPost, mockValidatePsbtSigningRequest, mockCapabilityRow } = vi.hoist
 
 vi.mock('@sanctuary/shared/constants/hardwareWalletCapabilities', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@sanctuary/shared/constants/hardwareWalletCapabilities')>();
-  return { ...actual, getHardwareWalletCapabilityRow: mockCapabilityRow };
+  return {
+    ...actual,
+    getHardwareWalletCapabilityRow: mockCapabilityRow,
+    // Mirror the fixture row's `enabled` so these tests stay independent of attestation.
+    resolveHardwareWalletCapability: (
+      ...[identity, capability]: Parameters<typeof actual.resolveHardwareWalletCapability>
+    ) => {
+      const row = mockCapabilityRow(identity, capability);
+      return { row, enabled: Boolean(row?.enabled), evidence: 'unverified' };
+    },
+  };
 });
 
 vi.mock('../../src/services/hardwareWallet/psbtAccountBinding', () => ({

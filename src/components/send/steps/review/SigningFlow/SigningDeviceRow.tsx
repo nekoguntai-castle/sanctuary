@@ -1,3 +1,4 @@
+import { EvidenceNote } from '../../../../ui/EvidenceNote';
 import { getDeviceCapabilities } from '../deviceCapabilities';
 import { SignedDeviceBadge } from './SignedDeviceBadge';
 import { SigningDeviceIdentity } from './SigningDeviceIdentity';
@@ -51,6 +52,9 @@ export function SigningDeviceRow({
           />
         )}
       </div>
+      {!hasSigned && capabilities.evidenceLabel && (
+        <EvidenceNote className="px-3 pb-3 -mt-1">{capabilities.evidenceLabel}</EvidenceNote>
+      )}
     </div>
   );
 }

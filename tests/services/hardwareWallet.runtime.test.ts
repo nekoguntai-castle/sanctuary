@@ -10,6 +10,14 @@ vi.mock('@sanctuary/shared/constants/hardwareWalletCapabilities', async (importO
       enabled: capabilityState.enabled,
       reason: capabilityState.enabled ? 'verified fixture' : 'unverified fixture',
     }),
+    resolveHardwareWalletCapability: () => ({
+      row: {
+        enabled: capabilityState.enabled,
+        reason: capabilityState.enabled ? 'verified fixture' : 'unverified fixture',
+      },
+      enabled: capabilityState.enabled,
+      evidence: 'unverified',
+    }),
   };
 });
 

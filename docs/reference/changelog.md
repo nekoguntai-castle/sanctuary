@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- An operator can now enable Trezor on their own instance without Tier 3 physical-device evidence, on their own attestation (`docs/plans/trezor-connect-10-migration.md` §9c; `docs/reference/hardware-wallet-validation.md`, "Per-Instance Operator Attestation").
+  - Set `HARDWARE_WALLET_OPERATOR_ATTESTED_VENDORS=trezor` and `HARDWARE_WALLET_OPERATOR_ATTESTATION_ACK=not-tier3-verified` in the runtime env, then restart. Without both, nothing changes.
+  - With them, the server and client unlock every Trezor capability for exact catalog models on that instance, and the UI labels the device "Operator-attested, not Tier 3 verified".
+  - Default behavior is unchanged. The static capability rows, the compatibility statement and release evaluation all stay fail-closed, and every signing safety check still runs.
+
 ### Changed
 
 - Trezor moves to Connect 10.0.1, because Connect 9 is end of life: Trezor no longer fixes it and plans to shut down the `connect.trezor.io/9` host it depends on (`docs/plans/trezor-connect-10-migration.md`, Phase B).

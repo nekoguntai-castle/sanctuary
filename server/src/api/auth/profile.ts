@@ -14,6 +14,7 @@ import { validate } from '../../middleware/validate';
 import { setAccessExpiresAtHeader } from '../../middleware/csrf';
 import { PreferencesSchema, type PreferencesInput, UserSearchQuerySchema } from '../schemas/auth';
 import { requireAuthenticatedUser } from '../../middleware/auth';
+import { getOperatorAttestationForClient } from '../../services/hardwareWalletCapabilities';
 
 const router = Router();
 
@@ -91,6 +92,7 @@ router.get('/me', asyncHandler(async (req, res) => {
   res.json({
     ...userWithoutPassword,
     usingDefaultPassword,
+    hardwareWalletAttestation: getOperatorAttestationForClient(),
   });
 }));
 

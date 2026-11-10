@@ -291,3 +291,60 @@ export const HARDWARE_WALLET_CAPABILITY_ROWS: readonly HardwareWalletCapabilityR
       })),
     ),
   ));
+
+/*
+ * Per-instance operator attestation (docs/plans/trezor-connect-10-migration.md
+ * §9c). An operator with host access may attest a vendor for their own
+ * instance; it never changes HARDWARE_WALLET_CAPABILITY_ROWS, the Tier 3
+ * release evaluator or the generated compatibility statement, which stay
+ * fail-closed.
+ */
+
+/** Vendors an operator may attest. Only vendors with a Tier 2 emulator proof. */
+export const OPERATOR_ATTESTABLE_HARDWARE_WALLET_VENDORS = ["trezor"] as const;
+export type OperatorAttestableHardwareWalletVendor =
+  (typeof OPERATOR_ATTESTABLE_HARDWARE_WALLET_VENDORS)[number];
+
+/** Exact acknowledgement the operator must set alongside the vendor list. */
+export const HARDWARE_WALLET_OPERATOR_ATTESTATION_ACK = "not-tier3-verified";
+
+export const OPERATOR_ATTESTED_EVIDENCE_LABEL =
+  "Operator-attested, not Tier 3 verified";
+
+export type HardwareWalletCapabilityEvidence = "unverified" | "operator-attested";
+
+export interface ResolvedHardwareWalletCapability {
+  row: HardwareWalletCapabilityRow | null;
+  enabled: boolean;
+  evidence: HardwareWalletCapabilityEvidence;
+}
+
+export function isOperatorAttestableVendor(
+  vendor: string,
+): vendor is OperatorAttestableHardwareWalletVendor {
+  return (OPERATOR_ATTESTABLE_HARDWARE_WALLET_VENDORS as readonly string[]).includes(vendor);
+}
+
+/**
+ * Resolve a capability for this instance. A row is enabled only when its
+ * vendor is attested and the identity resolves to an exact catalog model;
+ * `<vendor>-unresolved` identities stay blocked. Rows are typed `enabled:
+ * false` today; the first Tier 3 enablement must also return
+ * `{ enabled: true }` here for an evidence-enabled row, because the client
+ * and server decide only through this resolver.
+ */
+export function resolveHardwareWalletCapability(
+  identity: HardwareWalletIdentity,
+  capability: HardwareWalletCapability,
+  attestedVendors: readonly string[],
+): ResolvedHardwareWalletCapability {
+  const row = getHardwareWalletCapabilityRow(identity, capability);
+  const attested =
+    row !== null &&
+    isOperatorAttestableVendor(row.vendor) &&
+    attestedVendors.includes(row.vendor) &&
+    row.modelFamily !== `${row.vendor}-unresolved`;
+  return attested
+    ? { row, enabled: true, evidence: "operator-attested" }
+    : { row, enabled: false, evidence: "unverified" };
+}

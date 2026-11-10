@@ -32,6 +32,7 @@ import {
 } from './envSections';
 import { createLogger } from '../utils/logger';
 import { warnDeprecatedStaleSyncEnvironment } from './deprecatedSyncEnvironment';
+import { buildHardwareWalletConfig } from './hardwareWalletAttestation';
 
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '../../.env') });
@@ -89,6 +90,7 @@ function loadConfig(): CombinedConfig {
     websocket: buildWebsocketConfig(),
     push: buildPushConfig(),
     payjoin: { publicUrl: parseStringEnv('PAYJOIN_PUBLIC_URL') },
+    hardwareWallet: buildHardwareWalletConfig(log.warn),
     mcp: buildMcpConfig(),
     docker: { proxyUrl: parseStringEnv('DOCKER_PROXY_URL', 'http://docker-proxy:2375') },
     worker: {
@@ -382,7 +384,7 @@ const config = getConfig();
 export default config;
 
 // Re-export types
-export type { AppConfig, CombinedConfig, FeatureFlags, ExperimentalFeatures, FeatureFlagKey, NetworkType, LogLevel } from './types';
+export type { AppConfig, CombinedConfig, HardwareWalletConfig, FeatureFlags, ExperimentalFeatures, FeatureFlagKey, NetworkType, LogLevel } from './types';
 export { defaultFeatureFlags } from './features';
 
 // Re-export validation utilities

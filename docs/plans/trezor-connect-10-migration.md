@@ -843,6 +843,31 @@ returning `{ row, enabled, evidence: 'unverified' | 'operator-attested' }`.
 - Unchanged: the compatibility-report and signer-inventory tests, which
   prove the global default.
 
+**Phase C as built** (branch `feat/trezor-operator-attestation`):
+- `resolveHardwareWalletCapability` and its constants live in the shared
+  module. Its comment marks where the first Tier 3 enablement must hook in,
+  since the client and server decide only through it.
+- Server:
+  - config is parsed in `server/src/config/hardwareWalletAttestation.ts`
+    (exact ack, `trezor` only, frozen);
+  - the decision gains a variant with `evidenceTier: 'operator-attested'`
+    and a warning log;
+  - `getOperatorAttestationForClient()` feeds `GET /auth/me` and
+    `buildAuthSessionUser` (login, 2FA verify, register), with an OpenAPI
+    schema for it;
+  - no assert callsites were added or removed.
+- Both the backend and worker containers receive the two keys
+  (`docker-compose.yml`), so each process reaches the same decision.
+- `.env.example` is unchanged: the repository hook forbids agent edits to
+  `.env*` files. The keys are documented in `hardware-wallet-validation.md`.
+- Client:
+  - `src/services/hardwareWallet/operatorAttestation.ts` is set from
+    `/auth/me` and the login responses, and cleared on every logout path;
+  - `service.ts` and `deviceCapabilities.ts` use the resolver, with the
+    drift and fingerprint checks unchanged;
+  - a muted "Operator-attested, not Tier 3 verified" line appears in the
+    USB connect panel, the signing device row and USB signing.
+
 **Enabling on prod** happens after the upgrade, by adding the two keys to
 `~/.config/sanctuary/sanctuary.env` and restarting. That is an operator
 action, done only when the user says so.

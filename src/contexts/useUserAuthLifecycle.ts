@@ -5,6 +5,7 @@ import * as authApi from '../api/auth';
 import { ApiError } from '../api/client';
 import { onTerminalLogout } from '../api/refresh';
 import { createLogger } from '../utils/logger';
+import { applyHardwareWalletAttestationFromUser } from '../services/hardwareWallet/operatorAttestation';
 import { toContextUser } from './userModel';
 
 const log = createLogger('UserContext');
@@ -37,6 +38,7 @@ export function useAuthBootstrap({
         const currentUser = await authApi.getCurrentUser();
         if (isCurrent()) {
           resetPreferenceTracking();
+          applyHardwareWalletAttestationFromUser(currentUser);
           setUser(toContextUser(currentUser));
         }
       } catch (err) {

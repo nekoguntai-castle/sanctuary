@@ -24,7 +24,15 @@ import { createLogger } from '../utils/logger';
 
 const log = createLogger('AuthApi');
 
-export type User = AuthUser;
+/** Per-instance operator attestation (plan §9c); absent means none (fail-closed). */
+export interface HardwareWalletAttestation {
+  vendors: string[];
+  label: string;
+}
+
+export type User = AuthUser & {
+  hardwareWalletAttestation?: HardwareWalletAttestation;
+};
 export type AuthUserPreferences = NonNullable<AuthUser['preferences']>;
 
 export type {

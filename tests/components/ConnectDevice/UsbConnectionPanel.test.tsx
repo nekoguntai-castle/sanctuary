@@ -1,7 +1,12 @@
 import { render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe,expect,it,vi } from 'vitest';
+import { afterEach,describe,expect,it,vi } from 'vitest';
+import { OPERATOR_ATTESTED_EVIDENCE_LABEL } from '@sanctuary/shared/constants/hardwareWalletCapabilities';
 import { UsbConnectionPanel } from '../../../src/components/ConnectDevice/UsbConnectionPanel';
+import {
+  clearHardwareWalletAttestation,
+  setHardwareWalletAttestation,
+} from '../../../src/services/hardwareWallet/operatorAttestation';
 
 const trezorModel = {
   id: 'trezor-t',
@@ -48,6 +53,25 @@ function renderPanel(overrides: Record<string, unknown> = {}) {
 }
 
 describe('UsbConnectionPanel', () => {
+  afterEach(() => clearHardwareWalletAttestation());
+
+  it('shows no attestation note by default', () => {
+    renderPanel();
+    expect(screen.queryByText(OPERATOR_ATTESTED_EVIDENCE_LABEL)).not.toBeInTheDocument();
+  });
+
+  it('shows the attestation note for an attested exact Trezor model only', () => {
+    setHardwareWalletAttestation(['trezor']);
+    renderPanel();
+    expect(screen.getByRole('note')).toHaveTextContent(OPERATOR_ATTESTED_EVIDENCE_LABEL);
+  });
+
+  it('shows no attestation note for a non-attested vendor while Trezor is attested', () => {
+    setHardwareWalletAttestation(['trezor']);
+    renderPanel({ selectedModel: ledgerModel });
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+  });
+
   it('renders initial trezor hint and connects', async () => {
     const user = userEvent.setup();
     const { onConnect } = renderPanel();

@@ -1,7 +1,9 @@
 import React from 'react';
 import type { HardwareDeviceModel } from '../../../api/devices';
 import type { DeviceType } from '../../../services/hardwareWallet/types';
+import { getOperatorAttestationLabel } from '../../../services/hardwareWallet/operatorAttestation';
 import { Button } from '../../ui/Button';
+import { EvidenceNote } from '../../ui/EvidenceNote';
 import { getDeviceIcon } from '../../ui/CustomIcons';
 
 interface UsbInitialStateProps {
@@ -20,6 +22,10 @@ export const UsbInitialState: React.FC<UsbInitialStateProps> = ({
   if (!visible) {
     return null;
   }
+  const evidenceLabel = getOperatorAttestationLabel(
+    { type: deviceType, model: selectedModel.name },
+    'import',
+  );
 
   return (
     <>
@@ -37,6 +43,9 @@ export const UsbInitialState: React.FC<UsbInitialStateProps> = ({
         </p>
       ) : (
         <p className="text-xs text-sanctuary-400 mb-4">Make sure the Bitcoin app is open on your device.</p>
+      )}
+      {evidenceLabel && (
+        <EvidenceNote className="mb-4">{evidenceLabel}</EvidenceNote>
       )}
       <Button onClick={onConnect}>Connect Device</Button>
     </>

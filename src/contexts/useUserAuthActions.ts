@@ -11,6 +11,10 @@ import type {
   RegistrationResult,
   TwoFactorPending,
 } from './userContextTypes';
+import {
+  applyHardwareWalletAttestationFromUser,
+  clearHardwareWalletAttestation,
+} from '../services/hardwareWallet/operatorAttestation';
 import { toContextUser } from './userModel';
 import type { PreferenceSaveResult } from './useUserPreferenceMutation';
 
@@ -64,6 +68,7 @@ export function useUserAuthActions({
 
       invalidateAuthBootstrap();
       resetPreferenceTracking();
+      applyHardwareWalletAttestationFromUser(response.user);
       setUser(toContextUser(response.user));
       setNotice(null);
       return { success: true };
@@ -92,6 +97,7 @@ export function useUserAuthActions({
       });
       invalidateAuthBootstrap();
       resetPreferenceTracking();
+      applyHardwareWalletAttestationFromUser(response.user);
       setUser(toContextUser(response.user));
       setTwoFactorPending(null);
       setNotice(null);
@@ -132,6 +138,7 @@ export function useUserAuthActions({
       invalidateAuthBootstrap();
       if (authApi.isPendingEmailVerification(response)) {
         resetPreferenceTracking();
+        clearHardwareWalletAttestation();
         setUser(null);
         setNotice(response.message);
         return {
@@ -142,6 +149,7 @@ export function useUserAuthActions({
       }
 
       resetPreferenceTracking();
+      applyHardwareWalletAttestationFromUser(response.user);
       setUser(toContextUser(response.user));
       setNotice(null);
       return { success: true };
@@ -169,6 +177,7 @@ export function useUserAuthActions({
     invalidateAuthBootstrap();
     triggerLogout();
     resetPreferenceTracking();
+    clearHardwareWalletAttestation();
     setUser(null);
     setTwoFactorPending(null);
     setError(null);

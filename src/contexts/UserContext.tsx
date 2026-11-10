@@ -12,6 +12,7 @@ import type {
 import { getUserPreferenceRecord } from './userModel';
 import { clearQueryCacheForLogout } from '../providers/queryCacheReset';
 import { websocketClient } from '../services/websocket';
+import { clearHardwareWalletAttestation } from '../services/hardwareWallet/operatorAttestation';
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
@@ -36,6 +37,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const clearSessionState = useCallback(() => {
     invalidateAuthBootstrap();
     resetPreferenceTracking();
+    clearHardwareWalletAttestation();
     setUser(null);
     setIsLoading(false);
     setTwoFactorPending(null);

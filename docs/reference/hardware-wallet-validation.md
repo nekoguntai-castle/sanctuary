@@ -475,6 +475,42 @@ To turn the harness into a full hardware evidence gate after physical capture:
 REQUIRE_HARDWARE_SIGNED_FIXTURES=1 npm --prefix server run test -- --run tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts
 ```
 
+## Per-Instance Operator Attestation
+
+An operator with host access can enable a vendor on their own instance without
+Tier 3 evidence, on their own attestation. Nothing in this document's evidence
+chain changes:
+
+- `HARDWARE_WALLET_CAPABILITY_ROWS` stay `enabled: false`;
+- the compatibility statement still reports zero enabled capabilities;
+- release evaluation ignores the attestation.
+
+Only `trezor` is accepted, because it has a Tier 2 emulator proof. Set both
+keys in the runtime env file (`~/.config/sanctuary/sanctuary.env`) and
+restart:
+
+```bash
+HARDWARE_WALLET_OPERATOR_ATTESTED_VENDORS=trezor
+HARDWARE_WALLET_OPERATOR_ATTESTATION_ACK=not-tier3-verified
+```
+
+The acknowledgement must match exactly, or the vendor list is ignored with a
+boot warning. Other vendors are dropped with a warning. While the attestation
+is active, the backend and worker log one boot warning, and a warning for each
+attested capability decision (vendor, model family, capability).
+
+- **Scope:** exact catalog models only. `trezor-unresolved` identities stay
+  blocked, and so does a wallet whose cosigners include an unattested vendor.
+- **Unchanged checks:** session binding, master-fingerprint and identity
+  drift, PSBT account binding, and reference-transaction and signed-artifact
+  validation all still run.
+- **Client:** it learns the attestation from `GET /auth/me` and the login
+  responses (`hardwareWalletAttestation`). When the field is absent, the
+  client treats the vendor as not attested.
+- **UI:** it marks every attested device "Operator-attested, not Tier 3
+  verified".
+- **To revoke:** remove both keys and restart.
+
 ## Acceptance Criteria
 
 The hardware phase passes only when:

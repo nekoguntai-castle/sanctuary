@@ -10,6 +10,10 @@ import {
   USER_PREFERENCE_SELECTED_NETWORK_VALUES,
   USER_PREFERENCE_UNIT_VALUES,
 } from '@sanctuary/shared/schemas/mobileApiRequests';
+import {
+  OPERATOR_ATTESTABLE_HARDWARE_WALLET_VENDORS,
+  OPERATOR_ATTESTED_EVIDENCE_LABEL,
+} from '@sanctuary/shared/constants/hardwareWalletCapabilities';
 import { accountUsernamePropertySchema, passwordRequestPropertySchema } from './common';
 
 const preferenceEventSoundSchema = {
@@ -433,7 +437,22 @@ export const authSchemas = {
       has2FA: { type: 'boolean' },
       twoFactorEnabled: { type: 'boolean' },
       usingDefaultPassword: { type: 'boolean' },
+      hardwareWalletAttestation: { $ref: '#/components/schemas/HardwareWalletAttestation' },
     },
     required: ['id', 'username', 'isAdmin', 'createdAt', 'has2FA'],
+  },
+  HardwareWalletAttestation: {
+    type: 'object',
+    description:
+      'Per-instance operator attestation set from host env. Not Tier 3 evidence. ' +
+      'Clients treat an absent object as no attested vendors.',
+    properties: {
+      vendors: {
+        type: 'array',
+        items: { type: 'string', enum: [...OPERATOR_ATTESTABLE_HARDWARE_WALLET_VENDORS] },
+      },
+      label: { type: 'string', enum: [OPERATOR_ATTESTED_EVIDENCE_LABEL] },
+    },
+    required: ['vendors', 'label'],
   },
 } as const;

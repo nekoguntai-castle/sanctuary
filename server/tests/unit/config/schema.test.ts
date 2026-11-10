@@ -129,6 +129,9 @@ function buildValidConfig() {
     payjoin: {
       publicUrl: '',
     },
+    hardwareWallet: {
+      operatorAttestedVendors: [] as string[],
+    },
     mcp: {
       enabled: false,
       host: '127.0.0.1',
@@ -240,6 +243,19 @@ describe('Config Schema Validation', () => {
 
     expect(result.success).toBe(false);
     expect(result.errors.some(error => error.includes('sync.maxSyncDurationMs'))).toBe(true);
+  });
+
+  it('accepts only attestable vendors in the operator attestation list', () => {
+    const attested = buildValidConfig();
+    attested.hardwareWallet.operatorAttestedVendors = ['trezor'];
+    expect(validateConfigSchema(attested).success).toBe(true);
+
+    const invalidConfig = buildValidConfig();
+    invalidConfig.hardwareWallet.operatorAttestedVendors = ['ledger'];
+    const result = validateConfigSchema(invalidConfig);
+
+    expect(result.success).toBe(false);
+    expect(result.errors.some(error => error.includes('hardwareWallet.operatorAttestedVendors'))).toBe(true);
   });
 
   it('assertValidConfig does not throw for valid config', () => {

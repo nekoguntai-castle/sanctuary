@@ -330,6 +330,12 @@ services:
       # Required for Payjoin to work behind NAT/Tor. Example: http://your-onion.onion
       PAYJOIN_PUBLIC_URL: ${PAYJOIN_PUBLIC_URL:-}
 
+      # Per-instance hardware wallet operator attestation (not Tier 3 verified).
+      # Both must be set; only "trezor" is accepted. See
+      # docs/plans/trezor-connect-10-migration.md section 9c.
+      HARDWARE_WALLET_OPERATOR_ATTESTED_VENDORS: ${HARDWARE_WALLET_OPERATOR_ATTESTED_VENDORS:-}
+      HARDWARE_WALLET_OPERATOR_ATTESTATION_ACK: ${HARDWARE_WALLET_OPERATOR_ATTESTATION_ACK:-}
+
       # LLM egress proxy URL (isolated provider egress boundary)
       # Backend forwards all provider-bound AI requests to this proxy.
       LLM_EGRESS_PROXY_URL: ${LLM_EGRESS_PROXY_URL:-http://llm-egress-proxy:3100}
@@ -444,6 +450,11 @@ services:
       # Server
       NODE_ENV: ${NODE_ENV:-production}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+
+      # Same operator attestation as the backend, so both processes reach one
+      # capability decision (docs/plans/trezor-connect-10-migration.md 9c).
+      HARDWARE_WALLET_OPERATOR_ATTESTED_VENDORS: ${HARDWARE_WALLET_OPERATOR_ATTESTED_VENDORS:-}
+      HARDWARE_WALLET_OPERATOR_ATTESTATION_ACK: ${HARDWARE_WALLET_OPERATOR_ATTESTATION_ACK:-}
 
       # Database: bound connection acquisition, statements, and interactive
       # transactions so a worker cannot renew a wallet lock indefinitely while

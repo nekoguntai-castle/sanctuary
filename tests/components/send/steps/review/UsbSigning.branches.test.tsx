@@ -5,6 +5,8 @@ import { UsbSigning } from '../../../../../src/components/send/steps/review/UsbS
 vi.mock('../../../../../src/components/send/steps/review/deviceCapabilities', () => ({
   getDeviceCapabilities: ({ type }: { type?: string }) => type === 'blocked'
     ? { methods: [], labels: {}, blockedReason: 'Physical evidence is missing.' }
+    : type === 'attested'
+    ? { methods: ['usb'], labels: {}, blockedReason: '', evidenceLabel: 'Attested fixture' }
     : type === 'coldcard'
     ? { methods: ['airgap'], labels: {}, blockedReason: '' }
     : { methods: ['usb'], labels: {}, blockedReason: '' },
@@ -30,6 +32,27 @@ describe('UsbSigning branch coverage', () => {
     expect(screen.getByRole('status')).toHaveTextContent(
       'Unverified signer: Physical evidence is missing.',
     );
+  });
+
+  it('notes operator-attested USB signers only', () => {
+    render(
+      <UsbSigning
+        devices={[
+          { id: 'dev-a', type: 'attested', label: 'Trezor' } as any,
+          { id: 'dev-l', type: 'ledger', label: 'Ledger' } as any,
+        ]}
+        signedDevices={new Set()}
+        signingDeviceId={null}
+        signing={false}
+        onFileUpload={vi.fn()}
+        setSigningDeviceId={vi.fn()}
+        setQrSigningDevice={vi.fn()}
+        fileInputRef={{ current: null }}
+      />
+    );
+
+    expect(screen.getAllByRole('note')).toHaveLength(1);
+    expect(screen.getByRole('note')).toHaveTextContent('Trezor: Attested fixture');
   });
 
   it('does not set signing state when onSignWithDevice is missing', () => {

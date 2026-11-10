@@ -19,6 +19,9 @@ vi.mock('../../../src/components/send/steps/review/deviceCapabilities', () => ({
     if (type === 'passport') {
       return { methods: ['qr', 'airgap'], labels: {}, blockedReason: '' };
     }
+    if (type === 'attested') {
+      return { methods: ['usb'], labels: {}, blockedReason: '', evidenceLabel: 'Attested fixture' };
+    }
     return { methods: ['usb'], labels: {}, blockedReason: '' };
   },
 }));
@@ -72,6 +75,20 @@ describe('SigningFlow', () => {
     expect(screen.getByRole('status')).toHaveTextContent(
       'Signing unavailable: No reviewed capability evidence is available.',
     );
+  });
+
+  it('notes an operator-attested signer until it has signed', () => {
+    const device = createDevice({ id: 'trezor-1', type: 'attested', label: 'Trezor' });
+    const { rerender, props } = renderSigningFlow({ devices: [device] });
+    expect(screen.getByRole('note')).toHaveTextContent('Attested fixture');
+
+    rerender(<SigningFlow {...props} signedDevices={new Set<string>(['trezor-1'])} />);
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+  });
+
+  it('shows no attestation note for an unattested signer', () => {
+    renderSigningFlow();
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
   });
 
   it('renders signature progress and signed state', () => {

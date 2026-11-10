@@ -33,10 +33,12 @@ import type {
 import { validatePsbtSigningRequest } from './psbtAccountBinding';
 import {
   HARDWARE_WALLET_CAPABILITY_MANIFEST_ID,
-  getHardwareWalletCapabilityRow,
+  resolveHardwareWalletCapability,
   type HardwareWalletCapability,
+  type HardwareWalletCapabilityRow,
   type HardwareWalletIdentity,
 } from '@sanctuary/shared/constants/hardwareWalletCapabilities';
+import { getAttestedHardwareWalletVendors } from './operatorAttestation';
 import {
   HardwareWalletIdentityError,
   normalizeMasterFingerprint,
@@ -49,14 +51,20 @@ import {
 } from '@sanctuary/shared/schemas/bitcoinResponses';
 
 const log = createLogger('HardwareWalletService');
-type CapabilityRow = NonNullable<ReturnType<typeof getHardwareWalletCapabilityRow>>;
+
+function resolveCapability(
+  identity: HardwareWalletIdentity,
+  capability: HardwareWalletCapability,
+) {
+  return resolveHardwareWalletCapability(identity, capability, getAttestedHardwareWalletVendors());
+}
 
 function assertHardwareActionEnabled(
   identity: HardwareWalletIdentity,
   capability: Extract<HardwareWalletCapability, 'import' | 'account_add' | 'display' | 'sign'>
-): CapabilityRow {
-  const row = getHardwareWalletCapabilityRow(identity, capability);
-  if (row?.enabled) return row;
+): HardwareWalletCapabilityRow {
+  const { row, enabled } = resolveCapability(identity, capability);
+  if (enabled && row) return row;
 
   throw new Error(
     `Hardware wallet connection is temporarily unavailable (${HARDWARE_WALLET_CAPABILITY_MANIFEST_ID}): ${row?.reason ?? 'No reviewed capability row matches this device identity.'}`
@@ -233,8 +241,8 @@ export class HardwareWalletService {
     const identity: HardwareWalletIdentity = { type: adapter.type, model: device?.model };
 
     try {
-      const row = getHardwareWalletCapabilityRow(identity, capability);
-      const importRow = getHardwareWalletCapabilityRow(identity, 'import');
+      const { row } = resolveCapability(identity, capability);
+      const { row: importRow } = resolveCapability(identity, 'import');
       const approved = this.approvedConnection;
       if (!approved) {
         assertHardwareActionEnabled(identity, capability);
@@ -390,7 +398,7 @@ export class HardwareWalletService {
       throw error;
     }
     let fingerprint: string;
-    let connectedRow: CapabilityRow;
+    let connectedRow: HardwareWalletCapabilityRow;
     try {
       if (this.connectGeneration !== generation) {
         throw new Error('Hardware wallet connect superseded by a newer session operation');

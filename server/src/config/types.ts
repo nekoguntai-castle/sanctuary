@@ -5,6 +5,7 @@
  */
 
 import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
+import type { OperatorAttestableHardwareWalletVendor } from '@sanctuary/shared/constants/hardwareWalletCapabilities';
 
 export type { NetworkType };
 export type ElectrumProtocol = 'tcp' | 'ssl';
@@ -179,6 +180,14 @@ export interface PayjoinConfig {
   publicUrl: string;
 }
 
+/**
+ * Per-instance hardware wallet operator attestation (not Tier 3 evidence).
+ * Empty unless the operator set both host env keys correctly.
+ */
+export interface HardwareWalletConfig {
+  operatorAttestedVendors: readonly OperatorAttestableHardwareWalletVendor[];
+}
+
 export interface McpConfig {
   enabled: boolean;
   host: string;
@@ -299,6 +308,7 @@ export interface AppConfig {
   websocket: WebSocketConfig;
   push: PushNotificationConfig;
   payjoin: PayjoinConfig;
+  hardwareWallet: HardwareWalletConfig;
   mcp: McpConfig;
   docker: DockerConfig;
   worker: WorkerConfig;

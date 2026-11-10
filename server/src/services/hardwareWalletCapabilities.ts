@@ -1,19 +1,37 @@
 import {
   HARDWARE_WALLET_CAPABILITY_MANIFEST_ID,
+  OPERATOR_ATTESTED_EVIDENCE_LABEL,
   classifyHardwareWalletVendor,
   getHardwareWalletCapabilityRow,
+  resolveHardwareWalletCapability,
   type HardwareWalletCapability,
   type HardwareWalletIdentity,
   type HardwareWalletVendor,
+  type OperatorAttestableHardwareWalletVendor,
 } from "@sanctuary/shared/constants/hardwareWalletCapabilities";
+import { getConfig } from "../config";
 import { ForbiddenError } from "../errors";
 import { walletRepository } from "../repositories";
+import { createLogger } from "../utils/logger";
+
+const log = createLogger("HW_CAPABILITY");
+
+// The display gate runs on every address read, so each attested
+// vendor/model/capability is logged once per process, not per decision.
+const loggedAttestedDecisions = new Set<string>();
 
 export type HardwareWalletCapabilityDecision =
   | {
       allowed: true;
       vendor: null;
       capability: HardwareWalletCapability;
+    }
+  | {
+      allowed: true;
+      vendor: HardwareWalletVendor;
+      capability: HardwareWalletCapability;
+      evidenceTier: "operator-attested";
+      manifestId: typeof HARDWARE_WALLET_CAPABILITY_MANIFEST_ID;
     }
   | {
       allowed: false;
@@ -26,6 +44,28 @@ export type HardwareWalletCapabilityDecision =
     };
 
 export { classifyHardwareWalletVendor };
+
+export interface HardwareWalletAttestationForClient {
+  vendors: OperatorAttestableHardwareWalletVendor[];
+  label: typeof OPERATOR_ATTESTED_EVIDENCE_LABEL;
+}
+
+/**
+ * Vendors the operator attested for this instance (docs/plans/
+ * trezor-connect-10-migration.md §9c). A config without the section (partial
+ * test or early-boot configs) attests nothing, so the default stays blocked.
+ */
+export function getOperatorAttestedHardwareWalletVendors(): readonly OperatorAttestableHardwareWalletVendor[] {
+  return getConfig().hardwareWallet?.operatorAttestedVendors ?? [];
+}
+
+/** The attestation state the client needs to mirror the server gate. */
+export function getOperatorAttestationForClient(): HardwareWalletAttestationForClient {
+  return {
+    vendors: [...getOperatorAttestedHardwareWalletVendors()],
+    label: OPERATOR_ATTESTED_EVIDENCE_LABEL,
+  };
+}
 
 export function getHardwareWalletCapabilityDecision(
   identity: HardwareWalletIdentity,
@@ -79,6 +119,31 @@ export function getHardwareWalletCapabilityDecision(
     };
   }
   /* v8 ignore stop */
+
+  const { enabled } = resolveHardwareWalletCapability(
+    identity,
+    capability,
+    getOperatorAttestedHardwareWalletVendors(),
+  );
+  if (enabled) {
+    // Operator-attested on this instance only; never Tier 3 evidence.
+    const key = `${vendor}|${row.modelFamily}|${capability}`;
+    if (!loggedAttestedDecisions.has(key)) {
+      loggedAttestedDecisions.add(key);
+      log.warn("Hardware wallet capability allowed by operator attestation (not Tier 3 verified)", {
+        vendor,
+        modelFamily: row.modelFamily,
+        capability,
+      });
+    }
+    return {
+      allowed: true,
+      vendor,
+      capability,
+      evidenceTier: "operator-attested",
+      manifestId: HARDWARE_WALLET_CAPABILITY_MANIFEST_ID,
+    };
+  }
 
   return {
     allowed: false,

@@ -1,9 +1,11 @@
 // Device connection capabilities
 import {
-  getHardwareWalletCapabilityRow,
+  OPERATOR_ATTESTED_EVIDENCE_LABEL,
+  resolveHardwareWalletCapability,
   type HardwareWalletIdentity,
   type HardwareWalletVendor,
 } from '@sanctuary/shared/constants/hardwareWalletCapabilities';
+import { getAttestedHardwareWalletVendors } from '../../../../services/hardwareWallet/operatorAttestation';
 
 export type ConnectionMethod = 'usb' | 'airgap' | 'qr';
 
@@ -11,6 +13,8 @@ export interface DeviceCapabilities {
   methods: ConnectionMethod[];
   labels: Record<ConnectionMethod, string>;
   blockedReason: string;
+  /** Set when this instance's operator attestation, not Tier 3 evidence, enables signing. */
+  evidenceLabel?: string;
 }
 
 const SIGNING_METHODS: Record<HardwareWalletVendor, ConnectionMethod[]> = {
@@ -33,9 +37,13 @@ const METHOD_LABELS: Record<ConnectionMethod, string> = {
 };
 
 export const getDeviceCapabilities = (identity: HardwareWalletIdentity): DeviceCapabilities => {
-  const row = getHardwareWalletCapabilityRow(identity, 'sign');
-  // The transport map is inert until its exact manifest row is evidence-enabled.
-  const methods = row?.enabled ? SIGNING_METHODS[row.vendor] : [];
+  const { row, enabled, evidence } = resolveHardwareWalletCapability(
+    identity,
+    'sign',
+    getAttestedHardwareWalletVendors(),
+  );
+  // The transport map is inert until its exact manifest row is enabled.
+  const methods = enabled && row ? SIGNING_METHODS[row.vendor] : [];
   return {
     methods,
     labels: {
@@ -45,5 +53,6 @@ export const getDeviceCapabilities = (identity: HardwareWalletIdentity): DeviceC
     },
     blockedReason: row?.reason
       ?? 'No reviewed hardware-wallet capability row matches this signer identity.',
+    ...(evidence === 'operator-attested' ? { evidenceLabel: OPERATOR_ATTESTED_EVIDENCE_LABEL } : {}),
   };
 };

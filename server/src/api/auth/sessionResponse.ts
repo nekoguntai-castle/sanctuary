@@ -1,6 +1,10 @@
 import type { Request, Response } from 'express';
 
 import { setAuthCookies } from '../../middleware/csrf';
+import {
+  getOperatorAttestationForClient,
+  type HardwareWalletAttestationForClient,
+} from '../../services/hardwareWalletCapabilities';
 import * as refreshTokenService from '../../services/refreshTokenService';
 import { generateToken, getTokenLineage } from '../../utils/jwt';
 
@@ -35,6 +39,7 @@ export type AuthSessionUserResponse = {
   preferences: unknown;
   twoFactorEnabled: boolean;
   usingDefaultPassword: boolean;
+  hardwareWalletAttestation: HardwareWalletAttestationForClient;
 };
 
 export type PreparedAuthSession = {
@@ -63,6 +68,7 @@ export function buildAuthSessionUser(
     preferences: user.preferences ?? null,
     twoFactorEnabled: user.twoFactorEnabled ?? false,
     usingDefaultPassword: options.usingDefaultPassword ?? false,
+    hardwareWalletAttestation: getOperatorAttestationForClient(),
   };
 }
 

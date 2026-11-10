@@ -8,6 +8,7 @@
 import { z } from 'zod';
 import { WALLET_SYNC_MAX_EXECUTION_MS } from '../constants/walletSyncActivation';
 import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
+import { OPERATOR_ATTESTABLE_HARDWARE_WALLET_VENDORS } from '@sanctuary/shared/constants/hardwareWalletCapabilities';
 
 // =============================================================================
 // Basic Type Schemas
@@ -173,6 +174,10 @@ export const PayjoinConfigSchema = z.object({
   publicUrl: z.string(),
 });
 
+export const HardwareWalletConfigSchema = z.object({
+  operatorAttestedVendors: z.array(z.enum(OPERATOR_ATTESTABLE_HARDWARE_WALLET_VENDORS)).readonly(),
+});
+
 export const McpConfigSchema = z.object({
   enabled: z.boolean(),
   host: z.string().min(1),
@@ -255,6 +260,7 @@ export const AppConfigSchema = z.object({
   websocket: WebSocketConfigSchema,
   push: PushNotificationConfigSchema,
   payjoin: PayjoinConfigSchema,
+  hardwareWallet: HardwareWalletConfigSchema,
   mcp: McpConfigSchema,
   docker: DockerConfigSchema,
   worker: WorkerConfigSchema,
