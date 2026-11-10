@@ -1,8 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
-
-vi.mock('@trezor/connect-web', () => ({
-  asDeviceUniquePath: (path: string) => `unique:${path}`,
-}));
+import { describe, expect, it } from 'vitest';
 
 import {
   assertSessionIdentity,
@@ -85,7 +81,7 @@ describe('Trezor selected session identity', () => {
 
   it('passes the exact selected identity to every subsequent Connect request', () => {
     expect(connectDevice(SESSION)).toEqual({
-      path: `unique:${SESSION.path}`,
+      path: SESSION.path,
       state: SESSION.state,
       instance: SESSION.instance,
     });

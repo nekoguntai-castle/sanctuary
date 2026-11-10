@@ -5,11 +5,10 @@
  * Receives connection state as a parameter instead of using `this`.
  */
 
-import TrezorConnect from '@trezor/connect-web';
 import { createLogger } from '../../../../utils/logger';
 import type { PSBTSignRequest, PSBTSignResponse } from '../../types';
 import { validatePsbtSigningRequest } from '../../psbtAccountBinding';
-import type { TrezorConnection } from './types';
+import type { TrezorConnectClient, TrezorConnection, TrezorNetwork } from './types';
 import { isMultisigInput } from './multisig';
 import { fetchRefTxs } from './refTxs';
 import { getDeviceFingerprintBuffer } from './signPsbtNetwork';
@@ -44,7 +43,8 @@ const assertEveryInputBound = (
  */
 export const signPsbtWithTrezor = async (
   request: PSBTSignRequest,
-  connection: TrezorConnection
+  connection: TrezorConnection,
+  client: TrezorConnectClient
 ): Promise<PSBTSignResponse> => {
   log.info('Trezor signPSBT called', {
     psbtLength: request.psbt.length,
@@ -64,9 +64,9 @@ export const signPsbtWithTrezor = async (
     };
     const scriptType = getTrezorScriptType(validated.accountPath);
     const isTestnet = validated.network !== 'mainnet';
-    const coin = isTestnet ? 'Testnet' : 'Bitcoin';
-    log.info('Using coin type for signing', {
-      coin,
+    const network: TrezorNetwork = isTestnet ? 'testnet' : 'mainnet';
+    log.info('Using network for signing', {
+      network,
       isTestnet,
       accountPath: validated.accountPath,
     });
@@ -95,22 +95,21 @@ export const signPsbtWithTrezor = async (
     const txFromPsbt = getUnsignedTransactionFromPsbt(psbt);
 
     // Pass version and locktime from PSBT so Trezor signs the same transaction.
-    const result = await TrezorConnect.signTransaction({
+    const result = await client.signTransaction({
       inputs,
       outputs,
       refTxs: refTxs.length > 0 ? refTxs : undefined,
-      coin,
-      push: false,
+      network,
       version: txFromPsbt.version,
       locktime: txFromPsbt.locktime,
       device: connectDevice(session),
     });
-    if (result.success) assertSessionIdentity(result.device, session);
+    if (result.ok) assertSessionIdentity(result.device, session);
 
     const signedTxHex = getSerializedTrezorTx(result);
     assertSignedTransactionIntent(txFromPsbt, signedTxHex);
     const connectSignatures =
-      result.success && Array.isArray(result.payload.signatures) ? result.payload.signatures : [];
+      result.ok && Array.isArray(result.value.signatures) ? result.value.signatures : [];
     const { validatedPsbt, addedSignatures } = validateAndApplyTrezorSignatures(
       psbt,
       connectSignatures,

@@ -8,13 +8,14 @@ import * as bitcoin from 'bitcoinjs-lib';
 import apiClient from '../../../../api/client';
 import { createLogger } from '../../../../utils/logger';
 import { toHex } from '../../../../utils/bufferUtils';
+import type { TrezorRefTx } from './types';
 
 const log = createLogger('TrezorAdapter');
 const REFERENCE_TRANSACTION_TIMEOUT_MS = 10_000;
 const REFERENCE_TRANSACTION_AGGREGATE_TIMEOUT_MS = 12_000;
 const MAX_CONCURRENT_REFERENCE_FETCHES = 4;
 
-const toTrezorReferenceTransaction = (rawTx: bitcoin.Transaction) => ({
+const toTrezorReferenceTransaction = (rawTx: bitcoin.Transaction): TrezorRefTx => ({
   hash: rawTx.getId(),
   version: rawTx.version,
   lock_time: rawTx.locktime,
@@ -192,7 +193,7 @@ const fetchAndAuthenticateReference = async (
 /**
  * Fetch reference transactions needed for Trezor signing
  */
-export async function fetchRefTxs(psbt: bitcoin.Psbt, walletId: string): Promise<any[]> {
+export async function fetchRefTxs(psbt: bitcoin.Psbt, walletId: string): Promise<TrezorRefTx[]> {
   const requests = collectReferenceRequests(psbt);
   const remoteRequests = requests.filter((request) => !request.localReference);
   const references = await withAggregateTimeout(

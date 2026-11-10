@@ -1,11 +1,9 @@
-import { asDeviceUniquePath } from '@trezor/connect-web';
-import type { TrezorSessionIdentity } from './types';
-
-interface ConnectDeviceIdentity {
-  path?: unknown;
-  state?: unknown;
-  instance?: unknown;
-}
+import type {
+  TrezorBoundDeviceIdentity,
+  TrezorDeviceIdentity,
+  TrezorResponseDevice,
+  TrezorSessionIdentity,
+} from './types';
 
 const identityError = (detail: string): Error =>
   new Error(`Trezor selected session mismatch: ${detail}`);
@@ -21,7 +19,7 @@ function sessionState(value: unknown): string | undefined {
 
 /** Capture the exact Connect transport path and wallet instance selected by the user. */
 export function requireSelectedDevice(
-  device: ConnectDeviceIdentity | undefined
+  device: TrezorResponseDevice | undefined
 ): Pick<TrezorSessionIdentity, 'path' | 'instance'> {
   if (!device || typeof device.path !== 'string' || device.path.length === 0) {
     throw identityError('Connect did not identify the selected device path');
@@ -36,7 +34,7 @@ export function requireSelectedDevice(
 export function requireResolvedSession(
   selected: Pick<TrezorSessionIdentity, 'path' | 'instance'>,
   state: unknown,
-  responseDevice?: ConnectDeviceIdentity
+  responseDevice?: TrezorResponseDevice
 ): TrezorSessionIdentity {
   const resolvedState = sessionState(state) ?? sessionState(responseDevice?.state);
   if (!resolvedState) throw identityError('Connect did not resolve the passphrase state');
@@ -47,7 +45,7 @@ export function requireResolvedSession(
 
 /** Reject a response unless it came from the same path, instance, and passphrase state. */
 export function assertSessionIdentity(
-  responseDevice: ConnectDeviceIdentity | undefined,
+  responseDevice: TrezorResponseDevice | undefined,
   expected: TrezorSessionIdentity
 ): void {
   if (!responseDevice) {
@@ -67,18 +65,20 @@ export function assertSessionIdentity(
 }
 
 /** Serialize a fully bound session for every funds-controlling Connect call. */
-export function connectDevice(session: TrezorSessionIdentity) {
+export function connectDevice(session: TrezorSessionIdentity): TrezorBoundDeviceIdentity {
   return {
-    path: asDeviceUniquePath(session.path),
+    path: session.path,
     state: session.state,
     instance: session.instance,
   };
 }
 
 /** Serialize the pre-state selection used only while resolving passphrase state. */
-export function connectSelectedDevice(selected: Pick<TrezorSessionIdentity, 'path' | 'instance'>) {
+export function connectSelectedDevice(
+  selected: Pick<TrezorSessionIdentity, 'path' | 'instance'>
+): TrezorDeviceIdentity {
   return {
-    path: asDeviceUniquePath(selected.path),
+    path: selected.path,
     state: undefined,
     instance: selected.instance,
   };

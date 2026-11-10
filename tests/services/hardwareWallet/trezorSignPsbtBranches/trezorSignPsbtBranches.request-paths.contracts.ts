@@ -1,6 +1,7 @@
 import * as bitcoin from 'bitcoinjs-lib';
 import { expect, it } from 'vitest';
 import * as h from './trezorSignPsbtBranchesTestHarness';
+import { connectFail, connectOk } from '../trezorFakeClient';
 import { signPsbtWithTrezor } from '../../../../src/services/hardwareWallet/adapters/trezor/signPsbt';
 
 export function registerTrezorSignPsbtRequestPathContracts() {
@@ -19,10 +20,14 @@ export function registerTrezorSignPsbtRequestPathContracts() {
     });
 
     await expect(
-      signPsbtWithTrezor({ psbt: psbt.toBase64() }, {
-        fingerprint: 'deadbeef',
-        session: h.TEST_SESSION,
-      } as any)
+      signPsbtWithTrezor(
+        { psbt: psbt.toBase64() },
+        {
+          fingerprint: 'deadbeef',
+          session: h.TEST_SESSION,
+        } as any,
+        h.fakeClient
+      )
     ).rejects.toThrow('requires wallet binding for every transaction input');
     expect(h.mockSignTransaction).not.toHaveBeenCalled();
   });
@@ -30,10 +35,7 @@ export function registerTrezorSignPsbtRequestPathContracts() {
   it('uses mainnet request path detection and maps change output to PAYTOP2SHWITNESS', async () => {
     const { psbt, signedTxHex } = h.createPsbt();
     h.mockGetTrezorScriptType.mockReturnValue('SPENDP2SHWITNESS');
-    h.mockSignTransaction.mockResolvedValueOnce({
-      success: true,
-      payload: { serializedTx: signedTxHex },
-    });
+    h.mockSignTransaction.mockResolvedValueOnce(connectOk({ serializedTx: signedTxHex }));
 
     await signPsbtWithTrezor(
       {
@@ -41,26 +43,28 @@ export function registerTrezorSignPsbtRequestPathContracts() {
         accountPath: "m/49'/0'/0'",
         inputPaths: [],
       },
-      { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any
+      { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any,
+      h.fakeClient
     );
 
     const call = h.mockSignTransaction.mock.calls.at(-1)?.[0];
-    expect(call.coin).toBe('Bitcoin');
+    expect(call.network).toBe('mainnet');
     expect(call.outputs[1].script_type).toBe('PAYTOP2SHWITNESS');
   });
 
   it('rejects request.inputPaths fallback when input derivation is missing', async () => {
     const { psbt } = h.createPsbt({ includeInputDerivation: false });
-    h.mockSignTransaction.mockResolvedValueOnce({
-      success: true,
-      payload: { serializedTx: '00' },
-    });
+    h.mockSignTransaction.mockResolvedValueOnce(connectOk({ serializedTx: '00' }));
 
     await expect(
-      signPsbtWithTrezor({ psbt: psbt.toBase64(), inputPaths: ["m/84'/0'/0'/0/7"] }, {
-        fingerprint: 'deadbeef',
-        session: h.TEST_SESSION,
-      } as any)
+      signPsbtWithTrezor(
+        { psbt: psbt.toBase64(), inputPaths: ["m/84'/0'/0'/0/7"] },
+        {
+          fingerprint: 'deadbeef',
+          session: h.TEST_SESSION,
+        } as any,
+        h.fakeClient
+      )
     ).rejects.toThrow('missing wallet-bound BIP32 derivation metadata');
 
     expect(h.mockPathToAddressN).not.toHaveBeenCalled();
@@ -91,10 +95,7 @@ export function registerTrezorSignPsbtRequestPathContracts() {
       },
     ];
 
-    h.mockSignTransaction.mockResolvedValueOnce({
-      success: true,
-      payload: { serializedTx: signedTxHex },
-    });
+    h.mockSignTransaction.mockResolvedValueOnce(connectOk({ serializedTx: signedTxHex }));
 
     await signPsbtWithTrezor(
       {
@@ -102,7 +103,8 @@ export function registerTrezorSignPsbtRequestPathContracts() {
         accountPath: "m/86'/0'/0'",
         inputPaths: ["m/86'/0'/0'/0/0"],
       },
-      { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any
+      { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any,
+      h.fakeClient
     );
 
     const call = h.mockSignTransaction.mock.calls.at(-1)?.[0];
@@ -120,19 +122,17 @@ export function registerTrezorSignPsbtRequestPathContracts() {
         bin_outputs: [{ amount: '999999' }],
       },
     ]);
-    h.mockSignTransaction.mockResolvedValueOnce({
-      success: true,
-      payload: { serializedTx: signedTxHex },
-    });
+    h.mockSignTransaction.mockResolvedValueOnce(connectOk({ serializedTx: signedTxHex }));
 
     await expect(
       signPsbtWithTrezor(
-      {
-        walletId: 'wallet-primary',
-        psbt: psbt.toBase64(),
-        inputPaths: ["m/84'/0'/0'/0/0"],
-      },
-        { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any
+        {
+          walletId: 'wallet-primary',
+          psbt: psbt.toBase64(),
+          inputPaths: ["m/84'/0'/0'/0/0"],
+        },
+        { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any,
+        h.fakeClient
       )
     ).rejects.toThrow('reference output differs on input 0');
     expect(h.mockFetchRefTxs).toHaveBeenCalledWith(expect.any(bitcoin.Psbt), 'wallet-primary');
@@ -145,31 +145,26 @@ export function registerTrezorSignPsbtRequestPathContracts() {
     (psbt.data.outputs[1] as any).bip32Derivation[0].path = "m/44'/1'/0'/1/0";
     const signedTxHex = h.txFromPsbt(psbt).toHex();
     h.mockGetTrezorScriptType.mockReturnValue('SPENDADDRESS');
-    h.mockSignTransaction.mockResolvedValueOnce({
-      success: true,
-      payload: { serializedTx: signedTxHex },
-    });
+    h.mockSignTransaction.mockResolvedValueOnce(connectOk({ serializedTx: signedTxHex }));
 
     await signPsbtWithTrezor(
       {
         psbt: psbt.toBase64(),
         inputPaths: ['m/44h/1h/0h/0/0'],
       },
-      { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any
+      { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any,
+      h.fakeClient
     );
 
     const call = h.mockSignTransaction.mock.calls.at(-1)?.[0];
-    expect(call.coin).toBe('Testnet');
+    expect(call.network).toBe('testnet');
     expect(call.outputs[0].address.startsWith('tb1')).toBe(true);
     expect(call.outputs[1].script_type).toBe('PAYTOADDRESS');
   });
 
   it('treats /0h/ request paths as explicit mainnet hints', async () => {
     const { psbt, signedTxHex } = h.createPsbt();
-    h.mockSignTransaction.mockResolvedValueOnce({
-      success: true,
-      payload: { serializedTx: signedTxHex },
-    });
+    h.mockSignTransaction.mockResolvedValueOnce(connectOk({ serializedTx: signedTxHex }));
 
     await signPsbtWithTrezor(
       {
@@ -177,18 +172,16 @@ export function registerTrezorSignPsbtRequestPathContracts() {
         accountPath: 'm/84h/0h/0h',
         inputPaths: [],
       },
-      { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any
+      { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any,
+      h.fakeClient
     );
 
-    expect(h.mockSignTransaction.mock.calls.at(-1)?.[0].coin).toBe('Bitcoin');
+    expect(h.mockSignTransaction.mock.calls.at(-1)?.[0].network).toBe('mainnet');
   });
 
   it('falls through request-path detection when coin type is neither 0 nor 1', async () => {
     const { psbt, signedTxHex } = h.createPsbt();
-    h.mockSignTransaction.mockResolvedValueOnce({
-      success: true,
-      payload: { serializedTx: signedTxHex },
-    });
+    h.mockSignTransaction.mockResolvedValueOnce(connectOk({ serializedTx: signedTxHex }));
 
     await signPsbtWithTrezor(
       {
@@ -196,43 +189,40 @@ export function registerTrezorSignPsbtRequestPathContracts() {
         accountPath: "m/84'/2'/0'",
         inputPaths: [],
       },
-      { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any
+      { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any,
+      h.fakeClient
     );
 
-    expect(h.mockSignTransaction.mock.calls.at(-1)?.[0].coin).toBe('Bitcoin');
+    expect(h.mockSignTransaction.mock.calls.at(-1)?.[0].network).toBe('mainnet');
   });
 
   it('uses bip32 derivation paths when request paths are empty and supports testnet/mainnet detection', async () => {
     const mainnet = h.createPsbt();
-    h.mockSignTransaction.mockResolvedValueOnce({
-      success: true,
-      payload: { serializedTx: mainnet.signedTxHex },
-    });
+    h.mockSignTransaction.mockResolvedValueOnce(connectOk({ serializedTx: mainnet.signedTxHex }));
 
     await signPsbtWithTrezor(
       {
         psbt: mainnet.psbt.toBase64(),
         inputPaths: [],
       },
-      { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any
+      { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any,
+      h.fakeClient
     );
-    expect(h.mockSignTransaction.mock.calls.at(-1)?.[0].coin).toBe('Bitcoin');
+    expect(h.mockSignTransaction.mock.calls.at(-1)?.[0].network).toBe('mainnet');
 
     const testnet = h.createPsbt();
     (testnet.psbt.data.inputs[0] as any).bip32Derivation[0].path = "m/84'/1'/0'/0/0";
-    h.mockSignTransaction.mockResolvedValueOnce({
-      success: true,
-      payload: { serializedTx: testnet.signedTxHex },
-    });
+    h.mockSignTransaction.mockResolvedValueOnce(connectOk({ serializedTx: testnet.signedTxHex }));
 
     await signPsbtWithTrezor(
       {
         psbt: testnet.psbt.toBase64(),
         inputPaths: [],
       },
-      { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any
+      { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any,
+      h.fakeClient
     );
-    expect(h.mockSignTransaction.mock.calls.at(-1)?.[0].coin).toBe('Testnet');
+    expect(h.mockSignTransaction.mock.calls.at(-1)?.[0].network).toBe('testnet');
   });
 
   it('throws when the connected device fingerprint is not a multisig cosigner', async () => {
@@ -257,7 +247,8 @@ export function registerTrezorSignPsbtRequestPathContracts() {
           psbt: psbt.toBase64(),
           inputPaths: ["m/48'/0'/0'/2'/0/0"],
         },
-        { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any
+        { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any,
+        h.fakeClient
       )
     ).rejects.toThrow('No PSBT derivation matches the connected Trezor');
 
@@ -294,17 +285,15 @@ export function registerTrezorSignPsbtRequestPathContracts() {
       },
     ];
 
-    h.mockSignTransaction.mockResolvedValueOnce({
-      success: true,
-      payload: { serializedTx: signedTxHex },
-    });
+    h.mockSignTransaction.mockResolvedValueOnce(connectOk({ serializedTx: signedTxHex }));
 
     await signPsbtWithTrezor(
       {
         psbt: psbt.toBase64(),
         inputPaths: ["m/84'/0'/0'/0/0"],
       },
-      { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any
+      { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any,
+      h.fakeClient
     );
 
     expect(h.mockPathToAddressN).toHaveBeenCalledWith("m/84'/0'/0'/0/9");
@@ -316,19 +305,20 @@ export function registerTrezorSignPsbtRequestPathContracts() {
     const output = psbt.data.outputs[1] as any;
     output.bip32Derivation = [
       {
-      masterFingerprint: Buffer.from('aaaaaaaa', 'hex'),
-      path: "m/84'/0'/0'/1/9",
-      pubkey: Buffer.from(`02${'44'.repeat(32)}`, 'hex'),
+        masterFingerprint: Buffer.from('aaaaaaaa', 'hex'),
+        path: "m/84'/0'/0'/1/9",
+        pubkey: Buffer.from(`02${'44'.repeat(32)}`, 'hex'),
       },
     ];
 
     await expect(
       signPsbtWithTrezor(
-      {
-        psbt: psbt.toBase64(),
-        inputPaths: ["m/84'/0'/0'/0/0"],
-      },
-        { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any
+        {
+          psbt: psbt.toBase64(),
+          inputPaths: ["m/84'/0'/0'/0/0"],
+        },
+        { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any,
+        h.fakeClient
       )
     ).rejects.toThrow('No PSBT derivation matches the connected Trezor on input output');
 
@@ -357,18 +347,16 @@ export function registerTrezorSignPsbtRequestPathContracts() {
       accountPath: "m/84'/0'/0'",
       changeOutputIndexes: [1],
     });
-    h.mockSignTransaction.mockResolvedValueOnce({
-      success: false,
-      payload: { error: 'Empty derivation path rejected' },
-    });
+    h.mockSignTransaction.mockResolvedValueOnce(connectFail('Empty derivation path rejected'));
 
     await expect(
       signPsbtWithTrezor(
-      {
-        psbt: psbt.toBase64(),
-        inputPaths: ["m/84'/0'/0'/0/7"],
-      },
-        { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any
+        {
+          psbt: psbt.toBase64(),
+          inputPaths: ["m/84'/0'/0'/0/7"],
+        },
+        { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any,
+        h.fakeClient
       )
     ).rejects.toThrow(
       'Transaction rejected on Trezor. Please approve the transaction on your device.'
@@ -382,16 +370,17 @@ export function registerTrezorSignPsbtRequestPathContracts() {
 
   it('rejects inputs without wallet-bound derivation metadata', async () => {
     const { psbt } = h.createPsbt({ includeInputDerivation: false });
-    h.mockSignTransaction.mockResolvedValueOnce({
-      success: true,
-      payload: { serializedTx: '00' },
-    });
+    h.mockSignTransaction.mockResolvedValueOnce(connectOk({ serializedTx: '00' }));
 
     await expect(
-      signPsbtWithTrezor({ psbt: psbt.toBase64(), inputPaths: [] }, {
-        fingerprint: 'deadbeef',
-        session: h.TEST_SESSION,
-      } as any)
+      signPsbtWithTrezor(
+        { psbt: psbt.toBase64(), inputPaths: [] },
+        {
+          fingerprint: 'deadbeef',
+          session: h.TEST_SESSION,
+        } as any,
+        h.fakeClient
+      )
     ).rejects.toThrow('missing wallet-bound BIP32 derivation metadata');
 
     expect(h.mockSignTransaction).not.toHaveBeenCalled();

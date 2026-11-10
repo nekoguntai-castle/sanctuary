@@ -8,6 +8,10 @@ import TrezorConnect from "@trezor/connect";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { TrezorAdapter } from "../../src/services/hardwareWallet/adapters/trezor/trezorAdapter";
 import {
+  createConnectWebClient,
+  toConnectDevice,
+} from "../../src/services/hardwareWallet/adapters/trezor/connectClient";
+import {
   buildTrezorInputs,
   buildTrezorOutputs,
 } from "../../src/services/hardwareWallet/adapters/trezor/signPsbtPayloads";
@@ -139,8 +143,10 @@ async function getAddress(args: {
     coin: "Testnet",
     scriptType: args.scriptType,
     showOnTrezor: args.display,
-    multisig: args.multisig,
-    device: connectDevice(runtime.session),
+    // Production payloads carry pubkeys_order as the enum name, which Connect
+    // accepts; its declared type is the numeric enum (see connectClient.ts).
+    multisig: args.multisig as never,
+    device: toConnectDevice(connectDevice(runtime.session)),
   }) as Promise<ConnectResult<{ address: string }>>;
   const result = args.display
     ? await confirmOnEmulator(operation, args.idBase)
@@ -196,12 +202,11 @@ async function signAndReplay(args: {
       m: 2,
       pubkeys_order: "LEXICOGRAPHIC",
     });
-    expect(inputs[0].multisig.signatures.filter(Boolean)).toHaveLength(
+    expect(inputs[0].multisig?.signatures.filter(Boolean)).toHaveLength(
       args.firstMultisigSigner ? 0 : 1,
     );
-    expect(outputs[1].multisig).toMatchObject({
-      m: 2,
-      pubkeys_order: "LEXICOGRAPHIC",
+    expect(outputs[1]).toMatchObject({
+      multisig: { m: 2, pubkeys_order: "LEXICOGRAPHIC" },
     });
   }
   const response = await confirmOnEmulator(
@@ -307,7 +312,10 @@ describe.runIf(RUN_PROOF)(
           location: { origin: "https://sanctuary.local" },
         },
       });
-      adapter = new TrezorAdapter({
+      // The vitest alias resolves @trezor/connect-web to the in-process
+      // @trezor/connect core, so this is the production client and its result
+      // normalization running against the emulator.
+      adapter = new TrezorAdapter(createConnectWebClient({
         manifest: {
           email: "ci@sanctuary.local",
           appUrl: "https://sanctuary.local",
@@ -316,7 +324,7 @@ describe.runIf(RUN_PROOF)(
         transports: ["BridgeTransport"],
         pendingTransportEvent: false,
         debug: false,
-      });
+      }));
       connectInitialized = true;
       await establishSession();
       accounts = await loadAccounts();

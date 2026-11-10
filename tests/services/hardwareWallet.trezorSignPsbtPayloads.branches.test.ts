@@ -202,7 +202,7 @@ describe('Trezor PSBT payload branch contracts', () => {
 
   it('keeps unbound or unmarked outputs external on mainnet and testnet', () => {
     const main = buildOutput({ bip32Derivation: [LEGACY_ORIGIN] }, 'SPENDWITNESS', [1])[0];
-    expect(main.address).toMatch(/^bc1/);
+    expect(main).toMatchObject({ address: expect.stringMatching(/^bc1/) });
     const testScript = bitcoin.payments.p2wpkh({
       hash: hexToBytes('33'.repeat(20)),
       network: bitcoin.networks.testnet,
@@ -216,7 +216,7 @@ describe('Trezor PSBT payload branch contracts', () => {
       FINGERPRINT,
       'deadbeef'
     )[0];
-    expect(test.address).toMatch(/^tb1/);
+    expect(test).toMatchObject({ address: expect.stringMatching(/^tb1/) });
 
     const tapWithoutOrigin = buildOutput({}, 'SPENDTAPROOT', [0])[0];
     expect(tapWithoutOrigin).toHaveProperty('address');
@@ -269,8 +269,8 @@ describe('Trezor PSBT payload branch contracts', () => {
         false,
         FINGERPRINT,
         'deadbeef'
-      )[1].multisig
-    ).toMatchObject({ m: 2, pubkeys_order: 'LEXICOGRAPHIC' });
+      )[1]
+    ).toMatchObject({ multisig: { m: 2, pubkeys_order: 'LEXICOGRAPHIC' } });
   });
 
   it('does not mistake a witnessScript-only Taproot input for legacy multisig', () => {

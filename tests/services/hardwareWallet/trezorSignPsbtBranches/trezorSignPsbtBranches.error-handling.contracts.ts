@@ -5,9 +5,13 @@ import { signPsbtWithTrezor } from '../../../../src/services/hardwareWallet/adap
 export function registerTrezorSignPsbtErrorHandlingContracts() {
   it('fails closed before parsing when the selected session is unavailable', async () => {
     await expect(
-      signPsbtWithTrezor({ psbt: 'not-parsed' }, {
-        fingerprint: 'deadbeef',
-      } as any)
+      signPsbtWithTrezor(
+        { psbt: 'not-parsed' },
+        {
+          fingerprint: 'deadbeef',
+        } as any,
+        h.fakeClient
+      )
     ).rejects.toThrow('Trezor selected session is unavailable');
     expect(h.mockValidatePsbtSigningRequest).not.toHaveBeenCalled();
   });
@@ -49,7 +53,8 @@ export function registerTrezorSignPsbtErrorHandlingContracts() {
             psbt: psbt.toBase64(),
             inputPaths: ["m/84'/0'/0'/0/0"],
           },
-          { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any
+          { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any,
+          h.fakeClient
         )
       ).rejects.toThrow(scenario.expected);
     }
@@ -65,7 +70,8 @@ export function registerTrezorSignPsbtErrorHandlingContracts() {
           psbt: psbt.toBase64(),
           inputPaths: ["m/84'/0'/0'/0/0"],
         },
-        { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any
+        { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any,
+        h.fakeClient
       )
     ).rejects.toThrow('Failed to sign with Trezor: Unknown error');
   });

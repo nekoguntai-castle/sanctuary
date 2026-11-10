@@ -7,6 +7,8 @@ import {
   getSerializedTrezorTx,
   getUnsignedTransactionFromPsbt,
 } from '../../src/services/hardwareWallet/adapters/trezor/signPsbtValidation';
+import type { TrezorRefTx } from '../../src/services/hardwareWallet/adapters/trezor/types';
+import { connectFail, connectOk } from './hardwareWallet/trezorFakeClient';
 import { createSingleSigPsbt, hexToBytes } from './hardwareWallet/trezorAdapterTestHarness';
 
 function transaction(): bitcoin.Transaction {
@@ -29,11 +31,12 @@ function refPsbt(witnessUtxo?: { value: bigint; script: Uint8Array }): any {
   };
 }
 
-function refTx(output?: Record<string, unknown>): any {
+function refTx(output?: Record<string, unknown>): TrezorRefTx {
+  // Deliberately partial/malformed: only the fields the amount check reads are present.
   return {
     hash: '11'.repeat(32),
     bin_outputs: output === undefined ? [] : [{}, output],
-  };
+  } as unknown as TrezorRefTx;
 }
 
 function artifactPsbt(
@@ -87,18 +90,13 @@ describe('Trezor signed-artifact validation branch contracts', () => {
     expect(getUnsignedTransactionFromPsbt(psbt as any).toHex()).toBe(
       transactionFromPsbt(psbt).toHex()
     );
-    expect(getSerializedTrezorTx({ success: true, payload: { serializedTx: '00' } })).toBe('00');
-    expect(() =>
-      getSerializedTrezorTx({
-        success: false,
-        payload: { error: 'device refused' },
-      })
-    ).toThrow('device refused');
-    expect(() => getSerializedTrezorTx({ success: false, payload: {} })).toThrow('Signing failed');
-    expect(() => getSerializedTrezorTx({ success: true, payload: { serializedTx: 1 } })).toThrow(
+    expect(getSerializedTrezorTx(connectOk({ serializedTx: '00' }))).toBe('00');
+    expect(() => getSerializedTrezorTx(connectFail('device refused'))).toThrow('device refused');
+    expect(() => getSerializedTrezorTx(connectFail())).toThrow('Signing failed');
+    expect(() => getSerializedTrezorTx(connectOk({ serializedTx: 1 }))).toThrow(
       /no serialized transaction/i
     );
-    expect(() => getSerializedTrezorTx({ success: true, payload: { serializedTx: '' } })).toThrow(
+    expect(() => getSerializedTrezorTx(connectOk({ serializedTx: '' }))).toThrow(
       /no serialized transaction/i
     );
   });

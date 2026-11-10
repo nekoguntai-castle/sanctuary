@@ -9,23 +9,11 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { originalWindow, setSecureContext } from "./hardwareWallet/trezorAdapterTestHarness";
-
-const mockInit = vi.fn();
-const mockGetFeatures = vi.fn();
-const mockGetDeviceState = vi.fn();
-const mockGetPublicKey = vi.fn();
-const mockGetAddress = vi.fn();
-
-vi.mock("@trezor/connect-web", () => ({
-  asDeviceUniquePath: (path: string) => path,
-  default: {
-    init: (...args: unknown[]) => mockInit(...args),
-    getFeatures: (...args: unknown[]) => mockGetFeatures(...args),
-    getDeviceState: (...args: unknown[]) => mockGetDeviceState(...args),
-    getPublicKey: (...args: unknown[]) => mockGetPublicKey(...args),
-    getAddress: (...args: unknown[]) => mockGetAddress(...args),
-  },
-}));
+import {
+  connectOk,
+  createFakeTrezorClient,
+  type FakeTrezorClient,
+} from "./hardwareWallet/trezorFakeClient";
 
 vi.mock("../../src/api/client", () => ({
   default: {
@@ -51,41 +39,43 @@ const selectedDevice = {
 };
 
 describe("TrezorAdapter coin-type classification", () => {
+  let client: FakeTrezorClient;
+
   beforeEach(() => {
     vi.clearAllMocks();
     setSecureContext(true);
-    mockInit.mockResolvedValue(undefined);
-    mockGetFeatures.mockResolvedValue({
-      success: true,
-      payload: {
-        device_id: "dev-1",
-        label: "My Trezor",
-        internal_model: "T3T1",
-        pin_protection: true,
-        unlocked: false,
-        passphrase_protection: true,
-        major_version: 2,
-        minor_version: 9,
-        patch_version: 6,
-      },
-      device: { path: selectedDevice.path, instance: selectedDevice.instance },
-    });
-    mockGetDeviceState.mockResolvedValue({
-      success: true,
-      payload: { state: selectedDevice.state },
-      device: selectedDevice,
-    });
-    mockGetPublicKey.mockResolvedValue({
-      success: true,
-      payload: {
-        xpub: "xpub-from-device",
-        descriptor: "wpkh([deadbeef/84h/0h/0h]xpub-from-device/<0;1>/*)#checksum",
-        fingerprint: 0x12345678,
-        depth: 3,
-        childNum: 0x80000000,
-      },
-      device: selectedDevice,
-    });
+    client = createFakeTrezorClient();
+    client.getFeatures.mockResolvedValue(
+      connectOk(
+        {
+          device_id: "dev-1",
+          label: "My Trezor",
+          internal_model: "T3T1",
+          pin_protection: true,
+          unlocked: false,
+          passphrase_protection: true,
+          major_version: 2,
+          minor_version: 9,
+          patch_version: 6,
+        },
+        { path: selectedDevice.path, instance: selectedDevice.instance },
+      ),
+    );
+    client.getDeviceState.mockResolvedValue(
+      connectOk({ state: selectedDevice.state }, selectedDevice),
+    );
+    client.getPublicKey.mockResolvedValue(
+      connectOk(
+        {
+          xpub: "xpub-from-device",
+          descriptor: "wpkh([deadbeef/84h/0h/0h]xpub-from-device/<0;1>/*)#checksum",
+          fingerprint: 0x12345678,
+          depth: 3,
+          childNum: 0x80000000,
+        },
+        selectedDevice,
+      ),
+    );
   });
 
   afterEach(() => {
@@ -98,78 +88,54 @@ describe("TrezorAdapter coin-type classification", () => {
   });
 
   it("derives the getXpub coin from the BIP44 coin-type segment, not a path substring", async () => {
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
     await adapter.connect();
 
     // Mainnet account index 1 must not be misread as testnet via an "/1'/" substring match.
-    mockGetPublicKey.mockResolvedValueOnce({
-      success: true,
-      payload: { xpub: "xpub-mainnet-account-1", fingerprint: 0xabcdef12 },
-      device: selectedDevice,
-    });
+    client.getPublicKey.mockResolvedValueOnce(connectOk({ xpub: "xpub-mainnet-account-1", fingerprint: 0xabcdef12 }, selectedDevice));
     await adapter.getXpub("m/84'/0'/1'/0/0");
-    expect(mockGetPublicKey).toHaveBeenLastCalledWith(
-      expect.objectContaining({ path: "m/84'/0'/1'/0/0", coin: "Bitcoin" }),
+    expect(client.getPublicKey).toHaveBeenLastCalledWith(
+      expect.objectContaining({ path: "m/84'/0'/1'/0/0", network: "mainnet" }),
     );
 
     // A genuine testnet path (coin type 1) is still classified as testnet.
-    mockGetPublicKey.mockResolvedValueOnce({
-      success: true,
-      payload: { xpub: "xpub-testnet", fingerprint: 0xabcdef12 },
-      device: selectedDevice,
-    });
+    client.getPublicKey.mockResolvedValueOnce(connectOk({ xpub: "xpub-testnet", fingerprint: 0xabcdef12 }, selectedDevice));
     await adapter.getXpub("m/84'/1'/0'/0/0");
-    expect(mockGetPublicKey).toHaveBeenLastCalledWith(
-      expect.objectContaining({ path: "m/84'/1'/0'/0/0", coin: "Testnet" }),
+    expect(client.getPublicKey).toHaveBeenLastCalledWith(
+      expect.objectContaining({ path: "m/84'/1'/0'/0/0", network: "testnet" }),
     );
 
     // 'h' hardened notation for the coin type is parsed the same way.
-    mockGetPublicKey.mockResolvedValueOnce({
-      success: true,
-      payload: { xpub: "xpub-mainnet-h", fingerprint: 0xabcdef12 },
-      device: selectedDevice,
-    });
+    client.getPublicKey.mockResolvedValueOnce(connectOk({ xpub: "xpub-mainnet-h", fingerprint: 0xabcdef12 }, selectedDevice));
     await adapter.getXpub("m/84h/0h/1h/0/0");
-    expect(mockGetPublicKey).toHaveBeenLastCalledWith(
-      expect.objectContaining({ path: "m/84h/0h/1h/0/0", coin: "Bitcoin" }),
+    expect(client.getPublicKey).toHaveBeenLastCalledWith(
+      expect.objectContaining({ path: "m/84h/0h/1h/0/0", network: "mainnet" }),
     );
   });
 
   it("derives the verifyAddress coin from the BIP44 coin-type segment, not a path substring", async () => {
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
     await adapter.connect();
 
     // Mainnet account index 1 must not be misread as testnet via an "/1'/" substring match.
-    mockGetAddress.mockResolvedValueOnce({
-      success: true,
-      payload: { address: "bc1qexpected", path: [], serializedPath: "m/84'/0'/1'/0/0" },
-      device: selectedDevice,
-    });
+    client.getAddress.mockResolvedValueOnce(connectOk({ address: "bc1qexpected" }, selectedDevice));
     await adapter.verifyAddress("m/84'/0'/1'/0/0", "bc1qexpected");
-    expect(mockGetAddress).toHaveBeenLastCalledWith(
-      expect.objectContaining({ path: "m/84'/0'/1'/0/0", coin: "Bitcoin" }),
+    expect(client.getAddress).toHaveBeenLastCalledWith(
+      expect.objectContaining({ path: "m/84'/0'/1'/0/0", network: "mainnet" }),
     );
 
     // A genuine testnet path (coin type 1) is still classified as testnet.
-    mockGetAddress.mockResolvedValueOnce({
-      success: true,
-      payload: { address: "tb1qexpected", path: [], serializedPath: "m/84'/1'/0'/0/0" },
-      device: selectedDevice,
-    });
+    client.getAddress.mockResolvedValueOnce(connectOk({ address: "tb1qexpected" }, selectedDevice));
     await adapter.verifyAddress("m/84'/1'/0'/0/0", "tb1qexpected");
-    expect(mockGetAddress).toHaveBeenLastCalledWith(
-      expect.objectContaining({ path: "m/84'/1'/0'/0/0", coin: "Testnet" }),
+    expect(client.getAddress).toHaveBeenLastCalledWith(
+      expect.objectContaining({ path: "m/84'/1'/0'/0/0", network: "testnet" }),
     );
 
     // A malformed path (no parseable coin-type segment) does not fall back to testnet.
-    mockGetAddress.mockResolvedValueOnce({
-      success: true,
-      payload: { address: "bc1qexpected", path: [], serializedPath: "not-a-path" },
-      device: selectedDevice,
-    });
+    client.getAddress.mockResolvedValueOnce(connectOk({ address: "bc1qexpected" }, selectedDevice));
     await adapter.verifyAddress("not-a-path", "bc1qexpected");
-    expect(mockGetAddress).toHaveBeenLastCalledWith(
-      expect.objectContaining({ path: "not-a-path", coin: "Bitcoin" }),
+    expect(client.getAddress).toHaveBeenLastCalledWith(
+      expect.objectContaining({ path: "not-a-path", network: "mainnet" }),
     );
   });
 });

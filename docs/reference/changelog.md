@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The Trezor SDK is now confined to one boundary module, `src/services/hardwareWallet/adapters/trezor/connectClient.ts`, ahead of the move to Trezor Connect 10 (`docs/plans/trezor-connect-10-migration.md`). The adapter talks to Connect through Sanctuary's own `TrezorConnectClient` interface and types, signing payloads are typed instead of `any`, and ESLint rejects `@trezor/*` imports anywhere else in production source. Trezor behavior is unchanged: the same Connect 9.7.3 calls, settings, coin labels and error messages.
+
 ## [0.8.88] - 2026-11-09
 
 ### Changed

@@ -13,13 +13,13 @@ import {
   setSecureContext,
   unsignedTxHexFromPsbt,
 } from './hardwareWallet/trezorAdapterTestHarness';
+import {
+  connectFail,
+  connectOk,
+  createFakeTrezorClient,
+  type FakeTrezorClient,
+} from './hardwareWallet/trezorFakeClient';
 
-const mockInit = vi.fn();
-const mockGetFeatures = vi.fn();
-const mockGetDeviceState = vi.fn();
-const mockGetPublicKey = vi.fn();
-const mockGetAddress = vi.fn();
-const mockSignTransaction = vi.fn();
 const mockApiGet = vi.fn();
 const mockValidatePsbtSigningRequest = vi.fn();
 const mockValidateAndApplyTrezorSignatures = vi.fn();
@@ -49,33 +49,6 @@ vi.mock(
   }
 );
 
-vi.mock('@trezor/connect-web', () => ({
-  asDeviceUniquePath: (path: string) => path,
-  default: {
-    init: (...args: unknown[]) => mockInit(...args),
-    getFeatures: (...args: unknown[]) => mockGetFeatures(...args),
-    getDeviceState: (...args: unknown[]) => mockGetDeviceState(...args),
-    getPublicKey: async (...args: unknown[]) => {
-      const result = await mockGetPublicKey(...args);
-      return result?.success && !Object.hasOwn(result, 'device')
-        ? { ...result, device: (args[0] as { device?: unknown })?.device }
-        : result;
-    },
-    getAddress: async (...args: unknown[]) => {
-      const result = await mockGetAddress(...args);
-      return result?.success && !Object.hasOwn(result, 'device')
-        ? { ...result, device: (args[0] as { device?: unknown })?.device }
-        : result;
-    },
-    signTransaction: async (...args: unknown[]) => {
-      const result = await mockSignTransaction(...args);
-      return result?.success && !Object.hasOwn(result, 'device')
-        ? { ...result, device: (args[0] as { device?: unknown })?.device }
-        : result;
-    },
-  },
-}));
-
 vi.mock('../../src/api/client', () => ({
   default: {
     get: (...args: unknown[]) => mockApiGet(...args),
@@ -92,6 +65,16 @@ vi.mock('../../src/utils/logger', () => ({
 }));
 
 import { TrezorAdapter } from '../../src/services/hardwareWallet/adapters/trezor';
+import type {
+  TrezorCallResult,
+  TrezorPublicKey,
+} from '../../src/services/hardwareWallet/adapters/trezor/types';
+
+const lastSignCall = (client: FakeTrezorClient) => {
+  const call = client.signTransaction.mock.calls.at(-1)?.[0];
+  if (!call) throw new Error('expected signTransaction to have been called');
+  return call;
+};
 
 const requestAccountPath = (request: any, psbt: bitcoin.Psbt): string => {
   const firstPath =
@@ -157,56 +140,46 @@ describe('TrezorAdapter class', () => {
     instance: 0,
   };
 
+  let client: FakeTrezorClient;
+
   beforeEach(() => {
     vi.clearAllMocks();
     setSecureContext(true);
-    mockInit.mockResolvedValue(undefined);
+    client = createFakeTrezorClient();
     mockApiGet.mockRejectedValue(new Error('missing tx'));
-    mockGetFeatures.mockResolvedValue({
-      success: true,
-      payload: {
-        device_id: 'dev-1',
-        label: 'My Trezor',
-        internal_model: 'T3T1',
-        pin_protection: true,
-        unlocked: false,
-        passphrase_protection: true,
-        major_version: 2,
-        minor_version: 9,
-        patch_version: 6,
-      },
-      device: { path: selectedDevice.path, instance: selectedDevice.instance },
-    });
-    mockGetDeviceState.mockResolvedValue({
-      success: true,
-      payload: { state: selectedDevice.state },
-      device: selectedDevice,
-    });
-    mockGetPublicKey.mockResolvedValue({
-      success: true,
-      payload: {
-        xpub: 'xpub-from-device',
-        descriptor: 'wpkh([deadbeef/84h/0h/0h]xpub-from-device/<0;1>/*)#checksum',
-        fingerprint: 0x12345678,
-        depth: 3,
-        childNum: 0x80000000,
-      },
-      device: selectedDevice,
-    });
-    mockGetAddress.mockResolvedValue({
-      success: true,
-      payload: {
-        address: 'bc1qabc',
-        path: [],
-        serializedPath: "m/84'/0'/0'/0/0",
-      },
-      device: selectedDevice,
-    });
-    mockSignTransaction.mockResolvedValue({
-      success: true,
-      payload: { serializedTx: '' },
-      device: selectedDevice,
-    });
+    client.getFeatures.mockResolvedValue(
+      connectOk(
+        {
+          device_id: 'dev-1',
+          label: 'My Trezor',
+          internal_model: 'T3T1',
+          pin_protection: true,
+          unlocked: false,
+          passphrase_protection: true,
+          major_version: 2,
+          minor_version: 9,
+          patch_version: 6,
+        },
+        { path: selectedDevice.path, instance: selectedDevice.instance }
+      )
+    );
+    client.getDeviceState.mockResolvedValue(
+      connectOk({ state: selectedDevice.state }, selectedDevice)
+    );
+    client.getPublicKey.mockResolvedValue(
+      connectOk(
+        {
+          xpub: 'xpub-from-device',
+          descriptor: 'wpkh([deadbeef/84h/0h/0h]xpub-from-device/<0;1>/*)#checksum',
+          fingerprint: 0x12345678,
+          depth: 3,
+          childNum: 0x80000000,
+        },
+        selectedDevice
+      )
+    );
+    client.getAddress.mockResolvedValue(connectOk({ address: 'bc1qabc' }, selectedDevice));
+    client.signTransaction.mockResolvedValue(connectOk({ serializedTx: '' }, selectedDevice));
     mockValidatePsbtSigningRequest.mockImplementation(validatedSigningRequest);
     mockValidateAndApplyTrezorSignatures.mockImplementation((psbt: bitcoin.Psbt) => ({
       validatedPsbt: psbt,
@@ -224,24 +197,24 @@ describe('TrezorAdapter class', () => {
   });
 
   it('reports environment support based on secure context', () => {
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
     expect(adapter.isSupported()).toBe(true);
     setSecureContext(false);
     expect(adapter.isSupported()).toBe(false);
   });
 
   it('connects successfully and exposes device state', async () => {
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
     const device = await adapter.connect();
 
-    expect(mockInit).toHaveBeenCalledTimes(1);
-    expect(mockGetFeatures).toHaveBeenCalledTimes(1);
-    expect(mockGetDeviceState).toHaveBeenCalledWith({
+    expect(client.init).toHaveBeenCalledTimes(1);
+    expect(client.getFeatures).toHaveBeenCalledTimes(1);
+    expect(client.getDeviceState).toHaveBeenCalledWith({
       device: { path: selectedDevice.path, instance: 0, state: undefined },
     });
-    expect(mockGetPublicKey).toHaveBeenCalledWith({
+    expect(client.getPublicKey).toHaveBeenCalledWith({
       path: "m/84'/0'/0'",
-      coin: 'Bitcoin',
+      network: 'mainnet',
       scriptType: 'SPENDWITNESS',
       showOnTrezor: false,
       device: selectedDevice,
@@ -256,90 +229,60 @@ describe('TrezorAdapter class', () => {
     expect(device.transportVersion).toBe('9.7.3');
   });
 
-  it('short-circuits repeated initialize calls and uses manifest fallback origin', async () => {
-    Object.defineProperty(globalThis, 'window', {
-      value: {
-        ...originalWindow,
-        isSecureContext: true,
-        location: { origin: '' },
-      },
-      configurable: true,
-    });
-
-    const adapter = new TrezorAdapter();
+  it('short-circuits repeated initialize calls', async () => {
+    const adapter = new TrezorAdapter(client);
     await (adapter as any).initialize();
     await (adapter as any).initialize();
 
-    expect(mockInit).toHaveBeenCalledTimes(1);
-    expect(mockInit).toHaveBeenCalledWith(
-      expect.objectContaining({
-        manifest: expect.objectContaining({
-          appUrl: 'https://sanctuary.bitcoin',
-      }),
-      })
-    );
+    expect(client.init).toHaveBeenCalledTimes(1);
   });
 
-  it('supports an explicit pinned Bridge transport for protocol conformance', async () => {
-    const adapter = new TrezorAdapter({
-      manifest: {
-        email: 'ci@sanctuary.local',
-        appUrl: 'https://sanctuary.local',
-        appName: 'Sanctuary Trezor Proof',
-      },
-      transports: ['BridgeTransport'],
-      pendingTransportEvent: false,
-      debug: false,
-    });
+  // Init settings (manifest origin fallback, pinned Bridge transport) now belong to
+  // createConnectWebClient(settings); hardwareWallet.trezorConnectClient.test.ts pins them.
+  // The adapter's part of the contract is that it initializes through the injected client.
+  it('initializes through the injected client when connecting', async () => {
+    const adapter = new TrezorAdapter(client);
 
     await adapter.connect();
 
-    expect(mockInit).toHaveBeenCalledWith(
-      expect.objectContaining({
-        transports: ['BridgeTransport'],
-        pendingTransportEvent: false,
-        debug: false,
-      })
-    );
+    expect(client.init).toHaveBeenCalledTimes(1);
+    expect(client.init).toHaveBeenCalledWith();
   });
 
   it('initializes only once when connect is called repeatedly', async () => {
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
     await adapter.connect();
     await adapter.connect();
-    expect(mockInit).toHaveBeenCalledTimes(1);
+    expect(client.init).toHaveBeenCalledTimes(1);
   });
 
   it('maps common connect failures to user-friendly errors', async () => {
-    const adapterA = new TrezorAdapter();
-    mockGetFeatures.mockResolvedValueOnce({
-      success: false,
-      payload: { error: 'Device not found' },
-    });
+    const adapterA = new TrezorAdapter(client);
+    client.getFeatures.mockResolvedValueOnce(connectFail('Device not found'));
     await expect(adapterA.connect()).rejects.toThrow('No Trezor device found');
 
-    const adapterB = new TrezorAdapter();
-    mockGetFeatures.mockImplementationOnce(async () => {
+    const adapterB = new TrezorAdapter(client);
+    client.getFeatures.mockImplementationOnce(async () => {
       throw new Error('Popup closed');
     });
     await expect(adapterB.connect()).rejects.toThrow('Connection cancelled by user');
 
-    const adapterC = new TrezorAdapter();
-    mockGetFeatures.mockResolvedValueOnce({ success: false, payload: {} });
+    const adapterC = new TrezorAdapter(client);
+    client.getFeatures.mockResolvedValueOnce(connectFail());
     await expect(adapterC.connect()).rejects.toThrow(
       'Failed to connect Trezor: Failed to connect to Trezor'
     );
   });
 
   it.each([
-    [{ error: 'Device state unavailable' }, 'Device state unavailable'],
-    [{ code: 'Failure' }, 'Failed to resolve selected Trezor session'],
+    [connectFail('Device state unavailable'), 'Device state unavailable'],
+    [connectFail(undefined, 'Failure'), 'Failed to resolve selected Trezor session'],
   ])(
     'fails closed when the selected device state cannot be resolved %#',
-    async (payload, message) => {
-      mockGetDeviceState.mockResolvedValueOnce({ success: false, payload });
+    async (failure, message) => {
+      client.getDeviceState.mockResolvedValueOnce(failure);
 
-      const adapter = new TrezorAdapter();
+      const adapter = new TrezorAdapter(client);
       await expect(adapter.connect()).rejects.toThrow(message);
       expect(adapter.isConnected()).toBe(false);
       expect(adapter.getDevice()).toBeNull();
@@ -347,41 +290,37 @@ describe('TrezorAdapter class', () => {
   );
 
   it('maps initialization, bridge, and generic connect failures', async () => {
-    const initFailure = new TrezorAdapter();
-    mockInit.mockRejectedValueOnce(new Error('init fail'));
+    const initFailure = new TrezorAdapter(client);
+    client.init.mockRejectedValueOnce(new Error('init fail'));
     await expect(initFailure.connect()).rejects.toThrow(
       'Failed to initialize Trezor. Please ensure Trezor Suite is running.'
     );
 
-    const bridgeFailure = new TrezorAdapter();
-    mockGetFeatures.mockRejectedValueOnce(new Error('Bridge not running'));
+    const bridgeFailure = new TrezorAdapter(client);
+    client.getFeatures.mockRejectedValueOnce(new Error('Bridge not running'));
     await expect(bridgeFailure.connect()).rejects.toThrow(
       'Trezor Suite bridge not running. Please open Trezor Suite desktop app.'
     );
 
-    const genericFailure = new TrezorAdapter();
-    mockGetFeatures.mockRejectedValueOnce(new Error('exploded'));
+    const genericFailure = new TrezorAdapter(client);
+    client.getFeatures.mockRejectedValueOnce(new Error('exploded'));
     await expect(genericFailure.connect()).rejects.toThrow('Failed to connect Trezor: exploded');
 
-    const unknownFailure = new TrezorAdapter();
-    mockGetFeatures.mockRejectedValueOnce('exploded');
+    const unknownFailure = new TrezorAdapter(client);
+    client.getFeatures.mockRejectedValueOnce('exploded');
     await expect(unknownFailure.connect()).rejects.toThrow(
       'Failed to connect Trezor: Unknown error'
     );
   });
 
   it('uses model fallback values when feature id and label are missing', async () => {
-    mockGetFeatures.mockResolvedValueOnce({
-      success: true,
-      payload: {
+    client.getFeatures.mockResolvedValueOnce(connectOk({
         internal_model: 'T3T1',
         pin_protection: false,
         unlocked: true,
         passphrase_protection: false,
-      },
-      device: { path: selectedDevice.path, instance: 0 },
-    });
-    const adapter = new TrezorAdapter();
+      }, { path: selectedDevice.path, instance: 0 }));
+    const adapter = new TrezorAdapter(client);
     const device = await adapter.connect();
 
     expect(device.id).toBe('trezor-unknown');
@@ -391,29 +330,22 @@ describe('TrezorAdapter class', () => {
   });
 
   it('converts null pin_protection and passphrase_protection to undefined', async () => {
-    mockGetFeatures.mockResolvedValueOnce({
-      success: true,
-      payload: {
+    client.getFeatures.mockResolvedValueOnce(connectOk({
         device_id: 'abc123',
         internal_model: 'T2B1',
         pin_protection: null,
         unlocked: true,
         passphrase_protection: null,
-      },
-      device: { path: selectedDevice.path, instance: 0 },
-    });
-    mockGetPublicKey.mockResolvedValueOnce({
-      success: true,
-      payload: {
+      }, { path: selectedDevice.path, instance: 0 }));
+    client.getPublicKey.mockResolvedValueOnce(connectOk({
         xpub: 'xpub...',
         descriptor: 'wpkh([12345678/84h/0h/0h]xpub.../<0;1>/*)#checksum',
         fingerprint: 0,
         depth: 3,
         childNum: 0x80000000,
-      },
-    });
+      }, selectedDevice));
 
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
     const device = await adapter.connect();
 
     expect(device.needsPin).toBeUndefined();
@@ -421,19 +353,19 @@ describe('TrezorAdapter class', () => {
   });
 
   it('fails closed when the master fingerprint request throws', async () => {
-    mockGetPublicKey.mockImplementationOnce(async () => {
+    client.getPublicKey.mockImplementationOnce(async () => {
       throw new Error('fingerprint unavailable');
     });
 
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
     await expect(adapter.connect()).rejects.toThrow('master fingerprint');
     expect(adapter.isConnected()).toBe(false);
   });
 
   it('normalizes a non-Error master fingerprint failure without retaining a connection', async () => {
-    mockGetPublicKey.mockRejectedValueOnce('transport failed');
+    client.getPublicKey.mockRejectedValueOnce('transport failed');
 
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
     await expect(adapter.connect()).rejects.toThrow(
       'Trezor master fingerprint unavailable: Unknown error'
     );
@@ -441,48 +373,36 @@ describe('TrezorAdapter class', () => {
   });
 
   it.each([
-    { success: false, payload: {} },
-    {
-      success: true,
-      payload: {
+    connectFail(),
+    connectOk({
         xpub: 'xpub-root',
         descriptor: 'wpkh([deadbeef/84h/0h/0h]xpub-root/<0;1>/*)',
         depth: 2,
         childNum: 0x80000000,
-      },
-    },
-    {
-      success: true,
-      payload: {
+      }, selectedDevice),
+    connectOk({
         xpub: 'xpub-root',
         descriptor: 'wpkh([deadbeef/84h/0h/0h]xpub-root/<0;1>/*)',
         depth: 3,
         childNum: 0,
-      },
-    },
-    {
-      success: true,
-      payload: {
+      }, selectedDevice),
+    connectOk({
         xpub: 'xpub-root',
         descriptor: 'wpkh([deadbeef/84h/0h/1h]xpub-root/<0;1>/*)',
         depth: 3,
         childNum: 0x80000000,
-      },
-    },
-    {
-      success: true,
-      payload: {
+      }, selectedDevice),
+    connectOk({
         xpub: 'xpub-root',
         descriptor: 'wpkh([deadbeef/84h/0h/0h]other-xpub/<0;1>/*)',
         depth: 3,
         childNum: 0x80000000,
-      },
-    },
-    { success: true, payload: { depth: 3, childNum: 0x80000000 } },
+      }, selectedDevice),
+    connectOk({ depth: 3, childNum: 0x80000000 }, selectedDevice),
   ])('rejects missing or sentinel master fingerprint payload %#', async (response) => {
-    mockGetPublicKey.mockResolvedValueOnce(response);
+    client.getPublicKey.mockResolvedValueOnce(response);
 
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
     await expect(adapter.connect()).rejects.toThrow('master fingerprint');
     expect(adapter.isConnected()).toBe(false);
   });
@@ -496,9 +416,7 @@ describe('TrezorAdapter class', () => {
   ])(
     'maps feature payload to model name ($expected)',
     async ({ model, internal_model, expected }) => {
-      mockGetFeatures.mockResolvedValueOnce({
-        success: true,
-        payload: {
+      client.getFeatures.mockResolvedValueOnce(connectOk({
           device_id: 'model-test',
           label: 'Model Device',
           model,
@@ -506,18 +424,16 @@ describe('TrezorAdapter class', () => {
           pin_protection: false,
           unlocked: true,
           passphrase_protection: false,
-        },
-        device: { path: selectedDevice.path, instance: 0 },
-      });
+        }, { path: selectedDevice.path, instance: 0 }));
 
-      const adapter = new TrezorAdapter();
+      const adapter = new TrezorAdapter(client);
       const device = await adapter.connect();
       expect(device.model).toBe(expected);
     }
   );
 
   it('disconnects and clears connected state', async () => {
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
     await adapter.connect();
     await adapter.disconnect();
 
@@ -526,27 +442,23 @@ describe('TrezorAdapter class', () => {
   });
 
   it('cancels a connect() that resolves after a concurrent disconnect() and does not resurrect the session', async () => {
-    let resolvePublicKey: ((value: unknown) => void) | undefined;
-    mockGetPublicKey.mockReturnValueOnce(
+    let resolvePublicKey: ((value: TrezorCallResult<TrezorPublicKey>) => void) | undefined;
+    client.getPublicKey.mockReturnValueOnce(
       new Promise((resolve) => {
         resolvePublicKey = resolve;
       })
     );
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
 
     const connectPromise = adapter.connect();
     await adapter.disconnect();
-    resolvePublicKey?.({
-      success: true,
-      payload: {
+    resolvePublicKey?.(connectOk({
         xpub: 'xpub-from-device',
         descriptor: 'wpkh([deadbeef/84h/0h/0h]xpub-from-device/<0;1>/*)#checksum',
         fingerprint: 0x12345678,
         depth: 3,
         childNum: 0x80000000,
-      },
-      device: selectedDevice,
-    });
+      }, selectedDevice));
 
     await expect(connectPromise).rejects.toThrow(/cancel/i);
     expect(adapter.isConnected()).toBe(false);
@@ -554,7 +466,7 @@ describe('TrezorAdapter class', () => {
   });
 
   it('requires connected state for getXpub/signPSBT', async () => {
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
     await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow('Trezor not connected');
     await expect(adapter.verifyAddress("m/84'/0'/0'/0/0", 'bc1qabc')).rejects.toThrow(
       'Trezor not connected'
@@ -565,7 +477,7 @@ describe('TrezorAdapter class', () => {
   });
 
   it('requires the selected session for connected xpub and address operations', async () => {
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
     await adapter.connect();
     (adapter as any).connection.session = undefined;
 
@@ -578,25 +490,19 @@ describe('TrezorAdapter class', () => {
   });
 
   it('returns xpub and prefers master fingerprint from connection', async () => {
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
     // connect() call fingerprint
-    mockGetPublicKey.mockResolvedValueOnce({
-      success: true,
-      payload: {
+    client.getPublicKey.mockResolvedValueOnce(connectOk({
         xpub: 'xpub-master',
         descriptor: 'wpkh([12345678/84h/0h/0h]xpub-master/<0;1>/*)#checksum',
         fingerprint: 0,
         depth: 3,
         childNum: 0x80000000,
-      },
-    });
+      }, selectedDevice));
     await adapter.connect();
 
     // getXpub() call payload with different parent fingerprint
-    mockGetPublicKey.mockResolvedValueOnce({
-      success: true,
-      payload: { xpub: 'xpub-child', fingerprint: 0xabcdef12 },
-    });
+    client.getPublicKey.mockResolvedValueOnce(connectOk({ xpub: 'xpub-child', fingerprint: 0xabcdef12 }, selectedDevice));
     const result = await adapter.getXpub("m/84'/0'/0'");
 
     expect(result.xpub).toBe('xpub-child');
@@ -604,38 +510,26 @@ describe('TrezorAdapter class', () => {
   });
 
   it('invalidates the selected session when Connect omits response identity', async () => {
-    const xpubAdapter = new TrezorAdapter();
+    const xpubAdapter = new TrezorAdapter(client);
     await xpubAdapter.connect();
-    mockGetPublicKey.mockResolvedValueOnce({
-      success: true,
-      payload: { xpub: 'xpub-child', fingerprint: 0xabcdef12 },
-      device: undefined,
-    });
+    client.getPublicKey.mockResolvedValueOnce(connectOk({ xpub: 'xpub-child', fingerprint: 0xabcdef12 }));
     await expect(xpubAdapter.getXpub("m/84'/0'/0'")).rejects.toThrow(
       'omitted the response device identity'
     );
     expect(xpubAdapter.isConnected()).toBe(false);
 
-    const addressAdapter = new TrezorAdapter();
+    const addressAdapter = new TrezorAdapter(client);
     await addressAdapter.connect();
-    mockGetAddress.mockResolvedValueOnce({
-      success: true,
-      payload: { address: 'bc1qabc' },
-      device: undefined,
-    });
+    client.getAddress.mockResolvedValueOnce(connectOk({ address: 'bc1qabc' }));
     await expect(addressAdapter.verifyAddress("m/84'/0'/0'/0/0", 'bc1qabc')).rejects.toThrow(
       'omitted the response device identity'
     );
     expect(addressAdapter.isConnected()).toBe(false);
 
-    const signingAdapter = new TrezorAdapter();
+    const signingAdapter = new TrezorAdapter(client);
     await signingAdapter.connect();
     const { psbt } = createSingleSigPsbt();
-    mockSignTransaction.mockResolvedValueOnce({
-      success: true,
-      payload: { serializedTx: unsignedTxHexFromPsbt(psbt), signatures: [] },
-      device: undefined,
-    });
+    client.signTransaction.mockResolvedValueOnce(connectOk({ serializedTx: unsignedTxHexFromPsbt(psbt), signatures: [] }));
     await expect(signingAdapter.signPSBT({ psbt: psbt.toBase64() })).rejects.toThrow(
       'omitted the response device identity'
     );
@@ -643,134 +537,103 @@ describe('TrezorAdapter class', () => {
   });
 
   it('does not substitute an account-parent fingerprint for missing master identity', async () => {
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
     await adapter.connect();
     (adapter as any).connection.fingerprint = undefined;
 
     await expect(adapter.getXpub('m/84h/1h/0h')).rejects.toThrow('master fingerprint');
-    expect(mockGetPublicKey).toHaveBeenCalledTimes(1);
+    expect(client.getPublicKey).toHaveBeenCalledTimes(1);
   });
 
   it('rejects an empty account xpub instead of returning incomplete evidence', async () => {
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
     await adapter.connect();
 
-    mockGetPublicKey.mockResolvedValueOnce({
-      success: true,
-      payload: { xpub: '', fingerprint: 0x01020304 },
-    });
+    client.getPublicKey.mockResolvedValueOnce(connectOk({ xpub: '', fingerprint: 0x01020304 }, selectedDevice));
     await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow('empty xpub');
   });
 
   it('maps getXpub cancellation errors', async () => {
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
     await adapter.connect();
-    mockGetPublicKey.mockResolvedValueOnce({
-      success: false,
-      payload: { error: 'Cancelled by user' },
-    });
+    client.getPublicKey.mockResolvedValueOnce(connectFail('Cancelled by user'));
 
     await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow('Request cancelled on device');
   });
 
   it('wraps non-cancelled getXpub failures', async () => {
-    const adapterA = new TrezorAdapter();
+    const adapterA = new TrezorAdapter(client);
     await adapterA.connect();
-    mockGetPublicKey.mockResolvedValueOnce({
-      success: false,
-      payload: { error: 'Bridge down' },
-    });
+    client.getPublicKey.mockResolvedValueOnce(connectFail('Bridge down'));
     await expect(adapterA.getXpub("m/84'/0'/0'")).rejects.toThrow(
       'Failed to get xpub from Trezor: Bridge down'
     );
 
-    const adapterB = new TrezorAdapter();
+    const adapterB = new TrezorAdapter(client);
     await adapterB.connect();
-    mockGetPublicKey.mockResolvedValueOnce({
-      success: false,
-      payload: {},
-    });
+    client.getPublicKey.mockResolvedValueOnce(connectFail());
     await expect(adapterB.getXpub("m/84'/0'/0'")).rejects.toThrow(
       'Failed to get xpub from Trezor: Failed to get public key'
     );
 
-    const adapterC = new TrezorAdapter();
+    const adapterC = new TrezorAdapter(client);
     await adapterC.connect();
-    mockGetPublicKey.mockRejectedValueOnce('bridge-failed');
+    client.getPublicKey.mockRejectedValueOnce('bridge-failed');
     await expect(adapterC.getXpub("m/84'/0'/0'")).rejects.toThrow(
       'Failed to get xpub from Trezor: Unknown error'
     );
   });
 
   it('verifies an address on the Trezor display and compares the returned address', async () => {
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
     await adapter.connect();
 
-    mockGetAddress.mockResolvedValueOnce({
-      success: true,
-      payload: {
+    client.getAddress.mockResolvedValueOnce(connectOk({
         address: 'tb1qexpected',
-        path: [],
-        serializedPath: 'm/84h/1h/0h/0/0',
-      },
-    });
+      }, selectedDevice));
 
     await expect(adapter.verifyAddress('m/84h/1h/0h/0/0', 'tb1qexpected')).resolves.toBe(true);
-    expect(mockGetAddress).toHaveBeenLastCalledWith({
+    expect(client.getAddress).toHaveBeenLastCalledWith({
       path: 'm/84h/1h/0h/0/0',
       address: 'tb1qexpected',
       showOnTrezor: true,
-      coin: 'Testnet',
+      network: 'testnet',
       scriptType: 'SPENDWITNESS',
       device: selectedDevice,
     });
 
-    mockGetAddress.mockResolvedValueOnce({
-      success: true,
-      payload: {
+    client.getAddress.mockResolvedValueOnce(connectOk({
         address: 'tb1qmismatch',
-        path: [],
-        serializedPath: 'm/84h/1h/0h/0/0',
-      },
-    });
+      }, selectedDevice));
 
     await expect(adapter.verifyAddress('m/84h/1h/0h/0/0', 'tb1qexpected')).resolves.toBe(false);
   });
 
   it('maps Trezor address display rejection and failures', async () => {
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
     await adapter.connect();
 
-    mockGetAddress.mockResolvedValueOnce({
-      success: false,
-      payload: { error: 'Cancelled by user' },
-    });
+    client.getAddress.mockResolvedValueOnce(connectFail('Cancelled by user'));
     await expect(adapter.verifyAddress("m/86'/0'/0'/0/0", 'bc1pabc')).resolves.toBe(false);
 
-    mockGetAddress.mockResolvedValueOnce({
-      success: false,
-      payload: { error: 'Bridge down' },
-    });
+    client.getAddress.mockResolvedValueOnce(connectFail('Bridge down'));
     await expect(adapter.verifyAddress("m/86'/0'/0'/0/0", 'bc1pabc')).rejects.toThrow(
       'Failed to verify address on Trezor: Bridge down'
     );
 
-    mockGetAddress.mockResolvedValueOnce({
-      success: false,
-      payload: {},
-    });
+    client.getAddress.mockResolvedValueOnce(connectFail());
     await expect(adapter.verifyAddress("m/86'/0'/0'/0/0", 'bc1pabc')).rejects.toThrow(
       'Failed to verify address on Trezor: Failed to verify address'
     );
 
-    mockGetAddress.mockRejectedValueOnce('bridge-failed');
+    client.getAddress.mockRejectedValueOnce('bridge-failed');
     await expect(adapter.verifyAddress("m/86'/0'/0'/0/0", 'bc1pabc')).rejects.toThrow(
       'Failed to verify address on Trezor: Unknown error'
     );
   });
 
   it('signs a single-sig PSBT and passes ref transaction metadata to Trezor Connect', async () => {
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
     await adapter.connect();
 
     const { psbt, refTxHex } = createSingleSigPsbt();
@@ -778,10 +641,7 @@ describe('TrezorAdapter class', () => {
     mockApiGet.mockResolvedValueOnce({
       hex: refTxHex,
     });
-    mockSignTransaction.mockResolvedValueOnce({
-      success: true,
-      payload: { serializedTx: signedTxHex },
-    });
+    client.signTransaction.mockResolvedValueOnce(connectOk({ serializedTx: signedTxHex }, selectedDevice));
 
     const response = await adapter.signPSBT({
       psbt: psbt.toBase64(),
@@ -793,8 +653,8 @@ describe('TrezorAdapter class', () => {
     expect(response.rawTx).toBe(signedTxHex);
     expect(response.signatures).toBe(1);
 
-    const call = mockSignTransaction.mock.calls.at(-1)?.[0];
-    expect(call.coin).toBe('Bitcoin');
+    const call = lastSignCall(client);
+    expect(call.network).toBe('mainnet');
     expect(call.refTxs).toHaveLength(1);
     expect(call.inputs[0]).toMatchObject({
       amount: '60000',
@@ -804,7 +664,7 @@ describe('TrezorAdapter class', () => {
   });
 
   it('rejects a PSBT input that has no bound derivation instead of using request.inputPaths', async () => {
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
     await adapter.connect();
 
     const { psbt } = createSingleSigPsbt({ includeBip32Derivation: false });
@@ -814,11 +674,11 @@ describe('TrezorAdapter class', () => {
         inputPaths: ['m/84h/1h/0h/0/0'],
       })
     ).rejects.toThrow(/missing wallet-bound BIP32 derivation/i);
-    expect(mockSignTransaction).not.toHaveBeenCalled();
+    expect(client.signTransaction).not.toHaveBeenCalled();
   });
 
   it('blocks Payjoin when a receiver-added presigned input is not owned by the selected Trezor', async () => {
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
     await adapter.connect();
 
     const { psbt } = createSingleSigPsbt();
@@ -838,31 +698,28 @@ describe('TrezorAdapter class', () => {
         walletId: 'wallet-1',
       })
     ).rejects.toThrow(/missing wallet-bound BIP32 derivation/i);
-    expect(mockSignTransaction).not.toHaveBeenCalled();
+    expect(client.signTransaction).not.toHaveBeenCalled();
   });
 
   it('detects testnet from PSBT bip32Derivation when request paths are absent', async () => {
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
     await adapter.connect();
 
     const { psbt } = createSingleSigPsbt({ inputPath: "m/84'/1'/0'/0/0" });
     const signedTxHex = unsignedTxHexFromPsbt(psbt);
-    mockSignTransaction.mockResolvedValueOnce({
-      success: true,
-      payload: { serializedTx: signedTxHex },
-    });
+    client.signTransaction.mockResolvedValueOnce(connectOk({ serializedTx: signedTxHex }, selectedDevice));
 
     await adapter.signPSBT({
       psbt: psbt.toBase64(),
       inputPaths: [],
     });
 
-    const call = mockSignTransaction.mock.calls.at(-1)?.[0];
-    expect(call.coin).toBe('Testnet');
+    const call = lastSignCall(client);
+    expect(call.network).toBe('testnet');
   });
 
   it('maps taproot account path to taproot change output script type', async () => {
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
     await adapter.connect();
 
     const { psbt } = createSingleSigPsbt({ inputPath: "m/86'/0'/0'/0/0" });
@@ -890,10 +747,7 @@ describe('TrezorAdapter class', () => {
     });
 
     const signedTxHex = unsignedTxHexFromPsbt(psbt);
-    mockSignTransaction.mockResolvedValueOnce({
-      success: true,
-      payload: { serializedTx: signedTxHex },
-    });
+    client.signTransaction.mockResolvedValueOnce(connectOk({ serializedTx: signedTxHex }, selectedDevice));
 
     await adapter.signPSBT({
       psbt: psbt.toBase64(),
@@ -901,12 +755,12 @@ describe('TrezorAdapter class', () => {
       inputPaths: ["m/86'/0'/0'/0/0"],
     });
 
-    const call = mockSignTransaction.mock.calls.at(-1)?.[0];
+    const call = lastSignCall(client);
     expect(call.outputs[1].script_type).toBe('PAYTOTAPROOT');
   });
 
   it('rejects multisig signing when this device is not a cosigner', async () => {
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
     await adapter.connect();
 
     const { psbt } = createMultisigPsbt(false);
@@ -919,15 +773,12 @@ describe('TrezorAdapter class', () => {
   });
 
   it('returns the honest native Trezor tuple and the cryptographically applied multisig PSBT', async () => {
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
     await adapter.connect();
 
     const { psbt, witnessScript, multisigXpubs } = createMultisigPsbt(true);
     const signedTxHex = createSignedMultisigTxHex(psbt, witnessScript);
-    mockSignTransaction.mockResolvedValueOnce({
-      success: true,
-      payload: { serializedTx: signedTxHex, signatures: ['300102'] },
-    });
+    client.signTransaction.mockResolvedValueOnce(connectOk({ serializedTx: signedTxHex, signatures: ['300102'] }, selectedDevice));
 
     const response = await adapter.signPSBT({
       psbt: psbt.toBase64(),
@@ -945,14 +796,14 @@ describe('TrezorAdapter class', () => {
       serializedTx: signedTxHex,
     });
 
-    const call = mockSignTransaction.mock.calls.at(-1)?.[0];
-    expect(call.inputs[0].multisig).toBeDefined();
-    expect(call.outputs[1].multisig).toBeDefined();
+    const call = lastSignCall(client);
+    expect(call.inputs[0]).toMatchObject({ multisig: expect.anything() });
+    expect(call.outputs[1]).toMatchObject({ multisig: expect.anything() });
     expect(call.outputs[1].script_type).toBe('PAYTOWITNESS');
   });
 
   it('rejects partial multisig account xpub evidence before calling Trezor', async () => {
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
     await adapter.connect();
     const { psbt, multisigXpubs } = createMultisigPsbt(true);
 
@@ -965,7 +816,7 @@ describe('TrezorAdapter class', () => {
       },
       })
     ).rejects.toThrow(/missing account xpub evidence.*aaaaaaaa/i);
-    expect(mockSignTransaction).not.toHaveBeenCalled();
+    expect(client.signTransaction).not.toHaveBeenCalled();
   });
 
 });

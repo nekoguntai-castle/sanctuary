@@ -315,18 +315,16 @@ describe("Trezor emulator proof test configuration", () => {
   });
 
   it("loads the production Connect-Web entrypoint and locks its initialization contract", () => {
-    const adapter = readFileSync(
-      path.join(
-        repoRoot,
-        "src/services/hardwareWallet/adapters/trezor/trezorAdapter.ts",
-      ),
+    const adapterDir = path.join(
+      repoRoot,
+      "src/services/hardwareWallet/adapters/trezor",
+    );
+    const connectClient = readFileSync(
+      path.join(adapterDir, "connectClient.ts"),
       "utf8",
     );
-    const sessionIdentity = readFileSync(
-      path.join(
-        repoRoot,
-        "src/services/hardwareWallet/adapters/trezor/sessionIdentity.ts",
-      ),
+    const adapter = readFileSync(
+      path.join(adapterDir, "trezorAdapter.ts"),
       "utf8",
     );
 
@@ -334,10 +332,14 @@ describe("Trezor emulator proof test configuration", () => {
     expect(TrezorConnectWeb.getAddress).toBeTypeOf("function");
     expect(TrezorConnectWeb.signTransaction).toBeTypeOf("function");
     expect(asDeviceUniquePath).toBeTypeOf("function");
-    expect(adapter).toContain(
-      "import TrezorConnect from '@trezor/connect-web'",
+    // The SDK is confined to the boundary module; the adapter only injects it.
+    expect(connectClient).toContain(
+      "import TrezorConnect, { asDeviceUniquePath } from '@trezor/connect-web'",
     );
-    expect(adapter).toContain("coreMode: 'auto'");
-    expect(sessionIdentity).toContain("from '@trezor/connect-web'");
+    expect(connectClient).toContain("coreMode: 'auto'");
+    expect(adapter).toContain(
+      "client: TrezorConnectClient = createConnectWebClient()",
+    );
+    expect(adapter).not.toContain("@trezor/");
   });
 });

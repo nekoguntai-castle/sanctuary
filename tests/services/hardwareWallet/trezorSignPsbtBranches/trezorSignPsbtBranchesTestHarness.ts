@@ -1,5 +1,11 @@
 import * as bitcoin from 'bitcoinjs-lib';
 import { beforeEach, vi } from 'vitest';
+import { createFakeTrezorClient } from '../trezorFakeClient';
+import type {
+  TrezorCallResult,
+  TrezorConnectClient,
+  TrezorSignedTransaction,
+} from '../../../../src/services/hardwareWallet/adapters/trezor/types';
 
 const trezorSignPsbtBranchMocks = vi.hoisted(() => ({
   mockSignTransaction: vi.fn(),
@@ -37,17 +43,19 @@ export const TEST_SESSION = {
   instance: 0,
 } as const;
 
-vi.mock('@trezor/connect-web', () => ({
-  asDeviceUniquePath: (path: string) => path,
-  default: {
-    signTransaction: async (...args: unknown[]) => {
-      const result = await mockSignTransaction(...args);
-      return result?.success && !Object.hasOwn(result, 'device')
-        ? { ...result, device: (args[0] as { device?: unknown })?.device }
-        : result;
-    },
+/**
+ * Fake Connect client: delegates to mockSignTransaction and, like Connect, echoes the
+ * requested device on successful responses unless the scenario supplied one.
+ */
+export const fakeClient: TrezorConnectClient = {
+  ...createFakeTrezorClient(),
+  signTransaction: async (params) => {
+    const result: TrezorCallResult<TrezorSignedTransaction> = await mockSignTransaction(params);
+    return result.ok && !Object.hasOwn(result, 'device')
+      ? { ...result, device: params.device }
+      : result;
   },
-}));
+};
 
 vi.mock('../../../../src/services/hardwareWallet/adapters/trezor/pathUtils', () => ({
   getTrezorScriptType: (...args: unknown[]) => mockGetTrezorScriptType(...args),

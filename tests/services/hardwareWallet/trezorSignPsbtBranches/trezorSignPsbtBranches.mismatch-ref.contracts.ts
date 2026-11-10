@@ -1,6 +1,7 @@
 import type * as bitcoin from 'bitcoinjs-lib';
 import { expect, it } from 'vitest';
 import * as h from './trezorSignPsbtBranchesTestHarness';
+import { connectOk } from '../trezorFakeClient';
 import { signPsbtWithTrezor } from '../../../../src/services/hardwareWallet/adapters/trezor/signPsbt';
 
 export function registerTrezorSignPsbtMismatchRefContracts() {
@@ -21,28 +22,30 @@ export function registerTrezorSignPsbtMismatchRefContracts() {
       },
     ];
 
-    psbt.addInput({
-      hash: 'bb'.repeat(32),
-      index: 0,
-      sequence: 0xfffffffc,
-      witnessUtxo: {
-        script: h.hexToBytes(`0014${'44'.repeat(20)}`),
-        value: BigInt(20_000),
-      },
-      bip32Derivation: [
-        {
-          masterFingerprint: h.hexToBytes('aaaaaaaa'),
-          path: "m/48'/0'/0'/2'/0/2",
-          pubkey: h.hexToBytes(`02${'55'.repeat(32)}`),
+    psbt.addInput(
+      {
+        hash: 'bb'.repeat(32),
+        index: 0,
+        sequence: 0xfffffffc,
+        witnessUtxo: {
+          script: h.hexToBytes(`0014${'44'.repeat(20)}`),
+          value: BigInt(20_000),
         },
-        {
-          masterFingerprint: h.hexToBytes('bbbbbbbb'),
-          path: "m/48'/0'/0'/2'/0/2",
-          pubkey: h.hexToBytes(`03${'66'.repeat(32)}`),
-        },
-      ],
-      witnessScript: h.hexToBytes('5221' + '22'.repeat(33) + '51ae'),
-    } as any);
+        bip32Derivation: [
+          {
+            masterFingerprint: h.hexToBytes('aaaaaaaa'),
+            path: "m/48'/0'/0'/2'/0/2",
+            pubkey: h.hexToBytes(`02${'55'.repeat(32)}`),
+          },
+          {
+            masterFingerprint: h.hexToBytes('bbbbbbbb'),
+            path: "m/48'/0'/0'/2'/0/2",
+            pubkey: h.hexToBytes(`03${'66'.repeat(32)}`),
+          },
+        ],
+        witnessScript: h.hexToBytes('5221' + '22'.repeat(33) + '51ae'),
+      } as any
+    );
     psbt.addOutput({
       script: h.hexToBytes(`0014${'66'.repeat(20)}`),
       value: BigInt(19_000),
@@ -68,16 +71,19 @@ export function registerTrezorSignPsbtMismatchRefContracts() {
       pubkeys: [],
       signatures: [],
     });
-    h.mockSignTransaction.mockResolvedValueOnce({
-      success: true,
-      payload: { serializedTx: h.txFromPsbt(psbt).toHex() },
-    });
+    h.mockSignTransaction.mockResolvedValueOnce(
+      connectOk({ serializedTx: h.txFromPsbt(psbt).toHex() })
+    );
 
     await expect(
-      signPsbtWithTrezor({ psbt: psbt.toBase64(), inputPaths: ["m/48'/0'/0'/2'/0/0"] }, {
-        fingerprint: 'deadbeef',
-        session: h.TEST_SESSION,
-      } as any)
+      signPsbtWithTrezor(
+        { psbt: psbt.toBase64(), inputPaths: ["m/48'/0'/0'/2'/0/0"] },
+        {
+          fingerprint: 'deadbeef',
+          session: h.TEST_SESSION,
+        } as any,
+        h.fakeClient
+      )
     ).rejects.toThrow('No PSBT derivation matches the connected Trezor on input 1');
 
     expect(h.mockLoggerWarn).toHaveBeenCalledWith(
@@ -117,10 +123,7 @@ export function registerTrezorSignPsbtMismatchRefContracts() {
     const tx = h.txFromPsbt(psbt);
     mutate(tx);
 
-    h.mockSignTransaction.mockResolvedValueOnce({
-      success: true,
-      payload: { serializedTx: tx.toHex() },
-    });
+    h.mockSignTransaction.mockResolvedValueOnce(connectOk({ serializedTx: tx.toHex() }));
 
     await expect(
       signPsbtWithTrezor(
@@ -128,7 +131,8 @@ export function registerTrezorSignPsbtMismatchRefContracts() {
           psbt: psbt.toBase64(),
           inputPaths: ["m/84'/0'/0'/0/0"],
         },
-        { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any
+        { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any,
+        h.fakeClient
       )
     ).rejects.toThrow(expected);
   });
@@ -150,10 +154,7 @@ export function registerTrezorSignPsbtMismatchRefContracts() {
       },
     ];
     h.mockBuildTrezorMultisig.mockReturnValue(undefined);
-    h.mockSignTransaction.mockResolvedValueOnce({
-      success: true,
-      payload: { serializedTx: signedTxHex },
-    });
+    h.mockSignTransaction.mockResolvedValueOnce(connectOk({ serializedTx: signedTxHex }));
 
     await expect(
       signPsbtWithTrezor(
@@ -162,7 +163,8 @@ export function registerTrezorSignPsbtMismatchRefContracts() {
           accountPath: "m/86'/0'/0'",
           inputPaths: [],
         },
-        { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any
+        { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any,
+        h.fakeClient
       )
     ).rejects.toThrow('Output 1 is missing a canonical multisig witnessScript');
     expect(h.mockSignTransaction).not.toHaveBeenCalled();
@@ -177,10 +179,7 @@ export function registerTrezorSignPsbtMismatchRefContracts() {
         bin_outputs: [],
       },
     ]);
-    h.mockSignTransaction.mockResolvedValueOnce({
-      success: true,
-      payload: { serializedTx: signedTxHex },
-    });
+    h.mockSignTransaction.mockResolvedValueOnce(connectOk({ serializedTx: signedTxHex }));
 
     await expect(
       signPsbtWithTrezor(
@@ -189,7 +188,8 @@ export function registerTrezorSignPsbtMismatchRefContracts() {
           psbt: psbt.toBase64(),
           inputPaths: [],
         },
-        { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any
+        { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any,
+        h.fakeClient
       )
     ).rejects.toThrow('reference output is missing on input 0');
 
@@ -210,10 +210,7 @@ export function registerTrezorSignPsbtMismatchRefContracts() {
         ],
       },
     ]);
-    h.mockSignTransaction.mockResolvedValueOnce({
-      success: true,
-      payload: { serializedTx: signedTxHex },
-    });
+    h.mockSignTransaction.mockResolvedValueOnce(connectOk({ serializedTx: signedTxHex }));
 
     await signPsbtWithTrezor(
       {
@@ -221,7 +218,8 @@ export function registerTrezorSignPsbtMismatchRefContracts() {
         psbt: psbt.toBase64(),
         inputPaths: [],
       },
-      { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any
+      { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any,
+      h.fakeClient
     );
 
     expect(h.mockLoggerError).not.toHaveBeenCalledWith(

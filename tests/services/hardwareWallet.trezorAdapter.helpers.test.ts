@@ -12,18 +12,6 @@ import {
   slip132Key,
 } from './hardwareWallet/trezorAdapterTestHarness';
 
-vi.mock('@trezor/connect-web', () => ({
-  asDeviceUniquePath: (path: string) => path,
-  default: {
-    init: vi.fn(),
-    getFeatures: vi.fn(),
-    getDeviceState: vi.fn(),
-    getPublicKey: vi.fn(),
-    getAddress: vi.fn(),
-    signTransaction: vi.fn(),
-  },
-}));
-
 vi.mock('../../src/api/client', () => ({
   default: {
     get: vi.fn(),

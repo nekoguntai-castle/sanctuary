@@ -5,6 +5,12 @@ import type { PSBTSignRequest } from '../../types';
 import { pathToAddressN, validateSatoshiAmount } from './pathUtils';
 import { buildTrezorMultisig, isMultisigInput } from './multisig';
 import type {
+  TrezorChangeOutput,
+  TrezorExternalOutput,
+  TrezorSignInput,
+  TrezorSignOutput,
+} from './types';
+import type {
   TrezorPayToScriptType,
   TrezorPsbt,
   TrezorPsbtInput,
@@ -93,7 +99,7 @@ const getMatchingDerivation = (
 };
 
 const addTrezorInputMultisig = (
-  trezorInput: any,
+  trezorInput: TrezorSignInput,
   input: TrezorPsbtInput,
   request: PSBTSignRequest,
   inputIdx: number
@@ -121,7 +127,11 @@ const addTrezorInputMultisig = (
   });
 };
 
-const logBuiltTrezorInput = (inputIdx: number, input: TrezorPsbtInput, trezorInput: any): void => {
+const logBuiltTrezorInput = (
+  inputIdx: number,
+  input: TrezorPsbtInput,
+  trezorInput: TrezorSignInput
+): void => {
   log.info('TREZOR INPUT BUILT', {
     inputIdx,
     prevHash: trezorInput.prev_hash,
@@ -144,14 +154,14 @@ const buildTrezorInput = (
   scriptType: TrezorSpendScriptType,
   deviceFingerprintBuffer: Buffer | null,
   deviceFingerprint: string | undefined
-): any => {
+): TrezorSignInput => {
   const derivationPath = getMatchingDerivation(
     getSigningDerivations(input, scriptType, `Input ${inputIdx}`),
     deviceFingerprintBuffer,
     deviceFingerprint,
     inputIdx
   ).path;
-  const trezorInput: any = {
+  const trezorInput: TrezorSignInput = {
     address_n: pathToAddressN(derivationPath),
     prev_hash: Buffer.from(txInput.hash).reverse().toString('hex'),
     prev_index: txInput.index,
@@ -175,7 +185,7 @@ export const buildTrezorInputs = (
   scriptType: TrezorSpendScriptType,
   deviceFingerprintBuffer: Buffer | null,
   deviceFingerprint: string | undefined
-): any[] => {
+): TrezorSignInput[] => {
   return psbt.data.inputs.map((input, idx) =>
     buildTrezorInput(
       input,
@@ -203,7 +213,7 @@ const isChangeOutput = (request: PSBTSignRequest, outputIdx: number): boolean =>
 };
 
 const addTrezorOutputMultisig = (
-  changeOutput: any,
+  changeOutput: TrezorChangeOutput,
   output: TrezorPsbtOutput,
   request: PSBTSignRequest,
   outputIdx: number
@@ -237,13 +247,13 @@ const buildTrezorChangeOutput = (
   scriptType: TrezorSpendScriptType,
   deviceFingerprintBuffer: Buffer | null,
   deviceFingerprint: string | undefined
-): any => {
+): TrezorChangeOutput => {
   const matchingDerivation = getMatchingDerivation(
     getSigningDerivations(psbtOutput, scriptType, `Output ${outputIdx}`),
     deviceFingerprintBuffer,
     deviceFingerprint
   );
-  const changeOutput: any = {
+  const changeOutput: TrezorChangeOutput = {
     address_n: pathToAddressN(matchingDerivation.path),
     amount: validateSatoshiAmount(output.value, `Output ${outputIdx}`),
     script_type: getOutputScriptType(scriptType),
@@ -257,7 +267,7 @@ const buildTrezorExternalOutput = (
   output: TrezorTxOutput,
   outputIdx: number,
   isTestnet: boolean
-): any => {
+): TrezorExternalOutput => {
   return {
     address: bitcoin.address.fromOutputScript(
       output.script,
@@ -277,7 +287,7 @@ const buildTrezorOutput = (
   isTestnet: boolean,
   deviceFingerprintBuffer: Buffer | null,
   deviceFingerprint: string | undefined
-): any => {
+): TrezorSignOutput => {
   const hasSigningDerivation =
     scriptType === 'SPENDTAPROOT'
       ? Boolean(psbtOutput.tapBip32Derivation?.length)
@@ -305,7 +315,7 @@ export const buildTrezorOutputs = (
   isTestnet: boolean,
   deviceFingerprintBuffer: Buffer | null,
   deviceFingerprint: string | undefined
-): any[] => {
+): TrezorSignOutput[] => {
   return psbt.txOutputs.map((output, idx) =>
     buildTrezorOutput(
       output,

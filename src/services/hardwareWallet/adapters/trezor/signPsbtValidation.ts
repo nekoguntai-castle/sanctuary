@@ -1,11 +1,12 @@
 import * as bitcoin from 'bitcoinjs-lib';
 import { uint8ArrayEquals } from '../../../../utils/bufferUtils';
 import type { TrezorPsbt } from './signPsbtTypes';
+import type { TrezorCallResult, TrezorRefTx, TrezorSignedTransaction } from './types';
 
 const artifactError = (detail: string): Error =>
   new Error(`Trezor signed artifact mismatch: ${detail}`);
 
-export const assertRefTxAmountsMatch = (psbt: TrezorPsbt, refTxs: any[]): void => {
+export const assertRefTxAmountsMatch = (psbt: TrezorPsbt, refTxs: TrezorRefTx[]): void => {
   for (const [index, txInput] of psbt.txInputs.entries()) {
     const psbtInput = psbt.data.inputs[index];
     const txid = Buffer.from(txInput.hash).reverse().toString('hex');
@@ -32,15 +33,15 @@ export const getUnsignedTransactionFromPsbt = (psbt: TrezorPsbt): bitcoin.Transa
   return bitcoin.Transaction.fromBuffer(psbtTx.toBuffer());
 };
 
-export const getSerializedTrezorTx = (result: any): string => {
-  if (!result.success) {
-    const errorMsg = 'error' in result.payload ? result.payload.error : 'Signing failed';
-    throw new Error(errorMsg);
+export const getSerializedTrezorTx = (result: TrezorCallResult<TrezorSignedTransaction>): string => {
+  if (!result.ok) {
+    throw new Error(result.error.message ?? 'Signing failed');
   }
-  if (typeof result.payload.serializedTx !== 'string' || result.payload.serializedTx.length === 0) {
+  const { serializedTx } = result.value;
+  if (typeof serializedTx !== 'string' || serializedTx.length === 0) {
     throw artifactError('Connect returned no serialized transaction');
   }
-  return result.payload.serializedTx;
+  return serializedTx;
 };
 
 function assertTransactionHeader(expected: bitcoin.Transaction, actual: bitcoin.Transaction): void {

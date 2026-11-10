@@ -9,6 +9,30 @@ const productionSource = [
   'llm-egress-proxy/src/**/*.ts',
 ];
 
+// Phase F1: relative-path shared/ imports are forbidden in production source.
+// Patterns scope only relative paths so the workspace specifier stays allowed
+// (depth-7 covers the deepest test paths in the repo).
+const sharedRelativeImports = {
+  group: [
+    '../shared/**',
+    '../../shared/**',
+    '../../../shared/**',
+    '../../../../shared/**',
+    '../../../../../shared/**',
+    '../../../../../../shared/**',
+    '../../../../../../../shared/**',
+  ],
+  message: "Import shared via the workspace package: from '@sanctuary/shared/...'.",
+};
+
+// The Trezor SDK is confined to one boundary module so an SDK upgrade stays a
+// one-file change (docs/plans/trezor-connect-10-migration.md).
+const trezorConnectBoundary = 'src/services/hardwareWallet/adapters/trezor/connectClient.ts';
+const trezorSdkImports = {
+  group: ['@trezor/*', '@trezor/**'],
+  message: `Import the Trezor SDK only in ${trezorConnectBoundary}; use TrezorConnectClient elsewhere.`,
+};
+
 export default [
   {
     linterOptions: {
@@ -52,25 +76,8 @@ export default [
         'ts-nocheck': true,
         minimumDescriptionLength: 3,
       }],
-      // Phase F1: relative-path shared/ imports are forbidden in production
-      // source. Use the workspace package: from '@sanctuary/shared/...'.
-      // Patterns scope only relative paths so the new workspace specifier
-      // remains allowed (depth-7 covers the deepest test paths in the repo).
       'no-restricted-imports': ['error', {
-        patterns: [
-          {
-            group: [
-              '../shared/**',
-              '../../shared/**',
-              '../../../shared/**',
-              '../../../../shared/**',
-              '../../../../../shared/**',
-              '../../../../../../shared/**',
-              '../../../../../../../shared/**',
-            ],
-            message: "Import shared via the workspace package: from '@sanctuary/shared/...'.",
-          },
-        ],
+        patterns: [sharedRelativeImports, trezorSdkImports],
       }],
       'no-restricted-syntax': ['error',
         {
@@ -126,6 +133,14 @@ export default [
     files: ['shared/**/*.ts'],
     rules: {
       'no-restricted-imports': 'off',
+    },
+  },
+  {
+    // The Trezor boundary module may import the SDK. Flat config replaces rule
+    // options per file, so the shared/ restriction is restated here.
+    files: [trezorConnectBoundary],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: [sharedRelativeImports] }],
     },
   },
   {

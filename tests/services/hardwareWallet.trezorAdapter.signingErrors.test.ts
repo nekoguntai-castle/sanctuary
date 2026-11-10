@@ -5,29 +5,19 @@ import {
   originalWindow,
   setSecureContext,
 } from "./hardwareWallet/trezorAdapterTestHarness";
+import {
+  connectFail,
+  connectOk,
+  createFakeTrezorClient,
+  type FakeTrezorClient,
+} from "./hardwareWallet/trezorFakeClient";
 
-const mockInit = vi.fn();
-const mockGetFeatures = vi.fn();
-const mockGetDeviceState = vi.fn();
-const mockGetPublicKey = vi.fn();
-const mockSignTransaction = vi.fn();
 const mockApiGet = vi.fn();
 const mockValidatePsbtSigningRequest = vi.fn();
 
 vi.mock("../../src/services/hardwareWallet/psbtAccountBinding", () => ({
   validatePsbtSigningRequest: (...args: unknown[]) =>
     mockValidatePsbtSigningRequest(...args),
-}));
-
-vi.mock("@trezor/connect-web", () => ({
-  asDeviceUniquePath: (path: string) => path,
-  default: {
-    init: (...args: unknown[]) => mockInit(...args),
-    getFeatures: (...args: unknown[]) => mockGetFeatures(...args),
-    getDeviceState: (...args: unknown[]) => mockGetDeviceState(...args),
-    getPublicKey: (...args: unknown[]) => mockGetPublicKey(...args),
-    signTransaction: (...args: unknown[]) => mockSignTransaction(...args),
-  },
 }));
 
 vi.mock("../../src/api/client", () => ({
@@ -73,43 +63,45 @@ const validatedSigningRequest = (request: { psbt: string }) => {
 };
 
 describe("TrezorAdapter signing error mapping", () => {
+  let client: FakeTrezorClient;
+
   beforeEach(() => {
     vi.clearAllMocks();
     setSecureContext(true);
-    mockInit.mockResolvedValue(undefined);
+    client = createFakeTrezorClient();
     mockApiGet.mockRejectedValue(new Error("missing tx"));
-    mockGetFeatures.mockResolvedValue({
-      success: true,
-      payload: {
-        device_id: "dev-1",
-        label: "My Trezor",
-        internal_model: "T3T1",
-        pin_protection: true,
-        unlocked: false,
-        passphrase_protection: true,
-        major_version: 2,
-        minor_version: 9,
-        patch_version: 6,
-      },
-      device: { path: selectedDevice.path, instance: selectedDevice.instance },
-    });
-    mockGetDeviceState.mockResolvedValue({
-      success: true,
-      payload: { state: selectedDevice.state },
-      device: selectedDevice,
-    });
-    mockGetPublicKey.mockResolvedValue({
-      success: true,
-      payload: {
-        xpub: "xpub-from-device",
-        descriptor:
-          "wpkh([deadbeef/84h/0h/0h]xpub-from-device/<0;1>/*)#checksum",
-        fingerprint: 0x12345678,
-        depth: 3,
-        childNum: 0x80000000,
-      },
-      device: selectedDevice,
-    });
+    client.getFeatures.mockResolvedValue(
+      connectOk(
+        {
+          device_id: "dev-1",
+          label: "My Trezor",
+          internal_model: "T3T1",
+          pin_protection: true,
+          unlocked: false,
+          passphrase_protection: true,
+          major_version: 2,
+          minor_version: 9,
+          patch_version: 6,
+        },
+        { path: selectedDevice.path, instance: selectedDevice.instance },
+      ),
+    );
+    client.getDeviceState.mockResolvedValue(
+      connectOk({ state: selectedDevice.state }, selectedDevice),
+    );
+    client.getPublicKey.mockResolvedValue(
+      connectOk(
+        {
+          xpub: "xpub-from-device",
+          descriptor:
+            "wpkh([deadbeef/84h/0h/0h]xpub-from-device/<0;1>/*)#checksum",
+          fingerprint: 0x12345678,
+          depth: 3,
+          childNum: 0x80000000,
+        },
+        selectedDevice,
+      ),
+    );
     mockValidatePsbtSigningRequest.mockImplementation(validatedSigningRequest);
   });
 
@@ -123,7 +115,7 @@ describe("TrezorAdapter signing error mapping", () => {
   });
 
   it("preserves non-Error failures from the signing boundary", async () => {
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
     await adapter.connect();
     vi.spyOn(trezorSigning, "signPsbtWithTrezor").mockRejectedValueOnce(
       "validation transport failed",
@@ -150,14 +142,10 @@ describe("TrezorAdapter signing error mapping", () => {
     ],
     ["mystery failure", "Failed to sign with Trezor: mystery failure"],
   ])("maps signPSBT error branch: %s", async (deviceError, expectedMessage) => {
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
     await adapter.connect();
     const { psbt } = createSingleSigPsbt();
-    mockSignTransaction.mockResolvedValueOnce({
-      success: false,
-      payload: { error: deviceError },
-      device: selectedDevice,
-    });
+    client.signTransaction.mockResolvedValueOnce(connectFail(deviceError));
 
     await expect(
       adapter.signPSBT({
@@ -168,14 +156,10 @@ describe("TrezorAdapter signing error mapping", () => {
   });
 
   it("uses the signing fallback when the error payload omits its message", async () => {
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
     await adapter.connect();
     const { psbt } = createSingleSigPsbt();
-    mockSignTransaction.mockResolvedValueOnce({
-      success: false,
-      payload: {},
-      device: selectedDevice,
-    });
+    client.signTransaction.mockResolvedValueOnce(connectFail());
 
     await expect(
       adapter.signPSBT({
@@ -186,7 +170,7 @@ describe("TrezorAdapter signing error mapping", () => {
   });
 
   it("maps invalid PSBT errors from the signPSBT catch path", async () => {
-    const adapter = new TrezorAdapter();
+    const adapter = new TrezorAdapter(client);
     await adapter.connect();
 
     await expect(
