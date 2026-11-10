@@ -309,6 +309,12 @@ describe.runIf(RUN_PROOF)(
         TREZOR_EMULATOR_PROOF_CONTRACT.connect,
       );
       bridgeProxy = await startLocalBridgeProxy();
+      // Multisig BIP48 paths need non-strict safety checks. On the Model T
+      // this applies the persistent PromptAlways level through the
+      // controller's own trezorlib client, so it is set once here, before
+      // Connect acquires the device: while the node bridge holds a session
+      // that client blocks, and the controller stops answering.
+      await controllerCommand({ type: "emulator-allow-unsafe-paths", id: 1_199 });
       Object.defineProperty(globalThis, "window", {
         configurable: true,
         value: {
@@ -485,10 +491,6 @@ describe.runIf(RUN_PROOF)(
 
     it("displays the exact BIP48 /1 nested multisig address", async () => {
       const runtime = requireRuntime();
-      await controllerCommand({
-        type: "emulator-allow-unsafe-paths",
-        id: 1_200,
-      });
       const fixture = multisigFixture({
         deviceAccount: runtime.accounts.bip48Nested,
         fingerprint: runtime.fingerprint,
@@ -597,10 +599,6 @@ describe.runIf(RUN_PROOF)(
       "signs, preserves, and independently replays %s",
       async (name, nested, scriptType, outputScriptType, purpose, idBase) => {
         const runtime = requireRuntime();
-        await controllerCommand({
-          type: "emulator-allow-unsafe-paths",
-          id: idBase - 1,
-        });
         const account = nested
           ? runtime.accounts.bip48Nested
           : runtime.accounts.bip48Native;
@@ -652,10 +650,6 @@ describe.runIf(RUN_PROOF)(
       "persists the first Trezor signature without falsely finalizing %s",
       async (name, nested, scriptType, outputScriptType, purpose, idBase) => {
         const runtime = requireRuntime();
-        await controllerCommand({
-          type: "emulator-allow-unsafe-paths",
-          id: idBase - 1,
-        });
         const account = nested
           ? runtime.accounts.bip48Nested
           : runtime.accounts.bip48Native;
