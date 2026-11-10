@@ -146,6 +146,26 @@ const logBuiltTrezorInput = (
   });
 };
 
+// Connect 10 requires `amount` on every input. Legacy inputs carry no
+// witnessUtxo, so read the spent output from nonWitnessUtxo. That transaction
+// is authenticated against the outpoint by validatePsbtSigningRequest before
+// the builders run, and again by refTxs.ts before the device signs.
+const getSpentOutputValue = (
+  input: TrezorPsbtInput,
+  txInput: TrezorTxInput,
+  inputIdx: number
+): bigint | undefined => {
+  if (input.witnessUtxo) return input.witnessUtxo.value;
+  if (!input.nonWitnessUtxo) return undefined;
+  let previous: bitcoin.Transaction;
+  try {
+    previous = bitcoin.Transaction.fromBuffer(Uint8Array.from(input.nonWitnessUtxo));
+  } catch {
+    throw new Error(`Input ${inputIdx}: nonWitnessUtxo is not a valid transaction`);
+  }
+  return previous.outs[txInput.index]?.value;
+};
+
 const buildTrezorInput = (
   input: TrezorPsbtInput,
   txInput: TrezorTxInput,
@@ -167,11 +187,11 @@ const buildTrezorInput = (
     prev_index: txInput.index,
     sequence: txInput.sequence,
     script_type: scriptType,
+    amount: validateSatoshiAmount(
+      getSpentOutputValue(input, txInput, inputIdx),
+      `Input ${inputIdx}`
+    ),
   };
-
-  if (input.witnessUtxo) {
-    trezorInput.amount = validateSatoshiAmount(input.witnessUtxo.value, `Input ${inputIdx}`);
-  }
 
   addTrezorInputMultisig(trezorInput, input, request, inputIdx);
   logBuiltTrezorInput(inputIdx, input, trezorInput);

@@ -1,5 +1,9 @@
+// Connect 10 spells user cancellation "Canceled" (Method_Cancel); older
+// messages and Sanctuary's own use "cancelled".
+export const isCancellation = (message: string): boolean => /cancell?ed/i.test(message);
+
 export const mapTrezorSigningError = (message: string): string => {
-  if (message.includes('Cancelled') || message.includes('cancelled') || message.includes('rejected')) {
+  if (isCancellation(message) || message.includes('rejected')) {
     return 'Transaction rejected on Trezor. Please approve the transaction on your device.';
   }
   if (message.includes('PIN')) {

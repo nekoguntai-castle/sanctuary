@@ -5,11 +5,14 @@ import { BIP32Factory, type BIP32Interface } from "bip32";
 import * as bitcoin from "bitcoinjs-lib";
 import * as ecc from "@bitcoinerlab/secp256k1";
 import TrezorConnect from "@trezor/connect";
+import { BridgeTransport } from "@trezor/transport-common";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { TrezorAdapter } from "../../src/services/hardwareWallet/adapters/trezor/trezorAdapter";
 import {
-  createConnectWebClient,
+  connectCoin,
+  createConnectClient,
   toConnectDevice,
+  toConnectMultisig,
 } from "../../src/services/hardwareWallet/adapters/trezor/connectClient";
 import {
   buildTrezorInputs,
@@ -64,11 +67,14 @@ interface ConnectIdentity {
   instance?: unknown;
 }
 
-interface ConnectResult<T> {
-  success: boolean;
-  payload: T & { error?: string };
-  device?: ConnectIdentity;
-}
+type ConnectTransport = NonNullable<
+  Parameters<typeof TrezorConnect.init>[0]["transports"]
+>[number];
+
+// Connect 10 result shape: failures carry `error`, not `payload.error`.
+type ConnectResult<T> =
+  | { success: true; payload: T; device?: ConnectIdentity }
+  | { success: false; error?: { message?: string }; device?: ConnectIdentity };
 
 interface EmulatorAccounts {
   bip49: BIP32Interface;
@@ -113,7 +119,7 @@ function successPayload<T>(result: ConnectResult<T>, operation: string): T {
   const runtime = requireRuntime();
   if (!result.success)
     throw new Error(
-      `${operation} failed: ${result.payload.error ?? "unknown error"}`,
+      `${operation} failed: ${result.error?.message ?? "unknown error"}`,
     );
   if (!result.device) throw new Error(`${operation} omitted device identity`);
   assertSessionIdentity(result.device, runtime.session);
@@ -140,12 +146,10 @@ async function getAddress(args: {
   const runtime = requireRuntime();
   const operation = TrezorConnect.getAddress({
     path: args.path,
-    coin: "Testnet",
+    coin: connectCoin("testnet"),
     scriptType: args.scriptType,
     showOnTrezor: args.display,
-    // Production payloads carry pubkeys_order as the enum name, which Connect
-    // accepts; its declared type is the numeric enum (see connectClient.ts).
-    multisig: args.multisig as never,
+    multisig: args.multisig && toConnectMultisig(args.multisig),
     device: toConnectDevice(connectDevice(runtime.session)),
   }) as Promise<ConnectResult<{ address: string }>>;
   const result = args.display
@@ -312,19 +316,32 @@ describe.runIf(RUN_PROOF)(
           location: { origin: "https://sanctuary.local" },
         },
       });
-      // The vitest alias resolves @trezor/connect-web to the in-process
-      // @trezor/connect core, so this is the production client and its result
-      // normalization running against the emulator.
-      adapter = new TrezorAdapter(createConnectWebClient({
+      // The production client mapping over the in-process @trezor/connect
+      // core, running against the emulator.
+      const proofSettings = {
         manifest: {
           email: "ci@sanctuary.local",
           appUrl: "https://sanctuary.local",
           appName: "Sanctuary Trezor Proof",
         },
-        transports: ["BridgeTransport"],
-        pendingTransportEvent: false,
+        // The local bridge proxy listens on the legacy port; Connect 10's
+        // BridgeTransport defaults to 21328, so pin it explicitly.
+        transports: [
+          // @trezor/connect-common types `transports` against its vendored
+          // type copy of transport-common, which is nominally distinct from
+          // the runtime class; the instance is what the core expects.
+          new BridgeTransport({
+            id: "sanctuary-trezor-proof",
+            port: 21_325,
+          }) as unknown as ConnectTransport,
+        ],
+        // Connect 10 returns from init() before the device handshake unless
+        // this is set; the first call (getFeatures, no device) would then
+        // find an empty device list.
+        pendingTransportEvent: true,
         debug: false,
-      }));
+      };
+      adapter = new TrezorAdapter(createConnectClient(TrezorConnect, () => proofSettings));
       connectInitialized = true;
       await establishSession();
       accounts = await loadAccounts();

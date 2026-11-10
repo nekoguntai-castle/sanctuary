@@ -333,8 +333,8 @@ describe("Trezor emulator proof test configuration", () => {
     expect(TrezorConnectWeb.signTransaction).toBeTypeOf("function");
     expect(asDeviceUniquePath).toBeTypeOf("function");
     // The SDK is confined to the boundary module; the adapter only injects it.
-    expect(connectClient).toContain(
-      "import TrezorConnect, { asDeviceUniquePath } from '@trezor/connect-web'",
+    expect(connectClient).toMatch(
+      /^import TrezorConnect, \{[^}]*\basDeviceUniquePath\b[^}]*\} from '@trezor\/connect-web';$/m,
     );
     expect(connectClient).toContain("coreMode: 'auto'");
     expect(adapter).toContain(

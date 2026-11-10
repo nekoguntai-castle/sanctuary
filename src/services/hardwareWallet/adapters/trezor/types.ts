@@ -43,8 +43,9 @@ export interface TrezorMultisig {
  * Connect boundary DTOs. These are the only shapes the adapter exchanges with
  * connectClient.ts, which alone imports the Trezor SDK. Field names follow the
  * Connect wire format so the client can pass them through unchanged. tsc
- * checks them against the SDK at the call sites in connectClient.ts, except
- * signTransaction inputs/outputs, which are cast there (see its comment).
+ * checks them against the SDK at the call sites in connectClient.ts, which
+ * also converts the two fields whose wire encoding differs (device state,
+ * multisig pubkey order).
  */
 
 /** Bitcoin network a Connect call targets; the client maps it to a Connect coin. */
@@ -120,7 +121,7 @@ export interface TrezorSignInput {
   prev_index: number;
   sequence?: number;
   script_type: TrezorSpendScriptType;
-  amount?: string;
+  amount: string;
   multisig?: TrezorMultisig;
 }
 

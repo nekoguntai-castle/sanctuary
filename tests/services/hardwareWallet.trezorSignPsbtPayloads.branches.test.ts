@@ -37,9 +37,17 @@ function request(changeOutputs: number[] = []) {
   } as any;
 }
 
+// Connect 10 requires an amount on every input, so fixtures that are not
+// about amounts spend a default authenticated witness UTXO.
+const DEFAULT_WITNESS_UTXO = { value: 50n, script: hexToBytes('0014' + '44'.repeat(20)) };
+
 function inputPsbt(input: Record<string, unknown>): any {
+  const spent =
+    'witnessUtxo' in input || 'nonWitnessUtxo' in input
+      ? input
+      : { witnessUtxo: DEFAULT_WITNESS_UTXO, ...input };
   return {
-    data: { inputs: [input], outputs: [] },
+    data: { inputs: [spent], outputs: [] },
     txInputs: [
       {
         hash: Uint8Array.from(Buffer.from('22'.repeat(32), 'hex')),
@@ -149,6 +157,7 @@ describe('Trezor PSBT payload branch contracts', () => {
         prev_index: 4,
         sequence: 9,
         script_type: 'SPENDTAPROOT',
+        amount: '50',
       },
     ]);
   });
@@ -173,14 +182,43 @@ describe('Trezor PSBT payload branch contracts', () => {
     ).not.toHaveProperty('multisig');
   });
 
-  it('builds input amounts only when authenticated witness UTXOs are present', () => {
-    const withoutAmount = buildInput({ bip32Derivation: [LEGACY_ORIGIN] })[0];
-    expect(withoutAmount).not.toHaveProperty('amount');
-    const withAmount = buildInput({
+  it('takes every input amount from the spent output, as Connect 10 requires', () => {
+    const witness = buildInput({
       bip32Derivation: [LEGACY_ORIGIN],
       witnessUtxo: { value: 50n, script: hexToBytes('0014' + '44'.repeat(20)) },
     })[0];
-    expect(withAmount.amount).toBe('50');
+    expect(witness.amount).toBe('50');
+
+    // Legacy inputs carry the full previous transaction; the fixture spends output 4.
+    const previous = new bitcoin.Transaction();
+    previous.addInput(new Uint8Array(32).fill(1), 0);
+    for (const value of [1n, 2n, 3n, 4n, 777n]) {
+      previous.addOutput(hexToBytes('0014' + '55'.repeat(20)), value);
+    }
+    const legacy = buildInput(
+      { bip32Derivation: [LEGACY_ORIGIN], nonWitnessUtxo: previous.toBuffer() },
+      'SPENDADDRESS'
+    )[0];
+    expect(legacy.amount).toBe('777');
+
+    const shortPrevious = new bitcoin.Transaction();
+    shortPrevious.addInput(new Uint8Array(32).fill(1), 0);
+    shortPrevious.addOutput(hexToBytes('0014' + '55'.repeat(20)), 1n);
+    expect(() =>
+      buildInput(
+        { bip32Derivation: [LEGACY_ORIGIN], nonWitnessUtxo: shortPrevious.toBuffer() },
+        'SPENDADDRESS'
+      )
+    ).toThrow('Input 0: amount is missing');
+    expect(() =>
+      buildInput({ bip32Derivation: [LEGACY_ORIGIN], witnessUtxo: undefined })
+    ).toThrow('Input 0: amount is missing');
+    expect(() =>
+      buildInput(
+        { bip32Derivation: [LEGACY_ORIGIN], nonWitnessUtxo: Uint8Array.of(1, 2, 3) },
+        'SPENDADDRESS'
+      )
+    ).toThrow('Input 0: nonWitnessUtxo is not a valid transaction');
   });
 
   it.each([

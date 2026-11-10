@@ -226,7 +226,7 @@ describe('TrezorAdapter class', () => {
     expect(adapter.isConnected()).toBe(true);
     expect(adapter.getDevice()?.id).toContain('trezor-');
     expect(device.firmwareVersion).toBe('2.9.6');
-    expect(device.transportVersion).toBe('9.7.3');
+    expect(device.transportVersion).toBe('10.0.1');
   });
 
   it('short-circuits repeated initialize calls', async () => {
@@ -266,6 +266,18 @@ describe('TrezorAdapter class', () => {
       throw new Error('Popup closed');
     });
     await expect(adapterB.connect()).rejects.toThrow('Connection cancelled by user');
+
+    // Connect 10 Method_Cancel and a declined Suite permission prompt.
+    const adapterCanceled = new TrezorAdapter(client);
+    client.getFeatures.mockResolvedValueOnce(connectFail('Canceled', 'Method_Cancel'));
+    await expect(adapterCanceled.connect()).rejects.toThrow('Connection cancelled by user');
+    const adapterDenied = new TrezorAdapter(client);
+    client.getFeatures.mockResolvedValueOnce(
+      connectFail('Permissions not granted', 'Method_PermissionsNotGranted')
+    );
+    await expect(adapterDenied.connect()).rejects.toThrow(
+      'Sanctuary was not granted access in Trezor Suite'
+    );
 
     const adapterC = new TrezorAdapter(client);
     client.getFeatures.mockResolvedValueOnce(connectFail());

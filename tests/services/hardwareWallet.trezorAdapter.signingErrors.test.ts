@@ -129,6 +129,7 @@ describe("TrezorAdapter signing error mapping", () => {
 
   it.each([
     ["Cancelled", "Transaction rejected on Trezor"],
+    ["Canceled", "Transaction rejected on Trezor"],
     ["PIN invalid", "Incorrect PIN. Please try again."],
     ["Passphrase denied", "Passphrase entry cancelled."],
     [

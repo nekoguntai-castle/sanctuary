@@ -547,6 +547,48 @@ Why two PRs: a reviewed risk boundary.
    - `@trezor/connect-web@10.0.1` imports in plain Node 24 without `window`.
      Calls outside a browser are not proven, so keep the emulator vitest
      alias to the in-process core.
+2b. **Phase B as built** (branch `feat/trezor-connect-10`):
+   - Dependencies:
+     - Both bumps; `@trezor/connect` moved to devDependencies; the `axios`
+       override set to 1.21.1.
+     - Explicit devDependencies for `@trezor/transport-common` (the proof's
+       `BridgeTransport`) and `bip66` (BitBox test harness, previously only
+       hoisted from Trezor 9).
+     - `buffer@6.0.3` declared as a production dependency.
+       `@keystonehq/bc-ur-registry` imports `buffer/` without declaring it;
+       only `npm run build` caught this, not the tests.
+     - The unused `toml` override removed (only Trezor 9 used it).
+     - Stale entries removed: the install-script policy entries for
+       stellar-sdk, blake-hash and tiny-secp256k1, the matching
+       `allowScripts` entries, and deprecation allowlist entry
+       `trezor-stellar-base-14`. `usb` re-pinned to 2.19.1 (dev-only).
+   - The second bump could not use `scripts/bump-funds-critical.sh`. Its
+     per-package lockfile-scope check rejects the dedupe of connect-web's
+     nested `@trezor/*` copies. Its remaining steps ran by hand: the
+     `ci-toolchain-lock.json` re-pin (integrity matches the registry), the
+     compatibility re-pin, and `check:supply-chain-locks`.
+   - Client:
+     - `createConnectClient(sdk, initSettings)` holds the mapping;
+       `createConnectWebClient` wraps it. The emulator proof passes the
+       in-process `@trezor/connect` core, so it exercises the production
+       mapping.
+     - The `signTransaction` cast is gone; tsc now checks inputs and
+       outputs, with `toConnectInput`/`toConnectOutput` encoding multisig.
+     - The vitest alias is kept, as harmless.
+   - Proof (corrected in CI, 2026-11-10):
+     - trezord-go 2.0.33 rejects v10's JSON bridge protocol
+       (`encoding/hex: invalid byte`), so the runner starts the image's
+       `node-bridge` (container port 21328) and the contract `bridge`
+       field is `node-bridge`. The test's local proxy keeps
+       `BridgeTransport({ port: 21325 })`.
+     - `pendingTransportEvent: true`: v10 `init()` otherwise returns before
+       the device handshake.
+     - The runner reads installed versions from disk, because v10's
+       exports hide package.json.
+     - The direct `getAddress` uses `connectCoin` and `toConnectMultisig`.
+   - Server tests: the `@trezor/protobuf` round-trip smoke test was ported
+     to v10's `protobufManager`. The replay harness's synthetic Trezor SDK
+     tuple now uses the 10.0.1 integrities.
 3. **Session binding**: unchanged and fail-closed. Revisit per the §5 spike
    before Trezor capability rows are enabled.
 4. **Emulator proof** (the release-gating `verify-trezor-emulator` job,
@@ -737,6 +779,73 @@ change. Facts that bind Phase C (verified on main @ ebd1766e4):
 - No vendor has ever been enabled, so Phase C sets the precedent.
 - The §5 spike and the §7 real-device acceptance happen as part of this
   evidence capture.
+
+## 9c. Phase C (this release): per-instance operator attestation
+
+Decided 2026-11-09 (user): add an instance-scoped operator opt-in that
+enables Trezor on that instance only. This is not Tier 3 and does not touch
+the Tier 3 path. The static capability rows, the release evaluator
+(`scripts/ci/hardware-compatibility-report.ts`) and the generated
+compatibility statement stay unchanged, and stay fail-closed by default.
+
+**Where the switch lives: the runtime env, which needs host access.** It is
+deliberately not a feature flag or system setting, because those can be
+flipped from an admin web session.
+- `HARDWARE_WALLET_OPERATOR_ATTESTED_VENDORS=trezor`. Only `trezor` is
+  accepted; any other vendor is ignored with a boot warning.
+- `HARDWARE_WALLET_OPERATOR_ATTESTATION_ACK=not-tier3-verified`, which must
+  match exactly. Without it the vendor list is ignored, with a boot
+  warning.
+- Pass both through the backend `environment:` block in
+  `docker-compose.yml` as `${VAR:-}`, following `PAYJOIN_PUBLIC_URL`, and
+  parse them in `server/src/config`. `scripts/setup.sh` preserves
+  operator-added keys across upgrades.
+
+**Shared** (`shared/constants/hardwareWalletCapabilities.ts`): a pure
+`resolveHardwareWalletCapability(identity, capability, attestedVendors)`
+returning `{ row, enabled, evidence: 'unverified' | 'operator-attested' }`.
+- It is enabled only when the row's vendor is attested and the model family
+  is an exact catalog model, never `<vendor>-unresolved`.
+- It covers all six capabilities, because the server also gates finalize and
+  broadcast.
+- `HARDWARE_WALLET_CAPABILITY_ROWS` stays frozen with `enabled: false`.
+
+**Server** (`server/src/services/hardwareWalletCapabilities.ts`):
+- `getHardwareWalletCapabilityDecision` gains an `allowed: true,
+  evidenceTier: 'operator-attested'` branch, driven by config.
+- The assert callsites and their counts do not change, so the signer
+  inventory projection stays the same.
+- Each attested allow is logged at warn level with vendor, model and
+  capability, plus one boot warning while attestation is active.
+
+**Client**:
+- `GET /auth/me` gains an optional `hardwareWalletAttestation: { vendors }`.
+  When it is absent the client treats the list as empty (fail-closed), so the
+  e2e mock maps keep working.
+- `src/services/hardwareWallet/service.ts` (`assertHardwareActionEnabled` and
+  `requireApprovedAdapter`) and
+  `src/components/send/steps/review/deviceCapabilities.ts` use the resolver.
+- The identity-drift, fingerprint, PSBT account binding and artifact checks
+  all run unchanged.
+- The connect and signing UI shows "Operator-attested — not Tier 3
+  verified" whenever an attested row is in use.
+
+**Tests**:
+- Server decision tests for:
+  - off (unchanged `allowed: false`);
+  - on with the ack;
+  - on without the ack;
+  - another vendor named;
+  - the unresolved model;
+  - a mixed-vendor wallet still blocked.
+- Client service and deviceCapabilities tests, on and off.
+- `/auth/me` contract tests.
+- Unchanged: the compatibility-report and signer-inventory tests, which
+  prove the global default.
+
+**Enabling on prod** happens after the upgrade, by adding the two keys to
+`~/.config/sanctuary/sanctuary.env` and restarting. That is an operator
+action, done only when the user says so.
 
 ## 9a. Follow-up (not in this release): WebUSB without Suite
 

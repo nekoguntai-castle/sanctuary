@@ -95,7 +95,14 @@ This is important because **Trezor returns a fully signed raw transaction**, not
 
 ### Overview
 
-The Trezor adapter uses **Trezor Connect** (`@trezor/connect-web`) to communicate with Trezor devices. Unlike Ledger which uses WebUSB directly, Trezor Connect handles device communication through the Trezor Suite bridge or desktop app.
+The Trezor adapter uses **Trezor Connect 10** (`@trezor/connect-web`) to communicate with Trezor devices. Unlike Ledger, which uses WebUSB directly, Connect 10 routes every call to **Trezor Suite**, which owns the device, passphrase entry and confirmation screens:
+
+- With Suite desktop (26.7.2 or newer) running on the computer running the browser, Connect talks to it over a loopback WebSocket.
+- Otherwise it opens Suite Web (`https://suite.trezor.io`) as the approval window. That needs a Chromium browser, a page COOP other than `same-origin`, and any CSP to allow framing `https://suite.trezor.io` (`tests/config/nginxTrezorSuiteHeaders.test.ts` guards this).
+
+Device traffic stays between that browser, Suite and the device. A Sanctuary server on a remote machine never touches it.
+
+The SDK is imported only in `adapters/trezor/connectClient.ts`. The rest of the adapter uses the `TrezorConnectClient` interface (see `docs/plans/trezor-connect-10-migration.md`).
 
 ### Supported Devices
 
@@ -110,14 +117,15 @@ The Trezor adapter uses **Trezor Connect** (`@trezor/connect-web`) to communicat
 ### Initialization
 
 ```typescript
+// connectClient.ts (createConnectWebClient)
 await TrezorConnect.init({
   manifest: {
     email: 'support@sanctuary.bitcoin',
     appUrl: window.location.origin,
-    appName: 'Sanctuary',
+    appName: 'Sanctuary', // required by Connect 10; shown in Suite's permission prompt
   },
-  coreMode: 'auto',   // Use bridge or WebUSB as available
-  lazyLoad: false,    // Initialize immediately
+  coreMode: 'auto',   // Suite desktop when running, else Suite Web
+  debug: false,
 });
 ```
 
@@ -181,10 +189,11 @@ Common Trezor errors and their user-friendly messages:
 
 | Error Contains | User Message |
 |----------------|--------------|
-| `Popup closed` | Connection cancelled by user |
+| `Popup closed` / `Canceled` | Connection cancelled by user |
+| `Permissions not granted` | Sanctuary was not granted access in Trezor Suite. Approve the permission prompt and try again. |
 | `Device not found` | No Trezor device found. Please connect your device and ensure Trezor Suite is running. |
 | `Bridge not running` | Trezor Suite bridge not running. Please open Trezor Suite desktop app. |
-| `Cancelled` / `rejected` | Transaction rejected on Trezor. Please approve the transaction on your device. |
+| `Cancelled` / `Canceled` / `rejected` | Transaction rejected on Trezor. Please approve the transaction on your device. |
 | `PIN` | Incorrect PIN. Please try again. |
 | `Passphrase` | Passphrase entry cancelled. |
 | `Device disconnected` | Trezor disconnected. Please reconnect and try again. |
@@ -594,10 +603,10 @@ service.registerAdapter(new MyDeviceAdapter());
 
 ### Trezor
 
-1. **Requires Trezor Suite** - The Trezor Connect bridge must be running
+1. **Requires Trezor Suite** - Suite desktop 26.7.2+ on the browser's computer, or the Suite Web window Connect opens
 2. **No signed PSBT** - Returns raw transaction, not PSBT
 3. **Reference txs required** - Must fetch previous transactions from backend
-4. **Popup-based** - Opens connect.trezor.io popup for operations
+4. **Every input carries an amount** - Connect 10 rejects inputs without one; legacy inputs take it from `nonWitnessUtxo`
 
 ### Ledger
 

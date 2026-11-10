@@ -558,15 +558,25 @@ for attempt in $(seq 1 120); do
 done
 
 controller_command "{\"type\":\"bridge-start\",\"version\":\"$TREZOR_BRIDGE\",\"id\":2}"
+# Trezor's node bridge (required by Connect 10's BridgeTransport protocol)
+# listens on 21328; the legacy trezord-go bridge listened on 21325.
+if [ "$TREZOR_BRIDGE" = 'node-bridge' ]; then
+  readonly bridge_upstream_port=21328
+else
+  readonly bridge_upstream_port=21325
+fi
 run_bounded_docker "start Trezor Bridge forwarder" 30 \
   exec -d "$container_name" python3 -c '
 import socket
 import socketserver
+import sys
 import threading
+
+UPSTREAM_PORT = int(sys.argv[1])
 
 class Proxy(socketserver.BaseRequestHandler):
     def handle(self):
-        upstream = socket.create_connection(("127.0.0.1", 21325))
+        upstream = socket.create_connection(("127.0.0.1", UPSTREAM_PORT))
         def forward(source, target):
             try:
                 while data := source.recv(65536):
@@ -582,7 +592,7 @@ class Server(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
 
 Server(("0.0.0.0", 21326), Proxy).serve_forever()
-'
+' "$bridge_upstream_port"
 for attempt in $(seq 1 30); do
   if docker exec "$container_name" python3 -c \
     'import socket; socket.create_connection(("127.0.0.1", 21326), 1).close()' 2>/dev/null; then
@@ -666,8 +676,10 @@ if ! [[ "$controller_port" =~ ^[0-9]+$ && "$bridge_port" =~ ^[0-9]+$ ]]; then
 fi
 readonly published_host controller_port bridge_port trezor_transport
 
-readonly installed_connect="$(node -p "require('@trezor/connect/package.json').version")"
-readonly installed_connect_web="$(node -p "require('@trezor/connect-web/package.json').version")"
+# Connect 10's package "exports" do not expose package.json, so read the
+# installed manifests from disk instead of require()-ing them.
+readonly installed_connect="$(jq -r '.version' node_modules/@trezor/connect/package.json)"
+readonly installed_connect_web="$(jq -r '.version' node_modules/@trezor/connect-web/package.json)"
 if [ "$installed_connect" != "$TREZOR_CONNECT" ] || [ "$installed_connect_web" != "$TREZOR_CONNECT" ]; then
   echo "Installed Trezor Connect drift: node=$installed_connect web=$installed_connect_web" >&2
   exit 1

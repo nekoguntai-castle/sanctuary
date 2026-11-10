@@ -77,7 +77,7 @@ export default defineConfig(() => {
         // in the initial preload set — it loads only when a user actually
         // connects a BitBox02 device, via the dynamic import in
         // src/services/hardwareWallet/runtime.ts. ledger-*.js (~920 KB) and
-        // trezor-*.js (~530 KB) are similarly lazy. The ceiling stays above
+        // trezor-*.js (~63 KB since the Connect 10 thin client) are similarly lazy. The ceiling stays above
         // the lib chunk so the warning fires only on a real regression — i.e.
         // something *new* getting pulled into a 5+ MB chunk, or one of the
         // hardware wallet stacks growing materially past its current ceiling.

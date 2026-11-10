@@ -26,6 +26,7 @@ import type {
 } from './types';
 import { TREZOR_CONNECT_VERSION, createConnectWebClient } from './connectClient';
 import { signPsbtWithTrezor } from './signPsbt';
+import { isCancellation } from './signPsbtErrors';
 import { getTrezorScriptType } from './pathUtils';
 import {
   assertSessionIdentity,
@@ -70,8 +71,11 @@ const requireMasterFingerprint = (fingerprint: unknown): string => {
 };
 
 const createConnectError = (message: string): Error => {
-  if (message.includes('Popup closed') || message.includes('cancelled')) {
+  if (message.includes('Popup closed') || isCancellation(message)) {
     return new Error('Connection cancelled by user');
+  }
+  if (message.includes('Permissions not granted')) {
+    return new Error('Sanctuary was not granted access in Trezor Suite. Approve the permission prompt and try again.');
   }
   if (message.includes('Device not found') || message.includes('no device')) {
     return new Error(
@@ -90,7 +94,7 @@ const getNetworkForPath = (path: string): TrezorNetwork => {
 };
 
 const isUserRejectedAddressDisplay = (message: string): boolean => {
-  return /cancelled|denied|rejected/i.test(message);
+  return isCancellation(message) || /denied|rejected/i.test(message);
 };
 
 /**
@@ -357,7 +361,7 @@ export class TrezorAdapter implements DeviceAdapter {
       const message = error instanceof Error ? error.message : 'Unknown error';
       this.invalidateStaleSession(message);
 
-      if (message.includes('cancelled') || message.includes('Cancelled')) {
+      if (isCancellation(message)) {
         throw new Error('Request cancelled on device');
       }
 

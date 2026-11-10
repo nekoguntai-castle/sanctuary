@@ -31,7 +31,9 @@ export const UsbInitialState: React.FC<UsbInitialStateProps> = ({
       </p>
       {deviceType === 'trezor' ? (
         <p className="text-xs text-sanctuary-400 mb-4">
-          Requires <span className="font-medium">Trezor Suite</span> desktop app to be running.
+          Requires <span className="font-medium">Trezor Suite</span> 26.7.2 or newer on this
+          computer. Without the desktop app running, approve the request in the Trezor Suite Web
+          window that opens.
         </p>
       ) : (
         <p className="text-xs text-sanctuary-400 mb-4">Make sure the Bitcoin app is open on your device.</p>

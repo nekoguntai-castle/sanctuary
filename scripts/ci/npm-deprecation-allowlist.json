@@ -23,26 +23,6 @@
       "rationale": "Both current direct owners inherit node-fetch 3's deprecated DOMException shim through Google-maintained packages; Firebase Admin 14 retains it through Auth and optional Firestore paths, while the runtime uses Node 24's native DOMException where application code controls the boundary.",
       "upstreamIssue": "https://github.com/googleapis/gaxios/issues?q=is%3Aissue+node-domexception",
       "reviewOn": "2026-11-29"
-    },
-    {
-      "id": "trezor-stellar-base-14",
-      "package": "@stellar/stellar-base",
-      "version": "14.1.0",
-      "lockfile": "package-lock.json",
-      "locations": [
-        "node_modules/@stellar/stellar-base"
-      ],
-      "message": "This package is now rolled into @stellar/stellar-sdk. Please use @stellar/stellar-sdk to continue receiving updates and support.",
-      "owner": "frontend hardware-wallet maintainers",
-      "directOwners": [
-        "root:@trezor/connect-web@9.7.3"
-      ],
-      "dependencyPaths": [
-        "root > @trezor/connect-web@9.7.3 > @trezor/connect@9.7.3 > @trezor/blockchain-link@2.6.2 > @stellar/stellar-sdk@14.2.0 > @stellar/stellar-base@14.1.0"
-      ],
-      "rationale": "The latest Trezor Connect release owns the Stellar SDK graph; removing or overriding its internal Stellar package would bypass Trezor's tested hardware-wallet dependency set.",
-      "upstreamIssue": "https://github.com/trezor/trezor-suite/issues?q=is%3Aissue+stellar-base",
-      "reviewOn": "2026-11-29"
     }
   ]
 }

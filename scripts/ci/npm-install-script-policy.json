@@ -28,32 +28,6 @@
       "reviewOn": "2026-11-29"
     },
     {
-      "location": "node_modules/@stellar/stellar-sdk",
-      "package": "@stellar/stellar-sdk",
-      "version": "14.2.0",
-      "scripts": {
-        "postinstall": "yarn setup || true"
-      },
-      "allowed": false,
-      "optional": false,
-      "owner": "Sanctuary maintainers",
-      "rationale": "The Stellar SDK setup script is not needed by Sanctuary's browser bundle.",
-      "reviewOn": "2026-11-29"
-    },
-    {
-      "location": "node_modules/blake-hash",
-      "package": "blake-hash",
-      "version": "2.0.0",
-      "scripts": {
-        "install": "node-gyp-build || exit 0"
-      },
-      "allowed": false,
-      "optional": false,
-      "owner": "Sanctuary maintainers",
-      "rationale": "Sanctuary does not require this optional native acceleration path.",
-      "reviewOn": "2026-11-29"
-    },
-    {
       "location": "node_modules/cbor-extract",
       "package": "cbor-extract",
       "version": "2.2.2",
@@ -106,19 +80,6 @@
       "reviewOn": "2026-11-29"
     },
     {
-      "location": "node_modules/@trezor/utxo-lib/node_modules/tiny-secp256k1",
-      "package": "tiny-secp256k1",
-      "version": "1.1.7",
-      "scripts": {
-        "install": "npm run build || echo \"secp256k1 bindings compilation fail. Pure JS implementation will be used.\""
-      },
-      "allowed": false,
-      "optional": false,
-      "owner": "Sanctuary maintainers",
-      "rationale": "The package explicitly supports its pure JavaScript implementation when native bindings are absent.",
-      "reviewOn": "2026-11-29"
-    },
-    {
       "location": "node_modules/tsx/node_modules/fsevents",
       "package": "fsevents",
       "version": "2.3.3",
@@ -134,14 +95,14 @@
     {
       "location": "node_modules/usb",
       "package": "usb",
-      "version": "2.18.0",
+      "version": "2.19.1",
       "scripts": {
         "install": "node-gyp-build"
       },
       "allowed": false,
       "optional": false,
       "owner": "Sanctuary maintainers",
-      "rationale": "Browser WebUSB integrations do not load the Node native USB binding.",
+      "rationale": "Dev-only: the Node USB transport of @trezor/connect, used by the emulator proof over Bridge. Browser builds never load the native binding.",
       "reviewOn": "2026-11-29"
     },
     {

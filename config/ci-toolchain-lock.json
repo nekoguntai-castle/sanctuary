@@ -74,8 +74,8 @@
     },
     {
       "name": "@trezor/connect",
-      "version": "9.7.3",
-      "integrity": "sha512-oAOfvJHT8tPqOXTmCOhn8uTZcoqSDuWAiWXQegx7C46tq+NLg+enkYXxUYEHq/9PmfZAOrUT9VMxZDsXM2thkA==",
+      "version": "10.0.1",
+      "integrity": "sha512-TMtwWFOlK3rVV21LnaTf/gTmDKbCn+9FXufultksy1wJGxfGkpYin9y1gRxkoqJpaSz36MYQtUSrAJ/hMKjwQA==",
       "manifests": [
         "package.json"
       ],
@@ -85,8 +85,8 @@
     },
     {
       "name": "@trezor/connect-web",
-      "version": "9.7.3",
-      "integrity": "sha512-oTI/v9sUJMvLZgLa0seSGyPaumXydRYeAT4OVTQxIaEiL1hOA0yH+UvEfT4WKwxbxOtOqWosD8chP3uuWSArcg==",
+      "version": "10.0.1",
+      "integrity": "sha512-xoVHBWiO4XAVV8B/6uk5WS91LAb7OEy6p3tCIO78RxxyqSF+CEJz4ofXM3xY9l4d4Rz1VBMOtONBSuhwG/O/kQ==",
       "manifests": [
         "package.json"
       ],

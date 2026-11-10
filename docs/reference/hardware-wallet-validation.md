@@ -73,11 +73,16 @@ physical capability row.
 
 Trezor Tier 2 currently pins the
 OCI index, exact `linux/amd64` child and image-config digests in
-`config/trezor-emulator-proof.json`, Model T (`T2T1`) firmware 2.12.2, Bridge
-2.0.33, and Trezor Connect 9.7.3 with the exact `@trezor/connect` and
+`config/trezor-emulator-proof.json`, Model T (`T2T1`) firmware 2.12.2, the
+image's Trezor node bridge (`node-bridge`), and Trezor Connect 10.0.1 with the exact `@trezor/connect` and
 `@trezor/connect-web` lockfile integrity values. The firmware and Bridge
 binaries are baked into that content-addressed emulator image. They are not
-downloaded by the proof run. Run it with:
+downloaded by the proof run. The proof drives the production client mapping
+(`createConnectClient` in `adapters/trezor/connectClient.ts`) over the in-process
+`@trezor/connect` core. Its `BridgeTransport` speaks the node bridge's JSON
+protocol, which trezord-go 2.0.33 rejects (`encoding/hex: invalid byte`), so the
+runner starts `node-bridge` (container port 21328). The test's local proxy keeps
+the client on 21325. Run it with:
 
 ```bash
 npm run test:trezor-emulator-proof

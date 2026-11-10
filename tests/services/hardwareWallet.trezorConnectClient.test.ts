@@ -32,7 +32,7 @@ import {
 import type { TrezorDeviceIdentity } from '../../src/services/hardwareWallet/adapters/trezor/types';
 
 const device: TrezorDeviceIdentity = { path: '1', state: 'state-1', instance: 0 };
-const brandedDevice = { path: 'branded:1', state: 'state-1', instance: 0 };
+const brandedDevice = { path: 'branded:1', state: { staticSessionId: 'state-1' }, instance: 0 };
 const responseDevice = { path: '1', state: 'state-1', instance: 0 };
 
 describe('Trezor Connect boundary client', () => {
@@ -41,7 +41,7 @@ describe('Trezor Connect boundary client', () => {
   });
 
   it('pins the Connect version the adapter reports', () => {
-    expect(TREZOR_CONNECT_VERSION).toBe('9.7.3');
+    expect(TREZOR_CONNECT_VERSION).toBe('10.0.1');
   });
 
   describe('normalizeConnectResult', () => {
@@ -59,13 +59,7 @@ describe('Trezor Connect boundary client', () => {
       });
     });
 
-    it('reads the Connect 9 failure shape', () => {
-      expect(
-        normalizeConnectResult({ success: false, payload: { error: 'Popup closed', code: 'X' } })
-      ).toEqual({ ok: false, error: { message: 'Popup closed', code: 'X' } });
-    });
-
-    it('reports no message when Connect 9 omits the error so callers keep their fallback', () => {
+    it('reports no message when Connect omits the error so callers keep their fallback', () => {
       expect(normalizeConnectResult({ success: false, payload: {} })).toEqual({
         ok: false,
         error: { message: undefined, code: undefined },
@@ -98,15 +92,20 @@ describe('Trezor Connect boundary client', () => {
   });
 
   it('maps every network to a Connect coin', () => {
-    expect(connectCoin('mainnet')).toBe('Bitcoin');
-    expect(connectCoin('testnet')).toBe('Testnet');
-    expect(connectCoin('regtest')).toBe('Regtest');
+    expect(connectCoin('mainnet')).toBe('btc');
+    expect(connectCoin('testnet')).toBe('test');
+    expect(connectCoin('regtest')).toBe('regtest');
   });
 
-  it('brands the device path and keeps state and instance', () => {
+  it('brands the device path and sends the passphrase state as a DeviceState', () => {
     expect(toConnectDevice({ path: '7', state: undefined, instance: 2 })).toEqual({
       path: 'branded:7',
       state: undefined,
+      instance: 2,
+    });
+    expect(toConnectDevice({ path: '7', state: 'id@7:2', instance: 2 })).toEqual({
+      path: 'branded:7',
+      state: { staticSessionId: 'id@7:2' },
       instance: 2,
     });
   });
@@ -130,8 +129,7 @@ describe('Trezor Connect boundary client', () => {
       const expected = (appUrl: string) => ({
         manifest: { email: 'support@sanctuary.bitcoin', appUrl, appName: 'Sanctuary' },
         coreMode: 'auto',
-        debug: true,
-        lazyLoad: false,
+        debug: false,
       });
       expect(sdk.init).toHaveBeenNthCalledWith(1, expected('https://node.local'));
       expect(sdk.init).toHaveBeenNthCalledWith(2, expected('https://sanctuary.bitcoin'));
@@ -156,7 +154,7 @@ describe('Trezor Connect boundary client', () => {
     });
 
     it('brands the device for getDeviceState', async () => {
-      sdk.getDeviceState.mockResolvedValueOnce({ success: false, payload: { error: 'gone' } });
+      sdk.getDeviceState.mockResolvedValueOnce({ success: false, error: { message: 'gone' } });
       await expect(createConnectWebClient().getDeviceState({ device })).resolves.toEqual({
         ok: false,
         error: { message: 'gone', code: undefined },
@@ -175,7 +173,7 @@ describe('Trezor Connect boundary client', () => {
       });
       expect(sdk.getPublicKey).toHaveBeenCalledWith({
         path: "m/84'/1'/0'",
-        coin: 'Testnet',
+        coin: 'test',
         scriptType: 'SPENDWITNESS',
         showOnTrezor: false,
         device: brandedDevice,
@@ -195,7 +193,7 @@ describe('Trezor Connect boundary client', () => {
       expect(sdk.getAddress).toHaveBeenCalledWith({
         path: "m/84'/0'/0'/0/0",
         address: 'bc1q',
-        coin: 'Bitcoin',
+        coin: 'btc',
         scriptType: 'SPENDWITNESS',
         showOnTrezor: true,
         device: brandedDevice,
@@ -209,7 +207,13 @@ describe('Trezor Connect boundary client', () => {
         device: responseDevice,
       });
       const inputs = [
-        { address_n: [1], prev_hash: 'aa', prev_index: 0, script_type: 'SPENDWITNESS' as const },
+        {
+          address_n: [1],
+          prev_hash: 'aa',
+          prev_index: 0,
+          script_type: 'SPENDWITNESS' as const,
+          amount: '3',
+        },
       ];
       const outputs = [{ address: 'bc1q', amount: '1', script_type: 'PAYTOADDRESS' as const }];
       await expect(
@@ -233,10 +237,51 @@ describe('Trezor Connect boundary client', () => {
         refTxs: undefined,
         version: 2,
         locktime: 0,
-        coin: 'Bitcoin',
+        coin: 'btc',
         push: false,
         device: brandedDevice,
       });
+    });
+
+    it('encodes the multisig pubkey order as the Connect enum value', async () => {
+      sdk.signTransaction.mockResolvedValueOnce({ success: true, payload: {} });
+      const multisig = {
+        pubkeys: [{ node: 'xpub', address_n: [0, 1] }],
+        signatures: [''],
+        m: 1,
+        pubkeys_order: 'LEXICOGRAPHIC' as const,
+      };
+      const changeBase = { address_n: [1], amount: '2', script_type: 'PAYTOWITNESS' as const };
+      await createConnectWebClient().signTransaction({
+        inputs: [
+          {
+            address_n: [1],
+            prev_hash: 'aa',
+            prev_index: 0,
+            script_type: 'SPENDWITNESS',
+            amount: '3',
+            multisig,
+          },
+        ],
+        outputs: [
+          { ...changeBase, multisig },
+          changeBase,
+          { address: 'bc1q', amount: '1', script_type: 'PAYTOADDRESS' },
+        ],
+        network: 'testnet',
+        version: 2,
+        locktime: 0,
+        device,
+      });
+      const [call] = sdk.signTransaction.mock.calls[0];
+      const connectMultisig = { ...multisig, pubkeys_order: 1 };
+      expect(call.inputs[0].multisig).toEqual(connectMultisig);
+      expect(call.outputs).toEqual([
+        { ...changeBase, multisig: connectMultisig },
+        changeBase,
+        { address: 'bc1q', amount: '1', script_type: 'PAYTOADDRESS' },
+      ]);
+      expect(call.coin).toBe('test');
     });
   });
 });

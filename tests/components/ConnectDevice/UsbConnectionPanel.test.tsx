@@ -53,7 +53,8 @@ describe('UsbConnectionPanel', () => {
     const { onConnect } = renderPanel();
 
     expect(screen.getByText(/Connect your Trezor Model T via USB/i)).toBeInTheDocument();
-    expect(screen.getByText(/Trezor Suite/i)).toBeInTheDocument();
+    expect(screen.getByText(/26\.7\.2 or newer on this computer/i)).toBeInTheDocument();
+    expect(screen.getByText(/Trezor Suite Web window/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /Connect Device/i }));
     expect(onConnect).toHaveBeenCalledTimes(1);

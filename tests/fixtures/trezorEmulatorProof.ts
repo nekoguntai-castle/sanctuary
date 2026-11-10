@@ -3,8 +3,8 @@ export const TREZOR_EMULATOR_PROOF_CONTRACT = {
     'ghcr.io/trezor/trezor-user-env@sha256:de72f49d7db85f27d51c9f7a516363a701a0c4b5e554efa632ac89fe776f8db6',
   model: 'T2T1',
   firmware: '2.12.2',
-  bridge: '2.0.33',
-  connect: '9.7.3',
+  bridge: 'node-bridge',
+  connect: '10.0.1',
 } as const;
 
 export const EXPECTED_TREZOR_EMULATOR_PROOF = {

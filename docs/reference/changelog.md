@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Trezor moves to Connect 10.0.1, because Connect 9 is end of life: Trezor no longer fixes it and plans to shut down the `connect.trezor.io/9` host it depends on (`docs/plans/trezor-connect-10-migration.md`, Phase B).
+  - Every call now goes through Trezor Suite: Suite desktop 26.7.2 or newer on the computer running the browser, or the Suite Web window Connect opens when desktop isn't running. The Sanctuary server can stay on a remote machine.
+  - Payload changes for Connect 10:
+    - coins are sent as `btc`/`test`/`regtest`;
+    - passphrase state is sent as a `DeviceState` object;
+    - multisig pubkey order uses the protocol enum value;
+    - every input carries its amount, with legacy inputs reading it from `nonWitnessUtxo`;
+    - Connect debug logging is off.
+  - "Canceled" and a declined Suite permission prompt map to clear messages.
+  - The Trezor bundle chunk shrinks from about 530 KB to 63 KB.
+  - `@trezor/connect` is now dev-only (emulator proof). The `axios` override (1.21.1) covers its Stellar SDK chain. The unused `toml` override and the stale install-script and deprecation entries are removed. `buffer` and `bip66`, previously only present through Trezor 9's tree, are declared explicitly.
+  - This removes `elliptic`, `tiny-secp256k1@1` and `crypto-browserify` from the Trezor path (#537).
+  - Trezor capability rows stay fail-closed. Enabling them is Phase C.
 - The Trezor SDK is now confined to one boundary module, `src/services/hardwareWallet/adapters/trezor/connectClient.ts`, ahead of the move to Trezor Connect 10 (`docs/plans/trezor-connect-10-migration.md`). The adapter talks to Connect through Sanctuary's own `TrezorConnectClient` interface and types, signing payloads are typed instead of `any`, and ESLint rejects `@trezor/*` imports anywhere else in production source. Trezor behavior is unchanged: the same Connect 9.7.3 calls, settings, coin labels and error messages.
 
 ## [0.8.88] - 2026-11-09

@@ -279,15 +279,15 @@ function physicalEvidence(
       ? [
           {
             package: "@trezor/connect" as const,
-            version: "9.7.3",
+            version: "10.0.1",
             integrity:
-              "sha512-oAOfvJHT8tPqOXTmCOhn8uTZcoqSDuWAiWXQegx7C46tq+NLg+enkYXxUYEHq/9PmfZAOrUT9VMxZDsXM2thkA==",
+              "sha512-TMtwWFOlK3rVV21LnaTf/gTmDKbCn+9FXufultksy1wJGxfGkpYin9y1gRxkoqJpaSz36MYQtUSrAJ/hMKjwQA==",
           },
           {
             package: "@trezor/connect-web" as const,
-            version: "9.7.3",
+            version: "10.0.1",
             integrity:
-              "sha512-oTI/v9sUJMvLZgLa0seSGyPaumXydRYeAT4OVTQxIaEiL1hOA0yH+UvEfT4WKwxbxOtOqWosD8chP3uuWSArcg==",
+              "sha512-xoVHBWiO4XAVV8B/6uk5WS91LAb7OEy6p3tCIO78RxxyqSF+CEJz4ofXM3xY9l4d4Rz1VBMOtONBSuhwG/O/kQ==",
           },
         ]
       : vendor === "bitbox"
@@ -467,7 +467,7 @@ function physicalDeviceForVendor(
       model: "Trezor Safe 5",
       firmwareVersion: "2.8.8",
       transport: "trezor-connect",
-      transportVersion: "9.7.3",
+      transportVersion: "10.0.1",
       companionVersion: "2.0.33",
       emulated: false,
     };
@@ -982,7 +982,7 @@ describe("Hardware-signed PSBT fixture replay harness", () => {
         model: "Trezor Safe 5",
         firmwareVersion: "2.8.8",
         transport: "trezor-connect",
-        transportVersion: "9.7.3",
+        transportVersion: "10.0.1",
         companionVersion: "2.0.33",
         emulated: false,
       },

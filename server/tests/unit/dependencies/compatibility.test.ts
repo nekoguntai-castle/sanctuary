@@ -37,16 +37,20 @@ test('StellarToml resolves and parses a local stellar.toml through TOML', async 
 });
 
 test('Trezor protobuf messages round-trip and reject truncated wire data', () => {
-  const protobuf = require('@trezor/protobuf');
-  const root = protobuf.parseConfigure(require('@trezor/protobuf/messages.json'));
-  const encoded = protobuf.encodeMessage(root, 'Ping', { message: 'roundtrip' });
-  assert.deepEqual(protobuf.decodeMessage(root, encoded.messageType, encoded.message), {
+  // Connect 10 ships a bufbuild-based codec; the core loads schema modules first.
+  const { protobufManager } = require('@trezor/protobuf');
+  protobufManager.load([
+    require('@trezor/protobuf/lib/definitions/messages-management_pb.js'),
+    require('@trezor/protobuf/lib/definitions/messages_pb.js'),
+  ]);
+  const encoded = protobufManager.encode('Ping', { message: 'roundtrip' });
+  assert.deepEqual(protobufManager.decode(encoded.messageType, encoded.message), {
     type: 'Ping',
     message: { message: 'roundtrip', button_protection: null },
   });
   assert.throws(
-    () => protobuf.decodeMessage(root, encoded.messageType, Buffer.from([0x0a, 0x05, 0x6f])),
-    /index out of range/,
+    () => protobufManager.decode(encoded.messageType, Buffer.from([0x0a, 0x05, 0x6f])),
+    /premature EOF/,
   );
 });
 
