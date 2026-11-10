@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-10
+
 ### Added
 
 - An operator can now enable Trezor on their own instance without Tier 3 physical-device evidence, on their own attestation (`docs/plans/trezor-connect-10-migration.md` §9c; `docs/reference/hardware-wallet-validation.md`, "Per-Instance Operator Attestation").
@@ -28,8 +30,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The Trezor bundle chunk shrinks from about 530 KB to 63 KB.
   - `@trezor/connect` is now dev-only (emulator proof). The `axios` override (1.21.1) covers its Stellar SDK chain. The unused `toml` override and the stale install-script and deprecation entries are removed. `buffer` and `bip66`, previously only present through Trezor 9's tree, are declared explicitly.
   - This removes `elliptic`, `tiny-secp256k1@1` and `crypto-browserify` from the Trezor path (#537).
-  - Trezor capability rows stay fail-closed. Enabling them is Phase C.
+  - The Tier 2 emulator proof now runs over Trezor's node bridge, because Connect 10 no longer speaks the trezord-go protocol.
+  - Trezor capability rows stay fail-closed unless an operator attests the instance (see Added).
 - The Trezor SDK is now confined to one boundary module, `src/services/hardwareWallet/adapters/trezor/connectClient.ts`, ahead of the move to Trezor Connect 10 (`docs/plans/trezor-connect-10-migration.md`). The adapter talks to Connect through Sanctuary's own `TrezorConnectClient` interface and types, signing payloads are typed instead of `any`, and ESLint rejects `@trezor/*` imports anywhere else in production source. Trezor behavior is unchanged: the same Connect 9.7.3 calls, settings, coin labels and error messages.
+
+### Fixed
+
+- The backend builds its OpenTelemetry resource with the 2.x API (`resourceFromAttributes`). Since the 2.x upgrade every start logged `Failed to initialize OpenTelemetry: Resource is not a constructor`, and no traces reached Jaeger (#1496).
 
 ## [0.8.88] - 2026-11-09
 
@@ -1327,7 +1334,8 @@ upgrade browser-smoke and 2FA preservation assertions.
 
 - Removed navigation-triggered syncs in favor of worker-driven sync
 
-[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.88...HEAD
+[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.88...v0.9.0
 [0.8.88]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.87...v0.8.88
 [0.8.87]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.86...v0.8.87
 [0.8.86]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.85...v0.8.86
