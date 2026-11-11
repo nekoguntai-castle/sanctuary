@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- `npm audit --omit=dev` is clean again; it had three production findings.
+  - `node-forge` 1.4.2 → 1.4.3 via a root override, because `@parse/node-apn` (gateway APNs push) pins it exactly, even in its newest 8.2.0. 1.4.3 fixes GHSA-6889-vf6x-f3g5, GHSA-w4xr-hqv8-ch44, GHSA-6cv4-p8m7-4r25 and GHSA-j8rw-jp99-435v. None of them was reachable: the gateway uses APNs token auth, and `node-apn` uses forge only for PEM/PKCS#12 certificate parsing.
+  - `fast-xml-parser` 5.11.1 → 5.12.0, fixing GHSA-474x-hrwr-fgx4. It is a root dev dependency (the Jade JUnit verifier), and the gateway also resolves it through `firebase-admin` → optional `@google-cloud/storage`. The bump was split out of Renovate's blocked non-major dev group, which also carries funds-critical packages that need a coordinated bump.
+
 ## [0.9.0] - 2026-11-10
 
 ### Added
