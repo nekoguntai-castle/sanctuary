@@ -16,6 +16,19 @@ vi.mock('../../../../../src/utils/logger', () => ({
   }),
 }));
 
+// Push credentials come from the config module, not the environment.
+const pushConfig = vi.hoisted(() => ({
+  fcm: { serviceAccountPath: '' },
+  apns: { keyId: '', teamId: '', keyPath: '', bundleId: '', isProduction: false },
+}));
+vi.mock('../../../../../src/config', () => ({
+  getConfig: () => ({ push: pushConfig }),
+}));
+function resetPushConfig(): void {
+  pushConfig.fcm.serviceAccountPath = '';
+  Object.assign(pushConfig.apns, { keyId: '', teamId: '', keyPath: '', bundleId: '', isProduction: false });
+}
+
 // Mock fs
 const mockReadFileSync = vi.hoisted(() => vi.fn());
 vi.mock('fs', () => ({
@@ -34,13 +47,11 @@ vi.stubGlobal('fetch', mockFetch);
 
 import {
   APNsPushProvider,
-  isAPNsConfigured,
 } from '../../../../../src/services/push/providers/apns';
 import type { PushMessage } from '../../../../../src/services/push/types';
 
 describe('APNsPushProvider', () => {
   let provider: APNsPushProvider;
-  const originalEnv = { ...process.env };
 
   const mockPrivateKey = `-----BEGIN EC PRIVATE KEY-----
 MHQCAQEEIDYHOxgLfR...mock...key
@@ -49,14 +60,13 @@ MHQCAQEEIDYHOxgLfR...mock...key
   beforeEach(() => {
     vi.clearAllMocks();
 
-    // Reset environment
-    process.env = { ...originalEnv };
+    resetPushConfig();
 
     // Default configured state
-    process.env.APNS_KEY_ID = 'KEYID123';
-    process.env.APNS_TEAM_ID = 'TEAMID456';
-    process.env.APNS_KEY_PATH = '/path/to/key.p8';
-    process.env.APNS_BUNDLE_ID = 'com.example.app';
+    pushConfig.apns.keyId = 'KEYID123';
+    pushConfig.apns.teamId = 'TEAMID456';
+    pushConfig.apns.keyPath = '/path/to/key.p8';
+    pushConfig.apns.bundleId = 'com.example.app';
 
     mockReadFileSync.mockReturnValue(mockPrivateKey);
     mockJwtSign.mockReturnValue('mock-jwt-token');
@@ -65,7 +75,7 @@ MHQCAQEEIDYHOxgLfR...mock...key
   });
 
   afterEach(() => {
-    process.env = originalEnv;
+    resetPushConfig();
   });
 
   describe('constructor', () => {
@@ -92,7 +102,7 @@ MHQCAQEEIDYHOxgLfR...mock...key
 
     it('should skip key file loading when APNS_KEY_PATH is not set', () => {
       vi.clearAllMocks();
-      delete process.env.APNS_KEY_PATH;
+      pushConfig.apns.keyPath = '';
 
       const instance = new APNsPushProvider();
       expect(instance.name).toBe('apns');
@@ -106,30 +116,30 @@ MHQCAQEEIDYHOxgLfR...mock...key
     });
 
     it('should return false when APNS_KEY_ID is missing', () => {
-      delete process.env.APNS_KEY_ID;
+      pushConfig.apns.keyId = '';
       expect(provider.isConfigured()).toBe(false);
     });
 
     it('should return false when APNS_TEAM_ID is missing', () => {
-      delete process.env.APNS_TEAM_ID;
+      pushConfig.apns.teamId = '';
       expect(provider.isConfigured()).toBe(false);
     });
 
     it('should return false when APNS_KEY_PATH is missing', () => {
-      delete process.env.APNS_KEY_PATH;
+      pushConfig.apns.keyPath = '';
       expect(provider.isConfigured()).toBe(false);
     });
 
     it('should return false when APNS_BUNDLE_ID is missing', () => {
-      delete process.env.APNS_BUNDLE_ID;
+      pushConfig.apns.bundleId = '';
       expect(provider.isConfigured()).toBe(false);
     });
 
     it('should return false when all env vars are missing', () => {
-      delete process.env.APNS_KEY_ID;
-      delete process.env.APNS_TEAM_ID;
-      delete process.env.APNS_KEY_PATH;
-      delete process.env.APNS_BUNDLE_ID;
+      pushConfig.apns.keyId = '';
+      pushConfig.apns.teamId = '';
+      pushConfig.apns.keyPath = '';
+      pushConfig.apns.bundleId = '';
       expect(provider.isConfigured()).toBe(false);
     });
   });
@@ -142,7 +152,7 @@ MHQCAQEEIDYHOxgLfR...mock...key
     };
 
     it('should return error when not configured', async () => {
-      delete process.env.APNS_KEY_ID;
+      pushConfig.apns.keyId = '';
       const result = await provider.send('device-token', testMessage);
 
       expect(result.success).toBe(false);
@@ -150,7 +160,7 @@ MHQCAQEEIDYHOxgLfR...mock...key
     });
 
     it('getToken throws when required env vars are missing', () => {
-      delete process.env.APNS_KEY_ID;
+      pushConfig.apns.keyId = '';
 
       expect(() => (provider as any).getToken()).toThrow(
         'APNs not configured: missing APNS_KEY_ID, APNS_TEAM_ID, or APNS_KEY_PATH',
@@ -158,7 +168,7 @@ MHQCAQEEIDYHOxgLfR...mock...key
     });
 
     it('sendNotification returns explicit config error when bundle ID is missing', async () => {
-      delete process.env.APNS_BUNDLE_ID;
+      pushConfig.apns.bundleId = '';
 
       const result = await (provider as any).sendNotification(
         'device-token',
@@ -199,7 +209,7 @@ MHQCAQEEIDYHOxgLfR...mock...key
     });
 
     it('should use production host when APNS_PRODUCTION is true', async () => {
-      process.env.APNS_PRODUCTION = 'true';
+      pushConfig.apns.isProduction = true;
       mockFetch.mockResolvedValueOnce({
         ok: true,
         headers: new Map([['apns-id', 'msg-id']]),
@@ -241,7 +251,7 @@ MHQCAQEEIDYHOxgLfR...mock...key
     });
 
     it('should include apns-topic header with bundle ID', async () => {
-      process.env.APNS_BUNDLE_ID = 'com.test.myapp';
+      pushConfig.apns.bundleId = 'com.test.myapp';
       mockFetch.mockResolvedValueOnce({
         ok: true,
         headers: new Map([['apns-id', 'msg-id']]),
@@ -437,33 +447,5 @@ MHQCAQEEIDYHOxgLfR...mock...key
         messageId: undefined,
       });
     });
-  });
-});
-
-describe('isAPNsConfigured', () => {
-  const originalEnv = { ...process.env };
-
-  beforeEach(() => {
-    process.env = { ...originalEnv };
-  });
-
-  afterEach(() => {
-    process.env = originalEnv;
-  });
-
-  it('should return true when all env vars are set', () => {
-    process.env.APNS_KEY_ID = 'key';
-    process.env.APNS_TEAM_ID = 'team';
-    process.env.APNS_KEY_PATH = '/path';
-    process.env.APNS_BUNDLE_ID = 'bundle';
-
-    expect(isAPNsConfigured()).toBe(true);
-  });
-
-  it('should return false when any env var is missing', () => {
-    process.env.APNS_KEY_ID = 'key';
-    // Missing other vars
-
-    expect(isAPNsConfigured()).toBe(false);
   });
 });

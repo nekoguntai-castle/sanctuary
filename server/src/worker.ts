@@ -170,6 +170,7 @@ async function startUiEventBridge(): Promise<void> {
 function getWorkerDiagnosticsSnapshot(
   workerConcurrency: number,
   walletSyncExecution?: WorkerDiagnosticsResponse['walletSyncExecution'],
+  includeCircuitBreakers = false,
 ): WorkerDiagnosticsResponse {
   const electrumMetrics = electrumManager?.getHealthMetrics();
   const telegramHealth = circuitBreakerRegistry.get('telegram')?.getHealth();
@@ -181,6 +182,8 @@ function getWorkerDiagnosticsSnapshot(
     databaseConnected: getLastDatabaseHealth() ?? undefined,
     notificationTelemetryWriter: getNotificationTelemetryLocalHealth(),
     walletSyncExecution,
+    // This process's breakers: the API process cannot see them otherwise.
+    circuitBreakers: includeCircuitBreakers ? circuitBreakerRegistry.getAllHealth() : undefined,
     notificationConsumerRunning:
       jobQueue?.isQueueWorkerRunning('notifications') ?? false,
     transactionHandlerRegistered:
@@ -207,12 +210,14 @@ function getWorkerDiagnosticsSnapshot(
 async function getDirectWorkerDiagnosticsSnapshot(
   workerConcurrency: number,
   walletSyncExecutionVersion?: WalletSyncExecutionDiagnosticsVersion,
+  includeCircuitBreakers = false,
 ): Promise<WorkerDiagnosticsResponse> {
   return getWorkerDiagnosticsSnapshot(
     workerConcurrency,
     walletSyncExecutionVersion === undefined
       ? undefined
       : await collectWalletSyncExecutionDiagnostics(walletSyncExecutionVersion),
+    includeCircuitBreakers,
   );
 }
 
@@ -509,6 +514,7 @@ async function startWorker(): Promise<void> {
           request?.walletSyncExecution === true
             ? request?.walletSyncExecutionVersion ?? 1
             : undefined,
+          request?.circuitBreakers === true,
         ),
     },
     healthProvider: {

@@ -12,7 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An invalid WebSocket limit now stops startup instead of disabling the limit. `MAX_WEBSOCKET_CONNECTIONS`, `MAX_WEBSOCKET_PER_USER`, `MAX_WS_MESSAGES_PER_SECOND`, `MAX_WS_SUBSCRIPTIONS`, `WS_GRACE_PERIOD_LIMIT` and `WS_MAX_QUEUE_SIZE` must be integers of 1 or more, and `WS_QUEUE_OVERFLOW_POLICY` must be `drop_oldest`, `drop_newest` or `disconnect`. Before, a value such as `MAX_WEBSOCKET_PER_USER=abc` was read as NaN and the per-user connection limit silently stopped applying.
 - An invalid Electrum pool setting now stops startup with a named error instead of being read as NaN. The `ELECTRUM_POOL_*` values must be integers; the connection counts may be 0, and the interval and timeout values must be 1 or more.
 - `GET /api/v1/health` no longer reports `queueLength` and `activeSyncs` under `components.sync`, and the "Sync queue appears stalled" state is gone. They came from an in-process queue that was retired when sync moved to the worker, so they always read 0.
-- `GET /api/v1/health/circuits` and the support package's circuit-breaker section carry `scope: "api-process"`. Breakers are per process; the worker's are not included.
+- `GET /api/v1/health/circuits` and the support package's circuit-breaker section carry `scope: "api-process"`. Breakers are per process. The worker's breakers are now in the support package's `notificationWorker` section (`value.circuitBreakers`), with bucketed counts.
+- The LLM egress proxy applies one rate limit per caller across all AI routes. The label and query routes had their own counter, so a caller could make twice the configured number of requests per minute.
 
 ### Fixed
 

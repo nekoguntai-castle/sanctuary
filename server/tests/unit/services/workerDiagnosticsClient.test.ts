@@ -131,6 +131,7 @@ describe('worker diagnostics client', () => {
       },
     });
     const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response('', { status: 400 }))
       .mockResolvedValueOnce(new Response(legacyRejectionBody, { status: 400 }))
       .mockResolvedValueOnce(new Response(JSON.stringify(snapshotV1)));
 
@@ -143,15 +144,68 @@ describe('worker diagnostics client', () => {
       protocolVersion: 1,
       walletSyncExecution: true,
       walletSyncExecutionVersion: 2,
+      circuitBreakers: true,
     });
     expect(JSON.parse(fetchImpl.mock.calls[1][1].body as string)).toEqual({
+      protocolVersion: 1,
+      walletSyncExecution: true,
+      walletSyncExecutionVersion: 2,
+    });
+    expect(JSON.parse(fetchImpl.mock.calls[2][1].body as string)).toEqual({
       protocolVersion: 1,
       walletSyncExecution: true,
     });
   });
 
+  it("returns the worker's circuit breakers when the worker supports them", async () => {
+    const circuitBreakers = [{
+      name: 'telegram', state: 'open', failures: '2-5', totalRequests: '6-20',
+      lastFailureAge: '<1m', lastSuccessAge: '1h-24h',
+    }];
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...snapshotV2, circuitBreakers })));
+
+    await expect(requestWorkerDiagnostics({ ...options, fetchImpl })).resolves.toEqual({
+      status: 'observed',
+      value: { ...snapshot, circuitBreakers },
+      walletSyncExecution: { status: 'observed', value: executionV2 },
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to the request without circuit breakers for a worker that predates them', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response('', { status: 400 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(snapshotV2)));
+
+    await expect(requestWorkerDiagnostics({ ...options, fetchImpl })).resolves.toEqual({
+      status: 'observed',
+      value: snapshot,
+      walletSyncExecution: { status: 'observed', value: executionV2 },
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ['a breaker name that is not a code constant', { name: 'electrum.example.com:50002' }],
+    ['a raw count instead of a bucket', { failures: 3 }],
+    ['an unknown field', { privateDetail: 'must-not-accept' }],
+  ])('rejects %s in the circuit breaker list as unsupported', async (_name, override) => {
+    const breaker = {
+      name: 'telegram', state: 'closed', failures: '0', totalRequests: '0',
+      lastFailureAge: 'never', lastSuccessAge: 'never', ...override,
+    };
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...snapshotV2, circuitBreakers: [breaker] })));
+
+    await expect(requestWorkerDiagnostics({ ...options, fetchImpl })).resolves.toEqual({
+      status: 'unsupported',
+    });
+  });
+
   it('falls back through v1 execution to bare transport and classifies execution unsupported', async () => {
     const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response('', { status: 400 }))
       .mockResolvedValueOnce(new Response('', { status: 400 }))
       .mockResolvedValueOnce(new Response('', { status: 400 }))
       .mockResolvedValueOnce(new Response(JSON.stringify(snapshot)));
@@ -161,17 +215,18 @@ describe('worker diagnostics client', () => {
       value: snapshot,
       walletSyncExecution: { status: 'unsupported' },
     });
-    expect(JSON.parse(fetchImpl.mock.calls[2][1].body as string)).toEqual({
+    expect(JSON.parse(fetchImpl.mock.calls[3][1].body as string)).toEqual({
       protocolVersion: 1,
     });
     expect(new Set(fetchImpl.mock.calls.map(([, init]) => init.signal)).size).toBe(1);
     expect(new Set(fetchImpl.mock.calls.map(([, init]) => (
       init.headers as Record<string, string>
-    )['x-sanctuary-nonce'])).size).toBe(3);
+    )['x-sanctuary-nonce'])).size).toBe(4);
   });
 
   it('strictly rejects an invalid bare fallback response', async () => {
     const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response('', { status: 400 }))
       .mockResolvedValueOnce(new Response('', { status: 400 }))
       .mockResolvedValueOnce(new Response('', { status: 400 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({

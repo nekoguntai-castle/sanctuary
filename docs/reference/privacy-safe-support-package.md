@@ -205,7 +205,11 @@ concurrency buckets, notification consumer and handler registration, Redis and
 database state, Electrum manager/connectivity/subscription ownership and address
 count bucket, Telegram circuit state with bucketed request/failure counts,
 last-success and last-failure ages, a fixed failure class, and the worker's local
-notification-telemetry writer circuit plus bucketed dropped-event state.
+notification-telemetry writer circuit plus bucketed dropped-event state. When
+the worker supports it, `circuitBreakers` lists every circuit breaker registered
+in the worker process: its name, state, bucketed failure and request counts, and
+last-failure and last-success ages. A name is a code constant such as
+`telegram`, `price-coingecko` or `electrum-pool:1`.
 
 Database state is `connected`, `disconnected`, or `unknown`. `unknown` means the
 worker could not provide local monitoring evidence; it must not be interpreted
@@ -214,7 +218,8 @@ as connected. The worker telemetry-writer observation is likewise
 
 `unavailable`, `timeout`, and `unsupported` are distinct. A ready probe alone
 does not prove that a transaction was detected or a notification was delivered.
-This protocol contains no process ID, hostname, provider text, or endpoint.
+This protocol contains no process ID, hostname, provider response text, or
+endpoint.
 
 ### `notificationWorkerFleet`
 

@@ -11,8 +11,8 @@ import type { IPushProvider, PushPlatform } from '../types';
 
 // Export provider classes
 export { BasePushProvider } from './base';
-export { APNsPushProvider, isAPNsConfigured } from './apns';
-export { FCMPushProvider, isFCMConfigured } from './fcm';
+export { APNsPushProvider } from './apns';
+export { FCMPushProvider } from './fcm';
 
 // Import providers for registry
 import { APNsPushProvider } from './apns';

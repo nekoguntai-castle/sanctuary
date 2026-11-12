@@ -1,6 +1,9 @@
-import type {
-  WalletSyncExecutionDiagnostics,
-  WorkerDiagnosticsResponse,
+import {
+  WORKER_CIRCUIT_BREAKER_NAME_PATTERN,
+  WORKER_CIRCUIT_BREAKERS_MAX,
+  type WalletSyncExecutionDiagnostics,
+  type WorkerCircuitBreaker,
+  type WorkerDiagnosticsResponse,
 } from '../../internal/workerDiagnostics/protocol';
 import { bucketAge, bucketCount } from '../../internal/workerDiagnostics/buckets';
 
@@ -19,6 +22,8 @@ export interface WorkerDiagnosticsSource {
     droppedEvents: 'zero' | 'one' | 'two_to_five' | 'six_to_twenty' | 'over_twenty';
   } | { observation: 'unavailable' };
   walletSyncExecution?: WalletSyncExecutionDiagnostics;
+  /** Set only when the request asked for the worker's circuit breakers. */
+  circuitBreakers?: readonly WorkerCircuitBreakerSource[];
   electrum: {
     managerRunning: boolean;
     connected: boolean;
@@ -45,6 +50,36 @@ export interface WorkerDiagnosticsSource {
       | 'unknown'
       | 'other';
   };
+}
+
+export interface WorkerCircuitBreakerSource {
+  name: string;
+  state: 'closed' | 'open' | 'half-open';
+  failures: number;
+  totalRequests: number;
+  lastFailure: string | null;
+  lastSuccess: string | null;
+}
+
+/**
+ * Bucket the worker's circuit breakers for the wire. A breaker whose name is
+ * not a plain identifier is left out rather than failing the whole response.
+ */
+function bucketCircuitBreakers(
+  breakers: readonly WorkerCircuitBreakerSource[],
+  nowMs: number,
+): WorkerCircuitBreaker[] {
+  return breakers
+    .filter((breaker) => WORKER_CIRCUIT_BREAKER_NAME_PATTERN.test(breaker.name))
+    .slice(0, WORKER_CIRCUIT_BREAKERS_MAX)
+    .map((breaker) => ({
+      name: breaker.name,
+      state: breaker.state,
+      failures: bucketCount(breaker.failures),
+      totalRequests: bucketCount(breaker.totalRequests),
+      lastFailureAge: bucketAge(breaker.lastFailure, nowMs),
+      lastSuccessAge: bucketAge(breaker.lastSuccess, nowMs),
+    }));
 }
 
 export function buildWorkerDiagnosticsSnapshot(
@@ -99,5 +134,8 @@ export function buildWorkerDiagnosticsSnapshot(
     ...(source.walletSyncExecution === undefined
       ? {}
       : { walletSyncExecution: source.walletSyncExecution }),
+    ...(source.circuitBreakers === undefined
+      ? {}
+      : { circuitBreakers: bucketCircuitBreakers(source.circuitBreakers, nowMs) }),
   };
 }

@@ -6,9 +6,9 @@
  * publish-only Redis bridge but no provider credentials, so the push channel
  * used to report itself disabled and every insight/consolidation push was
  * silently dropped. These tests drive the real push service and channel with
- * no provider env and expect the event to reach the gateway-only Redis channel.
+ * no provider credentials and expect the event to reach the gateway-only Redis channel.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GatewayPushEvent } from '../../../../../src/websocket/types';
 
 const mocks = vi.hoisted(() => ({
@@ -23,6 +23,11 @@ const mocks = vi.hoisted(() => ({
   isAnyGatewayConnected: vi.fn(async () => true),
   recordNotificationTelemetry: vi.fn(),
   gatewayServer: null as null | { forwardPushEvent: ReturnType<typeof vi.fn> },
+  // Provider credentials as the config module reports them; none by default.
+  pushConfig: {
+    fcm: { serviceAccountPath: '' },
+    apns: { keyId: '', teamId: '', keyPath: '', bundleId: '', isProduction: false },
+  },
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
@@ -48,7 +53,11 @@ vi.mock('../../../../../src/services/notifications/telemetry', () => ({
 vi.mock('../../../../../src/utils/logger', () => ({ createLogger: () => mocks.log }));
 vi.mock('../../../../../src/config', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../../../src/config')>();
-  return { ...actual, default: { ...actual.default, gatewaySecret: 'gateway-secret' } };
+  return {
+    ...actual,
+    default: { ...actual.default, gatewaySecret: 'gateway-secret' },
+    getConfig: () => ({ ...actual.getConfig(), push: mocks.pushConfig }),
+  };
 });
 vi.mock('../../../../../src/websocket/redisBridge', () => ({
   redisBridge: {
@@ -74,13 +83,6 @@ import { pushChannelHandler } from '../../../../../src/services/notifications/ch
 import { getPushService } from '../../../../../src/services/push/pushService';
 import type { NotificationResult } from '../../../../../src/services/notifications/channels/types';
 
-const PROVIDER_ENV = [
-  'APNS_KEY_ID',
-  'APNS_TEAM_ID',
-  'APNS_KEY_PATH',
-  'APNS_BUNDLE_ID',
-  'FCM_SERVICE_ACCOUNT',
-] as const;
 
 const insight = {
   id: 'insight-1',
@@ -123,14 +125,12 @@ function wouldMarkNotified(results: NotificationResult[]): boolean {
 }
 
 function setApnsCredentials(): void {
-  Object.assign(process.env, {
-    APNS_KEY_ID: 'k', APNS_TEAM_ID: 't', APNS_KEY_PATH: '/nonexistent.p8', APNS_BUNDLE_ID: 'b',
+  Object.assign(mocks.pushConfig.apns, {
+    keyId: 'k', teamId: 't', keyPath: '/nonexistent.p8', bundleId: 'b',
   });
 }
 
 describe('push channel delivers wallet-level pushes through the gateway (worker mode)', () => {
-  const savedEnv: Partial<Record<(typeof PROVIDER_ENV)[number], string>> = {};
-
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.isActive.mockReturnValue(true);
@@ -138,10 +138,8 @@ describe('push channel delivers wallet-level pushes through the gateway (worker 
     mocks.publishGatewayEvent.mockResolvedValue(1);
     mocks.isAnyGatewayConnected.mockResolvedValue(true);
     mocks.gatewayServer = null;
-    for (const key of PROVIDER_ENV) {
-      savedEnv[key] = process.env[key];
-      delete process.env[key];
-    }
+    mocks.pushConfig.fcm.serviceAccountPath = '';
+    Object.assign(mocks.pushConfig.apns, { keyId: '', teamId: '', keyPath: '', bundleId: '' });
     mocks.findByWalletAccess.mockResolvedValue([
       eligibleUser('u1', 1),
       eligibleUser('no-device', 0),
@@ -149,13 +147,6 @@ describe('push channel delivers wallet-level pushes through the gateway (worker 
     mocks.filterUserIdsByMobileAction.mockImplementation(
       async (_walletId: string, ids: string[]) => ids,
     );
-  });
-
-  afterEach(() => {
-    for (const key of PROVIDER_ENV) {
-      if (savedEnv[key] === undefined) delete process.env[key];
-      else process.env[key] = savedEnv[key];
-    }
   });
 
   it('publishes a minimal ai_insight gateway event for eligible users', async () => {
@@ -276,6 +267,15 @@ describe('push channel delivers wallet-level pushes through the gateway (worker 
     expect(mocks.publishGatewayEvent).toHaveBeenCalledTimes(1);
     expect(sendToUser).not.toHaveBeenCalled();
     sendToUser.mockRestore();
+  });
+
+  it('keeps direct transaction pushes on with local credentials while a gateway is connected', async () => {
+    // Deliberate: a possible duplicate is accepted over a push lost on the
+    // gateway path, which nothing retries. See isTransactionDeliveryEnabled.
+    await expect(pushChannelHandler.isTransactionDeliveryEnabled?.()).resolves.toBe(false);
+
+    setApnsCredentials();
+    await expect(pushChannelHandler.isTransactionDeliveryEnabled?.()).resolves.toBe(true);
   });
 
   it('reports a rejected publish as a failure and leaves the insight unmarked', async () => {

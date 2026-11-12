@@ -2,18 +2,20 @@
  * Apple Push Notification Service Provider
  *
  * Sends push notifications to iOS devices using token-based authentication.
- * Requires APNs credentials configured via environment variables.
+ * Requires APNs credentials in the config module (`config.push.apns`).
  */
 
 import * as jwt from 'jsonwebtoken';
 import * as fs from 'fs';
 import { BasePushProvider } from './base';
+import { getConfig } from '../../../config';
 import { createLogger } from '../../../utils/logger';
 import { safeJsonParseUntyped } from '../../../utils/safeJson';
 import {
   createCircuitBreaker,
   type CircuitBreaker,
 } from '../../circuitBreaker';
+import { getApnsCredentials } from '../credentials';
 import type { PushErrorCode, PushMessage, PushResult } from '../types';
 
 const log = createLogger('PUSH:SVC_APNS');
@@ -72,7 +74,7 @@ export class APNsPushProvider extends BasePushProvider {
    * Eagerly load APNs key file. Called once at construction.
    */
   private loadKeyFile(): void {
-    const keyPath = process.env.APNS_KEY_PATH;
+    const keyPath = getConfig().push.apns.keyPath;
     if (!keyPath) return;
 
     try {
@@ -87,12 +89,7 @@ export class APNsPushProvider extends BasePushProvider {
    * Check if APNs is configured with required credentials
    */
   isConfigured(): boolean {
-    return !!(
-      process.env.APNS_KEY_ID &&
-      process.env.APNS_TEAM_ID &&
-      process.env.APNS_KEY_PATH &&
-      process.env.APNS_BUNDLE_ID
-    );
+    return getApnsCredentials() !== null;
   }
 
   /**
@@ -100,9 +97,7 @@ export class APNsPushProvider extends BasePushProvider {
    * Tokens are cached and reused until near expiry
    */
   private getToken(): string {
-    const keyId = process.env.APNS_KEY_ID;
-    const teamId = process.env.APNS_TEAM_ID;
-    const keyPath = process.env.APNS_KEY_PATH;
+    const { keyId, teamId, keyPath } = getConfig().push.apns;
 
     if (!keyId || !teamId || !keyPath) {
       throw new Error(
@@ -141,8 +136,7 @@ export class APNsPushProvider extends BasePushProvider {
     deviceToken: string,
     message: PushMessage,
   ): Promise<PushResult> {
-    const bundleId = process.env.APNS_BUNDLE_ID;
-    const isProduction = process.env.APNS_PRODUCTION === 'true';
+    const { bundleId, isProduction } = getConfig().push.apns;
 
     if (!bundleId) {
       return {
@@ -221,14 +215,4 @@ export class APNsPushProvider extends BasePushProvider {
       };
     });
   }
-}
-
-// Export legacy function for backward compatibility
-export function isAPNsConfigured(): boolean {
-  return !!(
-    process.env.APNS_KEY_ID &&
-    process.env.APNS_TEAM_ID &&
-    process.env.APNS_KEY_PATH &&
-    process.env.APNS_BUNDLE_ID
-  );
 }

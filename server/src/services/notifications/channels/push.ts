@@ -4,10 +4,10 @@
  * Wraps the existing Push service as a notification channel.
  *
  * Delivery paths:
- * - Transactions: direct send only when this process holds APNs/FCM
+ * - Transactions: direct send whenever this process holds APNs/FCM
  *   credentials (`isTransactionDeliveryEnabled`). Without them, transaction
- *   pushes already reach the gateway through the broadcast path, so they are
- *   never sent twice.
+ *   pushes reach the gateway through the broadcast path. docker-compose gives
+ *   credentials only to the gateway, so the default deployment sends once.
  * - AI insights and consolidation suggestions: the audience is resolved here,
  *   then either handed to the push gateway (when gateway delivery is
  *   available) or sent directly -- never both. The worker, which runs these
@@ -142,8 +142,13 @@ export const pushChannelHandler: NotificationChannelHandler = {
   },
 
   async isTransactionDeliveryEnabled(): Promise<boolean> {
-    // Transactions are sent directly only with local credentials; otherwise
-    // they reach the gateway through the broadcast path.
+    // Transactions are sent directly whenever this process holds credentials,
+    // even while a gateway is connected. A process given credentials next to
+    // a working gateway can notify a device twice. That is accepted: skipping
+    // the direct send would lose the push whenever the gateway path does not
+    // deliver (a gateway without credentials, a gateway that reconnected
+    // after the broadcast, a different preference check for in-app
+    // consolidations), and nothing retries or records that loss.
     return pushService.isPushConfigured();
   },
 

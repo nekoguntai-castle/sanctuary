@@ -32,6 +32,14 @@ describe('worker diagnostics', () => {
     }).success).toBe(false);
     expect(WorkerDiagnosticsRequestSchema.safeParse({
       protocolVersion: 1,
+      circuitBreakers: true,
+    }).success).toBe(true);
+    expect(WorkerDiagnosticsRequestSchema.safeParse({
+      protocolVersion: 1,
+      circuitBreakers: false,
+    }).success).toBe(false);
+    expect(WorkerDiagnosticsRequestSchema.safeParse({
+      protocolVersion: 1,
       walletSyncExecution: true,
       privateSelector: true,
     }).success).toBe(false);
@@ -185,6 +193,81 @@ describe('worker diagnostics', () => {
     });
     expect(JSON.stringify(snapshot)).not.toContain('hostname');
     expect(JSON.stringify(snapshot)).not.toContain('address');
+  });
+
+  it("reports the worker's circuit breakers, bucketed, only when asked", () => {
+    const now = 1_800_000_000_000;
+    const base = {
+      workerStartedAt: now - 60_000,
+      concurrency: 1,
+      redisConnected: true,
+      notificationConsumerRunning: true,
+      transactionHandlerRegistered: true,
+      electrum: {
+        managerRunning: true, connected: true, subscriptionOwner: true, subscribedAddresses: 0,
+      },
+    };
+
+    expect(buildWorkerDiagnosticsSnapshot(base, now)).not.toHaveProperty('circuitBreakers');
+
+    const snapshot = buildWorkerDiagnosticsSnapshot({
+      ...base,
+      circuitBreakers: [
+        {
+          name: 'apns', state: 'open', failures: 5, totalRequests: 40,
+          lastFailure: new Date(now - 30_000).toISOString(), lastSuccess: null,
+        },
+        {
+          name: 'fcm', state: 'closed', failures: 0, totalRequests: 0,
+          lastFailure: null, lastSuccess: null,
+        },
+        {
+          name: 'electrum-pool:1', state: 'half-open', failures: 1, totalRequests: 1,
+          lastFailure: null, lastSuccess: null,
+        },
+        // Not a code-constant name: left out instead of failing the response.
+        {
+          name: 'electrum.example.com:50002', state: 'open', failures: 1, totalRequests: 1,
+          lastFailure: null, lastSuccess: null,
+        },
+      ],
+    }, now);
+
+    expect(WorkerDiagnosticsResponseSchema.parse(snapshot)).toEqual(snapshot);
+    expect(snapshot.circuitBreakers).toEqual([
+      {
+        name: 'apns', state: 'open', failures: '2-5', totalRequests: '21-100',
+        lastFailureAge: '<1m', lastSuccessAge: 'never',
+      },
+      {
+        name: 'fcm', state: 'closed', failures: '0', totalRequests: '0',
+        lastFailureAge: 'never', lastSuccessAge: 'never',
+      },
+      {
+        name: 'electrum-pool:1', state: 'half-open', failures: '1', totalRequests: '1',
+        lastFailureAge: 'never', lastSuccessAge: 'never',
+      },
+    ]);
+  });
+
+  it('caps the circuit breaker list at the protocol limit', () => {
+    const snapshot = buildWorkerDiagnosticsSnapshot({
+      workerStartedAt: 1,
+      concurrency: 1,
+      redisConnected: true,
+      notificationConsumerRunning: true,
+      transactionHandlerRegistered: true,
+      electrum: {
+        managerRunning: true, connected: true, subscriptionOwner: true, subscribedAddresses: 0,
+      },
+      circuitBreakers: Array.from({ length: 40 }, (_unused, index) => ({
+        name: `breaker-${index}`, state: 'closed' as const, failures: 0, totalRequests: 0,
+        lastFailure: null, lastSuccess: null,
+      })),
+    }, 1_800_000_000_000);
+
+    expect(snapshot.circuitBreakers).toHaveLength(32);
+    expect(WorkerDiagnosticsResponseSchema.safeParse(snapshot).success).toBe(true);
   });
 
   it('distinguishes known database failure and fails missing local evidence closed', () => {

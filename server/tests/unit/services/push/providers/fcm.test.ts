@@ -16,6 +16,19 @@ vi.mock('../../../../../src/utils/logger', () => ({
   }),
 }));
 
+// Push credentials come from the config module, not the environment.
+const pushConfig = vi.hoisted(() => ({
+  fcm: { serviceAccountPath: '' },
+  apns: { keyId: '', teamId: '', keyPath: '', bundleId: '', isProduction: false },
+}));
+vi.mock('../../../../../src/config', () => ({
+  getConfig: () => ({ push: pushConfig }),
+}));
+function resetPushConfig(): void {
+  pushConfig.fcm.serviceAccountPath = '';
+  Object.assign(pushConfig.apns, { keyId: '', teamId: '', keyPath: '', bundleId: '', isProduction: false });
+}
+
 // Mock fs
 const mockAccessSync = vi.hoisted(() => vi.fn());
 const mockReadFileSync = vi.hoisted(() => vi.fn());
@@ -37,8 +50,6 @@ vi.stubGlobal('fetch', mockFetch);
 
 import {
   FCMPushProvider,
-  isFCMConfigured,
-  _resetFCMConfiguredCache,
 } from '../../../../../src/services/push/providers/fcm';
 import type { PushMessage } from '../../../../../src/services/push/types';
 
@@ -48,7 +59,6 @@ const FCM_SEND_URL =
 
 describe('FCMPushProvider', () => {
   let provider: FCMPushProvider;
-  const originalEnv = { ...process.env };
 
   const mockServiceAccount = {
     client_email: 'firebase@project.iam.gserviceaccount.com',
@@ -60,11 +70,10 @@ describe('FCMPushProvider', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    // Reset environment
-    process.env = { ...originalEnv };
+    resetPushConfig();
 
     // Default configured state
-    process.env.FCM_SERVICE_ACCOUNT = '/path/to/service-account.json';
+    pushConfig.fcm.serviceAccountPath = '/path/to/service-account.json';
 
     mockAccessSync.mockReturnValue(undefined); // File exists
     mockReadFileSync.mockReturnValue(JSON.stringify(mockServiceAccount));
@@ -74,7 +83,7 @@ describe('FCMPushProvider', () => {
   });
 
   afterEach(() => {
-    process.env = originalEnv;
+    resetPushConfig();
   });
 
   describe('constructor', () => {
@@ -98,7 +107,7 @@ describe('FCMPushProvider', () => {
     });
 
     it('should return false when FCM_SERVICE_ACCOUNT is missing', () => {
-      delete process.env.FCM_SERVICE_ACCOUNT;
+      pushConfig.fcm.serviceAccountPath = '';
       // Must create new provider after changing env, since config is cached at construction
       const unconfiguredProvider = new FCMPushProvider();
       expect(unconfiguredProvider.isConfigured()).toBe(false);
@@ -149,7 +158,7 @@ describe('FCMPushProvider', () => {
     });
 
     it('should return error when not configured', async () => {
-      delete process.env.FCM_SERVICE_ACCOUNT;
+      pushConfig.fcm.serviceAccountPath = '';
       // Must create new provider after removing env, since config is cached at construction
       const unconfiguredProvider = new FCMPushProvider();
       const result = await unconfiguredProvider.send(
@@ -474,50 +483,5 @@ describe('FCMPushProvider', () => {
         { algorithm: 'RS256' },
       );
     });
-  });
-});
-
-describe('isFCMConfigured', () => {
-  const originalEnv = { ...process.env };
-
-  beforeEach(() => {
-    process.env = { ...originalEnv };
-    vi.clearAllMocks();
-    _resetFCMConfiguredCache();
-  });
-
-  afterEach(() => {
-    process.env = originalEnv;
-  });
-
-  it('should return true when service account file exists', () => {
-    process.env.FCM_SERVICE_ACCOUNT = '/path/to/file.json';
-    mockAccessSync.mockReturnValue(undefined);
-
-    expect(isFCMConfigured()).toBe(true);
-  });
-
-  it('returns cached result on repeated calls without re-checking file access', () => {
-    process.env.FCM_SERVICE_ACCOUNT = '/path/to/file.json';
-    mockAccessSync.mockReturnValue(undefined);
-
-    expect(isFCMConfigured()).toBe(true);
-    expect(isFCMConfigured()).toBe(true);
-    expect(mockAccessSync).toHaveBeenCalledTimes(1);
-  });
-
-  it('should return false when FCM_SERVICE_ACCOUNT is missing', () => {
-    delete process.env.FCM_SERVICE_ACCOUNT;
-
-    expect(isFCMConfigured()).toBe(false);
-  });
-
-  it('should return false when service account file does not exist', () => {
-    process.env.FCM_SERVICE_ACCOUNT = '/nonexistent/file.json';
-    mockAccessSync.mockImplementation(() => {
-      throw new Error('ENOENT');
-    });
-
-    expect(isFCMConfigured()).toBe(false);
   });
 });

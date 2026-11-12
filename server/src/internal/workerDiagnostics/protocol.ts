@@ -18,6 +18,9 @@ export const WorkerDiagnosticsRequestSchema = z.object({
   protocolVersion: z.literal(WORKER_DIAGNOSTICS_PROTOCOL_VERSION),
   walletSyncExecution: z.literal(true).optional(),
   walletSyncExecutionVersion: z.literal(2).optional(),
+  // Opt-in, like walletSyncExecution: a worker that predates the field rejects
+  // the request and the client falls back to one without it.
+  circuitBreakers: z.literal(true).optional(),
 }).strict().superRefine((request, ctx) => {
   if (request.walletSyncExecutionVersion !== undefined && request.walletSyncExecution !== true) {
     ctx.addIssue({
@@ -54,6 +57,21 @@ const TelegramFailureClassSchema = z.enum([
   'unknown',
   'other',
 ]);
+
+// Names are code constants such as `telegram`, `price-coingecko` and
+// `electrum-pool:1`; never hosts, URLs or user data.
+export const WORKER_CIRCUIT_BREAKER_NAME_PATTERN = /^[a-z0-9:_-]{1,48}$/;
+export const WORKER_CIRCUIT_BREAKERS_MAX = 32;
+
+/** One circuit breaker registered in the worker process, with bucketed counts. */
+const WorkerCircuitBreakerSchema = z.object({
+  name: z.string().regex(WORKER_CIRCUIT_BREAKER_NAME_PATTERN),
+  state: z.enum(['closed', 'half-open', 'open']),
+  failures: CountBucketSchema,
+  totalRequests: CountBucketSchema,
+  lastFailureAge: AgeBucketSchema,
+  lastSuccessAge: AgeBucketSchema,
+}).strict();
 
 const WalletSyncExecutionCountersSchema = z.object({
   started: CountBucketSchema,
@@ -156,6 +174,9 @@ const WorkerDiagnosticsBaseResponseSchema = z.object({
     }).strict(),
     z.object({ observation: z.literal('unavailable') }).strict(),
   ]),
+  // Emitted only when the request opts in, so a strict consumer that predates
+  // the field never receives it.
+  circuitBreakers: z.array(WorkerCircuitBreakerSchema).max(WORKER_CIRCUIT_BREAKERS_MAX).optional(),
 }).strict();
 
 export const WorkerDiagnosticsBareResponseSchema = WorkerDiagnosticsBaseResponseSchema;
@@ -174,6 +195,7 @@ export const WorkerDiagnosticsResponseSchema = WorkerDiagnosticsBaseResponseSche
 export type WorkerDiagnosticsRequest = z.infer<typeof WorkerDiagnosticsRequestSchema>;
 export type WorkerDiagnosticsResponse = z.infer<typeof WorkerDiagnosticsResponseSchema>;
 export type WorkerDiagnosticsBareResponse = z.infer<typeof WorkerDiagnosticsBareResponseSchema>;
+export type WorkerCircuitBreaker = z.infer<typeof WorkerCircuitBreakerSchema>;
 export type CountBucket = z.infer<typeof CountBucketSchema>;
 export type AgeBucket = z.infer<typeof AgeBucketSchema>;
 export type WalletSyncExecutionDiagnostics = z.infer<

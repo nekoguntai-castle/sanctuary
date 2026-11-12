@@ -21,6 +21,7 @@ import {
   getProviderForPlatform,
   hasConfiguredProviders,
 } from './providers';
+import { hasPushCredentials } from './credentials';
 import type { IPushProvider, PushMessage, PushPlatform } from './types';
 import { isInvalidTokenError } from './types';
 import { recordPushFailure } from '../deadLetterQueue';
@@ -431,31 +432,9 @@ export function getPushService(): PushService {
 // Export legacy functions for backward compatibility
 export { PushMessage } from './types';
 
+/** Whether this process holds push provider credentials of its own. */
 export function isPushConfigured(): boolean {
-  // Check if providers would be configured (synchronous check)
-  const apnsConfigured = !!(
-    process.env.APNS_KEY_ID &&
-    process.env.APNS_TEAM_ID &&
-    process.env.APNS_KEY_PATH &&
-    process.env.APNS_BUNDLE_ID
-  );
-
-  let fcmConfigured = false;
-  const serviceAccountPath = process.env.FCM_SERVICE_ACCOUNT;
-  if (serviceAccountPath) {
-    try {
-      const fs = require('fs');
-      fs.accessSync(serviceAccountPath, fs.constants.R_OK);
-      fcmConfigured = true;
-    } catch (error) {
-      /* v8 ignore next -- local file permission failure only disables optional FCM support */
-      log.debug('FCM service account not accessible', {
-        error: getErrorMessage(error),
-      });
-    }
-  }
-
-  return apnsConfigured || fcmConfigured;
+  return hasPushCredentials();
 }
 
 export async function sendPushNotification(

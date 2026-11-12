@@ -2039,6 +2039,14 @@ describe('worker entrypoint', () => {
         },
       }),
     );
+    // The worker's breakers are sent only to a request that asks for them.
+    await expect(diagnosticsProvider?.()).resolves.not.toHaveProperty('circuitBreakers');
+    const breakersProvider = diagnosticsProvider as unknown as (
+      request: { protocolVersion: 1; circuitBreakers: true },
+    ) => Promise<{ circuitBreakers?: unknown }>;
+    const withBreakers = await breakersProvider({ protocolVersion: 1, circuitBreakers: true });
+    expect(Array.isArray(withBreakers.circuitBreakers)).toBe(true);
+
     mocks.queueInstance.getHealth.mockResolvedValueOnce(undefined);
     mocks.electrumInstance.getHealthMetrics.mockReturnValueOnce(undefined);
     await expect(healthProvider?.getMetrics()).resolves.toEqual({

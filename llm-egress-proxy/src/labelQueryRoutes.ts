@@ -1,9 +1,7 @@
 import type { Express, Request, Response } from 'express';
-import expressRateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { callExternalAI } from './aiClient';
-import { RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW_MS } from './constants';
 import type { Logger } from './logger';
-import { principalRateLimitKey } from './rateLimit';
+import { rateLimit } from './rateLimit';
 import {
   QueryBodySchema,
   SuggestLabelBodySchema,
@@ -26,29 +24,13 @@ interface LabelQueryRouteDeps {
 const authTokenFromRequest = (req: Request): string =>
   req.headers.authorization?.replace('Bearer ', '') || '';
 
-const aiRequestRateLimit = expressRateLimit({
-  windowMs: RATE_LIMIT_WINDOW_MS,
-  limit: RATE_LIMIT_MAX_REQUESTS,
-  standardHeaders: false,
-  legacyHeaders: false,
-  keyGenerator: (req) =>
-    principalRateLimitKey(req) ?? ipKeyGenerator(req.ip ?? 'unknown'),
-  handler: (_req, res) => {
-    const retryAfter = Math.ceil(RATE_LIMIT_WINDOW_MS / 1000);
-    return res.status(429).json({
-      error: `Rate limit exceeded. AI requests are limited to ${RATE_LIMIT_MAX_REQUESTS} per minute. Please wait ${retryAfter}s before trying again.`,
-      retryAfter,
-    });
-  },
-});
-
 export function registerLabelQueryRoutes(
   app: Express,
   deps: LabelQueryRouteDeps,
 ) {
   app.post(
     '/suggest-label',
-    aiRequestRateLimit,
+    rateLimit,
     async (req: Request, res: Response) => {
       const body = parseRequestBody(
         SuggestLabelBodySchema,
@@ -136,7 +118,7 @@ Examples: "Exchange Deposit", "Hardware Purchase", "Salary", "Gift"`;
 
   app.post(
     '/query',
-    aiRequestRateLimit,
+    rateLimit,
     async (req: Request, res: Response) => {
       const body = parseRequestBody(
         QueryBodySchema,
@@ -199,7 +181,7 @@ Examples: "Exchange Deposit", "Hardware Purchase", "Salary", "Gift"`;
 
   app.post(
     '/test',
-    aiRequestRateLimit,
+    rateLimit,
     async (_req: Request, res: Response) => {
       const aiConfig = deps.getAiConfig();
       if (!aiConfig.enabled || !aiConfig.endpoint || !aiConfig.model) {

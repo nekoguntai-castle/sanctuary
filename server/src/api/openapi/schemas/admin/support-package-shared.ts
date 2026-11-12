@@ -217,6 +217,24 @@ const workerSnapshot = {
         },
       ],
     },
+    // Present when the sampled worker supports reporting its circuit breakers.
+    circuitBreakers: {
+      type: 'array',
+      maxItems: 32,
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', pattern: '^[a-z0-9:_-]{1,48}$' },
+          state: { type: 'string', enum: ['closed', 'half-open', 'open'] },
+          failures: workerCountBucket,
+          totalRequests: workerCountBucket,
+          lastFailureAge: workerAgeBucket,
+          lastSuccessAge: workerAgeBucket,
+        },
+        required: ['name', 'state', 'failures', 'totalRequests', 'lastFailureAge', 'lastSuccessAge'],
+        additionalProperties: false,
+      },
+    },
   },
   required: [
     'protocolVersion',

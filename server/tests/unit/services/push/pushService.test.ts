@@ -56,6 +56,11 @@ const mockLog = vi.hoisted(() => ({
   error: vi.fn(),
   debug: vi.fn(),
 }));
+const mockHasPushCredentials = vi.hoisted(() => vi.fn(() => false));
+vi.mock('../../../../src/services/push/credentials', () => ({
+  hasPushCredentials: mockHasPushCredentials,
+}));
+
 vi.mock('../../../../src/utils/logger', () => ({
   createLogger: () => mockLog,
 }));
@@ -77,32 +82,12 @@ describe('Push Service', () => {
   });
 
   describe('isPushConfigured', () => {
-    it('should return true when providers are configured', () => {
-      // isPushConfigured checks env vars directly, so we test the sync check
-      // The async version uses hasConfiguredProviders
-      const original = process.env;
-      process.env = {
-        ...original,
-        APNS_KEY_ID: 'key',
-        APNS_TEAM_ID: 'team',
-        APNS_KEY_PATH: '/path/to/key',
-        APNS_BUNDLE_ID: 'com.app',
-      };
-
+    it('reports whether this process holds push credentials', () => {
+      mockHasPushCredentials.mockReturnValueOnce(true);
       expect(isPushConfigured()).toBe(true);
 
-      process.env = original;
-    });
-
-    it('should return false when no providers are configured', () => {
-      const original = process.env;
-      process.env = { ...original };
-      delete process.env.APNS_KEY_ID;
-      delete process.env.FCM_SERVICE_ACCOUNT;
-
+      mockHasPushCredentials.mockReturnValueOnce(false);
       expect(isPushConfigured()).toBe(false);
-
-      process.env = original;
     });
   });
 
@@ -951,28 +936,6 @@ describe('Push Service', () => {
 
       expect(mockRegistry.shutdown).toHaveBeenCalled();
       expect(service.getProviders()).toEqual([]);
-    });
-  });
-
-  describe('isPushConfigured fcm file path', () => {
-    it('returns true when readable FCM service account path is configured', () => {
-      const fs = require('fs');
-      const accessSpy = vi
-        .spyOn(fs, 'accessSync')
-        .mockImplementation(() => undefined);
-
-      const original = process.env;
-      process.env = { ...original };
-      delete process.env.APNS_KEY_ID;
-      delete process.env.APNS_TEAM_ID;
-      delete process.env.APNS_KEY_PATH;
-      delete process.env.APNS_BUNDLE_ID;
-      process.env.FCM_SERVICE_ACCOUNT = '/tmp/fcm-service-account.json';
-
-      expect(isPushConfigured()).toBe(true);
-
-      accessSpy.mockRestore();
-      process.env = original;
     });
   });
 });

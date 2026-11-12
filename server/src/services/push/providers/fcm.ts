@@ -2,7 +2,7 @@
  * Firebase Cloud Messaging Provider
  *
  * Sends push notifications to Android devices using FCM HTTP v1 API.
- * Requires Firebase service account JSON configured via environment variable.
+ * Requires a Firebase service account JSON file (`config.push.fcm`).
  */
 
 import * as jwt from 'jsonwebtoken';
@@ -15,6 +15,7 @@ import {
   createCircuitBreaker,
   type CircuitBreaker,
 } from '../../circuitBreaker';
+import { getFcmServiceAccountPath } from '../credentials';
 import type { PushErrorCode, PushMessage, PushResult } from '../types';
 
 const log = createLogger('PUSH:SVC_FCM');
@@ -113,7 +114,7 @@ export class FCMPushProvider extends BasePushProvider {
    * Eagerly load service account file. Called once at construction.
    */
   private loadServiceAccount(): void {
-    const serviceAccountPath = process.env.FCM_SERVICE_ACCOUNT;
+    const serviceAccountPath = getFcmServiceAccountPath();
     if (!serviceAccountPath) {
       this.configuredCache = false;
       return;
@@ -298,35 +299,4 @@ export class FCMPushProvider extends BasePushProvider {
       };
     });
   }
-}
-
-// Cache for legacy function — checked once per process
-let _fcmConfiguredCache: boolean | null = null;
-
-// Export legacy function for backward compatibility
-export function isFCMConfigured(): boolean {
-  if (_fcmConfiguredCache !== null) return _fcmConfiguredCache;
-
-  const serviceAccountPath = process.env.FCM_SERVICE_ACCOUNT;
-  if (!serviceAccountPath) {
-    _fcmConfiguredCache = false;
-    return false;
-  }
-
-  try {
-    fs.accessSync(serviceAccountPath, fs.constants.R_OK);
-    _fcmConfiguredCache = true;
-    return true;
-  } catch (error) {
-    log.debug('FCM service account not accessible', {
-      error: getErrorMessage(error),
-    });
-    _fcmConfiguredCache = false;
-    return false;
-  }
-}
-
-/** Reset the isFCMConfigured cache (for testing only) */
-export function _resetFCMConfiguredCache(): void {
-  _fcmConfiguredCache = null;
 }

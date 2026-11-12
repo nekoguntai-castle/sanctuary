@@ -89,6 +89,14 @@ export async function requestWorkerDiagnostics(
   if (!url || !secret) return { status: 'unavailable' };
 
   const parsedUrl = new URL(url);
+  // The newest shape first. A worker that predates a field answers 400 and the
+  // next, older shape is tried.
+  const v2BreakersBody = JSON.stringify({
+    protocolVersion: WORKER_DIAGNOSTICS_PROTOCOL_VERSION,
+    walletSyncExecution: true,
+    walletSyncExecutionVersion: 2,
+    circuitBreakers: true,
+  });
   const v2Body = JSON.stringify({
     protocolVersion: WORKER_DIAGNOSTICS_PROTOCOL_VERSION,
     walletSyncExecution: true,
@@ -127,9 +135,15 @@ export async function requestWorkerDiagnostics(
   };
 
   try {
-    const attempts = [v2Body, v1ExecutionBody, bareBody] as const;
+    const attempts = [
+      { body: v2BreakersBody, schema: WorkerDiagnosticsResponseV2Schema },
+      { body: v2Body, schema: WorkerDiagnosticsResponseV2Schema },
+      { body: v1ExecutionBody, schema: WorkerDiagnosticsResponseV1Schema },
+      { body: bareBody, schema: undefined },
+    ] as const;
     for (let index = 0; index < attempts.length; index++) {
-      const response = await send(attempts[index], index === 0 ? options?.nonce : undefined);
+      const attempt = attempts[index];
+      const response = await send(attempt.body, index === 0 ? options?.nonce : undefined);
       if (response.status === 400 && index < attempts.length - 1) {
         await response.body?.cancel().catch(() => undefined);
         continue;
@@ -140,7 +154,7 @@ export async function requestWorkerDiagnostics(
       if (!response.ok) return { status: 'unavailable' };
 
       const body = await readBoundedJson(response, maxResponseBytes);
-      if (index === 2) {
+      if (attempt.schema === undefined) {
         const parsed = WorkerDiagnosticsBareResponseSchema.safeParse(body);
         if (!parsed.success) return { status: 'unsupported' };
         return {
@@ -149,9 +163,7 @@ export async function requestWorkerDiagnostics(
           walletSyncExecution: { status: 'unsupported' },
         };
       }
-      const parsed = index === 0
-        ? WorkerDiagnosticsResponseV2Schema.safeParse(body)
-        : WorkerDiagnosticsResponseV1Schema.safeParse(body);
+      const parsed = attempt.schema.safeParse(body);
       if (!parsed.success) return { status: 'unsupported' };
       const { walletSyncExecution, ...transport } = parsed.data;
       return {
