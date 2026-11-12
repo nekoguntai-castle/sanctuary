@@ -241,7 +241,7 @@ describe('ReviewStep branch coverage', () => {
           totalOutput: 8700,
           fee: 300,
         } as any}
-        hardwareWallet={{ isConnected: true, device: { model: 'ledger' } }}
+        signedDevices={new Set(['device-1'])}
       />,
     );
 

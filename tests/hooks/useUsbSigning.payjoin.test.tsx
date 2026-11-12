@@ -74,35 +74,13 @@ describe('useUsbSigning payjoin dependencies', () => {
     mocks.hardwareWallet.signPSBT.mockResolvedValue({ psbt: 'signed-psbt' });
   });
 
-  it('clears the uploaded-artifact origin after signWithHardwareWallet', async () => {
-    const onUsbSigned = vi.fn();
-    const { result } = renderHook(() => useUsbSigning(createDeps({ onUsbSigned })));
-
-    await act(async () => {
-      expect(await result.current.signWithHardwareWallet()).toBe('signed-psbt');
-    });
-
-    expect(onUsbSigned).toHaveBeenCalledTimes(1);
-  });
-
-  it('clears the origin after signWithHardwareWalletResult, the connected-device broadcast path', async () => {
-    const onUsbSigned = vi.fn();
-    const { result } = renderHook(() => useUsbSigning(createDeps({ onUsbSigned })));
-
-    await act(async () => {
-      expect(await result.current.signWithHardwareWalletResult()).toEqual({ psbt: 'signed-psbt' });
-    });
-
-    expect(onUsbSigned).toHaveBeenCalledTimes(1);
-  });
-
   it('does not clear the origin when the device produced nothing applicable', async () => {
     mocks.hardwareWallet.signPSBT.mockResolvedValueOnce({});
     const onUsbSigned = vi.fn();
     const { result } = renderHook(() => useUsbSigning(createDeps({ onUsbSigned })));
 
     await act(async () => {
-      expect(await result.current.signWithHardwareWalletResult()).toBeNull();
+      expect(await result.current.signWithDevice(trezor)).toBe(false);
     });
 
     expect(onUsbSigned).not.toHaveBeenCalled();
@@ -162,24 +140,6 @@ describe('useUsbSigning payjoin dependencies', () => {
       expect(await result.current.signWithDevice(trezor)).toBe(false);
     });
 
-    expect(onUsbSigned).not.toHaveBeenCalled();
-  });
-
-  it('refuses signWithHardwareWalletResult during payjoin round two without touching the device', async () => {
-    const onUsbSigned = vi.fn();
-    const beginSigning = vi.fn();
-    const deps = createDeps({ onUsbSigned, beginSigning, isRoundTwoLocked: () => true });
-    const { result } = renderHook(() => useUsbSigning(deps));
-
-    await act(async () => {
-      expect(await result.current.signWithHardwareWalletResult()).toBeNull();
-    });
-
-    expect(deps.setError).toHaveBeenCalledWith(
-      'Sign the payjoin proposal with a PSBT file or QR code; USB signing is not available for it',
-    );
-    expect(beginSigning).not.toHaveBeenCalled();
-    expect(mocks.hardwareWallet.signPSBT).not.toHaveBeenCalled();
     expect(onUsbSigned).not.toHaveBeenCalled();
   });
 });

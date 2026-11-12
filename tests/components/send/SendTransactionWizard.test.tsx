@@ -118,21 +118,12 @@ describe('SendTransactionWizard', () => {
     broadcastTransaction: vi.fn(),
     saveDraft: vi.fn(),
     signWithDevice: vi.fn(),
-    signWithHardwareWalletResult: vi.fn(),
     markDeviceSigned: vi.fn(),
     uploadSignedPsbt: vi.fn(),
     downloadPsbt: vi.fn(),
     processQrSignedPsbt: vi.fn(),
     clearError: vi.fn(),
     reset: vi.fn(),
-  };
-
-  const defaultHardwareWallet = {
-    isConnected: false,
-    device: null,
-    signPSBT: vi.fn(),
-    connect: vi.fn(),
-    disconnect: vi.fn(),
   };
 
   const defaultProps = {
@@ -151,7 +142,6 @@ describe('SendTransactionWizard', () => {
     vi.clearAllMocks();
     vi.mocked(SendContext.useSendTransaction).mockReturnValue(defaultContextValue as any);
     vi.mocked(useSendTransactionActionsHook.useSendTransactionActions).mockReturnValue(defaultActionsValue as any);
-    vi.mocked(useHardwareWalletHook.useHardwareWallet).mockReturnValue(defaultHardwareWallet as any);
   });
 
   const renderWizard = (props = {}) => {
@@ -471,22 +461,29 @@ describe('SendTransactionWizard', () => {
   });
 
   describe('hardware wallet signing', () => {
-    it('signs with hardware wallet when connected', async () => {
-      const user = userEvent.setup();
-      const signPSBT = vi.fn();
-      const signWithHardwareWalletResult = vi.fn().mockResolvedValue({ psbt: 'signed...' });
-      const broadcastTransaction = vi.fn();
-
-      vi.mocked(useHardwareWalletHook.useHardwareWallet).mockReturnValue({
-        isConnected: true,
-        device: { id: 'hw-1', type: 'ledger' },
-        signPSBT,
+    it('holds no hardware-wallet connection of its own', async () => {
+      // Device state is per hook instance and only the signing hook connects,
+      // so a second instance here could never see a connected device.
+      vi.mocked(SendContext.useSendTransaction).mockReturnValue({
+        ...defaultContextValue,
+        currentStep: 'review',
+        isReadyToSign: true,
       } as any);
+
+      renderWizard();
+
+      expect(screen.getByTestId('review-step')).toBeInTheDocument();
+      expect(useHardwareWalletHook.useHardwareWallet).not.toHaveBeenCalled();
+    });
+
+    it('offers the unsigned PSBT instead of signing when nothing is signed yet', async () => {
+      const user = userEvent.setup();
+      const createTransaction = vi.fn().mockResolvedValue({ psbtBase64: 'unsigned...' });
+      const broadcastTransaction = vi.fn();
 
       vi.mocked(useSendTransactionActionsHook.useSendTransactionActions).mockReturnValue({
         ...defaultActionsValue,
-        txData: { psbtBase64: 'unsigned...' },
-        signWithHardwareWalletResult,
+        createTransaction,
         broadcastTransaction,
       } as any);
 
@@ -500,11 +497,8 @@ describe('SendTransactionWizard', () => {
 
       await user.click(screen.getByTestId('broadcast-btn'));
 
-      await waitFor(() => {
-        expect(signWithHardwareWalletResult).toHaveBeenCalledWith({ psbtBase64: 'unsigned...' });
-      });
-      expect(signPSBT).not.toHaveBeenCalled();
-      expect(broadcastTransaction).toHaveBeenCalledWith('signed...', undefined);
+      await waitFor(() => expect(createTransaction).toHaveBeenCalled());
+      expect(broadcastTransaction).not.toHaveBeenCalled();
     });
 
     it('broadcasts signed raw transaction directly when available', async () => {
@@ -699,15 +693,9 @@ describe('SendTransactionWizard', () => {
       expect(screen.getByText('Cancel').closest('button')).toBeEnabled();
     });
 
-    it('never signs the payjoin proposal (or its restored original) on a connected USB device', async () => {
+    it('broadcasts the restored payjoin original from its uploaded signature', async () => {
       const user = userEvent.setup();
-      const signWithHardwareWalletResult = vi.fn();
       const broadcastTransaction = vi.fn();
-      vi.mocked(useHardwareWalletHook.useHardwareWallet).mockReturnValue({
-        ...defaultHardwareWallet,
-        isConnected: true,
-        device: { id: 'hw-1', type: 'ledger' },
-      } as any);
       vi.mocked(useSendTransactionActionsHook.useSendTransactionActions).mockReturnValue({
         ...defaultActionsValue,
         txData: { psbtBase64: 'signed-original' },
@@ -715,7 +703,6 @@ describe('SendTransactionWizard', () => {
         signedDevices: new Set(['device-1']),
         payjoinStatus: 'failed',
         payjoinUsbBlocked: true,
-        signWithHardwareWalletResult,
         broadcastTransaction,
       } as any);
       reviewContext();
@@ -724,7 +711,6 @@ describe('SendTransactionWizard', () => {
       await user.click(screen.getByTestId('broadcast-btn'));
 
       await waitFor(() => expect(broadcastTransaction).toHaveBeenCalledWith('signed-original'));
-      expect(signWithHardwareWalletResult).not.toHaveBeenCalled();
     });
   });
 });

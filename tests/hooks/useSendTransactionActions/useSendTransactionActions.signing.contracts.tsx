@@ -51,38 +51,6 @@ export const registerUseSendTransactionActionsSigningContracts = () => {
       expect(result.current.signedDevices.size).toBe(0);
       expect(mocks.updateDraft).not.toHaveBeenCalled();
     });
-    it('returns an error when hardware signing is attempted without connection', async () => {
-      const { result } = renderSendTransactionActions({
-        initialTxData: baseTxData as any,
-      });
-
-      let signed = null;
-      await act(async () => {
-        signed = await result.current.signWithHardwareWallet();
-      });
-      expect(signed).toBeNull();
-      await waitFor(() => {
-        expect(result.current.error).toContain('Hardware wallet not connected');
-      });
-    });
-
-    it('signs with connected hardware wallet', async () => {
-      mocks.hardwareWallet.isConnected = true;
-      mocks.hardwareWallet.device = { id: 'hw-1' };
-      mocks.hardwareWallet.signPSBT.mockResolvedValue({ psbt: 'signed-by-hw' });
-
-      const { result } = renderSendTransactionActions({
-        initialTxData: baseTxData as any,
-      });
-
-      let signed = null;
-      await act(async () => {
-        signed = await result.current.signWithHardwareWallet();
-      });
-      expect(signed).toBe('signed-by-hw');
-      expect(mocks.hardwareWallet.signPSBT).toHaveBeenCalled();
-    });
-
     it('rejects unsupported device types for direct USB signing', async () => {
       const { result } = renderSendTransactionActions({
         initialPsbt: 'unsigned-psbt',

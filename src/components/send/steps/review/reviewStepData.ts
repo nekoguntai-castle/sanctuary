@@ -109,11 +109,10 @@ export function getRequiredSignatures(quorum: Wallet['quorum']): number {
 export function hasEnoughReviewSignatures(
   isMultiSig: boolean,
   signedDevices: Set<string>,
-  requiredSignatures: number,
-  hardwareWallet?: { isConnected: boolean; device: unknown }
+  requiredSignatures: number
 ): boolean {
   if (isMultiSig) return signedDevices.size >= requiredSignatures;
-  return signedDevices.size > 0 || Boolean(hardwareWallet?.isConnected && hardwareWallet?.device);
+  return signedDevices.size > 0;
 }
 
 export function canBroadcastReviewTransaction(

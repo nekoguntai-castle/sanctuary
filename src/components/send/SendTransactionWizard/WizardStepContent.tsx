@@ -1,13 +1,11 @@
 import { TypeSelection, OutputsStep, ReviewStep } from '../steps';
 import type { WizardStep } from '../../../contexts/send';
-import type { UseHardwareWalletReturn } from '../../../hooks/useHardwareWallet';
 import type { TransactionData, UseSendTransactionActionsResult } from '../../../hooks/send/useSendTransactionActions';
 
 interface WizardStepContentProps {
   actions: UseSendTransactionActionsResult;
   currentStep: WizardStep;
   effectiveTxData: TransactionData | null;
-  hardwareWallet: UseHardwareWalletReturn;
   isDraftMode: boolean;
   isMultiSig: boolean;
   onSaveDraft: () => void;
@@ -19,7 +17,6 @@ interface WizardStepContentProps {
 function renderReviewStep({
   actions,
   effectiveTxData,
-  hardwareWallet,
   isDraftMode,
   isMultiSig,
   onSaveDraft,
@@ -49,7 +46,6 @@ function renderReviewStep({
       onMarkDeviceSigned={actions.markDeviceSigned}
       onProcessQrSignedPsbt={actions.processQrSignedPsbt}
       onBroadcastSigned={() => actions.broadcastTransaction()}
-      hardwareWallet={hardwareWallet}
       isDraftMode={isDraftMode}
     />
   );

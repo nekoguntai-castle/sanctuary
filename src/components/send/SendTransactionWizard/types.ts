@@ -1,5 +1,4 @@
 import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
-import type { UseHardwareWalletReturn } from '../../../hooks/useHardwareWallet';
 import type { UseSendTransactionActionsResult } from '../../../hooks/send/useSendTransactionActions';
 
 export interface DraftTransactionData {
@@ -22,5 +21,4 @@ export interface DraftTransactionData {
 export interface SendWizardActionHandlerProps {
   walletId: string;
   actions: UseSendTransactionActionsResult;
-  hardwareWallet: UseHardwareWalletReturn;
 }

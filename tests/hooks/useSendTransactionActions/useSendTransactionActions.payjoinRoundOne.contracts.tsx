@@ -228,8 +228,6 @@ export const registerUseSendTransactionActionsPayjoinRoundOneContracts = () => {
     });
 
     it('marks a payjoin URL on a USB-signed send skipped and broadcasts it unchanged', async () => {
-      mocks.hardwareWallet.isConnected = true;
-      mocks.hardwareWallet.device = { id: 'hw-1', type: 'trezor' };
       const { result } = renderSendTransactionActions({ state: payjoinState() });
       await act(async () => {
         await result.current.createTransaction();
@@ -239,7 +237,12 @@ export const registerUseSendTransactionActionsPayjoinRoundOneContracts = () => {
       });
       // USB signing after the QR upload clears the upload origin.
       await act(async () => {
-        await result.current.signWithHardwareWallet();
+        expect(await result.current.signWithDevice({
+          id: 'dev-trezor',
+          type: 'Trezor Safe 3',
+          model: { slug: 'trezor-safe-3', name: 'Trezor Safe 3' },
+          fingerprint: 'aabbccdd',
+        } as never)).toBe(true);
       });
 
       await act(async () => {

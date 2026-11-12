@@ -256,8 +256,8 @@ export function useSendTransactionActions({
     }
   }, [walletId, state, wallet.network, clearArtifactOrigin, owner]);
 
-  // USB signing (signWithHardwareWallet, signWithDevice)
-  const { signWithHardwareWallet, signWithHardwareWalletResult, signWithDevice } = useUsbSigning({
+  // USB signing (signWithDevice)
+  const { signWithDevice } = useUsbSigning({
     walletId,
     wallet,
     draftId: state.draftId,
@@ -470,8 +470,6 @@ export function useSendTransactionActions({
     payjoinOriginalTxData: payjoin.originalTxData,
     approvalAction,
     createTransaction,
-    signWithHardwareWallet,
-    signWithHardwareWalletResult,
     signWithDevice,
     broadcastTransaction: runPayjoinRound,
     sendWithoutPayjoin,

@@ -1,8 +1,10 @@
 /**
  * useUsbSigning Hook
  *
- * Handles USB hardware wallet signing for both single-sig (signWithHardwareWallet)
- * and multi-sig (signWithDevice) flows.
+ * Handles USB hardware wallet signing for single-sig and multi-sig wallets
+ * (signWithDevice). This hook owns the only hardware-wallet connection of the
+ * send flow: it connects for one signing attempt and releases the transport
+ * afterwards.
  */
 
 import { useCallback } from 'react';
@@ -48,8 +50,6 @@ const ROUND_TWO_USB_MESSAGE =
   'Sign the payjoin proposal with a PSBT file or QR code; USB signing is not available for it';
 
 export interface UseUsbSigningResult {
-  signWithHardwareWallet: () => Promise<string | null>;
-  signWithHardwareWalletResult: (transaction?: TransactionData) => Promise<UsbSignResult | null>;
   signWithDevice: (device: Device) => Promise<boolean>;
 }
 
@@ -92,20 +92,6 @@ function getDescriptorPreview(wallet: Wallet): string {
   return wallet.descriptor ? wallet.descriptor.substring(0, 200) + '...' : 'N/A';
 }
 
-function logHardwareSigningPreparation(
-  wallet: Wallet,
-  multisigXpubs: Record<string, string> | undefined
-): void {
-  log.info('signWithHardwareWallet: Prepared for signing', {
-    walletType: wallet.type,
-    isMultisig: isMultisigType(wallet.type),
-    hasDescriptor: !!wallet.descriptor,
-    descriptorPreview: getDescriptorPreview(wallet),
-    hasXpubs: !!multisigXpubs,
-    xpubFingerprints: multisigXpubs ? Object.keys(multisigXpubs) : [],
-  });
-}
-
 function logDeviceSigningPreparation(
   device: Device,
   wallet: Wallet,
@@ -135,10 +121,6 @@ function getUsbSigningDeviceError(device: Device, hwType: HardwareWalletType): s
 
 function getDeviceDisplayName(device: Device): string {
   return device.label || device.type;
-}
-
-function getHardwareWalletDeviceDisplayName(device: UseHardwareWalletReturn['device']): string {
-  return device?.name || device?.type || 'This device';
 }
 
 function getMultisigUsbProductBlock(
@@ -288,15 +270,6 @@ async function signPsbtWithDevice({
   return hardwareWallet.signPSBT(psbtToSign, txData.signingContext, multisigXpubs);
 }
 
-function requireSigningContext(transaction: TransactionData) {
-  if (!transaction.signingContext) {
-    throw new Error(
-      'This transaction has no server-issued hardware signing context; recreate it before signing'
-    );
-  }
-  return transaction.signingContext;
-}
-
 async function applyDeviceSignResult({
   signResult,
   psbtToSign,
@@ -342,76 +315,7 @@ export function useUsbSigning({
 }: UseUsbSigningDeps): UseUsbSigningResult {
   const hardwareWallet = useHardwareWallet();
 
-  // Sign with connected hardware wallet
-  const signWithHardwareWalletResult = useCallback(
-    async (transaction = txData ?? undefined): Promise<UsbSignResult | null> => {
-    if (isRoundTwoLocked()) {
-      setError(ROUND_TWO_USB_MESSAGE);
-      return null;
-    }
-    if (!transaction || !hardwareWallet.isConnected || !hardwareWallet.device) {
-      setError('Hardware wallet not connected or no transaction to sign');
-      return null;
-    }
-
-    const hwType = hardwareWallet.device.type
-      ? getHardwareWalletType(hardwareWallet.device.type)
-      : null;
-    const productBlock = getMultisigUsbProductBlock(
-      wallet,
-      hwType,
-      getHardwareWalletDeviceDisplayName(hardwareWallet.device)
-    );
-    if (productBlock) {
-      setError(productBlock);
-      return null;
-    }
-
-    const lease = beginSigning();
-    if (!lease) {
-      setError('Transaction changed; review it again before signing');
-      return null;
-    }
-    setIsSigning(true);
-    setError(null);
-
-    try {
-      // For multisig wallets, extract xpubs from descriptor for Trezor signing
-      const multisigXpubs = getMultisigXpubs(wallet);
-      logHardwareSigningPreparation(wallet, multisigXpubs);
-
-      const signResult = await hardwareWallet.signPSBT(
-        transaction.psbtBase64,
-        requireSigningContext(transaction),
-          multisigXpubs
-      );
-      if (!lease.isCurrent()) return null;
-        if (!hasApplicableSigningResult(signResult, wallet)) {
-          setError(
-            'Hardware signing proof did not produce an applicable signed PSBT or transaction'
-          );
-          return null;
-        }
-        onUsbSigned();
-        return signResult;
-    } catch (err) {
-      if (!lease.isCurrent()) return null;
-      log.error('Hardware wallet signing failed', { error: err });
-      setError(err instanceof Error ? err.message : 'Hardware wallet signing failed');
-      return null;
-    } finally {
-      if (lease.isCurrent()) setIsSigning(false);
-    }
-    },
-    [txData, hardwareWallet, wallet, walletId, setIsSigning, setError, beginSigning, isRoundTwoLocked, onUsbSigned]
-  );
-
-  const signWithHardwareWallet = useCallback(async (): Promise<string | null> => {
-    const result = await signWithHardwareWalletResult();
-    return result?.psbt || result?.rawTx || null;
-  }, [signWithHardwareWalletResult]);
-
-  // Sign with a specific device (for multi-sig USB signing)
+  // Sign with a specific device: connect, sign, release the transport.
   const signWithDevice = useCallback(
     async (device: Device): Promise<boolean> => {
     const preflight = getDeviceSigningPreflight(
@@ -509,8 +413,6 @@ export function useUsbSigning({
   );
 
   return {
-    signWithHardwareWallet,
-    signWithHardwareWalletResult,
     signWithDevice,
   };
 }

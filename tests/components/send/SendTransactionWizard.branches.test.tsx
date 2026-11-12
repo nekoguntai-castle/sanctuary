@@ -8,7 +8,6 @@ import { WalletType } from '../../../src/types';
 
 const useSendTransactionMock = vi.hoisted(() => vi.fn());
 const useSendTransactionActionsMock = vi.hoisted(() => vi.fn());
-const useHardwareWalletMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
@@ -26,10 +25,6 @@ vi.mock('../../../src/contexts/send', () => ({
 
 vi.mock('../../../src/hooks/send/useSendTransactionActions', () => ({
   useSendTransactionActions: (args: any) => useSendTransactionActionsMock(args),
-}));
-
-vi.mock('../../../src/hooks/useHardwareWallet', () => ({
-  useHardwareWallet: () => useHardwareWalletMock(),
 }));
 
 vi.mock('../../../src/components/send/WizardNavigation', () => ({
@@ -101,20 +96,12 @@ describe('SendTransactionWizard branch coverage', () => {
     broadcastTransaction: vi.fn(),
     saveDraft: vi.fn(),
     signWithDevice: vi.fn(),
-    signWithHardwareWalletResult: vi.fn(),
     markDeviceSigned: vi.fn(),
     uploadSignedPsbt: vi.fn(),
     downloadPsbt: vi.fn(),
     processQrSignedPsbt: vi.fn(),
     clearError: vi.fn(),
     reset: vi.fn(),
-    ...overrides,
-  });
-
-  const makeHardware = (overrides: any = {}) => ({
-    isConnected: false,
-    device: null,
-    signPSBT: vi.fn(),
     ...overrides,
   });
 
@@ -143,7 +130,6 @@ describe('SendTransactionWizard branch coverage', () => {
     vi.clearAllMocks();
     useSendTransactionMock.mockReturnValue(makeContext());
     useSendTransactionActionsMock.mockReturnValue(makeActions());
-    useHardwareWalletMock.mockReturnValue(makeHardware());
   });
 
   it('builds draft initial tx data with fallback address/amount and invalid output amount handling', () => {
@@ -260,63 +246,6 @@ describe('SendTransactionWizard branch coverage', () => {
     await waitFor(() => {
       expect(createTransaction).toHaveBeenCalledTimes(1);
     });
-    expect(broadcastTransaction).not.toHaveBeenCalled();
-  });
-
-  it('does not broadcast when hardware signing returns no PSBT/rawTx', async () => {
-    const user = userEvent.setup();
-    const broadcastTransaction = vi.fn();
-    const signPSBT = vi.fn();
-    const signWithHardwareWalletResult = vi.fn().mockResolvedValue({});
-
-    useSendTransactionMock.mockReturnValue(
-      makeContext({
-        currentStep: 'review',
-        isReadyToSign: true,
-      })
-    );
-    useSendTransactionActionsMock.mockReturnValue(
-      makeActions({
-        txData: { psbtBase64: 'unsigned-psbt' },
-        signWithHardwareWalletResult,
-        broadcastTransaction,
-      })
-    );
-    useHardwareWalletMock.mockReturnValue(
-      makeHardware({
-        isConnected: true,
-        device: { id: 'hw-1' },
-        signPSBT,
-      })
-    );
-
-    renderWizard();
-    await user.click(screen.getByRole('button', { name: 'broadcast' }));
-
-    expect(signWithHardwareWalletResult).toHaveBeenCalledWith({ psbtBase64: 'unsigned-psbt' });
-    expect(signPSBT).not.toHaveBeenCalled();
-    expect(broadcastTransaction).not.toHaveBeenCalled();
-  });
-
-  it('stops after an owned hardware signing attempt returns no result', async () => {
-    const user = userEvent.setup();
-    const broadcastTransaction = vi.fn();
-    const signWithHardwareWalletResult = vi.fn().mockResolvedValue(null);
-    useSendTransactionMock.mockReturnValue(makeContext({ currentStep: 'review', isReadyToSign: true }));
-    useSendTransactionActionsMock.mockReturnValue(makeActions({
-      txData: { psbtBase64: 'unsigned-psbt' },
-      signWithHardwareWalletResult,
-      broadcastTransaction,
-    }));
-    useHardwareWalletMock.mockReturnValue(makeHardware({
-      isConnected: true,
-      device: { id: 'hw-1' },
-    }));
-
-    renderWizard();
-    await user.click(screen.getByRole('button', { name: 'broadcast' }));
-
-    expect(signWithHardwareWalletResult).toHaveBeenCalled();
     expect(broadcastTransaction).not.toHaveBeenCalled();
   });
 

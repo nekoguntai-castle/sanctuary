@@ -63,7 +63,6 @@ export interface ReviewStepProps {
   onMarkDeviceSigned?: (deviceId: string) => void;
   onProcessQrSignedPsbt?: (signedPsbt: string, deviceId: string) => Promise<void>;
   onBroadcastSigned?: () => Promise<boolean>;
-  hardwareWallet?: { isConnected: boolean; device: unknown };
   // Draft mode - locks editing, shows draft info
   isDraftMode?: boolean;
 }
@@ -89,7 +88,6 @@ export function ReviewStep({
   onMarkDeviceSigned,
   onProcessQrSignedPsbt,
   onBroadcastSigned,
-  hardwareWallet,
   isDraftMode = false,
 }: ReviewStepProps) {
   const {
@@ -181,8 +179,7 @@ export function ReviewStep({
   const hasEnoughSignatures = hasEnoughReviewSignatures(
     isMultiSig,
     signedDevices,
-    requiredSignatures,
-    hardwareWallet
+    requiredSignatures
   );
 
   // Can broadcast?

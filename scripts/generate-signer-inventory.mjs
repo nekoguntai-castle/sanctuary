@@ -134,14 +134,11 @@ export const REQUIRED_FUNDS_EXECUTION_POINTS = Object.freeze([
   ['src/api/bitcoin.ts', 'broadcastRawNetworkTransaction', 'broadcast', 'callable', 1],
   ['src/components/send/SendTransactionWizard/useSendWizardActionHandlers.ts', 'broadcastSignedRawTx', 'broadcast', 'callable', 1],
   ['src/components/send/SendTransactionWizard/useSendWizardActionHandlers.ts', 'broadcastUploadedSignedPsbt', 'broadcast', 'callable', 1],
-  ['src/components/send/SendTransactionWizard/useSendWizardActionHandlers.ts', 'broadcastWithConnectedHardwareWallet', 'broadcast', 'callable', 1],
   ['src/hooks/send/useBroadcast.ts', 'broadcastTransaction', 'broadcast', 'callable', 1],
   ['src/hooks/send/useQrSigning.ts', 'processQrSignedPsbt', 'sign', 'callable', 1],
   ['src/hooks/send/useQrSigning.ts', 'uploadSignedPsbt', 'sign', 'callable', 1],
   ['src/hooks/send/useUsbSigning.ts', 'signPsbtWithDevice', 'sign', 'callable', 1],
   ['src/hooks/send/useUsbSigning.ts', 'signWithDevice', 'sign', 'callable', 1],
-  ['src/hooks/send/useUsbSigning.ts', 'signWithHardwareWallet', 'sign', 'callable', 1],
-  ['src/hooks/send/useUsbSigning.ts', 'signWithHardwareWalletResult', 'sign', 'callable', 1],
   ['src/hooks/useHardwareWallet.ts', 'signPSBT', 'sign', 'callable', 1],
   ['src/services/hardwareWallet/adapters/bitbox/bitboxAdapter.ts', 'signPSBT', 'sign', 'callable', 1],
   ['src/services/hardwareWallet/adapters/bitbox/signPsbt.ts', 'finalizeAllInputs', 'finalize', 'operation', 1],
@@ -440,7 +437,6 @@ const BROADCAST_EXECUTION_NAMES = new Set([
   'broadcastSignedTransaction',
   'broadcastRawNetworkTransaction',
   'broadcastReplay',
-  'broadcastWithConnectedHardwareWallet',
 ]);
 
 // Enforcement call sites recognised by serverCapabilityEnforcementSurfaces, mapped to the

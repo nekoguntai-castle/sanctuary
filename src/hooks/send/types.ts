@@ -9,7 +9,6 @@ import type { Wallet, Device } from '../../types';
 import type { PayjoinAttemptStatus, TransactionState } from '../../contexts/send/types';
 import type { DeviceType } from '../../services/hardwareWallet/types';
 import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
-import type { TrezorConnectSignedArtifact } from '../../services/hardwareWallet/types';
 import type { PolicyEvaluationSummary } from '../../api/transactions/types';
 import { canonicalSegwitAddressCase } from '@sanctuary/shared/utils/bitcoin';
 import { createLogger } from '../../utils/logger';
@@ -96,12 +95,6 @@ export interface UseSendTransactionActionsResult {
 
   // Actions
   createTransaction: () => Promise<TransactionData | null>;
-  signWithHardwareWallet: () => Promise<string | null>;
-  signWithHardwareWalletResult: (transaction?: TransactionData) => Promise<{
-    psbt?: string;
-    rawTx?: string;
-    trezorArtifact?: TrezorConnectSignedArtifact;
-  } | null>;
   signWithDevice: (device: Device) => Promise<boolean>;
   broadcastTransaction: (signedPsbt?: string, rawTxHex?: string) => Promise<boolean>;
   /** Abort the payjoin attempt, or drop a proposal, and broadcast the signed original instead. */

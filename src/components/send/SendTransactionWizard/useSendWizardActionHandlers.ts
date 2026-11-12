@@ -19,23 +19,6 @@ async function broadcastSignedRawTx(actions: UseSendTransactionActionsResult): P
   return true;
 }
 
-async function broadcastWithConnectedHardwareWallet({
-  actions,
-  hardwareWallet,
-}: SendWizardActionHandlerProps, txData: TransactionData): Promise<boolean> {
-  // A payjoin proposal (or the original restored after one) is never signed on a connected device.
-  if (actions.payjoinUsbBlocked || !hardwareWallet.isConnected || !hardwareWallet.device) {
-    return false;
-  }
-
-  const signResult = await actions.signWithHardwareWalletResult(txData);
-  if (!signResult) return true;
-  if (signResult.psbt || signResult.rawTx) {
-    await actions.broadcastTransaction(signResult.psbt, signResult.rawTx);
-  }
-  return true;
-}
-
 async function broadcastUploadedSignedPsbt(actions: UseSendTransactionActionsResult): Promise<boolean> {
   if (actions.signedDevices.size === 0 || !actions.unsignedPsbt) {
     return false;
@@ -51,8 +34,10 @@ async function createDownloadablePsbtIfNeeded(actions: UseSendTransactionActions
   }
 }
 
-async function signAndBroadcastTransaction(props: SendWizardActionHandlerProps) {
-  const { actions } = props;
+// USB signing happens on the review step (signWithDevice), which holds the
+// only hardware-wallet connection and releases it after each attempt. By the
+// time this runs there is a signed artifact to broadcast or there is not.
+async function signAndBroadcastTransaction({ actions }: SendWizardActionHandlerProps) {
 
   log.debug('handleSignAndBroadcast called', {
     hasSignedRawTx: !!actions.signedRawTx,
@@ -65,10 +50,6 @@ async function signAndBroadcastTransaction(props: SendWizardActionHandlerProps) 
 
   const txData = await resolveTransactionData(actions);
   if (!txData) {
-    return;
-  }
-
-  if (await broadcastWithConnectedHardwareWallet(props, txData)) {
     return;
   }
 
@@ -87,13 +68,12 @@ async function signMultisigTransaction(actions: UseSendTransactionActionsResult)
 
 export function useSendWizardActionHandlers({
   actions,
-  hardwareWallet,
   walletId,
 }: SendWizardActionHandlerProps) {
 
   const handleSignAndBroadcast = useCallback(async () => {
-    await signAndBroadcastTransaction({ walletId, actions, hardwareWallet });
-  }, [walletId, actions, hardwareWallet]);
+    await signAndBroadcastTransaction({ walletId, actions });
+  }, [walletId, actions]);
 
   const handleSign = useCallback(async () => {
     await signMultisigTransaction(actions);

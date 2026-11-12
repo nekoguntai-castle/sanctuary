@@ -8,7 +8,6 @@
 import { useCallback, useMemo } from 'react';
 import { SendTransactionProvider, useSendTransaction } from '../../contexts/send';
 import { useSendTransactionActions, type UseSendTransactionActionsResult } from '../../hooks/send/useSendTransactionActions';
-import { useHardwareWallet } from '../../hooks/useHardwareWallet';
 import { createLogger } from '../../utils/logger';
 import { isMultisigType } from '../../types';
 import type { Wallet, UTXO, Device, FeeEstimate } from '../../types';
@@ -42,7 +41,6 @@ function WizardContent({
   onCancel,
 }: WizardContentProps) {
   const { currentStep, wallet, state, isReadyToSign, utxos, dispatch } = useSendTransaction();
-  const hardwareWallet = useHardwareWallet();
 
   log.debug('WizardContent state', {
     isDraftMode: state.isDraftMode,
@@ -80,7 +78,7 @@ function WizardContent({
     handleSign,
     handleSignAndBroadcast,
     handleSaveDraft,
-  } = useSendWizardActionHandlers({ walletId, actions, hardwareWallet });
+  } = useSendWizardActionHandlers({ walletId, actions });
 
   const isMultiSig = isMultisigType(wallet.type);
   const effectiveTxData = state.isDraftMode ? draftInitialTxData : actions.txData;
@@ -99,7 +97,6 @@ function WizardContent({
         actions={actions}
         currentStep={currentStep}
         effectiveTxData={effectiveTxData}
-        hardwareWallet={hardwareWallet}
         isDraftMode={state.isDraftMode}
         isMultiSig={isMultiSig}
         onSaveDraft={handleSaveDraft}

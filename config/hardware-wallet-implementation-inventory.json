@@ -286,13 +286,6 @@
       "count": 1
     },
     {
-      "source": "src/components/send/SendTransactionWizard/useSendWizardActionHandlers.ts",
-      "name": "broadcastWithConnectedHardwareWallet",
-      "capability": "broadcast",
-      "kind": "callable",
-      "count": 1
-    },
-    {
       "source": "src/hooks/send/useBroadcast.ts",
       "name": "broadcastTransaction",
       "capability": "broadcast",
@@ -323,20 +316,6 @@
     {
       "source": "src/hooks/send/useUsbSigning.ts",
       "name": "signWithDevice",
-      "capability": "sign",
-      "kind": "callable",
-      "count": 1
-    },
-    {
-      "source": "src/hooks/send/useUsbSigning.ts",
-      "name": "signWithHardwareWallet",
-      "capability": "sign",
-      "kind": "callable",
-      "count": 1
-    },
-    {
-      "source": "src/hooks/send/useUsbSigning.ts",
-      "name": "signWithHardwareWalletResult",
       "capability": "sign",
       "kind": "callable",
       "count": 1
@@ -3240,22 +3219,6 @@
       ]
     },
     {
-      "id": "funds-execution-point:src/components/send/SendTransactionWizard/useSendWizardActionHandlers.ts:broadcastWithConnectedHardwareWallet:callable:1",
-      "kind": "funds-execution-point",
-      "identity": "src/components/send/SendTransactionWizard/useSendWizardActionHandlers.ts:broadcastWithConnectedHardwareWallet:callable:1",
-      "vendor": "generic",
-      "source": "src/components/send/SendTransactionWizard/useSendWizardActionHandlers.ts",
-      "capabilities": [
-        "broadcast"
-      ],
-      "enabled": false,
-      "executionName": "broadcastWithConnectedHardwareWallet",
-      "executionKind": "callable",
-      "capabilityRowIds": [
-        "generic.generic-unresolved.broadcast"
-      ]
-    },
-    {
       "id": "funds-execution-point:src/hooks/send/useBroadcast.ts:broadcastTransaction:callable:1",
       "kind": "funds-execution-point",
       "identity": "src/hooks/send/useBroadcast.ts:broadcastTransaction:callable:1",
@@ -3330,38 +3293,6 @@
       ],
       "enabled": false,
       "executionName": "signWithDevice",
-      "executionKind": "callable",
-      "capabilityRowIds": [
-        "generic.generic-unresolved.sign"
-      ]
-    },
-    {
-      "id": "funds-execution-point:src/hooks/send/useUsbSigning.ts:signWithHardwareWallet:callable:1",
-      "kind": "funds-execution-point",
-      "identity": "src/hooks/send/useUsbSigning.ts:signWithHardwareWallet:callable:1",
-      "vendor": "generic",
-      "source": "src/hooks/send/useUsbSigning.ts",
-      "capabilities": [
-        "sign"
-      ],
-      "enabled": false,
-      "executionName": "signWithHardwareWallet",
-      "executionKind": "callable",
-      "capabilityRowIds": [
-        "generic.generic-unresolved.sign"
-      ]
-    },
-    {
-      "id": "funds-execution-point:src/hooks/send/useUsbSigning.ts:signWithHardwareWalletResult:callable:1",
-      "kind": "funds-execution-point",
-      "identity": "src/hooks/send/useUsbSigning.ts:signWithHardwareWalletResult:callable:1",
-      "vendor": "generic",
-      "source": "src/hooks/send/useUsbSigning.ts",
-      "capabilities": [
-        "sign"
-      ],
-      "enabled": false,
-      "executionName": "signWithHardwareWalletResult",
       "executionKind": "callable",
       "capabilityRowIds": [
         "generic.generic-unresolved.sign"
