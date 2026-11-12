@@ -281,6 +281,14 @@ class CircuitBreakerRegistry {
 export const circuitBreakerRegistry = new CircuitBreakerRegistry();
 
 /**
+ * Breakers live in the memory of the process that created them. The API
+ * process reports only its own: sync and notification sending run in the
+ * worker, whose breakers open and close independently. Outputs carry this
+ * label so closed breakers here are not read as "the worker is healthy".
+ */
+export const API_PROCESS_BREAKER_SCOPE = 'api-process';
+
+/**
  * Create and register a circuit breaker
  */
 export function createCircuitBreaker<T>(options: CircuitBreakerOptions): CircuitBreaker<T> {

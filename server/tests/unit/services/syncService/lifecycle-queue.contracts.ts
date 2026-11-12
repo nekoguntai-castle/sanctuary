@@ -48,28 +48,28 @@ export function registerSyncServiceLifecycleQueueTests(context: SyncServiceTestC
       expect(context.syncService['isRunning']).toBe(false);
     });
 
-    it('clears pending compatibility state and contains lock-release failures on stop', async () => {
+    it('clears pending retry timers on stop without touching distributed locks', async () => {
       await context.syncService.start();
       mockReleaseLock.mockClear();
       const retryTimer = setTimeout(() => undefined, 60_000);
       context.syncService['state'].pendingRetries.set('wallet-retry', retryTimer);
-      context.syncService['state'].activeLocks.set('wallet-ok', { key: 'ok' } as never);
-      context.syncService['state'].activeLocks.set('wallet-failed', { key: 'failed' } as never);
-      context.syncService['state'].activeSyncs.add('wallet-ok');
-      context.syncService['state'].syncQueue.push({
-        walletId: 'wallet-queued', priority: 'normal', requestedAt: new Date(),
-      });
-      mockReleaseLock
-        .mockResolvedValueOnce(undefined)
-        .mockRejectedValueOnce(new Error('release unavailable'));
 
       await context.syncService.stop();
 
       expect(context.syncService['state'].pendingRetries.size).toBe(0);
-      expect(context.syncService['state'].activeLocks.size).toBe(0);
-      expect(context.syncService['state'].activeSyncs.size).toBe(0);
-      expect(context.syncService['state'].syncQueue).toHaveLength(0);
-      expect(mockReleaseLock).toHaveBeenCalledTimes(2);
+      expect(mockReleaseLock).not.toHaveBeenCalled();
+    });
+
+    it('does not report the retired in-process queue as sync activity', () => {
+      // Sync runs in the worker. A local queue length or active count would
+      // always read 0 here and look like evidence that nothing is syncing.
+      const metrics = context.syncService.getHealthMetrics();
+
+      expect(metrics).not.toHaveProperty('queueLength');
+      expect(metrics).not.toHaveProperty('activeSyncs');
+      expect(context.syncService['state']).not.toHaveProperty('syncQueue');
+      expect(context.syncService['state']).not.toHaveProperty('activeSyncs');
+      expect(context.syncService['state']).not.toHaveProperty('activeLocks');
     });
 
     it('should reset stuck syncs on start', async () => {
@@ -229,10 +229,6 @@ export function registerSyncServiceLifecycleQueueTests(context: SyncServiceTestC
 
     it('reports durable intent state and never invents a retired local queue position', async () => {
       context.syncService['isRunning'] = true;
-      context.syncService['state'].syncQueue = [
-        { walletId: 'wallet-1', priority: 'high', requestedAt: new Date() },
-        { walletId: 'wallet-2', priority: 'normal', requestedAt: new Date() },
-      ];
 
       mockPrismaClient.wallet.findUnique.mockResolvedValue({
         lastSyncedAt: null,

@@ -198,12 +198,17 @@ export default [
     },
   },
   {
-    // Settings reach the WebSocket layer through the validated config
-    // (server/src/config/websocketLimits.ts). A second, direct read of
+    // Settings reach these layers through the validated config
+    // (server/src/config/websocketLimits.ts for the WebSocket layer). A second, direct read of
     // process.env here once turned a typo into NaN and silently disabled the
-    // per-user connection limit. Extend `files` as other directories are
-    // moved onto the config module.
-    files: ['server/src/websocket/**/*.ts'],
+    // per-user connection limit. The Electrum pool and node client had the
+    // same pattern (server/src/config/electrumEnv.ts). Extend `files` as other
+    // directories are moved onto the config module.
+    files: [
+      'server/src/websocket/**/*.ts',
+      'server/src/services/bitcoin/electrumPool/**/*.ts',
+      'server/src/services/bitcoin/nodeClient.ts',
+    ],
     rules: {
       'no-restricted-properties': ['error', {
         object: 'process',

@@ -11,6 +11,7 @@ import {
   getPayjoinUriOptions,
   getReceiveDisplayValue,
   getSelectedReceiveAddress,
+  hasExhaustedFetchedAddresses,
   shouldFetchUnusedReceiveAddresses,
 } from './receiveModalData';
 
@@ -33,6 +34,8 @@ export function useReceiveModalState({
   const [payjoinLoading, setPayjoinLoading] = useState(false);
   const [receiveAmount, setReceiveAmount] = useState('');
   const fetchAttemptedRef = useRef(false);
+  // The `addresses` list the last fetch was made for.
+  const fetchedForRef = useRef<Address[] | null>(null);
 
   const unusedReceiveAddresses = useMemo(
     () => getDisplayReceiveAddresses(addresses, fetchedAddresses),
@@ -46,22 +49,28 @@ export function useReceiveModalState({
   const displayValue = getReceiveDisplayValue(payjoinUri, receiveAddress);
 
   useEffect(() => {
+    // Fetch again when the wallet has used every fetched address. Only once
+    // per change of the live list, so a fetch that keeps returning an address
+    // the wallet already marks used cannot loop.
+    const needsNextAddress = hasExhaustedFetchedAddresses(addresses, fetchedAddresses)
+      && fetchedForRef.current !== addresses;
     const shouldFetch = shouldFetchUnusedReceiveAddresses(
       addresses,
-      fetchAttemptedRef.current,
+      fetchAttemptedRef.current && !needsNextAddress,
       Boolean(onFetchUnusedAddresses)
     );
 
     if (!shouldFetch || !onFetchUnusedAddresses) return;
 
     fetchAttemptedRef.current = true;
+    fetchedForRef.current = addresses;
     setFetchingAddress(true);
 
     onFetchUnusedAddresses(walletId)
       .then(result => setFetchedAddresses(result))
       .catch(error => log.error('Failed to fetch unused receive address', { error }))
       .finally(() => setFetchingAddress(false));
-  }, [walletId, addresses, onFetchUnusedAddresses]);
+  }, [walletId, addresses, fetchedAddresses, onFetchUnusedAddresses]);
 
   useEffect(() => {
     const checkPayjoinStatus = async () => {

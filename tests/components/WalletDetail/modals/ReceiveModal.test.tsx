@@ -796,5 +796,68 @@ describe('ReceiveModal', () => {
         ).toBeInTheDocument();
       });
     });
+    // Regression: the fetched addresses were a snapshot and a one-shot latch
+    // blocked refetching. If a payment landed on the shown address while the
+    // modal was open, it kept being offered as unused, inviting address reuse.
+    it('stops offering a fetched address once the wallet marks it used, and fetches the next one', async () => {
+      const used = (index: number, address: string): Address => ({
+        id: `addr-${index}`,
+        address,
+        derivationPath: `m/84'/0'/0'/0/${index}`,
+        index,
+        balance: 0,
+        isChange: false,
+        used: true,
+      });
+      const unused = (index: number, address: string): Address => ({ ...used(index, address), used: false });
+
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce([unused(54, 'bc1qunused54address')])
+        .mockResolvedValueOnce([unused(55, 'bc1qunused55address')]);
+
+      const { rerender } = render(
+        <ReceiveModal {...defaultProps} addresses={[used(0, 'bc1qused0000')]} onFetchUnusedAddresses={mockFetch} />
+      );
+      await waitFor(() => {
+        expect(screen.getByTestId('qr-code')).toHaveAttribute('data-value', 'bc1qunused54address');
+      });
+
+      // A payment arrives on address 54; the wallet's live list now marks it used.
+      rerender(
+        <ReceiveModal
+          {...defaultProps}
+          addresses={[used(0, 'bc1qused0000'), used(54, 'bc1qunused54address')]}
+          onFetchUnusedAddresses={mockFetch}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('qr-code')).toHaveAttribute('data-value', 'bc1qunused55address');
+      });
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not refetch in a loop when the fetch keeps returning a used address', async () => {
+      const usedAddress: Address = {
+        id: 'addr-54',
+        address: 'bc1qunused54address',
+        derivationPath: "m/84'/0'/0'/0/54",
+        index: 54,
+        balance: 0,
+        isChange: false,
+        used: true,
+      };
+      const mockFetch = vi.fn().mockResolvedValue([{ ...usedAddress, used: false }]);
+
+      render(
+        <ReceiveModal {...defaultProps} addresses={[usedAddress]} onFetchUnusedAddresses={mockFetch} />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/no receive address available/i)).toBeInTheDocument();
+      });
+      await new Promise(resolve => setTimeout(resolve, 50));
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
   });
 });

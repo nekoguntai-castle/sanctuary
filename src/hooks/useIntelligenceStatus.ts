@@ -30,6 +30,10 @@ const LOADING_STATUS: IntelligenceStatusResult = Object.freeze({ available: fals
 const UNAVAILABLE_STATUS: IntelligenceStatusResult = Object.freeze({ available: false, loading: false });
 const RETRY_BASE_DELAY_MS = 1_000;
 const RETRY_MAX_DELAY_MS = 60_000;
+// A successful answer can still say "unavailable": the proxy was starting, or
+// the check was rate limited. That answer is re-checked when a consumer mounts
+// after this long, so the controls come back without a hard reload.
+const UNAVAILABLE_RECHECK_MS = 60_000;
 type Listener = () => void;
 type StatusFailure = 'none' | 'transient' | 'terminal';
 
@@ -39,6 +43,7 @@ let activeGeneration: number | null = null;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let failure: StatusFailure = 'none';
 let retryAttempt = 0;
+let answeredAt = 0;
 const listeners = new Set<Listener>();
 
 const publish = (next: IntelligenceStatusResult): void => {
@@ -77,6 +82,7 @@ const startStatusRequest = async (): Promise<void> => {
     clearRetry();
     failure = 'none';
     retryAttempt = 0;
+    answeredAt = Date.now();
     publish({ available: result.available, loading: false, endpointType: result.endpointType });
   } catch (error) {
     if (requestGeneration !== generation) return;
@@ -92,10 +98,20 @@ const startStatusRequest = async (): Promise<void> => {
   }
 };
 
+// Only reached for a settled snapshot (see subscribe). A terminal failure is
+// left to its own once-per-session re-check.
+const isStaleUnavailable = (): boolean =>
+  failure === 'none'
+  && !snapshot.available
+  && Date.now() - answeredAt > UNAVAILABLE_RECHECK_MS;
+
 const subscribe = (listener: Listener): (() => void) => {
   const newSession = listeners.size === 0;
   listeners.add(listener);
-  const needsCheck = snapshot.loading || failure === 'transient' || (failure === 'terminal' && newSession);
+  const needsCheck = snapshot.loading
+    || failure === 'transient'
+    || (failure === 'terminal' && newSession)
+    || isStaleUnavailable();
   if (needsCheck && !retryTimer && activeGeneration !== generation) {
     void startStatusRequest();
   }

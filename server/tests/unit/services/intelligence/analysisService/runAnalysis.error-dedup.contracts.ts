@@ -105,6 +105,19 @@ export function registerRunAnalysisErrorDedupContracts(): void {
       },
     );
 
+    it('skips the run with a warning when the provider check is rate limited', async () => {
+      (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(true);
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 429 });
+
+      await runAnalysisPipelines();
+
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'AI provider check was rate limited, skipping analysis',
+      );
+      expect(mockGetEnabledIntelligenceWallets).not.toHaveBeenCalled();
+    });
+
     it('should skip when AI analysis returns non-ok response', async () => {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
       (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(true);

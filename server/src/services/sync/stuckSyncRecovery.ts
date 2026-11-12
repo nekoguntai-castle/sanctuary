@@ -33,9 +33,7 @@ interface StuckSyncCandidate {
  */
 export async function clearStuckSyncIfAuthorized(
   wallet: StuckSyncCandidate,
-  activeSyncs: ReadonlySet<string>,
 ): Promise<boolean> {
-  if (activeSyncs.has(wallet.id)) return false;
   if (
     !Number.isInteger(wallet.syncStateVersion)
     || wallet.syncExecutionOwner === undefined

@@ -4,7 +4,6 @@
  * Shared types and constants for the sync service modules.
  */
 
-import type { DistributedLock } from '../../infrastructure';
 import type { SyncPriority } from '@sanctuary/shared/constants/sync';
 
 export interface SyncJob {
@@ -27,8 +26,6 @@ export type PollingMode = 'worker-delegated' | 'in-process';
 
 export interface SyncHealthMetrics {
   isRunning: boolean;
-  queueLength: number;
-  activeSyncs: number;
   subscribedAddresses: number;
   subscriptionsEnabled: boolean;
   subscriptionOwnership: SubscriptionOwnership;
@@ -45,18 +42,12 @@ export type SubscriptionOwnership = 'self' | 'external' | 'unavailable' | 'disab
  */
 export interface SyncState {
   isRunning: boolean;
-  syncQueue: SyncJob[];
-  activeSyncs: Set<string>;
-  activeLocks: Map<string, DistributedLock>;
   pendingRetries: Map<string, NodeJS.Timeout>;
   subscriptionsEnabled: boolean;
   subscriptionOwnership: SubscriptionOwnership;
   subscribedToHeaders: boolean;
   pollingMode: PollingMode;
 }
-
-// Maximum sync queue size to prevent unbounded memory growth
-export const MAX_QUEUE_SIZE = 1000;
 
 // Electrum subscription distributed lock settings
 export const ELECTRUM_SUBSCRIPTION_LOCK_KEY = 'electrum:subscriptions';

@@ -94,6 +94,7 @@ export const healthSchemas = {
   HealthCircuitsResponse: {
     type: 'object',
     properties: {
+      scope: { type: 'string', enum: ['api-process'] },
       overall: { $ref: '#/components/schemas/HealthStatus' },
       circuits: {
         type: 'array',

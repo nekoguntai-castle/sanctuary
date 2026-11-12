@@ -75,8 +75,8 @@ router.use(requireAllFeatures(['aiAssistant', 'treasuryIntelligence']));
  * GET /api/v1/intelligence/status
  * Check if Treasury Intelligence is available (Ollama configured and reachable)
  */
-router.get('/status', asyncHandler(async (_req, res) => {
-  const status = await analysisService.getIntelligenceStatus();
+router.get('/status', asyncHandler(async (req, res) => {
+  const status = await analysisService.getIntelligenceStatus(requireAuthenticatedUser(req).userId);
   res.json(status);
 }));
 

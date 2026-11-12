@@ -16,7 +16,7 @@ export function registerIntelligenceStatusContracts(): void {
         model: null,
       });
 
-      const result = await getIntelligenceStatus();
+      const result = await getIntelligenceStatus('user-1');
 
       expect(result).toEqual({
         available: false,
@@ -29,7 +29,7 @@ export function registerIntelligenceStatusContracts(): void {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
       (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(false);
 
-      const result = await getIntelligenceStatus();
+      const result = await getIntelligenceStatus('user-1');
 
       expect(result).toEqual({
         available: false,
@@ -48,12 +48,43 @@ export function registerIntelligenceStatusContracts(): void {
         json: async () => ({ compatible: true, endpointType: "host" }),
       });
 
-      const result = await getIntelligenceStatus();
+      const result = await getIntelligenceStatus('user-1');
 
       expect(result).toEqual({
         available: true,
         ollamaConfigured: true,
         endpointType: "host",
+      });
+    });
+
+    // Regression: the status call used the worker's rate-limit bucket. Enough
+    // status loads from the UI made the worker's analysis calls answer 429,
+    // which was reported as "unreachable" and skipped the run.
+    it("checks the provider in the calling user's rate-limit bucket", async () => {
+      (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(true);
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ compatible: true, endpointType: "host" }),
+      });
+
+      await getIntelligenceStatus("user-1");
+
+      const [, init] = mockFetch.mock.calls[0];
+      expect(init.headers["X-LLM-Egress-Rate-Key"]).toBe("user:user-1");
+    });
+
+    it("reports a rate-limited provider check as rate limited, not unreachable", async () => {
+      (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(true);
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 429, json: async () => ({}) });
+
+      const result = await getIntelligenceStatus("user-1");
+
+      expect(result).toEqual({
+        available: false,
+        ollamaConfigured: false,
+        reason: "rate_limited",
       });
     });
 
@@ -66,7 +97,7 @@ export function registerIntelligenceStatusContracts(): void {
         json: async () => ({ compatible: false, reason: "provider_required" }),
       });
 
-      const result = await getIntelligenceStatus();
+      const result = await getIntelligenceStatus('user-1');
 
       expect(result).toEqual({
         available: false,
@@ -84,7 +115,7 @@ export function registerIntelligenceStatusContracts(): void {
         json: async () => ({ compatible: false }),
       });
 
-      const result = await getIntelligenceStatus();
+      const result = await getIntelligenceStatus('user-1');
 
       expect(result).toEqual({
         available: false,
@@ -102,7 +133,7 @@ export function registerIntelligenceStatusContracts(): void {
         status: 503,
       });
 
-      const result = await getIntelligenceStatus();
+      const result = await getIntelligenceStatus('user-1');
 
       expect(result).toEqual({
         available: false,
@@ -117,7 +148,7 @@ export function registerIntelligenceStatusContracts(): void {
 
       mockFetch.mockRejectedValueOnce(new Error("Connection refused"));
 
-      const result = await getIntelligenceStatus();
+      const result = await getIntelligenceStatus('user-1');
 
       expect(result).toEqual({
         available: false,

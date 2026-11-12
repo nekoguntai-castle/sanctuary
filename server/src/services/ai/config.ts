@@ -80,6 +80,27 @@ let configSyncState: ConfigSyncState = {
   syncSuccess: false,
 };
 
+// Must match PROXY_BOOT_ID_HEADER in llm-egress-proxy/src/bootId.ts (the proxy
+// is network-isolated and shares no code with the server).
+const PROXY_BOOT_ID_HEADER = "x-sanctuary-proxy-boot-id";
+let lastProxyBootId: string | null = null;
+
+/**
+ * The proxy stamps every response with an id that changes when it restarts.
+ * A new id means the proxy lost its in-memory config, so the cached successful
+ * sync is forgotten and the next ensureLlmProxyConfigured pushes again. This
+ * covers the routes that answer 200 or 400 while unconfigured.
+ */
+function observeProxyBootId(response: Response): void {
+  const bootId = response.headers?.get(PROXY_BOOT_ID_HEADER);
+  if (!bootId) return;
+  if (lastProxyBootId !== null && lastProxyBootId !== bootId) {
+    log.info("LLM egress proxy restarted; its config will be pushed again");
+    configSyncState.syncSuccess = false;
+  }
+  lastProxyBootId = bootId;
+}
+
 /**
  * Generate a hash of the config for change detection
  */
@@ -313,6 +334,7 @@ async function isProxyUnconfiguredResponse(response: Response): Promise<boolean>
  */
 export async function fetchLlmEgressProxy(input: string, init?: RequestInit): Promise<Response> {
   const response = await fetch(input, init);
+  observeProxyBootId(response);
   if (await isProxyUnconfiguredResponse(response)) {
     configSyncState.syncSuccess = false;
   }
@@ -367,6 +389,8 @@ export async function syncConfigToLlmEgressProxyResult(
       signal: AbortSignal.timeout(5000),
     });
 
+    // Before the state below is written, so a push to a new boot counts.
+    observeProxyBootId(response);
     const syncResult = response.ok
       ? { success: true }
       : await buildFailedConfigSyncResult(response);

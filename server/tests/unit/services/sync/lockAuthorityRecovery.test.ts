@@ -21,9 +21,6 @@ import type { SyncState } from '../../../../src/services/sync/types';
 function createState(): SyncState {
   return {
     isRunning: true,
-    syncQueue: [],
-    activeSyncs: new Set(),
-    activeLocks: new Map(),
     pendingRetries: new Map(),
     subscriptionsEnabled: true,
     subscriptionOwnership: 'unavailable',

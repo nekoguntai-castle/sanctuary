@@ -53,9 +53,6 @@ const makeRefs = (): PollingIntervalRefs => ({
 
 const makeSyncState = (overrides: Partial<SyncState> = {}): SyncState => ({
   isRunning: true,
-  syncQueue: [],
-  activeSyncs: new Set(),
-  activeLocks: new Map(),
   pendingRetries: new Map(),
   subscriptionsEnabled: false,
   subscriptionOwnership: 'disabled',

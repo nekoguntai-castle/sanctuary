@@ -310,9 +310,6 @@ export interface SyncServiceTestContext {
 
 export function resetSyncServiceState(syncService: SyncService): void {
   syncService['isRunning'] = false;
-  syncService['state'].syncQueue = [];
-  syncService['activeSyncs'] = new Set();
-  syncService['state'].activeLocks = new Map();
   syncService['state'].pendingRetries = new Map();
   syncService['subscriptionsEnabled'] = false;
   syncService['subscriptionOwnership'] = 'disabled';
@@ -403,9 +400,6 @@ export function setupSyncServiceErrorHandlingTestHooks(): SyncServiceTestContext
     vi.clearAllMocks();
     context.syncService = getSyncService();
     context.syncService['isRunning'] = false;
-    context.syncService['state'].syncQueue = [];
-    context.syncService['activeSyncs'] = new Set();
-    context.syncService['state'].activeLocks = new Map();
 
     mockAcquireLock.mockResolvedValue({ id: 'lock-1', resource: 'test' });
     mockReleaseLock.mockResolvedValue(undefined);

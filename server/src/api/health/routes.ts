@@ -6,7 +6,7 @@
 
 import { Router, Request, Response } from 'express';
 import { asyncHandler } from '../../errors/errorHandler';
-import { circuitBreakerRegistry } from '../../services/circuitBreaker';
+import { API_PROCESS_BREAKER_SCOPE, circuitBreakerRegistry } from '../../services/circuitBreaker';
 import type { ComponentHealth, HealthStatus, HealthResponse } from '../../services/health';
 import { checkDatabase, checkDiskSpace, checkMemory } from '../../services/health';
 import { checkElectrum, checkWebSocket, checkSync, checkRedis, checkJobQueue } from '../../services/health';
@@ -106,11 +106,12 @@ router.get('/ready', asyncHandler(async (_req, res) => {
 
 /**
  * GET /api/v1/health/circuits
- * Detailed circuit breaker status
+ * Detailed circuit breaker status for this (API) process
  */
 router.get('/circuits', (_req: Request, res: Response) => {
   const breakers = circuitBreakerRegistry.getAllHealth();
   res.json({
+    scope: API_PROCESS_BREAKER_SCOPE,
     overall: circuitBreakerRegistry.getOverallStatus(),
     circuits: breakers,
   });

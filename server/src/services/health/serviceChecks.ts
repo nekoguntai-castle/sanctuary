@@ -114,21 +114,9 @@ export function checkSync(): ComponentHealth {
       };
     }
 
-    // Check if there are stalled jobs
-    const hasStalled = metrics.queueLength > 10 && metrics.activeSyncs === 0;
-    if (hasStalled) {
-      return {
-        status: 'degraded',
-        message: 'Sync queue appears stalled',
-        details: { ...metrics },
-      };
-    }
-
     return {
       status: 'healthy',
       details: {
-        queueLength: metrics.queueLength,
-        activeSyncs: metrics.activeSyncs,
         subscribedAddresses: metrics.subscribedAddresses,
         subscriptionsEnabled: metrics.subscriptionsEnabled,
         subscriptionOwnership: metrics.subscriptionOwnership,

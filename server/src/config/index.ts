@@ -33,6 +33,7 @@ import { createLogger } from '../utils/logger';
 import { warnDeprecatedStaleSyncEnvironment } from './deprecatedSyncEnvironment';
 import { buildHardwareWalletConfig } from './hardwareWalletAttestation';
 import { loadWebsocketConfig } from './websocketLimits';
+import { loadElectrumPoolEnvConfig } from './electrumEnv';
 
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '../../.env') });
@@ -112,6 +113,10 @@ function loadConfig(): CombinedConfig {
     gatewaySecret,
     corsAllowedOrigins,
   };
+
+  // The pool reads these when it is created. Checked here as well so a bad
+  // value stops startup instead of failing the first sync.
+  loadElectrumPoolEnvConfig();
 
   // Validate configuration
   validateConfig(config);

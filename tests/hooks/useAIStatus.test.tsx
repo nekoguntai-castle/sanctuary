@@ -686,4 +686,60 @@ describe('useAIStatus', () => {
       expect(mockGetAIStatus).toHaveBeenCalledTimes(1);
     });
   });
+  // Regression: a successful "unavailable" answer (the proxy was still
+  // starting) was kept for the tab's lifetime, so AI controls stayed hidden
+  // until a hard reload.
+  describe('stale unavailable answer', () => {
+    it('checks again when a consumer mounts after the answer has aged', async () => {
+      const now = vi.spyOn(Date, 'now');
+      now.mockReturnValue(1_000_000);
+      mockGetAIStatus.mockResolvedValue({ available: true, proxyAvailable: false });
+      const first = renderHook(() => useAIStatus());
+      await waitFor(() => expect(first.result.current.loading).toBe(false));
+      expect(first.result.current.available).toBe(false);
+
+      // A fresh answer is reused.
+      now.mockReturnValue(1_000_000 + 59_000);
+      const second = renderHook(() => useAIStatus());
+      expect(mockGetAIStatus).toHaveBeenCalledTimes(1);
+
+      // An aged one is checked again, without a loading flash.
+      now.mockReturnValue(1_000_000 + 61_000);
+      mockGetAIStatus.mockResolvedValue({ available: true, proxyAvailable: true });
+      const third = renderHook(() => useAIStatus());
+      expect(third.result.current.loading).toBe(false);
+      await waitFor(() => expect(third.result.current.available).toBe(true));
+      expect(mockGetAIStatus).toHaveBeenCalledTimes(2);
+
+      first.unmount(); second.unmount(); third.unmount();
+    });
+
+    it('does not re-check while AI is switched off', async () => {
+      const now = vi.spyOn(Date, 'now');
+      now.mockReturnValue(1_000_000);
+      mockGetAIStatus.mockResolvedValue({ enabled: false, available: false, proxyAvailable: true });
+      const first = renderHook(() => useAIStatus());
+      await waitFor(() => expect(first.result.current.loading).toBe(false));
+
+      now.mockReturnValue(1_000_000 + 3_600_000);
+      const second = renderHook(() => useAIStatus());
+
+      expect(mockGetAIStatus).toHaveBeenCalledTimes(1);
+      first.unmount(); second.unmount();
+    });
+
+    it('does not re-check an aged available answer', async () => {
+      const now = vi.spyOn(Date, 'now');
+      now.mockReturnValue(1_000_000);
+      mockGetAIStatus.mockResolvedValue({ available: true, proxyAvailable: true });
+      const first = renderHook(() => useAIStatus());
+      await waitFor(() => expect(first.result.current.available).toBe(true));
+
+      now.mockReturnValue(1_000_000 + 3_600_000);
+      const second = renderHook(() => useAIStatus());
+
+      expect(mockGetAIStatus).toHaveBeenCalledTimes(1);
+      first.unmount(); second.unmount();
+    });
+  });
 });

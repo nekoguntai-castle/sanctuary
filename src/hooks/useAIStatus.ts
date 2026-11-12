@@ -12,6 +12,10 @@ interface AIStatusState {
 }
 
 const RETRY_DELAY_MS = 1_000;
+// A successful answer can still say "unavailable": the proxy was starting, or
+// the check was rate limited. That answer is re-checked when a consumer mounts
+// after this long, so the controls come back without a hard reload.
+const UNAVAILABLE_RECHECK_MS = 60_000;
 const LOADING_STATUS: AIStatusState = Object.freeze({
   enabled: false,
   loading: true,
@@ -30,6 +34,7 @@ let generation = 0;
 let activeGeneration: number | null = null;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let failedSnapshot = false;
+let answeredAt = 0;
 const listeners = new Set<Listener>();
 
 const publish = (nextSnapshot: AIStatusState): void => {
@@ -66,6 +71,7 @@ const startStatusRequest = async (retryOnFailure: boolean): Promise<void> => {
     activeGeneration = null;
     clearRetry();
     failedSnapshot = false;
+    answeredAt = Date.now();
     publish(toStatusSnapshot(status));
   } catch {
     if (requestGeneration !== generation) return;
@@ -76,9 +82,15 @@ const startStatusRequest = async (retryOnFailure: boolean): Promise<void> => {
   }
 };
 
+// Only reached for a settled, successful answer (see subscribe). AI that is
+// switched off is not re-checked: that answer changes only through settings,
+// which invalidate the cache.
+const isStaleUnavailable = (): boolean =>
+  snapshot.enabled && !snapshot.available && Date.now() - answeredAt > UNAVAILABLE_RECHECK_MS;
+
 const subscribe = (listener: Listener): (() => void) => {
   listeners.add(listener);
-  if ((snapshot.loading || failedSnapshot) && !retryTimer && activeGeneration !== generation) {
+  if ((snapshot.loading || failedSnapshot || isStaleUnavailable()) && !retryTimer && activeGeneration !== generation) {
     void startStatusRequest(true);
   }
 

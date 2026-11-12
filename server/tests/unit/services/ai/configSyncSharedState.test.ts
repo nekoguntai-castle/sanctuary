@@ -66,6 +66,71 @@ describe("LLM egress proxy config sync shared state", () => {
     expect(configPosts()).toHaveLength(2);
   });
 
+  // Regression: the proxy keeps its provider config only in memory. Three of
+  // its routes answer 200 or 400 when unconfigured, so a restart inside the
+  // resync interval went unnoticed and AI stayed "not configured" for up to
+  // five minutes. Every proxy response now carries a boot id.
+  describe("proxy restart detection", () => {
+    function withBootId(body: unknown, bootId: string) {
+      return { ...okJson(body), headers: new Headers({ "x-sanctuary-proxy-boot-id": bootId }) };
+    }
+
+    it("re-pushes after a proxy response shows a new boot id", async () => {
+      useRedis(true);
+      mocks.systemSettingFindMany.mockResolvedValue(configFor("model-x"));
+      const { ensureLlmProxyConfigured, fetchLlmEgressProxy } = await import(
+        "../../../../src/services/ai/config"
+      );
+
+      mocks.fetch.mockResolvedValue(withBootId({ success: true }, "boot-1"));
+      await ensureLlmProxyConfigured();
+      await fetchLlmEgressProxy("http://proxy/test");
+      await ensureLlmProxyConfigured();
+      expect(configPosts()).toHaveLength(1); // same boot: nothing to do
+
+      // The proxy restarts and answers 200 "not configured" on a status route.
+      mocks.fetch.mockResolvedValue(withBootId({ available: false }, "boot-2"));
+      await fetchLlmEgressProxy("http://proxy/test");
+      await ensureLlmProxyConfigured();
+
+      expect(configPosts()).toHaveLength(2);
+    });
+
+    it("does not re-push a second time once the new boot has the config", async () => {
+      useRedis(true);
+      mocks.systemSettingFindMany.mockResolvedValue(configFor("model-x"));
+      const { ensureLlmProxyConfigured, fetchLlmEgressProxy } = await import(
+        "../../../../src/services/ai/config"
+      );
+
+      mocks.fetch.mockResolvedValue(withBootId({ success: true }, "boot-1"));
+      await ensureLlmProxyConfigured();
+      mocks.fetch.mockResolvedValue(withBootId({ success: true }, "boot-2"));
+      await fetchLlmEgressProxy("http://proxy/test");
+      await ensureLlmProxyConfigured(); // pushes to boot-2
+      await fetchLlmEgressProxy("http://proxy/test");
+      await ensureLlmProxyConfigured();
+
+      expect(configPosts()).toHaveLength(2);
+    });
+
+    it("ignores responses without a boot id", async () => {
+      useRedis(true);
+      mocks.systemSettingFindMany.mockResolvedValue(configFor("model-x"));
+      const { ensureLlmProxyConfigured, fetchLlmEgressProxy } = await import(
+        "../../../../src/services/ai/config"
+      );
+
+      mocks.fetch.mockResolvedValue(withBootId({ success: true }, "boot-1"));
+      await ensureLlmProxyConfigured();
+      mocks.fetch.mockResolvedValue({ ...okJson({}), headers: new Headers() });
+      await fetchLlmEgressProxy("http://proxy/test");
+      await ensureLlmProxyConfigured();
+
+      expect(configPosts()).toHaveLength(1);
+    });
+  });
+
   it("skips the push while the shared proxy already holds this config", async () => {
     useRedis(true);
     mocks.fetch.mockResolvedValue(okJson({ success: true }));

@@ -13,6 +13,7 @@ import { exitNow } from "./processExit";
 import { registerFatalProcessHandlers } from "./fatalProcessHandlers";
 import { registerConsoleRoutes } from "./consoleRoutes";
 import { requireLlmEgressProxySecret } from "./auth";
+import { stampBootId } from "./bootId";
 import { applyConfigUpdate, createDefaultAiConfig } from "./llmEgressProxyRuntime";
 import { registerConfigRoutes } from "./configRoutes";
 import { registerLabelQueryRoutes } from "./labelQueryRoutes";
@@ -43,6 +44,8 @@ const updateAiConfig = (update: ConfigBody) => {
   return aiConfig;
 };
 
+// First, so every response carries it: health, auth failures and errors too.
+app.use(stampBootId);
 app.use(express.json({ limit: "1mb" }));
 
 app.use((req: Request, _res: Response, next: NextFunction) => {

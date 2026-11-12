@@ -24,6 +24,7 @@ vi.mock('../../../src/models/prisma', () => ({
 }));
 
 vi.mock('../../../src/services/circuitBreaker', () => ({
+  API_PROCESS_BREAKER_SCOPE: 'api-process',
   circuitBreakerRegistry: {
     getAllHealth: vi.fn(),
     getOverallStatus: vi.fn(),
@@ -112,8 +113,6 @@ describe('Health API', () => {
     (getSyncService as Mock).mockReturnValue({
       getHealthMetrics: () => ({
         isRunning: true,
-        queueLength: 0,
-        activeSyncs: 0,
         subscribedAddresses: 100,
         subscriptionsEnabled: true,
         subscriptionOwnership: 'self',
@@ -192,8 +191,6 @@ describe('Health API', () => {
       (getSyncService as Mock).mockReturnValue({
         getHealthMetrics: () => ({
           isRunning: false,
-          queueLength: 0,
-          activeSyncs: 0,
           subscribedAddresses: 0,
           subscriptionsEnabled: true,
           subscriptionOwnership: 'external',
@@ -207,26 +204,6 @@ describe('Health API', () => {
       expect(response.body.status).toBe('degraded');
       expect(response.body.components.sync.status).toBe('degraded');
       expect(response.body.components.sync.message).toBe('Sync service not running');
-    });
-
-    it('should return degraded when sync queue appears stalled', async () => {
-      (getSyncService as Mock).mockReturnValue({
-        getHealthMetrics: () => ({
-          isRunning: true,
-          queueLength: 15,
-          activeSyncs: 0,
-          subscribedAddresses: 100,
-          subscriptionsEnabled: true,
-          subscriptionOwnership: 'self',
-          pollingMode: 'in-process',
-        }),
-      });
-
-      const response = await request(app).get('/api/v1/health');
-
-      expect(response.status).toBe(200);
-      expect(response.body.components.sync.status).toBe('degraded');
-      expect(response.body.components.sync.message).toBe('Sync queue appears stalled');
     });
 
     it('should return degraded when WebSocket server is not initialized', async () => {
@@ -569,6 +546,8 @@ describe('Health API', () => {
       expect(response.status).toBe(200);
       expect(response.body.overall).toBe('healthy');
       expect(response.body.circuits).toEqual([]);
+      // Breakers are per process; the worker's are not included here.
+      expect(response.body.scope).toBe('api-process');
     });
 
     it('should return circuit breaker statuses', async () => {
@@ -768,8 +747,6 @@ describe('Health API', () => {
       (getSyncService as Mock).mockReturnValue({
         getHealthMetrics: () => ({
           isRunning: false,
-          queueLength: 0,
-          activeSyncs: 0,
           subscribedAddresses: 0,
           subscriptionsEnabled: true,
           subscriptionOwnership: 'external',

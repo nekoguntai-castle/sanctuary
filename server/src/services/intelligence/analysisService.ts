@@ -15,7 +15,7 @@ import {
   ensureLlmProxyConfigured,
   getLlmEgressProxyUrl,
 } from "../ai/config";
-import { WORKER_INTELLIGENCE_RATE_KEY, buildLlmEgressProxyJsonHeaders } from "../ai/llmEgressProxyClient";
+import { WORKER_INTELLIGENCE_RATE_KEY, buildLlmEgressProxyJsonHeaders, userRateKey } from "../ai/llmEgressProxyClient";
 import { intelligenceRepository } from "../../repositories/intelligenceRepository";
 import { getEnabledIntelligenceWallets } from "./settings";
 import { notificationChannelRegistry } from "../notifications/channels";
@@ -53,9 +53,13 @@ export async function runAnalysisPipelines(signal?: AbortSignal): Promise<void> 
       return;
     }
 
-    const providerReady = await checkProviderReachable();
+    const providerCheck = await fetchProviderCheck(WORKER_INTELLIGENCE_RATE_KEY);
     signal?.throwIfAborted();
-    if (!providerReady) {
+    if (providerCheck === "rate_limited") {
+      log.warn("AI provider check was rate limited, skipping analysis");
+      return;
+    }
+    if (!providerCheck?.compatible) {
       log.debug("AI provider endpoint is not reachable, skipping analysis");
       return;
     }
@@ -390,37 +394,34 @@ async function callAnalysis(
   }
 }
 
-/**
- * Check if the configured provider endpoint is reachable.
- */
-async function checkProviderReachable(): Promise<boolean> {
-  const status = await fetchProviderCheck();
-  return status?.compatible ?? false;
-}
-
-/**
- * Shared helper: call the LLM egress proxy's provider-check endpoint.
- */
-async function fetchProviderCheck(): Promise<{
+interface ProviderCheck {
   compatible: boolean;
   endpointType?: string;
   providerType?: string;
   reason?: string;
-} | null> {
+}
+
+/**
+ * Call the LLM egress proxy's provider-check endpoint.
+ *
+ * `rateLimitKey` names the proxy rate-limit bucket to spend from. Each caller
+ * passes its own principal: a status load from the UI must not use up the
+ * worker's allowance. A 429 is returned as "rate_limited" so callers do not
+ * report a busy bucket as an unreachable proxy.
+ */
+async function fetchProviderCheck(
+  rateLimitKey: string,
+): Promise<ProviderCheck | "rate_limited" | null> {
   try {
     const response = await fetchLlmEgressProxy(`${LLM_EGRESS_PROXY_URL}/check-provider`, {
       method: "POST",
-      headers: buildLlmEgressProxyJsonHeaders({ rateLimitKey: WORKER_INTELLIGENCE_RATE_KEY }),
+      headers: buildLlmEgressProxyJsonHeaders({ rateLimitKey }),
       signal: AbortSignal.timeout(10000),
     });
 
+    if (response.status === 429) return "rate_limited";
     if (!response.ok) return null;
-    return (await response.json()) as {
-      compatible: boolean;
-      endpointType?: string;
-      providerType?: string;
-      reason?: string;
-    };
+    return (await response.json()) as ProviderCheck;
   } catch (error) {
     log.debug("AI provider check failed", { error: getErrorMessage(error) });
     return null;
@@ -456,7 +457,7 @@ async function setDedup(walletId: string, type: InsightType): Promise<void> {
 /**
  * Get intelligence status: checks if all prerequisites are met.
  */
-export async function getIntelligenceStatus() {
+export async function getIntelligenceStatus(userId: string) {
   const readiness = await ensureLlmProxyConfigured();
   if (!readiness.ready && readiness.reason === "provider_not_configured") {
     return {
@@ -474,7 +475,14 @@ export async function getIntelligenceStatus() {
     };
   }
 
-  const result = await fetchProviderCheck();
+  const result = await fetchProviderCheck(userRateKey(userId));
+  if (result === "rate_limited") {
+    return {
+      available: false,
+      ollamaConfigured: false,
+      reason: "rate_limited",
+    };
+  }
   if (!result) {
     return {
       available: false,

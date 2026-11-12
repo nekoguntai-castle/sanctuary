@@ -11,7 +11,23 @@ export function getDisplayReceiveAddresses(
 ): Address[] {
   const fromProps = getUnusedReceiveAddresses(addresses);
   if (fromProps.length > 0) return fromProps;
-  return getUnusedReceiveAddresses(fetchedAddresses);
+  // Fetched addresses are a snapshot. The live list wins: an address it marks
+  // used (a payment arrived while the modal was open) is no longer offered.
+  const usedInWallet = new Set(
+    addresses.filter(address => address.used).map(address => address.address)
+  );
+  return getUnusedReceiveAddresses(fetchedAddresses).filter(
+    address => !usedInWallet.has(address.address)
+  );
+}
+
+/** True when addresses were fetched but the wallet has since used all of them. */
+export function hasExhaustedFetchedAddresses(
+  addresses: Address[],
+  fetchedAddresses: Address[]
+): boolean {
+  return fetchedAddresses.length > 0
+    && getDisplayReceiveAddresses(addresses, fetchedAddresses).length === 0;
 }
 
 export function shouldFetchUnusedReceiveAddresses(

@@ -26,6 +26,7 @@ import { PooledNodeClient } from './pooledNodeClient';
 import { invalidateNetworkStatusCache } from './networkStatus/statusProbeCache';
 import { resolveConfiguredElectrumProxy } from './electrum/connectionConfigResolver';
 import type { ProxyConfig } from './electrum/types';
+import { getConfig } from '../../config';
 
 export { resolveConfiguredElectrumProxy };
 
@@ -205,12 +206,9 @@ export async function saveNodeConfig(config: NodeConfig): Promise<void> {
  * Get the default Electrum config
  */
 function getDefaultElectrumConfig(): NodeConfig {
-  const defaults = getNodeNetworkDefaults('mainnet');
-  return {
-    host: process.env.ELECTRUM_HOST || defaults.singletonHost,
-    port: parseInt(process.env.ELECTRUM_PORT || String(defaults.singletonPort), 10),
-    protocol: (process.env.ELECTRUM_PROTOCOL as 'tcp' | 'ssl') || 'ssl',
-  };
+  // The config module is the single reader of ELECTRUM_HOST/PORT/PROTOCOL.
+  const { host, port, protocol } = getConfig().bitcoin.electrum;
+  return { host, port, protocol };
 }
 
 /**

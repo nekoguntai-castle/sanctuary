@@ -14,7 +14,6 @@ export function registerSyncServiceAddressMaintenanceTests(context: SyncServiceT
   describe('stale sync checks', () => {
     it('repairs authorized stuck flags without requesting wallets based on elapsed age', async () => {
       context.syncService['isRunning'] = true;
-      context.syncService['activeSyncs'].add('wallet-active');
 
       mockPrismaClient.wallet.findMany
         .mockResolvedValueOnce([
@@ -91,7 +90,6 @@ export function registerSyncServiceAddressMaintenanceTests(context: SyncServiceT
 
     it('skips unstuck and stale queue summary paths when there is no work', async () => {
       context.syncService['isRunning'] = true;
-      context.syncService['activeSyncs'].add('wallet-active');
       mockPrismaClient.wallet.findMany.mockResolvedValueOnce([
         { id: 'wallet-active', name: 'Active Wallet', syncStateVersion: 1 },
       ]);

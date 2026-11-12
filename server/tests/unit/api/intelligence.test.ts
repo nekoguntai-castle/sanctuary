@@ -154,7 +154,8 @@ describe('Intelligence API Routes', () => {
       await handler(req as any, res as any, vi.fn());
 
       expect(getResponse().body).toEqual(statusData);
-      expect(mockAnalysisService.getIntelligenceStatus).toHaveBeenCalledOnce();
+      // The caller's id selects the proxy rate-limit bucket for the status check.
+      expect(mockAnalysisService.getIntelligenceStatus).toHaveBeenCalledExactlyOnceWith('test-user-123');
     });
   });
 

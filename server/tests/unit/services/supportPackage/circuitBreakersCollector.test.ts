@@ -7,6 +7,7 @@ const { mockGetAllHealth, mockGetOverallStatus, collectorMap } = vi.hoisted(() =
 }));
 
 vi.mock('../../../../src/services/circuitBreaker', () => ({
+  API_PROCESS_BREAKER_SCOPE: 'api-process',
   circuitBreakerRegistry: {
     getAllHealth: mockGetAllHealth,
     getOverallStatus: mockGetOverallStatus,
@@ -55,6 +56,17 @@ describe('circuitBreakers collector', () => {
     const result = await getCollector()(makeContext());
     expect(result.breakers).toEqual(healthData);
     expect(result.overallStatus).toBe('healthy');
+  });
+
+  it('labels the breakers as this process only', async () => {
+    // Breakers are per process. Sync and notification sending run in the
+    // worker, so closed breakers here say nothing about the worker's.
+    mockGetAllHealth.mockReturnValue([]);
+    mockGetOverallStatus.mockReturnValue('healthy');
+
+    const result = await getCollector()(makeContext());
+
+    expect(result.scope).toBe('api-process');
   });
 
   it('reflects degraded status when a breaker is open', async () => {

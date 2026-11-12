@@ -472,4 +472,53 @@ describe('useIntelligenceStatus', () => {
       }
     });
   });
+  // Regression: a successful "unavailable" answer (the proxy was still
+  // starting, or the check was rate limited) was kept for the tab's lifetime,
+  // so AI controls stayed hidden until a hard reload.
+  describe('stale unavailable answer', () => {
+    it('checks again when a consumer mounts after the answer has aged', async () => {
+      const now = vi.spyOn(Date, 'now');
+      try {
+        now.mockReturnValue(1_000_000);
+        vi.mocked(intelligenceApi.getIntelligenceStatus).mockResolvedValue({ available: false } as never);
+        const first = renderHook(() => useIntelligenceStatus());
+        await waitFor(() => expect(first.result.current.loading).toBe(false));
+
+        // A fresh answer is reused.
+        now.mockReturnValue(1_000_000 + 59_000);
+        const second = renderHook(() => useIntelligenceStatus());
+        expect(intelligenceApi.getIntelligenceStatus).toHaveBeenCalledTimes(1);
+
+        // An aged one is checked again, without a loading flash.
+        now.mockReturnValue(1_000_000 + 61_000);
+        vi.mocked(intelligenceApi.getIntelligenceStatus).mockResolvedValue({ available: true } as never);
+        const third = renderHook(() => useIntelligenceStatus());
+        expect(third.result.current).toEqual({ available: false, loading: false });
+        await waitFor(() => expect(third.result.current.available).toBe(true));
+        expect(intelligenceApi.getIntelligenceStatus).toHaveBeenCalledTimes(2);
+
+        first.unmount(); second.unmount(); third.unmount();
+      } finally {
+        now.mockRestore();
+      }
+    });
+
+    it('does not re-check an aged available answer', async () => {
+      const now = vi.spyOn(Date, 'now');
+      try {
+        now.mockReturnValue(1_000_000);
+        vi.mocked(intelligenceApi.getIntelligenceStatus).mockResolvedValue({ available: true } as never);
+        const first = renderHook(() => useIntelligenceStatus());
+        await waitFor(() => expect(first.result.current.available).toBe(true));
+
+        now.mockReturnValue(1_000_000 + 3_600_000);
+        const second = renderHook(() => useIntelligenceStatus());
+
+        expect(intelligenceApi.getIntelligenceStatus).toHaveBeenCalledTimes(1);
+        first.unmount(); second.unmount();
+      } finally {
+        now.mockRestore();
+      }
+    });
+  });
 });

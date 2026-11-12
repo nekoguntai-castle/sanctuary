@@ -89,16 +89,12 @@ describe('stuckSyncRecovery', () => {
   });
 
   describe('clearStuckSyncIfAuthorized', () => {
-    it('rejects API-local and unversioned candidates before taking a lock', async () => {
-      await expect(clearStuckSyncIfAuthorized(
-        { id: 'active', syncStateVersion: 1 },
-        new Set(['active']),
-      )).resolves.toBe(false);
-      await expect(clearStuckSyncIfAuthorized({ id: 'unversioned' }, new Set()))
+    it('rejects unversioned and incomplete candidates before taking a lock', async () => {
+      await expect(clearStuckSyncIfAuthorized({ id: 'unversioned' }))
         .resolves.toBe(false);
       await expect(clearStuckSyncIfAuthorized({
         id: 'incomplete', syncStateVersion: 1,
-      }, new Set())).resolves.toBe(false);
+      })).resolves.toBe(false);
       expect(mockWithLock).not.toHaveBeenCalled();
     });
 
@@ -108,7 +104,7 @@ describe('stuckSyncRecovery', () => {
         syncExecutionOwner: 'worker',
         syncStartedAt: new Date(),
         syncStateVersion: 1,
-      }, new Set())).resolves.toBe(false);
+      })).resolves.toBe(false);
       expect(mockWithLock).not.toHaveBeenCalled();
     });
 
@@ -120,7 +116,7 @@ describe('stuckSyncRecovery', () => {
           syncExecutionOwner: 'worker',
           syncStartedAt,
           syncStateVersion: 1,
-        }, new Set())).resolves.toBe(true);
+        })).resolves.toBe(true);
         expect(mockUpdate).toHaveBeenCalledWith('worker-wallet', {
           syncStateVersion: 1,
           syncExecutionOwner: 'worker',
@@ -143,7 +139,7 @@ describe('stuckSyncRecovery', () => {
         syncExecutionOwner: 'inline',
         syncStartedAt: null,
         syncStateVersion: 4,
-      }, new Set())).resolves.toBe(true);
+      })).resolves.toBe(true);
       expect(mockUpdate).toHaveBeenCalledWith('inline-wallet', {
         syncStateVersion: 4,
         syncExecutionOwner: 'inline',
@@ -163,7 +159,7 @@ describe('stuckSyncRecovery', () => {
           syncExecutionOwner: null,
           syncStartedAt: null,
           syncStateVersion: 1,
-        }, new Set())).resolves.toBe(false);
+        })).resolves.toBe(false);
         expect(mockPublish).not.toHaveBeenCalled();
         await expect(metricsService.getMetrics()).resolves.toContain(
           `sanctuary_wallet_sync_cleanup_total{outcome="${outcome}"} 1`,
@@ -178,7 +174,7 @@ describe('stuckSyncRecovery', () => {
         syncExecutionOwner: null,
         syncStartedAt: null,
         syncStateVersion: 1,
-      }, new Set())).resolves.toBe(false);
+      })).resolves.toBe(false);
       expect(mockUpdate).not.toHaveBeenCalled();
       expect(mockLogger.warn).toHaveBeenCalled();
     });
@@ -191,7 +187,7 @@ describe('stuckSyncRecovery', () => {
         syncExecutionOwner: null,
         syncStartedAt: null,
         syncStateVersion: 1,
-      }, new Set())).resolves.toBe(false);
+      })).resolves.toBe(false);
 
       const metrics = await metricsService.getMetrics();
       expect(metrics).toContain(

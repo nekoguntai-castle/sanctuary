@@ -26,6 +26,7 @@ import type {
   NetworkType,
 } from './types';
 import type { ElectrumClient } from '../electrum';
+import { loadElectrumPoolEnvConfig } from '../../../config/electrumEnv';
 
 const log = createLogger('ELECTRUM_POOL:SVC_REGISTRY');
 
@@ -95,30 +96,6 @@ function probeDegradedPool(key: string): void {
   });
 }
 
-/**
- * Parse environment variables for pool configuration
- */
-function getEnvPoolConfig(): Partial<ElectrumPoolConfig> {
-  return {
-    enabled: process.env.ELECTRUM_POOL_ENABLED !== 'false',
-    minConnections: parseInt(process.env.ELECTRUM_POOL_MIN_CONNECTIONS || '2', 10),
-    maxConnections: parseInt(process.env.ELECTRUM_POOL_MAX_CONNECTIONS || '10', 10),
-    idleTimeoutMs: parseInt(process.env.ELECTRUM_POOL_IDLE_TIMEOUT_MS || '300000', 10),
-    healthCheckIntervalMs: parseInt(
-      process.env.ELECTRUM_POOL_HEALTH_CHECK_INTERVAL_MS || '30000',
-      10
-    ),
-    acquisitionTimeoutMs: parseInt(
-      process.env.ELECTRUM_POOL_ACQUISITION_TIMEOUT_MS || '5000',
-      10
-    ),
-    keepaliveIntervalMs: parseInt(
-      process.env.ELECTRUM_POOL_KEEPALIVE_INTERVAL_MS || '15000',
-      10
-    ),
-  };
-}
-
 function buildFeaturePoolKey(
   network: NetworkType,
   requiredFeatures: readonly ElectrumFeature[],
@@ -186,7 +163,7 @@ async function createPool(
     network,
     scope,
   );
-  const envConfig = getEnvPoolConfig();
+  const envConfig = loadElectrumPoolEnvConfig();
   const pool = new ElectrumPool({
     ...envConfig,
     ...dbConfig,
@@ -398,7 +375,7 @@ export async function resetElectrumPoolForNetwork(network: NetworkType): Promise
 export function getElectrumPool(config?: Partial<ElectrumPoolConfig>): ElectrumPool {
   if (!poolInstance) {
     // ELECTRUM_POOL_ENABLED defaults to true; set to 'false' for single-connection mode
-    const envConfig = getEnvPoolConfig();
+    const envConfig = loadElectrumPoolEnvConfig();
 
     poolInstance = new ElectrumPool({
       ...envConfig,
@@ -429,7 +406,7 @@ export async function getElectrumPoolAsync(): Promise<ElectrumPool> {
     const { config: dbConfig, servers, proxy } = await loadPoolConfigFromDatabase();
 
     // Environment variables as fallback
-    const envConfig = getEnvPoolConfig();
+    const envConfig = loadElectrumPoolEnvConfig();
 
     // Database config takes precedence over environment variables
     poolInstance = new ElectrumPool({

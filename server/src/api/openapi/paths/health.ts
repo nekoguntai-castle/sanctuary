@@ -61,7 +61,7 @@ export const healthPaths = {
     get: {
       tags: ['Health'],
       summary: 'Get circuit breaker status',
-      description: 'Get detailed circuit breaker status for registered external dependency breakers.',
+      description: 'Get detailed circuit breaker status for the breakers registered in the API process. Worker breakers are not included.',
       responses: {
         200: jsonResponse('Circuit breaker status', '#/components/schemas/HealthCircuitsResponse'),
       },

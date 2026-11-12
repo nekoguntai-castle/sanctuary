@@ -11,7 +11,6 @@ import { walletRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { getConfig } from '../../config';
-import { releaseLock } from '../../infrastructure';
 import { getWorkerHealthStatus } from '../workerHealth';
 import { syncPollingModeTransitions } from '../../observability/metrics';
 import type { SyncExecutionOwner, SyncPriority } from '@sanctuary/shared/constants/sync';
@@ -42,9 +41,6 @@ class SyncService {
    */
   private state: SyncState = {
     isRunning: false,
-    syncQueue: [],
-    activeSyncs: new Set(),
-    activeLocks: new Map(),
     pendingRetries: new Map(),
     subscriptionsEnabled: false,
     subscriptionOwnership: 'disabled',
@@ -67,9 +63,6 @@ class SyncService {
 
   get isRunning(): boolean { return this.state.isRunning; }
   set isRunning(v: boolean) { this.state.isRunning = v; }
-
-  get activeSyncs(): typeof this.state.activeSyncs { return this.state.activeSyncs; }
-  set activeSyncs(v: typeof this.state.activeSyncs) { this.state.activeSyncs = v; }
 
   get subscriptionsEnabled(): boolean { return this.state.subscriptionsEnabled; }
   set subscriptionsEnabled(v: boolean) { this.state.subscriptionsEnabled = v; }
@@ -156,26 +149,6 @@ class SyncService {
       this.state.pendingRetries.clear();
     }
 
-    // Release all active distributed locks
-    if (this.state.activeLocks.size > 0) {
-      log.info(`[SYNC] Releasing ${this.state.activeLocks.size} active sync locks`);
-      for (const [walletId, lock] of this.state.activeLocks.entries()) {
-        try {
-          await releaseLock(lock);
-        } catch (error) {
-          log.warn(`[SYNC] Failed to release lock for wallet ${walletId}`, { error: getErrorMessage(error) });
-        }
-      }
-      this.state.activeLocks.clear();
-      this.state.activeSyncs.clear();
-    }
-
-    // Clear the sync queue
-    if (this.state.syncQueue.length > 0) {
-      log.info(`[SYNC] Clearing ${this.state.syncQueue.length} queued sync jobs`);
-      this.state.syncQueue.length = 0;
-    }
-
     this.state.subscriptionOwnership = this.state.subscriptionsEnabled ? 'external' : 'disabled';
 
     log.info('[SYNC] Background sync service stopped');
@@ -185,13 +158,10 @@ class SyncService {
    * Get health metrics for monitoring
    */
   getHealthMetrics(): SyncHealthMetrics {
-    // Structured recovery now protects this durable flag with owner/start
-    // metadata, distributed-lock authority, and a versioned CAS. It therefore
-    // represents worker-owned attempts that cannot appear in local activeSyncs.
+    // Sync runs in the worker, so this process has no queue length or active
+    // count to report; worker diagnostics own those numbers.
     return {
       isRunning: this.state.isRunning,
-      queueLength: this.state.syncQueue.length,
-      activeSyncs: this.state.activeSyncs.size,
       subscribedAddresses: 0,
       subscriptionsEnabled: this.state.subscriptionsEnabled,
       subscriptionOwnership: this.state.subscriptionOwnership,
@@ -394,7 +364,7 @@ class SyncService {
       // Reset any wallet that's marked as syncing but isn't actually syncing
       let unstuckCount = 0;
       for (const wallet of stuckWallets) {
-        if (await clearStuckSyncIfAuthorized(wallet, this.state.activeSyncs)) {
+        if (await clearStuckSyncIfAuthorized(wallet)) {
           log.warn(`[SYNC] Auto-unstuck wallet ${wallet.name || wallet.id} (was stuck with syncInProgress=true)`);
           unstuckCount++;
         }
