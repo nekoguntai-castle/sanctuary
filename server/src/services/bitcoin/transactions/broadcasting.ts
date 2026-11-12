@@ -543,6 +543,7 @@ export async function broadcastAndSave(
       eventService.emitTransactionSent({
         walletId,
         txid,
+        type: persisted.txType,
         amount: BigInt(metadata.amount),
         fee: BigInt(metadata.fee),
         recipients: [{ address: metadata.recipient, amount: BigInt(metadata.amount) }],

@@ -28,6 +28,11 @@ export interface TransactionBroadcastResult {
   fee: bigint;
   recipients: Array<{ address: string; amount: bigint }>;
   rawTx?: string;
+  /**
+   * How the transaction was persisted. Defaults to `sent`. The push gateway
+   * picks recipients by this type, so a consolidation must say so.
+   */
+  type?: 'sent' | 'consolidation';
 }
 
 /**

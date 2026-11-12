@@ -79,16 +79,14 @@ function broadcastEvent(event: BroadcastEvent): void {
   try {
     wsServer.broadcast(legacyEvent);
 
-    // Also send to gateway if connected
-    const gatewayServer = getGatewayWebSocketServer();
-    if (gatewayServer?.isGatewayConnected()) {
-      void gatewayServer.sendEvent(legacyEvent).catch((error) => {
-        log.error('Failed to dispatch event to gateway', {
-          error: getErrorMessage(error),
-          type: event.type,
-        });
+    // Hand every event to the gateway server, connected or not: it holds a
+    // push event that meets no gateway and sends it after a reconnect.
+    void getGatewayWebSocketServer()?.sendEvent(legacyEvent).catch((error) => {
+      log.error('Failed to dispatch event to gateway', {
+        error: getErrorMessage(error),
+        type: event.type,
       });
-    }
+    });
   } catch (error) {
     // WebSocket server might not be initialized during startup
     log.debug('Broadcast skipped (server not ready)', { type: event.type });

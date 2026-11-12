@@ -124,6 +124,22 @@ describe('eventService', () => {
     expect(mockBroadcastConfirmation).toHaveBeenCalled();
   });
 
+  it('broadcasts the transaction type it is given, and sent by default', () => {
+    const base = { walletId: 'wallet-1', amount: 10000n, fee: 100n, recipients: [] };
+
+    eventService.emitTransactionSent({ ...base, txid: '1'.repeat(64), type: 'consolidation' });
+    eventService.emitTransactionSent({ ...base, txid: '2'.repeat(64) });
+
+    // A consolidation costs the wallet only its fee, which is also the amount
+    // persisted for it and the one a sync-detected consolidation announces.
+    expect(mockBroadcastTransaction).toHaveBeenNthCalledWith(1, 'wallet-1', expect.objectContaining({
+      txid: '1'.repeat(64), type: 'consolidation', amount: -100,
+    }));
+    expect(mockBroadcastTransaction).toHaveBeenNthCalledWith(2, 'wallet-1', expect.objectContaining({
+      txid: '2'.repeat(64), type: 'sent', amount: -10000,
+    }));
+  });
+
   it('handles optional transaction and balance fields when omitted', () => {
     eventService.emitTransactionSent({
       walletId: 'wallet-2',

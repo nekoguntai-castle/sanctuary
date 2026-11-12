@@ -95,6 +95,15 @@ export const GATEWAY_WS_MAX_PAYLOAD_BYTES = 64 * 1024; // 64 KiB
 /** Bound audience enrichment so one database read cannot stall every later push. */
 export const GATEWAY_EVENT_PREPARATION_TIMEOUT_MS = 10000;
 
+/** How long an undelivered push event waits for a gateway before it is recorded as lost. */
+export const GATEWAY_HELD_EVENT_TTL_MS = 10 * 60 * 1000;
+
+/** Most undelivered push events held at once; the oldest is recorded as lost beyond this. */
+export const GATEWAY_HELD_EVENT_LIMIT = 200;
+
+/** Audience lookups allowed to fail for one push event before it is recorded as lost. */
+export const GATEWAY_EVENT_MAX_PREPARATION_FAILURES = 3;
+
 // ============================================================================
 // Types and Interfaces
 // ============================================================================

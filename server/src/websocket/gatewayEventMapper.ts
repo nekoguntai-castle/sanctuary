@@ -55,7 +55,12 @@ async function filterByViewTransactions(
   }
 }
 
-/** Recipients who enabled this notification and hold the `viewTransactions` cap. */
+/**
+ * Recipients who enabled this notification and hold the `viewTransactions`
+ * cap. A permission-lookup failure rejects: resolving with nobody would end
+ * the event, while a rejection makes the gateway server hold and retry it.
+ * Nothing is sent in the meantime, so this still fails closed.
+ */
 async function eligibleUserIds(
   audience: GatewayPushAudience,
   walletId: string,
@@ -69,7 +74,7 @@ async function eligibleUserIds(
     ))
     .map(({ userId }) => userId))];
 
-  return filterByViewTransactions(walletId, preferred);
+  return mobilePermissionService.filterUserIdsByMobileAction(walletId, preferred, 'viewTransactions');
 }
 
 interface WalletPushAccess {

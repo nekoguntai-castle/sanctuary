@@ -148,17 +148,15 @@ describe('mapGatewayEvent', () => {
       })).resolves.toEqual(expect.objectContaining({ userIds: ['u1'] }));
     });
 
-    it('sends to nobody and warns when the permission lookup fails', async () => {
+    it('fails, so the send is retried, when the permission lookup fails', async () => {
+      // Resolving with an empty audience would end the event: nothing retries
+      // a push the mapper reported as having no recipients.
       mocks.findAudience.mockResolvedValue(audience());
       mocks.filterUserIds.mockRejectedValue(new Error('db down'));
 
       await expect(mapGatewayEvent({
         type: 'transaction', walletId: 'w1', data: { txid: 'tx1', type: 'received', amount: 5 },
-      })).resolves.toEqual(expect.objectContaining({ walletName: 'Vault', userIds: [] }));
-      expect(mocks.logger.warn).toHaveBeenCalledWith(
-        expect.stringContaining('sending to nobody'),
-        expect.objectContaining({ walletId: 'w1', error: 'db down' }),
-      );
+      })).rejects.toThrow('db down');
     });
   });
 

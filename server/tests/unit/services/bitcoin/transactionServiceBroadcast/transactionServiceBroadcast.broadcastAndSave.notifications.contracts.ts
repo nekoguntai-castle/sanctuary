@@ -28,6 +28,29 @@ export const registerBroadcastAndSaveNotificationContracts = () => {
     });
   });
 
+  it('announces an in-app consolidation with its persisted type, not as sent', async () => {
+    // The gateway picks push recipients by this type, so a consolidation
+    // announced as sent ignored the consolidation notification preference.
+    (mockPrismaClient.$transaction as Mock).mockImplementation(async () => ({
+      txType: 'consolidation',
+      mainTransactionCreated: true,
+      unlockedCount: 0,
+      receivingTransactions: [],
+    }));
+
+    await broadcastAndSave(walletId, undefined, withBroadcastNetwork({
+      recipient,
+      amount: 30_000,
+      fee: 1_000,
+      utxos: [{ txid: sampleUtxos[0].txid, vout: sampleUtxos[0].vout }],
+      rawTxHex: createRawTxHex([{ address: recipient, value: 30_000 }]),
+    }));
+
+    expect(mockEmitTransactionSent).toHaveBeenCalledWith(
+      expect.objectContaining({ walletId, type: 'consolidation' }),
+    );
+  });
+
   it('does not turn an accepted transaction into failure when event emission throws', async () => {
     (mockPrismaClient.$transaction as Mock).mockImplementation(async () => ({
       txType: 'sent',

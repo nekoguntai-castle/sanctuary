@@ -605,16 +605,19 @@ describe('Broadcast Helpers', () => {
       );
     });
 
-    it('should not send to gateway when disconnected', () => {
+    it('hands the event to the gateway server while its gateway is disconnected', () => {
+      // The gateway server holds a push event until a gateway reconnects.
+      // Skipping the hand-over here lost every push sent during a reconnect.
       mockIsGatewayConnected.mockReturnValue(false);
 
-      broadcastBalance('wallet-123', {
-        balance: 100000,
-        unconfirmed: 0,
-        change: 0,
+      broadcastTransaction('wallet-123', {
+        txid: 'tx-held', type: 'sent', amount: -5, confirmations: 0, timestamp: new Date(0),
       });
 
-      expect(mockSendEvent).not.toHaveBeenCalled();
+      expect(mockSendEvent).toHaveBeenCalledWith(expect.objectContaining({
+        type: 'transaction',
+        walletId: 'wallet-123',
+      }));
     });
 
     it('contains an asynchronous gateway dispatch rejection', async () => {

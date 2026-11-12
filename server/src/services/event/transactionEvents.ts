@@ -34,8 +34,10 @@ export function emitTransactionSent(data: TransactionBroadcastResult): void {
 
   broadcastTransaction(data.walletId, {
     txid: data.txid,
-    type: 'sent',
-    amount: -Number(data.amount), // Negative for sent
+    type: data.type ?? 'sent',
+    // Negative for an outflow. A consolidation moves funds within the wallet,
+    // so it costs only the fee; that is also the amount persisted for it.
+    amount: data.type === 'consolidation' ? -Number(data.fee) : -Number(data.amount),
     confirmations: 0,
     timestamp: new Date(),
   });
