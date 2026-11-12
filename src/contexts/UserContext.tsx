@@ -1,6 +1,10 @@
 import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import type { User } from '../types';
-import { useAuthBootstrap, useTerminalLogoutSubscription } from './useUserAuthLifecycle';
+import {
+  useAuthBootstrap,
+  usePeerLoginSubscription,
+  useTerminalLogoutSubscription,
+} from './useUserAuthLifecycle';
 import { useUserTwoFactorActions } from './useUserTwoFactorActions';
 import { useUserAuthActions } from './useUserAuthActions';
 import { useUserPreferenceMutation } from './useUserPreferenceMutation';
@@ -13,6 +17,8 @@ import { getUserPreferenceRecord } from './userModel';
 import { clearQueryCacheForLogout } from '../providers/queryCacheReset';
 import { websocketClient } from '../services/websocket';
 import { clearHardwareWalletAttestation } from '../services/hardwareWallet/operatorAttestation';
+import { resetAIStatusForSessionEnd } from '../hooks/useAIStatus';
+import { resetIntelligenceStatusForSessionEnd } from '../hooks/useIntelligenceStatus';
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
@@ -22,6 +28,11 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [twoFactorPending, setTwoFactorPending] = useState<TwoFactorPending | null>(null);
+  // Bumped to re-run the /auth/me bootstrap when another tab replaces the session.
+  const [bootstrapRun, setBootstrapRun] = useState(0);
+  const userIdRef = useRef<string | null>(null);
+  userIdRef.current = user?.id ?? null;
+  const peerLoginSeqRef = useRef(0);
   const authEpochRef = useRef(0);
   const invalidateAuthBootstrap = useCallback(() => {
     authEpochRef.current += 1;
@@ -32,7 +43,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     user,
   });
 
-  useAuthBootstrap({ authEpochRef, resetPreferenceTracking, setIsLoading, setUser });
+  useAuthBootstrap({ authEpochRef, bootstrapRun, resetPreferenceTracking, setIsLoading, setUser });
 
   const clearSessionState = useCallback(() => {
     invalidateAuthBootstrap();
@@ -48,6 +59,10 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // subscriptions, or it reconnect-loops while logged out and replays the
     // previous user's channels; the next login's pages connect a fresh one.
     websocketClient.disconnect();
+    // Capability status is cached per tab; drop it so the next session probes
+    // for itself instead of inheriting this one's answer.
+    resetAIStatusForSessionEnd();
+    resetIntelligenceStatusForSessionEnd();
     // Runs after the user state is cleared above, so no authenticated query
     // can remount against the React Query cache before it is wiped. Not
     // awaited: clearSessionState is a synchronous terminal-logout listener,
@@ -56,6 +71,16 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [invalidateAuthBootstrap, resetPreferenceTracking]);
 
   useTerminalLogoutSubscription(clearSessionState);
+
+  // The shared cookie no longer matches this tab's view (another tab logged in).
+  // Clear this tab exactly as a logout would (without broadcasting one), then
+  // load the session the cookie now holds.
+  const resyncSession = useCallback(() => {
+    clearSessionState();
+    setIsLoading(true);
+    setBootstrapRun((run) => run + 1);
+  }, [clearSessionState]);
+  usePeerLoginSubscription(userIdRef, peerLoginSeqRef, resyncSession);
   useUserTheme(user);
 
   const {
@@ -66,6 +91,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     logout,
   } = useUserAuthActions({
     invalidateAuthBootstrap,
+    peerLoginSeqRef,
+    resyncSession,
     resetPreferenceTracking,
     flushPreferenceWrites,
     setError,
@@ -127,6 +154,12 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     </UserContext.Provider>
   );
 };
+
+/**
+ * The signed-in user's id, or null when logged out or rendered outside a
+ * UserProvider. For providers that key per-session state on its owner.
+ */
+export const useOptionalUserId = (): string | null => useContext(UserContext)?.user?.id ?? null;
 
 export const useUser = () => {
   const context = useContext(UserContext);

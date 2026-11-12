@@ -19,6 +19,8 @@ const mocks = vi.hoisted(() => ({
   publishGatewayEvent: vi.fn(async (_event: GatewayPushEvent) => 1),
   publishBroadcast: vi.fn(),
   isActive: vi.fn(() => true),
+  // Whether some API instance holds an authenticated gateway connection.
+  isAnyGatewayConnected: vi.fn(async () => true),
   recordNotificationTelemetry: vi.fn(),
   gatewayServer: null as null | { forwardPushEvent: ReturnType<typeof vi.fn> },
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -54,6 +56,9 @@ vi.mock('../../../../../src/websocket/redisBridge', () => ({
     publishGatewayEvent: mocks.publishGatewayEvent,
     publishBroadcast: mocks.publishBroadcast,
   },
+}));
+vi.mock('../../../../../src/websocket/gatewayPresence', () => ({
+  isAnyGatewayConnected: mocks.isAnyGatewayConnected,
 }));
 // The worker never initializes WebSocket servers; the API topology sets one.
 vi.mock('../../../../../src/websocket/server', () => ({
@@ -131,6 +136,7 @@ describe('push channel delivers wallet-level pushes through the gateway (worker 
     mocks.isActive.mockReturnValue(true);
     mocks.hasConfiguredProviders.mockReturnValue(false);
     mocks.publishGatewayEvent.mockResolvedValue(1);
+    mocks.isAnyGatewayConnected.mockResolvedValue(true);
     mocks.gatewayServer = null;
     for (const key of PROVIDER_ENV) {
       savedEnv[key] = process.env[key];
@@ -279,6 +285,23 @@ describe('push channel delivers wallet-level pushes through the gateway (worker 
 
     expect(results[0]).toMatchObject({
       success: false, channelId: 'push', usersNotified: 0, errors: ['redis down'], recorded: false,
+    });
+    expect(wouldMarkNotified(results)).toBe(false);
+  });
+
+  it('reports a failure, not a delivery, while the gateway is disconnected from a subscribed API', async () => {
+    // The API stays subscribed while the gateway reconnects, so the publish
+    // count is 1 and the push used to be reported delivered and then dropped.
+    mocks.isAnyGatewayConnected.mockResolvedValue(false);
+
+    const results = await makeRegistry().notifyInsight('w1', insight);
+
+    expect(results[0]).toMatchObject({
+      success: false,
+      channelId: 'push',
+      usersNotified: 0,
+      errors: ['No push gateway is connected'],
+      recorded: false,
     });
     expect(wouldMarkNotified(results)).toBe(false);
   });

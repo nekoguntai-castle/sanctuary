@@ -69,6 +69,13 @@ vi.mock('../../../../server/src/websocket/redisBridge', () => ({
   redisBridge: { publishBroadcast: vi.fn(), isActive: () => true },
 }));
 
+// Gateway presence is a Redis record; the gateway package has no Redis client.
+vi.mock('../../../../server/src/websocket/gatewayPresence', () => ({
+  markGatewayConnected: vi.fn(async () => undefined),
+  clearGatewayConnected: vi.fn(async () => undefined),
+  isAnyGatewayConnected: vi.fn(async () => true),
+}));
+
 vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));

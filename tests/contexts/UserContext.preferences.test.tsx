@@ -34,6 +34,8 @@ vi.mock('../../src/api/twoFactor', () => ({
 vi.mock('../../src/api/refresh', () => ({
   onTerminalLogout: () => () => {},
   triggerLogout: vi.fn(),
+  onPeerLogin: () => () => {},
+  announceLogin: vi.fn(),
 }));
 
 vi.mock('../../src/themes', () => ({

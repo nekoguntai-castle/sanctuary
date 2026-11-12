@@ -3,7 +3,7 @@ import type React from 'react';
 import type { User } from '../types';
 import * as authApi from '../api/auth';
 import { ApiError } from '../api/client';
-import { onTerminalLogout } from '../api/refresh';
+import { onPeerLogin, onTerminalLogout } from '../api/refresh';
 import { createLogger } from '../utils/logger';
 import { applyHardwareWalletAttestationFromUser } from '../services/hardwareWallet/operatorAttestation';
 import { toContextUser } from './userModel';
@@ -12,6 +12,8 @@ const log = createLogger('UserContext');
 
 interface AuthBootstrapArgs {
   authEpochRef: { current: number };
+  /** Changes when the session must be re-read from the server. */
+  bootstrapRun: number;
   resetPreferenceTracking: () => void;
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setUser: React.Dispatch<React.SetStateAction<User | null>>;
@@ -19,6 +21,7 @@ interface AuthBootstrapArgs {
 
 export function useAuthBootstrap({
   authEpochRef,
+  bootstrapRun,
   resetPreferenceTracking,
   setIsLoading,
   setUser,
@@ -52,9 +55,28 @@ export function useAuthBootstrap({
 
     void checkAuth();
     return () => { active = false; };
-  }, [authEpochRef, resetPreferenceTracking, setIsLoading, setUser]);
+  }, [authEpochRef, bootstrapRun, resetPreferenceTracking, setIsLoading, setUser]);
 }
 
 export function useTerminalLogoutSubscription(clearSessionState: () => void): void {
   useEffect(() => onTerminalLogout(clearSessionState), [clearSessionState]);
+}
+
+/**
+ * Follow a login made in another tab. The session cookie is shared, so once
+ * another tab logs in as a different user this tab's requests already run as
+ * that user; `onSessionReplaced` must drop the old session view and re-read it.
+ *
+ * Every peer login is counted in `peerLoginSeqRef`, whoever it was for, so a
+ * login request that was in flight in this tab can tell that it raced one.
+ */
+export function usePeerLoginSubscription(
+  userIdRef: { current: string | null },
+  peerLoginSeqRef: { current: number },
+  onSessionReplaced: () => void,
+): void {
+  useEffect(() => onPeerLogin((userId) => {
+    peerLoginSeqRef.current += 1;
+    if (userIdRef.current !== userId) onSessionReplaced();
+  }), [onSessionReplaced, peerLoginSeqRef, userIdRef]);
 }

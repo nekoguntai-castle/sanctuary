@@ -4,7 +4,7 @@ import type { User } from '../types';
 import * as authApi from '../api/auth';
 import * as twoFactorApi from '../api/twoFactor';
 import { ApiError, apiErrorMessageOr } from '../api/client';
-import { triggerLogout } from '../api/refresh';
+import { announceLogin, triggerLogout } from '../api/refresh';
 import { clearQueryCacheForLogout } from '../providers/queryCacheReset';
 import type {
   LoginResult,
@@ -20,6 +20,10 @@ import type { PreferenceSaveResult } from './useUserPreferenceMutation';
 
 interface UserAuthActionsArgs {
   invalidateAuthBootstrap: () => void;
+  /** Counts logins made in other tabs; see usePeerLoginSubscription. */
+  peerLoginSeqRef: { current: number };
+  /** Drop this tab's session view and re-read it from the server. */
+  resyncSession: () => void;
   resetPreferenceTracking: () => void;
   flushPreferenceWrites: () => Promise<PreferenceSaveResult>;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
@@ -45,6 +49,8 @@ function isEmailVerificationRequired(err: unknown): boolean {
 
 export function useUserAuthActions({
   invalidateAuthBootstrap,
+  peerLoginSeqRef,
+  resyncSession,
   resetPreferenceTracking,
   flushPreferenceWrites,
   setError,
@@ -54,22 +60,38 @@ export function useUserAuthActions({
   setUser,
   twoFactorPending,
 }: UserAuthActionsArgs): UserAuthActions {
+  // Adopt the session a login/2FA/registration response just established.
+  // `peerLoginSeqAtStart` is the peer-login count from before the request: if
+  // another tab logged in meanwhile, both logins raced on the server and this
+  // response does not prove whose session the shared cookie holds, so the
+  // session is re-read instead of trusted.
+  const establishSession = useCallback((apiUser: Parameters<typeof toContextUser>[0], peerLoginSeqAtStart: number) => {
+    if (peerLoginSeqRef.current !== peerLoginSeqAtStart) {
+      resyncSession();
+    } else {
+      invalidateAuthBootstrap();
+      resetPreferenceTracking();
+      applyHardwareWalletAttestationFromUser(apiUser);
+      setUser(toContextUser(apiUser));
+    }
+    // Other tabs share the session cookie and must follow this login.
+    announceLogin(apiUser.id);
+  }, [invalidateAuthBootstrap, peerLoginSeqRef, resetPreferenceTracking, resyncSession, setUser]);
+
   const login = useCallback(async (username: string, password: string): Promise<LoginResult> => {
     setIsLoading(true);
     setError(null);
     setNotice(null);
 
     try {
+      const peerLoginSeqAtStart = peerLoginSeqRef.current;
       const response = await authApi.login({ username, password });
       if (authApi.requires2FA(response)) {
         setTwoFactorPending({ tempToken: response.tempToken });
         return { success: false, requires2FA: true, tempToken: response.tempToken };
       }
 
-      invalidateAuthBootstrap();
-      resetPreferenceTracking();
-      applyHardwareWalletAttestationFromUser(response.user);
-      setUser(toContextUser(response.user));
+      establishSession(response.user, peerLoginSeqAtStart);
       setNotice(null);
       return { success: true };
     } catch (err) {
@@ -78,7 +100,7 @@ export function useUserAuthActions({
     } finally {
       setIsLoading(false);
     }
-  }, [invalidateAuthBootstrap, resetPreferenceTracking, setError, setIsLoading, setNotice, setTwoFactorPending, setUser]);
+  }, [establishSession, peerLoginSeqRef, setError, setIsLoading, setNotice, setTwoFactorPending]);
 
   const verify2FA = useCallback(async (code: string): Promise<boolean> => {
     if (!twoFactorPending) {
@@ -91,14 +113,12 @@ export function useUserAuthActions({
     setNotice(null);
 
     try {
+      const peerLoginSeqAtStart = peerLoginSeqRef.current;
       const response = await twoFactorApi.verify2FA({
         tempToken: twoFactorPending.tempToken,
         code,
       });
-      invalidateAuthBootstrap();
-      resetPreferenceTracking();
-      applyHardwareWalletAttestationFromUser(response.user);
-      setUser(toContextUser(response.user));
+      establishSession(response.user, peerLoginSeqAtStart);
       setTwoFactorPending(null);
       setNotice(null);
       return true;
@@ -109,13 +129,12 @@ export function useUserAuthActions({
       setIsLoading(false);
     }
   }, [
-    invalidateAuthBootstrap,
-    resetPreferenceTracking,
+    establishSession,
+    peerLoginSeqRef,
     setError,
     setIsLoading,
     setNotice,
     setTwoFactorPending,
-    setUser,
     twoFactorPending,
   ]);
 
@@ -134,6 +153,7 @@ export function useUserAuthActions({
     setNotice(null);
 
     try {
+      const peerLoginSeqAtStart = peerLoginSeqRef.current;
       const response = await authApi.register({ username, password, email });
       invalidateAuthBootstrap();
       if (authApi.isPendingEmailVerification(response)) {
@@ -148,9 +168,7 @@ export function useUserAuthActions({
         };
       }
 
-      resetPreferenceTracking();
-      applyHardwareWalletAttestationFromUser(response.user);
-      setUser(toContextUser(response.user));
+      establishSession(response.user, peerLoginSeqAtStart);
       setNotice(null);
       return { success: true };
     } catch (err) {
@@ -161,7 +179,7 @@ export function useUserAuthActions({
     } finally {
       setIsLoading(false);
     }
-  }, [invalidateAuthBootstrap, resetPreferenceTracking, setError, setIsLoading, setNotice, setUser]);
+  }, [establishSession, invalidateAuthBootstrap, peerLoginSeqRef, resetPreferenceTracking, setError, setIsLoading, setNotice, setUser]);
 
   const logout = useCallback(async () => {
     // Dispatch a preference toggled within the debounce window BEFORE the

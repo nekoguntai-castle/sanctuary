@@ -34,6 +34,8 @@ const mocks = vi.hoisted(() => {
     websocketMessagesInc: vi.fn(),
     mapGatewayEvent: vi.fn(async (event: unknown) => event),
     refilterPushAudience: vi.fn(async (event: unknown) => event),
+    markGatewayConnected: vi.fn(async () => undefined),
+    clearGatewayConnected: vi.fn(async () => undefined),
     logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   };
 });
@@ -64,6 +66,11 @@ vi.mock('../../../src/observability/metrics', () => ({
   websocketMessagesTotal: {
     inc: mocks.websocketMessagesInc,
   },
+}));
+
+vi.mock('../../../src/websocket/gatewayPresence', () => ({
+  markGatewayConnected: mocks.markGatewayConnected,
+  clearGatewayConnected: mocks.clearGatewayConnected,
 }));
 
 vi.mock('../../../src/websocket/gatewayEventMapper', () => ({
@@ -664,6 +671,73 @@ describe('GatewayWebSocketServer', () => {
 
     expect(client.isAuthenticated).toBe(true);
     expect(client.challenge).toBeUndefined();
+  });
+
+  describe('shared gateway presence', () => {
+    function authenticate(server: GatewayWebSocketServer, client: TestGatewayClient) {
+      (server as any).handleConnection(client, {} as any);
+      respondToChallenge(client);
+    }
+
+    function respondToChallenge(client: TestGatewayClient) {
+      const challenge = JSON.parse(client.send.mock.calls[0][0]).challenge;
+      client.emit('message', Buffer.from(JSON.stringify({
+        type: 'auth_response',
+        response: createHmac('sha256', 'gateway-secret').update(challenge).digest('hex'),
+      })));
+    }
+
+    it('records presence on authentication and refreshes it on each pong', () => {
+      const server = new GatewayWebSocketServer();
+      const client = createClient();
+
+      (server as any).handleConnection(client, {} as any);
+      client.emit('pong');
+      expect(mocks.markGatewayConnected).not.toHaveBeenCalled();
+
+      respondToChallenge(client);
+      expect(mocks.markGatewayConnected).toHaveBeenCalledTimes(1);
+
+      client.emit('pong');
+      expect(mocks.markGatewayConnected).toHaveBeenCalledTimes(2);
+      server.close();
+    });
+
+    it('clears presence when the gateway disconnects or the server closes', () => {
+      const server = new GatewayWebSocketServer();
+      const client = createClient();
+      authenticate(server, client);
+
+      client.emit('close');
+      expect(mocks.clearGatewayConnected).toHaveBeenCalledTimes(1);
+
+      const second = createClient();
+      authenticate(server, second);
+      server.close();
+      expect(mocks.clearGatewayConnected).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps presence when a replaced connection closes, and ignores its pongs', () => {
+      const server = new GatewayWebSocketServer();
+      const first = createClient();
+      const second = createClient();
+      authenticate(server, first);
+      authenticate(server, second);
+      mocks.markGatewayConnected.mockClear();
+
+      first.emit('pong');
+      first.emit('close');
+
+      expect(mocks.markGatewayConnected).not.toHaveBeenCalled();
+      expect(mocks.clearGatewayConnected).not.toHaveBeenCalled();
+      server.close();
+    });
+
+    it('does not clear presence on close when no gateway was connected', () => {
+      const server = new GatewayWebSocketServer();
+      server.close();
+      expect(mocks.clearGatewayConnected).not.toHaveBeenCalled();
+    });
   });
 
   it('closes active gateway and websocket server on shutdown', () => {

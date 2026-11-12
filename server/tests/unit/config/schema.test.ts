@@ -1,6 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
 import { assertValidConfig, validateConfigSchema } from '../../../src/config/schema';
 
+function buildValidWebSocketConfig() {
+  return {
+    maxConnections: 10000,
+    maxPerUser: 10,
+    maxMessagesPerSecond: 30,
+    maxSubscriptionsPerConnection: 1100,
+    gracePeriodMessageLimit: 500,
+    maxQueueSize: 100,
+    queueOverflowPolicy: 'drop_oldest',
+  };
+}
+
 function buildValidConfig() {
   return {
     server: {
@@ -110,10 +122,7 @@ function buildValidConfig() {
       connectionTimeoutMs: 10000,
       torTimeoutMultiplier: 3,
     },
-    websocket: {
-      maxConnections: 10000,
-      maxPerUser: 10,
-    },
+    websocket: buildValidWebSocketConfig(),
     push: {
       fcm: {
         serviceAccountPath: '/tmp/firebase-service-account.json',

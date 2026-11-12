@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { useUser } from '../../contexts/UserContext';
 import { useWebSocketQueryInvalidation } from '../../hooks/websocket';
@@ -14,7 +14,9 @@ const log = createLogger('App');
 export function useAppRoutesController(): AppRoutesController {
   const { isAuthenticated, isLoading, logout, user, updatePreferences } = useUser();
   const { notifications, removeNotification } = useNotifications();
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  // Derived, not stored: a stored flag outlives the session that set it, so the
+  // next user to log in on this tab would inherit the forced modal.
+  const showPasswordModal = isAuthenticated && user?.usingDefaultPassword === true;
   const preferences = getAppPreferenceState(user);
 
   useWebSocketQueryInvalidation();
@@ -25,12 +27,6 @@ export function useAppRoutesController(): AppRoutesController {
     if (isAuthenticated) websocketClient.connect();
   }, [isAuthenticated]);
 
-  useEffect(() => {
-    if (isAuthenticated && user?.usingDefaultPassword) {
-      setShowPasswordModal(true);
-    }
-  }, [isAuthenticated, user?.usingDefaultPassword]);
-
   const handlePasswordChanged = async () => {
     try {
       await authApi.getCurrentUser();
@@ -38,7 +34,7 @@ export function useAppRoutesController(): AppRoutesController {
       log.error('Failed to refresh user data', { error });
     }
 
-    setShowPasswordModal(false);
+    // The reload re-runs the session bootstrap, which clears the modal.
     reloadCurrentDocument();
   };
 

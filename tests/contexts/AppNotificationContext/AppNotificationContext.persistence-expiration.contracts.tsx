@@ -154,7 +154,9 @@ export const registerAppNotificationPersistenceExpirationContracts = () => {
       const getItemSpy = vi
         .spyOn(localStorage, 'getItem')
         .mockImplementation((key: string) =>
-          key === 'sanctuary_app_notifications' ? JSON.stringify(persisted) : null
+          key === 'sanctuary_app_notifications'
+            ? JSON.stringify({ v: 1, userId: 'user-1', items: persisted })
+            : null
         );
 
       try {
@@ -188,7 +190,10 @@ export const registerAppNotificationPersistenceExpirationContracts = () => {
         expiresAt: new Date(Date.now() - 3600000).toISOString(),
       };
 
-      localStorage.setItem('sanctuary_app_notifications', JSON.stringify([expiredNotif]));
+      localStorage.setItem(
+        'sanctuary_app_notifications',
+        JSON.stringify({ v: 1, userId: 'user-1', items: [expiredNotif] }),
+      );
 
       const { result } = renderHook(() => useAppNotifications(), { wrapper });
 

@@ -79,8 +79,10 @@ function connect(): void {
 
   // Check if gateway secret is configured
   if (!config.gatewaySecret) {
-    log.error('GATEWAY_SECRET not configured, cannot connect to backend WebSocket');
-    scheduleReconnect();
+    // The secret is read once at startup, so a retry cannot succeed. Report it
+    // once and stop; push delivery stays off until the gateway is restarted
+    // with the secret set.
+    log.error('GATEWAY_SECRET not configured, cannot connect to backend WebSocket; push delivery is disabled');
     return;
   }
 

@@ -193,10 +193,12 @@ export const registerClientServerLimitAuthUpgradeContracts = () => {
   });
 
   it('rejects new connection when total connection limit is reached', async () => {
-    process.env.MAX_WEBSOCKET_CONNECTIONS = '0';
+    process.env.MAX_WEBSOCKET_CONNECTIONS = '1';
     const Server = await loadServer();
     const server = new Server();
     activeServers.push(server);
+    // One connection already fills the limit of 1.
+    (server as any).clients.add(createClient());
     const client = createClient();
 
     (server as any).handleConnection(client, createRequest());
@@ -243,10 +245,12 @@ export const registerClientServerLimitAuthUpgradeContracts = () => {
   });
 
   it('registers an error handler on a connection-limit rejection and survives a socket error', async () => {
-    process.env.MAX_WEBSOCKET_CONNECTIONS = '0';
+    process.env.MAX_WEBSOCKET_CONNECTIONS = '1';
     const Server = await loadServer();
     const server = new Server();
     activeServers.push(server);
+    // One connection already fills the limit of 1.
+    (server as any).clients.add(createClient());
     const client = createClient();
 
     (server as any).handleConnection(client, createRequest());

@@ -126,3 +126,17 @@ export function invalidateIntelligenceStatus(): void {
   publish(LOADING_STATUS);
   if (listeners.size > 0) void startStatusRequest();
 }
+
+/**
+ * Forget the status when the session ends. Unlike an invalidation this starts
+ * no request: the client is logged out, so a probe would only fail. The next
+ * consumer to mount sees the loading snapshot and fetches for its own session.
+ */
+export function resetIntelligenceStatusForSessionEnd(): void {
+  generation += 1;
+  activeGeneration = null;
+  failure = 'none';
+  retryAttempt = 0;
+  clearRetry();
+  publish(LOADING_STATUS);
+}

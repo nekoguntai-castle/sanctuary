@@ -50,7 +50,8 @@ describe('production config validation', () => {
   });
 
   it('rejects a missing worker diagnostics URL at worker validation', async () => {
-    vi.doMock('../../src/config/schema', () => ({
+    vi.doMock('../../src/config/schema', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('../../src/config/schema')>()),
       assertValidConfig: vi.fn(),
     }));
     vi.doMock('../../src/config/envSections', async (importOriginal) => {

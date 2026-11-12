@@ -43,10 +43,12 @@ let inFlightRefresh: Promise<void> | null = null;
 let scheduledRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 let broadcastChannel: BroadcastChannel | null = null;
 const terminalLogoutListeners = new Set<() => void>();
+const peerLoginListeners = new Set<(userId: string) => void>();
 
 type BroadcastMessage =
   | { type: 'refresh-complete'; expiresAtIso: string }
-  | { type: 'logout-broadcast' };
+  | { type: 'logout-broadcast' }
+  | { type: 'login-broadcast'; userId: string };
 
 // -----------------------------------------------------------------------------
 // BroadcastChannel: state propagation ONLY (not mutual exclusion).
@@ -77,6 +79,10 @@ function ensureBroadcastChannel(): BroadcastChannel {
       // triggerTerminalLogout().
       accessExpiresAtMs = null;
       clearScheduledRefresh();
+    } else if (msg.type === 'login-broadcast') {
+      // The session cookie is shared, so this tab now acts as that user.
+      const userId: unknown = msg.userId;
+      if (typeof userId === 'string' && userId.length > 0) firePeerLoginListeners(userId);
     }
   };
   return broadcastChannel;
@@ -117,6 +123,39 @@ export function onTerminalLogout(listener: () => void): () => void {
   terminalLogoutListeners.add(listener);
   return () => {
     terminalLogoutListeners.delete(listener);
+  };
+}
+
+// -----------------------------------------------------------------------------
+// Cross-tab login. Every tab shares the session cookie, so a login in one tab
+// changes who all the others act as. The tab that logged in announces it; peers
+// compare the user id with their own and resynchronize when it differs.
+// -----------------------------------------------------------------------------
+
+function firePeerLoginListeners(userId: string): void {
+  for (const listener of peerLoginListeners) {
+    try {
+      listener(userId);
+    } catch (err) {
+      log.error('Peer login listener threw', { error: String(err) });
+    }
+  }
+}
+
+/** Tell other tabs that this tab just established a session for `userId`. */
+export function announceLogin(userId: string): void {
+  postBroadcast({ type: 'login-broadcast', userId });
+}
+
+/**
+ * Subscribe to logins made in other tabs. Called by UserContext on mount; the
+ * returned unsubscribe fn must be called on unmount.
+ */
+export function onPeerLogin(listener: (userId: string) => void): () => void {
+  ensureBroadcastChannel();
+  peerLoginListeners.add(listener);
+  return () => {
+    peerLoginListeners.delete(listener);
   };
 }
 
@@ -376,6 +415,7 @@ export function __resetRefreshModuleForTests(): void {
   inFlightRefresh = null;
   clearScheduledRefresh();
   terminalLogoutListeners.clear();
+  peerLoginListeners.clear();
   if (broadcastChannel) {
     try {
       broadcastChannel.close();

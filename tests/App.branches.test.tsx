@@ -429,6 +429,29 @@ describe("App branch coverage", () => {
     expect(bg.getAttribute("data-dark-mode")).toBe("true");
   });
 
+  it("drops the force-password modal when the session ends and another user logs in", async () => {
+    const session = (user: Record<string, unknown> | null) => ({
+      isAuthenticated: user !== null,
+      isLoading: false,
+      logout: vi.fn(),
+      user,
+      updatePreferences: vi.fn(),
+    });
+    mockUseUser.mockReturnValue(session({ id: "admin-1", usingDefaultPassword: true, preferences: {} }));
+
+    const { rerender } = render(<App />);
+    expect(await screen.findByText("password-changed")).toBeInTheDocument();
+
+    // The session ends without a document reload (logout in another tab).
+    mockUseUser.mockReturnValue(session(null));
+    rerender(<App />);
+    mockUseUser.mockReturnValue(session({ id: "user-2", usingDefaultPassword: false, preferences: {} }));
+    rerender(<App />);
+
+    expect(await screen.findByText("Dashboard Page")).toBeInTheDocument();
+    expect(screen.queryByText("password-changed")).not.toBeInTheDocument();
+  });
+
   it("still renders modal for default-password users with missing optional preferences", async () => {
     mockUseUser.mockReturnValue({
       isAuthenticated: true,

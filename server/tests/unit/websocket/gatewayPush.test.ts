@@ -8,12 +8,16 @@ const mocks = vi.hoisted(() => ({
   config: { gatewaySecret: 'gateway-secret' },
   isActive: vi.fn(() => false),
   publishGatewayEvent: vi.fn(async () => 0),
+  isAnyGatewayConnected: vi.fn(async () => true),
   gatewayServer: null as null | MockGatewayServer,
 }));
 
 vi.mock('../../../src/config', () => ({ __esModule: true, default: mocks.config }));
 vi.mock('../../../src/websocket/redisBridge', () => ({
   redisBridge: { isActive: mocks.isActive, publishGatewayEvent: mocks.publishGatewayEvent },
+}));
+vi.mock('../../../src/websocket/gatewayPresence', () => ({
+  isAnyGatewayConnected: mocks.isAnyGatewayConnected,
 }));
 vi.mock('../../../src/websocket/server', () => ({
   getGatewayWebSocketServer: () => mocks.gatewayServer,
@@ -45,6 +49,7 @@ describe('gateway push delivery', () => {
     mocks.config.gatewaySecret = 'gateway-secret';
     mocks.isActive.mockReturnValue(false);
     mocks.publishGatewayEvent.mockResolvedValue(0);
+    mocks.isAnyGatewayConnected.mockResolvedValue(true);
     mocks.gatewayServer = null;
   });
 
@@ -108,6 +113,37 @@ describe('gateway push delivery', () => {
 
     it('is not delivered when no other instance receives the publish', async () => {
       await expect(dispatchGatewayPushEvent(event)).resolves.toEqual({ delivered: false });
+    });
+
+    it('reports a failure when another instance is subscribed but no gateway is connected to it', async () => {
+      // The API process subscribes whether or not a gateway is attached, so a
+      // receiver count alone used to report a dropped push as delivered.
+      mocks.publishGatewayEvent.mockResolvedValue(1);
+      mocks.isAnyGatewayConnected.mockResolvedValue(false);
+
+      await expect(dispatchGatewayPushEvent(event)).resolves.toEqual({
+        delivered: false,
+        error: 'No push gateway is connected',
+      });
+    });
+
+    it('does not consult gateway presence after an in-process send', async () => {
+      mocks.gatewayServer = gatewayServer(true);
+      mocks.publishGatewayEvent.mockResolvedValue(1);
+      mocks.isAnyGatewayConnected.mockResolvedValue(false);
+
+      await expect(dispatchGatewayPushEvent(event)).resolves.toEqual({ delivered: true });
+      expect(mocks.isAnyGatewayConnected).not.toHaveBeenCalled();
+    });
+
+    it('reports a failed presence read instead of assuming delivery', async () => {
+      mocks.publishGatewayEvent.mockResolvedValue(1);
+      mocks.isAnyGatewayConnected.mockRejectedValue(new Error('presence unavailable'));
+
+      await expect(dispatchGatewayPushEvent(event)).resolves.toEqual({
+        delivered: false,
+        error: 'presence unavailable',
+      });
     });
 
     it('reports a rejected publish when there was no in-process send', async () => {

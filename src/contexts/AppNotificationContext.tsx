@@ -10,6 +10,7 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, ReactNode } from 'react';
 import { onTerminalLogout } from '../api/refresh';
+import { useOptionalUserId } from './UserContext';
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('AppNotification');
@@ -115,33 +116,58 @@ const generateId = (): string => {
   return `notif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 };
 
-// Load notifications from localStorage
-const loadNotifications = (): AppNotification[] => {
+type StoredNotification = Omit<AppNotification, 'createdAt' | 'expiresAt'> & {
+  createdAt: string;
+  expiresAt?: string;
+};
+
+/**
+ * Persisted shape. The owner is stored with the items: an untagged list had no
+ * way to tell whose notifications it held, so a session that ended without a
+ * terminal logout handed them to the next user of the browser.
+ */
+interface StoredNotifications {
+  v: 1;
+  userId: string;
+  items: StoredNotification[];
+}
+
+function isStoredNotifications(value: unknown): value is StoredNotifications {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Record<string, unknown>;
+  return record.v === 1 && typeof record.userId === 'string' && Array.isArray(record.items);
+}
+
+// Load the signed-in user's notifications. Anything else found under the key
+// (another user's, the legacy unowned array, an unknown shape) is removed.
+const loadNotifications = (userId: string): AppNotification[] => {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (!stored) return [];
 
-    const parsed = JSON.parse(stored) as Array<Omit<AppNotification, 'createdAt' | 'expiresAt'> & { createdAt: string; expiresAt?: string }>;
-    return parsed.map((n) => ({
+    const parsed: unknown = JSON.parse(stored);
+    if (!isStoredNotifications(parsed) || parsed.userId !== userId) {
+      clearStoredNotifications();
+      return [];
+    }
+
+    const now = new Date();
+    return parsed.items.map((n) => ({
       ...n,
       createdAt: new Date(n.createdAt),
       expiresAt: n.expiresAt ? new Date(n.expiresAt) : undefined,
-    })).filter((n: AppNotification) => {
-      // Filter out expired notifications
-      if (n.expiresAt && new Date() > n.expiresAt) return false;
-      return true;
-    });
+    })).filter((n: AppNotification) => !(n.expiresAt && now > n.expiresAt));
   } catch (err) {
     log.error('Failed to load notifications', { error: err });
     return [];
   }
 };
 
-// Save notifications to localStorage
-const saveNotifications = (notifications: AppNotification[]): void => {
+// Save the signed-in user's persistent notifications to localStorage
+const saveNotifications = (userId: string, notifications: AppNotification[]): void => {
   try {
-    const toSave = notifications.filter(n => n.persistent);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+    const record = { v: 1, userId, items: notifications.filter(n => n.persistent) };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(record));
   } catch (err) {
     log.error('Failed to save notifications', { error: err });
   }
@@ -157,20 +183,31 @@ const clearStoredNotifications = (): void => {
 };
 
 export const AppNotificationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const userId = useOptionalUserId();
+  const [ownerId, setOwnerId] = useState(userId);
+  const [notifications, setNotifications] = useState<AppNotification[]>(
+    () => (userId ? loadNotifications(userId) : []),
+  );
   const [isPanelOpen, setIsPanelOpen] = useState(false);
 
-  // Load persistent notifications on mount
-  useEffect(() => {
-    const loaded = loadNotifications();
-    if (loaded.length > 0) {
-      setNotifications(loaded);
-    }
-  }, []);
+  // Notifications belong to a session. When the signed-in user changes (login,
+  // logout, another tab logging in as someone else) start from that user's
+  // stored notifications and nothing else. This runs during render, not in an
+  // effect: child effects run first, so an effect here would wipe what the
+  // newly mounted app shell adds for the new session (the restore warnings).
+  if (ownerId !== userId) {
+    setOwnerId(userId);
+    setNotifications(userId ? loadNotifications(userId) : []);
+    setIsPanelOpen(false);
+  }
 
-  // Save persistent notifications when they change
+  // Save persistent notifications when they change. Nothing is written while
+  // logged out, so a stored list is never replaced by an empty unowned one.
   useEffect(() => {
-    saveNotifications(notifications);
+    if (userId) saveNotifications(userId, notifications);
+    // Keyed on the list only: on a user change the owner switch above replaces
+    // the list, which runs this again with the new owner's notifications.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above
   }, [notifications]);
 
   // Clear all notifications on terminal logout (explicit or forced) so a

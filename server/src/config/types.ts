@@ -161,6 +161,11 @@ export interface ElectrumClientConfig {
 export interface WebSocketConfig {
   maxConnections: number;
   maxPerUser: number;
+  maxMessagesPerSecond: number;
+  maxSubscriptionsPerConnection: number;
+  gracePeriodMessageLimit: number;
+  maxQueueSize: number;
+  queueOverflowPolicy: 'drop_oldest' | 'drop_newest' | 'disconnect';
 }
 
 export interface PushNotificationConfig {

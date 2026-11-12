@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- An invalid WebSocket limit now stops startup instead of disabling the limit. `MAX_WEBSOCKET_CONNECTIONS`, `MAX_WEBSOCKET_PER_USER`, `MAX_WS_MESSAGES_PER_SECOND`, `MAX_WS_SUBSCRIPTIONS`, `WS_GRACE_PERIOD_LIMIT` and `WS_MAX_QUEUE_SIZE` must be integers of 1 or more, and `WS_QUEUE_OVERFLOW_POLICY` must be `drop_oldest`, `drop_newest` or `disconnect`. Before, a value such as `MAX_WEBSOCKET_PER_USER=abc` was read as NaN and the per-user connection limit silently stopped applying.
+
+### Fixed
+
+- The MCP server now receives the hardware-wallet operator attestation. `docker-compose.yml` passed it to the backend and worker only, so the MCP address resource refused receive addresses that the web UI showed for an attested Trezor wallet.
+- Live updates recover from a failed start of the Redis WebSocket bridge. One failed attempt used to leave the backend or worker in local-only mode until the container restarted; the bridge now retries with backoff. The worker `/health` response reports the bridge as `uiEventBridge` (informational, not part of the healthy verdict).
+- A wallet-level push (AI insight, consolidation suggestion) sent while the push gateway is disconnected is now reported as a failure, so it is retried or recorded instead of being counted as delivered and dropped. The backend records its gateway connection in Redis for the worker to check.
+- Logging in on one browser tab no longer leaves other tabs showing the previous user while acting as the new one. The other tabs now switch to the new session.
+- The forced change-password dialog no longer reappears for the next user who logs in on a tab where a default-password session ended without a reload.
+- Persistent in-app notifications are stored with their owner. A session that ended without a logout (expired cookie, or a login in another tab) could show one user's warnings to the next user of the same browser.
+- AI and Intelligence availability are checked again for each session instead of being cached for the life of the tab.
+- The push gateway reports a missing `GATEWAY_SECRET` once instead of retrying and logging an error every five seconds.
+
 ### Security
 
 - `npm audit --omit=dev` is clean again; it had three production findings.

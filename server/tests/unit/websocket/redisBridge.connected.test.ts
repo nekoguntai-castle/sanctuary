@@ -594,6 +594,187 @@ describe('RedisWebSocketBridge (connected mode)', () => {
     expect(missingClient.redisBridge.isActive()).toBe(false);
   });
 
+  describe('recovery from a failed start', () => {
+    it('retries until Redis is connected instead of staying local-only', async () => {
+      vi.useFakeTimers();
+      try {
+        const { initializeRedisBridge, shutdownRedisBridge, redisBridge, mocks } =
+          await loadBridgeWithMocks({ redisConnected: false });
+
+        await initializeRedisBridge({ publishOnly: true });
+        expect(redisBridge.isActive()).toBe(false);
+
+        mocks.isRedisConnected.mockReturnValue(true);
+        await vi.advanceTimersByTimeAsync(1_000);
+
+        expect(redisBridge.isActive()).toBe(true);
+        expect(mocks.rootClient.duplicate).toHaveBeenCalledTimes(1);
+
+        await shutdownRedisBridge();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('retries after a failed connection attempt, backing off between attempts', async () => {
+      vi.useFakeTimers();
+      try {
+        const failingSubscriber = createMockPubSubClient({ autoConnect: true });
+        failingSubscriber.subscribe.mockRejectedValue(new Error('subscribe failed'));
+        const { initializeRedisBridge, shutdownRedisBridge, redisBridge, mocks } =
+          await loadBridgeWithMocks({ subscriber: failingSubscriber });
+        mocks.rootClient.duplicate
+          .mockReturnValueOnce(createMockPubSubClient({ autoConnect: true }))
+          .mockReturnValueOnce(failingSubscriber)
+          .mockReturnValueOnce(createMockPubSubClient({ autoConnect: true }))
+          .mockReturnValueOnce(createMockPubSubClient({ autoConnect: true }));
+
+        await initializeRedisBridge();
+        expect(redisBridge.isActive()).toBe(false);
+
+        // First retry (1s) fails again; the second waits twice as long.
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(redisBridge.isActive()).toBe(false);
+        await vi.advanceTimersByTimeAsync(1_999);
+        expect(redisBridge.isActive()).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+
+        expect(redisBridge.isActive()).toBe(true);
+        await shutdownRedisBridge();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('stops retrying once shut down', async () => {
+      vi.useFakeTimers();
+      try {
+        const { initializeRedisBridge, shutdownRedisBridge, redisBridge, mocks } =
+          await loadBridgeWithMocks({ redisConnected: false });
+
+        await initializeRedisBridge();
+        await shutdownRedisBridge();
+        mocks.isRedisConnected.mockReturnValue(true);
+        await vi.advanceTimersByTimeAsync(60_000);
+
+        expect(redisBridge.isActive()).toBe(false);
+        expect(mocks.rootClient.duplicate).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('discards a connection that completes after shutdown', async () => {
+      const publisher = createMockPubSubClient({ autoConnect: false });
+      const { initializeRedisBridge, shutdownRedisBridge, redisBridge } =
+        await loadBridgeWithMocks({ publisher });
+
+      const pending = initializeRedisBridge({ publishOnly: true });
+      await shutdownRedisBridge();
+      publisher.emit('ready');
+      await pending;
+
+      expect(redisBridge.isActive()).toBe(false);
+      expect(publisher.quit).toHaveBeenCalled();
+    });
+
+    it('warns about running without Redis once, not on every retry', async () => {
+      vi.useFakeTimers();
+      try {
+        const { initializeRedisBridge, shutdownRedisBridge, mocks } =
+          await loadBridgeWithMocks({ redisConnected: false });
+        const localOnly = 'Redis not connected, WebSocket bridge running in local-only mode';
+
+        await initializeRedisBridge();
+        await vi.advanceTimersByTimeAsync(120_000);
+
+        expect(mocks.log.warn.mock.calls.filter(([message]) => message === localOnly)).toHaveLength(1);
+        expect(mocks.log.debug).toHaveBeenCalledWith(localOnly);
+        await shutdownRedisBridge();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('schedules no retry when an attempt fails after shutdown', async () => {
+      vi.useFakeTimers();
+      try {
+        const publisher = createMockPubSubClient({ autoConnect: false });
+        const { initializeRedisBridge, shutdownRedisBridge, redisBridge, mocks } =
+          await loadBridgeWithMocks({ publisher });
+
+        const pending = initializeRedisBridge({ publishOnly: true });
+        await shutdownRedisBridge();
+        // The ready wait times out: the attempt fails, but the bridge is stopped.
+        await vi.advanceTimersByTimeAsync(5_000);
+        await pending;
+        await vi.advanceTimersByTimeAsync(60_000);
+
+        expect(redisBridge.isActive()).toBe(false);
+        expect(mocks.rootClient.duplicate).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('starts again when re-initialized after a shutdown that raced an in-flight attempt', async () => {
+      const slowPublisher = createMockPubSubClient({ autoConnect: false });
+      const { initializeRedisBridge, shutdownRedisBridge, redisBridge, mocks } =
+        await loadBridgeWithMocks({ publisher: slowPublisher });
+      const freshPublisher = createMockPubSubClient({ autoConnect: true });
+      mocks.rootClient.duplicate.mockReset();
+      mocks.rootClient.duplicate
+        .mockReturnValueOnce(slowPublisher)
+        .mockReturnValueOnce(freshPublisher);
+
+      const first = initializeRedisBridge({ publishOnly: true });
+      await shutdownRedisBridge();
+      // Restarted before the abandoned attempt has finished connecting.
+      const second = initializeRedisBridge({ publishOnly: true });
+      slowPublisher.emit('ready');
+      await Promise.all([first, second]);
+      await vi.waitFor(() => expect(redisBridge.isActive()).toBe(true));
+
+      // The abandoned connection was released, and the live one is the new one.
+      expect(slowPublisher.quit).toHaveBeenCalled();
+      expect(freshPublisher.quit).not.toHaveBeenCalled();
+      redisBridge.publishBroadcast({ type: 'sync', data: {} } as never);
+      expect(freshPublisher.publish).toHaveBeenCalled();
+      await shutdownRedisBridge();
+    });
+
+    it('drops a restart that was queued before a later shutdown', async () => {
+      const slowPublisher = createMockPubSubClient({ autoConnect: false });
+      const { initializeRedisBridge, shutdownRedisBridge, redisBridge, mocks } =
+        await loadBridgeWithMocks({ publisher: slowPublisher });
+
+      const first = initializeRedisBridge({ publishOnly: true });
+      await shutdownRedisBridge();
+      const second = initializeRedisBridge({ publishOnly: true });
+      await shutdownRedisBridge();
+      slowPublisher.emit('ready');
+      await Promise.all([first, second]);
+
+      expect(redisBridge.isActive()).toBe(false);
+      expect(mocks.rootClient.duplicate).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores an explicit initialize while an attempt is in flight', async () => {
+      const publisher = createMockPubSubClient({ autoConnect: false });
+      const { initializeRedisBridge, shutdownRedisBridge, redisBridge, mocks } =
+        await loadBridgeWithMocks({ publisher });
+
+      const pending = initializeRedisBridge({ publishOnly: true });
+      await initializeRedisBridge({ publishOnly: true });
+      expect(mocks.rootClient.duplicate).toHaveBeenCalledTimes(1);
+
+      publisher.emit('ready');
+      await pending;
+      expect(redisBridge.isActive()).toBe(true);
+      await shutdownRedisBridge();
+    });
+  });
+
   it('returns early when initialize is called more than once', async () => {
     const { initializeRedisBridge, shutdownRedisBridge, mocks } = await loadBridgeWithMocks();
 

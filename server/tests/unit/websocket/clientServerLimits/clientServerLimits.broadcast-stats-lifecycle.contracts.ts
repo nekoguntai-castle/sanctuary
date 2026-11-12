@@ -569,14 +569,15 @@ export const registerClientServerLimitBroadcastStatsLifecycleContracts = () => {
   });
 
   it('caps in-memory rate limit event history at MAX_RATE_LIMIT_EVENTS', async () => {
-    process.env.MAX_WS_MESSAGES_PER_SECOND = '0';
+    process.env.MAX_WS_MESSAGES_PER_SECOND = '1';
     const mod = await loadModule();
     const server = new mod.SanctauryWebSocketServer();
     activeServers.push(server);
+    // Already at the limit of 1 for this second, so every message exceeds it.
     const client = createClient({
       connectionTime: Date.now() - 6000,
       lastMessageReset: Date.now(),
-      messageCount: 0,
+      messageCount: 1,
     });
 
     for (let i = 0; i < 55; i++) {

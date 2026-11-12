@@ -586,6 +586,11 @@ services:
       GATEWAY_SECRET: ${GATEWAY_SECRET:-}
 
       BITCOIN_NETWORK: ${BITCOIN_NETWORK:-mainnet}
+      # Same operator attestation as the backend and worker. The MCP address
+      # resource runs the same display gate, so without these it refuses
+      # addresses the web UI shows.
+      HARDWARE_WALLET_OPERATOR_ATTESTED_VENDORS: ${HARDWARE_WALLET_OPERATOR_ATTESTED_VENDORS:-}
+      HARDWARE_WALLET_OPERATOR_ATTESTATION_ACK: ${HARDWARE_WALLET_OPERATOR_ATTESTATION_ACK:-}
       # models/prisma.ts reads this at runtime. CORS, rate-limit, retention,
       # worker-health and monitoring-port settings are not read by the MCP
       # startup path, so they are intentionally not forwarded here.

@@ -18,6 +18,8 @@ const userState = vi.hoisted(() => ({
 
 vi.mock('../../../src/contexts/UserContext', () => ({
   useUser: () => userState.current,
+  // The real AppNotificationProvider keys its list on the signed-in user.
+  useOptionalUserId: () => userState.current.user?.id ?? null,
 }));
 
 vi.mock('../../../src/utils/logger', () => ({

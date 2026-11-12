@@ -17,6 +17,8 @@ import {
   refreshAccessToken,
   scheduleRefreshFromHeader,
   onTerminalLogout,
+  onPeerLogin,
+  announceLogin,
   triggerLogout,
   getAccessExpiresAtMs,
   __resetRefreshModuleForTests,
@@ -477,6 +479,89 @@ describe('refresh module — BroadcastChannel state propagation', () => {
 
     expect(getAccessExpiresAtMs()).toBe(before);
 
+    otherTabChannel.close();
+  });
+});
+
+describe('refresh module — cross-tab login propagation', () => {
+  // The session cookie is shared by every tab, so a login in one tab changes
+  // who every other tab acts as. Peers must be told, or they keep rendering
+  // the previous user while their requests run as the new one.
+  it('announces a login to other tabs with the user id', async () => {
+    const otherTabChannel = new BroadcastChannel('sanctuary-auth');
+    const received = vi.fn();
+    otherTabChannel.onmessage = (event: MessageEvent) => received(event.data);
+
+    announceLogin('user-b');
+    await Promise.resolve();
+
+    expect(received).toHaveBeenCalledWith({ type: 'login-broadcast', userId: 'user-b' });
+    otherTabChannel.close();
+  });
+
+  it('tells peer-login listeners which user logged in elsewhere, and opens the channel on subscribe', async () => {
+    const listener = vi.fn();
+    const unsubscribe = onPeerLogin(listener);
+
+    const otherTabChannel = new BroadcastChannel('sanctuary-auth');
+    otherTabChannel.postMessage({ type: 'login-broadcast', userId: 'user-b' });
+    await Promise.resolve();
+    expect(listener).toHaveBeenCalledWith('user-b');
+
+    unsubscribe();
+    otherTabChannel.postMessage({ type: 'login-broadcast', userId: 'user-c' });
+    await Promise.resolve();
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    otherTabChannel.close();
+  });
+
+  it('ignores a login broadcast without a usable user id', async () => {
+    const listener = vi.fn();
+    onPeerLogin(listener);
+
+    const otherTabChannel = new BroadcastChannel('sanctuary-auth');
+    otherTabChannel.postMessage({ type: 'login-broadcast' });
+    otherTabChannel.postMessage({ type: 'login-broadcast', userId: 42 });
+    otherTabChannel.postMessage({ type: 'login-broadcast', userId: '' });
+    await Promise.resolve();
+
+    expect(listener).not.toHaveBeenCalled();
+    otherTabChannel.close();
+  });
+
+  it('keeps notifying later listeners when one throws, and does not fire the announcing tab', async () => {
+    const throwing = vi.fn(() => {
+      throw new Error('listener crashed');
+    });
+    const good = vi.fn();
+    onPeerLogin(throwing);
+    onPeerLogin(good);
+
+    announceLogin('user-a');
+    await Promise.resolve();
+    expect(good).not.toHaveBeenCalled();
+
+    const otherTabChannel = new BroadcastChannel('sanctuary-auth');
+    otherTabChannel.postMessage({ type: 'login-broadcast', userId: 'user-b' });
+    await Promise.resolve();
+
+    expect(throwing).toHaveBeenCalledTimes(1);
+    expect(good).toHaveBeenCalledWith('user-b');
+    otherTabChannel.close();
+  });
+
+  it('drops peer-login listeners on the test-only module reset', async () => {
+    const listener = vi.fn();
+    onPeerLogin(listener);
+    __resetRefreshModuleForTests();
+    onTerminalLogout(vi.fn());
+
+    const otherTabChannel = new BroadcastChannel('sanctuary-auth');
+    otherTabChannel.postMessage({ type: 'login-broadcast', userId: 'user-b' });
+    await Promise.resolve();
+
+    expect(listener).not.toHaveBeenCalled();
     otherTabChannel.close();
   });
 });

@@ -37,6 +37,8 @@ vi.mock("../../../src/api/auth", () => ({
 vi.mock("../../../src/api/refresh", () => ({
   onTerminalLogout: () => () => {},
   triggerLogout: vi.fn(),
+  onPeerLogin: () => () => {},
+  announceLogin: vi.fn(),
 }));
 
 describe("CurrencyContext - Currency formatting", () => {

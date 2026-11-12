@@ -15,14 +15,16 @@
  *   insight/consolidation notifiers); it covers the topology where one would.
  *
  * Delivery is reported, not confirmed: an event counts as delivered when it
- * reached a gateway path (an in-process send to a connected gateway, or at
- * least one other subscribed instance). Known limitation: a subscribed API
- * instance with no gateway connected drops the event, as transaction pushes
- * already are.
+ * reached a gateway path (an in-process send to a connected gateway, or a
+ * publish to another subscribed instance while some instance holds a gateway
+ * connection, per the shared presence record). A publish that reaches only
+ * instances with no gateway is reported as a failure, so the notification
+ * failure path records or retries it instead of losing it silently.
  */
 
 import config from '../config';
 import { getErrorMessage } from '../utils/errors';
+import { isAnyGatewayConnected } from './gatewayPresence';
 import { redisBridge } from './redisBridge';
 import { getGatewayWebSocketServer } from './server';
 import type { GatewayPushEvent } from './types';
@@ -56,7 +58,11 @@ export async function dispatchGatewayPushEvent(
   const sentInProcess = forwardToGateway(event);
   try {
     const externalReceivers = await redisBridge.publishGatewayEvent(event);
-    return { delivered: sentInProcess || externalReceivers > 0 };
+    if (sentInProcess) return { delivered: true };
+    if (externalReceivers === 0) return { delivered: false };
+    // A subscriber is not a gateway: the API subscribes with or without one.
+    if (await isAnyGatewayConnected()) return { delivered: true };
+    return { delivered: false, error: 'No push gateway is connected' };
   } catch (error) {
     if (sentInProcess) return { delivered: true };
     return { delivered: false, error: getErrorMessage(error) };

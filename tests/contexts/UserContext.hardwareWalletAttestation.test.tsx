@@ -34,6 +34,8 @@ vi.mock('../../src/api/refresh', () => ({
     return () => { terminalLogout.listener = null; };
   },
   triggerLogout: vi.fn(),
+  onPeerLogin: () => () => {},
+  announceLogin: vi.fn(),
 }));
 vi.mock('../../src/themes', () => ({
   themeRegistry: {

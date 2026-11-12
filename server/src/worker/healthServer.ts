@@ -37,6 +37,8 @@ export interface HealthCheckProvider {
     electrum: boolean;
     jobQueue: boolean;
     recurringSchedules?: boolean;
+    /** Whether worker events can reach the API process. Not part of the verdict. */
+    uiEventBridge?: boolean;
     database?: boolean;
     startedAt?: string;
     walletSyncActivation?: WalletSyncActivationState;

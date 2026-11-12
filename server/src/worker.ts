@@ -80,7 +80,7 @@ import type {
 } from './internal/workerDiagnostics/protocol';
 import { collectWalletSyncExecutionDiagnostics } from './worker/walletSyncExecutionRegistry';
 import { startCaptureParticipant, stopCaptureParticipant } from './services/supportPackage/captureRuntime';
-import { initializeRedisBridge, shutdownRedisBridge } from './websocket/redisBridge';
+import { initializeRedisBridge, redisBridge, shutdownRedisBridge } from './websocket/redisBridge';
 import { initializeCacheInvalidation, shutdownCacheInvalidation } from './services/cacheInvalidation';
 import {
   createProductionWalletSyncRecoveryRuntime,
@@ -522,6 +522,9 @@ async function startWorker(): Promise<void> {
           electrum: electrumManager?.isConnected() ?? false,
           jobQueue: jobQueueHealthy,
           recurringSchedules: scheduleHealth.healthy,
+          // Informational only: a down bridge costs UI visibility, not work,
+          // so it must not flip the worker to degraded.
+          uiEventBridge: redisBridge.isActive(),
           startedAt: new Date(workerStartedAt).toISOString(),
           walletSyncActivation: walletSyncRecoveryRuntime?.getActivationState() ?? {
             status: 'dormant',

@@ -101,6 +101,12 @@ export function buildWebsocketConfig() {
   return {
     maxConnections: parseIntegerEnv('MAX_WEBSOCKET_CONNECTIONS', 10000),
     maxPerUser: parseIntegerEnv('MAX_WEBSOCKET_PER_USER', 10),
+    maxMessagesPerSecond: parseIntegerEnv('MAX_WS_MESSAGES_PER_SECOND', 30),
+    // 5 channels per wallet + 4 global channels: 1100 supports ~219 wallets.
+    maxSubscriptionsPerConnection: parseIntegerEnv('MAX_WS_SUBSCRIPTIONS', 1100),
+    gracePeriodMessageLimit: parseIntegerEnv('WS_GRACE_PERIOD_LIMIT', 500),
+    maxQueueSize: parseIntegerEnv('WS_MAX_QUEUE_SIZE', 100),
+    queueOverflowPolicy: parseStringEnv('WS_QUEUE_OVERFLOW_POLICY', 'drop_oldest'),
   };
 }
 

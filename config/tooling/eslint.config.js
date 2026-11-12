@@ -197,4 +197,19 @@ export default [
       'no-unused-vars': ['error', { args: 'none', caughtErrors: 'none' }],
     },
   },
+  {
+    // Settings reach the WebSocket layer through the validated config
+    // (server/src/config/websocketLimits.ts). A second, direct read of
+    // process.env here once turned a typo into NaN and silently disabled the
+    // per-user connection limit. Extend `files` as other directories are
+    // moved onto the config module.
+    files: ['server/src/websocket/**/*.ts'],
+    rules: {
+      'no-restricted-properties': ['error', {
+        object: 'process',
+        property: 'env',
+        message: 'Read settings through the config module (server/src/config), not process.env.',
+      }],
+    },
+  },
 ];

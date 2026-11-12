@@ -35,6 +35,7 @@ import {
   isGatewayPushEvent,
 } from './types';
 import { mapGatewayEvent, refilterPushAudience, type GatewayEvent } from './gatewayEventMapper';
+import { clearGatewayConnected, markGatewayConnected } from './gatewayPresence';
 
 const log = createLogger('WS:GATEWAY');
 
@@ -104,6 +105,10 @@ export class GatewayWebSocketServer {
     client.isAlive = true;
     client.on('pong', () => {
       client.isAlive = true;
+      // Each pong proves the link, so it also renews the shared record.
+      if (this.gateway === client && client.isAuthenticated) {
+        void markGatewayConnected();
+      }
     });
 
     // Attach before any early return (see clientServer.handleConnection)
@@ -154,6 +159,7 @@ export class GatewayWebSocketServer {
         if (client.isAuthenticated) {
           websocketConnections.dec({ type: 'gateway' });
         }
+        void clearGatewayConnected();
         log.warn('Gateway disconnected');
       }
     });
@@ -237,6 +243,8 @@ export class GatewayWebSocketServer {
       this.gateway.close(1000, 'Replaced by new connection');
     }
     this.gateway = client;
+    // Other processes (the worker) learn a gateway is attached from this.
+    void markGatewayConnected();
 
     // Track gateway connection metric
     websocketConnections.inc({ type: 'gateway' });
@@ -332,6 +340,8 @@ export class GatewayWebSocketServer {
     if (this.gateway) {
       this.gateway.close(1000, 'Server closing');
       this.gateway = null;
+      // The close handler no longer matches once the field is cleared.
+      void clearGatewayConnected();
     }
     this.wss.close();
   }

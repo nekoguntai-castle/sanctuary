@@ -20,6 +20,7 @@ vi.mock('../../src/api/auth', () => ({
 }));
 vi.mock('../../src/api/refresh', () => ({
   triggerLogout: vi.fn(),
+  announceLogin: vi.fn(),
 }));
 const mockClearQueryCacheForLogout = vi.fn().mockResolvedValue(undefined);
 vi.mock('../../src/providers/queryCacheReset', () => ({
@@ -36,6 +37,8 @@ describe('useUserAuthActions logout', () => {
     const setUser = vi.fn();
     const { result } = renderHook(() => useUserAuthActions({
       invalidateAuthBootstrap: vi.fn(),
+      peerLoginSeqRef: { current: 0 },
+      resyncSession: vi.fn(),
       resetPreferenceTracking: vi.fn(),
       flushPreferenceWrites: vi.fn().mockResolvedValue(undefined),
       setError: vi.fn(),
@@ -77,6 +80,8 @@ describe('useUserAuthActions login failures', () => {
     const setError = vi.fn();
     const { result } = renderHook(() => useUserAuthActions({
       invalidateAuthBootstrap: vi.fn(),
+      peerLoginSeqRef: { current: 0 },
+      resyncSession: vi.fn(),
       resetPreferenceTracking: vi.fn(),
       flushPreferenceWrites: vi.fn().mockResolvedValue(undefined),
       setError,

@@ -31,6 +31,8 @@ const mockTriggerLogout = vi.fn<() => void>();
 vi.mock('../../src/api/refresh', () => ({
   onTerminalLogout: (cb: () => void) => mockOnTerminalLogout(cb),
   triggerLogout: () => mockTriggerLogout(),
+  onPeerLogin: () => () => {},
+  announceLogin: vi.fn(),
 }));
 
 vi.mock('../../src/themes', () => ({

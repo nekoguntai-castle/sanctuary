@@ -25,7 +25,6 @@ import {
   buildPushConfig,
   buildRateLimitConfig,
   buildSyncConfig,
-  buildWebsocketConfig,
   buildWorkerHealthConfig,
   parseIntegerEnv,
   parseStringEnv,
@@ -33,6 +32,7 @@ import {
 import { createLogger } from '../utils/logger';
 import { warnDeprecatedStaleSyncEnvironment } from './deprecatedSyncEnvironment';
 import { buildHardwareWalletConfig } from './hardwareWalletAttestation';
+import { loadWebsocketConfig } from './websocketLimits';
 
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '../../.env') });
@@ -87,7 +87,7 @@ function loadConfig(): CombinedConfig {
     maintenance: buildMaintenanceConfig(),
     sync: buildSyncConfig(),
     electrumClient: buildElectrumClientConfig(),
-    websocket: buildWebsocketConfig(),
+    websocket: loadWebsocketConfig(),
     push: buildPushConfig(),
     payjoin: { publicUrl: parseStringEnv('PAYJOIN_PUBLIC_URL') },
     hardwareWallet: buildHardwareWalletConfig(log.warn),

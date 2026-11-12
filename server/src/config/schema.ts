@@ -148,9 +148,18 @@ export const ElectrumClientConfigSchema = z.object({
   torTimeoutMultiplier: z.number().int().min(1).max(10),
 });
 
+const WEBSOCKET_QUEUE_OVERFLOW_POLICIES = ['drop_oldest', 'drop_newest', 'disconnect'] as const;
+
 export const WebSocketConfigSchema = z.object({
-  maxConnections: z.number().int().min(1).max(100000),
-  maxPerUser: z.number().int().min(1).max(100),
+  // No upper bounds: this schema is now enforced at startup, and a cap that
+  // was never enforced before must not stop an existing deployment.
+  maxConnections: z.number().int().min(1),
+  maxPerUser: z.number().int().min(1),
+  maxMessagesPerSecond: z.number().int().min(1),
+  maxSubscriptionsPerConnection: z.number().int().min(1),
+  gracePeriodMessageLimit: z.number().int().min(1),
+  maxQueueSize: z.number().int().min(1),
+  queueOverflowPolicy: z.enum(WEBSOCKET_QUEUE_OVERFLOW_POLICIES),
 });
 
 export const FcmConfigSchema = z.object({

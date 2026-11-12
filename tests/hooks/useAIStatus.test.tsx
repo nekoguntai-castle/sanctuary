@@ -16,7 +16,11 @@ vi.mock('../../src/api/ai', () => ({
 }));
 
 // Import hook after mocks
-import { invalidateAIStatusCache,useAIStatus } from '../../src/hooks/useAIStatus';
+import {
+  invalidateAIStatusCache,
+  resetAIStatusForSessionEnd,
+  useAIStatus,
+} from '../../src/hooks/useAIStatus';
 
 describe('useAIStatus', () => {
   beforeEach(() => {
@@ -631,6 +635,55 @@ describe('useAIStatus', () => {
         await Promise.resolve();
       });
       expect(result.current.available).toBe(true);
+    });
+  });
+
+  describe('Session end', () => {
+    // The status belongs to a session. Without a reset the previous user's
+    // answer stayed cached for the life of the tab and was shown to the next.
+    it('forgets the cached status without probing as a logged-out client', async () => {
+      mockGetAIStatus.mockResolvedValue({ available: true, proxyAvailable: true });
+      const first = renderHook(() => useAIStatus());
+      await waitFor(() => expect(first.result.current.available).toBe(true));
+      expect(mockGetAIStatus).toHaveBeenCalledTimes(1);
+
+      act(() => resetAIStatusForSessionEnd());
+
+      // Still-mounted consumers see loading; no request goes out mid-logout.
+      expect(first.result.current).toEqual({ enabled: false, loading: true, available: false });
+      expect(mockGetAIStatus).toHaveBeenCalledTimes(1);
+      first.unmount();
+
+      mockGetAIStatus.mockResolvedValue({ available: false, proxyAvailable: true });
+      const next = renderHook(() => useAIStatus());
+      await waitFor(() => expect(next.result.current.loading).toBe(false));
+      expect(next.result.current.available).toBe(false);
+      expect(mockGetAIStatus).toHaveBeenCalledTimes(2);
+    });
+
+    it('drops a response that was in flight when the session ended', async () => {
+      let resolveStatus!: (value: unknown) => void;
+      mockGetAIStatus.mockReturnValue(new Promise((resolve) => { resolveStatus = resolve; }));
+      const { result } = renderHook(() => useAIStatus());
+
+      act(() => resetAIStatusForSessionEnd());
+      await act(async () => { resolveStatus({ available: true, proxyAvailable: true }); });
+
+      expect(result.current.loading).toBe(true);
+      expect(result.current.available).toBe(false);
+    });
+
+    it('cancels a pending retry', async () => {
+      vi.useFakeTimers();
+      mockGetAIStatus.mockRejectedValue(new Error('down'));
+      const { result } = renderHook(() => useAIStatus());
+      await act(async () => { await Promise.resolve(); });
+      expect(result.current.loading).toBe(false);
+
+      act(() => resetAIStatusForSessionEnd());
+      await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+
+      expect(mockGetAIStatus).toHaveBeenCalledTimes(1);
     });
   });
 });

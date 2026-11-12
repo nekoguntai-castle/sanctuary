@@ -10,6 +10,8 @@ import {
   GATEWAY_PUSH_EVENT_TYPES,
   type GatewayPushEventType,
 } from '@sanctuary/shared/constants/gatewayEvents';
+import type { WebSocketConfig } from '../config/types';
+import { loadWebsocketConfig } from '../config/websocketLimits';
 import type { JWTPayload } from '../utils/jwt';
 
 // ============================================================================
@@ -19,24 +21,27 @@ import type { JWTPayload } from '../utils/jwt';
 /** Timeout for unauthenticated connections */
 export const AUTH_TIMEOUT_MS = 30000; // 30 seconds
 
+// One validated reader for these limits: see config/websocketLimits.ts.
+const limits = loadWebsocketConfig();
+
 /** Maximum total WebSocket connections */
-export const MAX_WEBSOCKET_CONNECTIONS = parseInt(process.env.MAX_WEBSOCKET_CONNECTIONS || '10000', 10);
+export const MAX_WEBSOCKET_CONNECTIONS = limits.maxConnections;
 
 /** Maximum WebSocket connections per user */
-export const MAX_WEBSOCKET_PER_USER = parseInt(process.env.MAX_WEBSOCKET_PER_USER || '10', 10);
+export const MAX_WEBSOCKET_PER_USER = limits.maxPerUser;
 
 // ============================================================================
 // Rate Limiting Configuration
 // ============================================================================
 
 /** Maximum messages per second per connection */
-export const MAX_MESSAGES_PER_SECOND = parseInt(process.env.MAX_WS_MESSAGES_PER_SECOND || '30', 10);
+export const MAX_MESSAGES_PER_SECOND = limits.maxMessagesPerSecond;
 
 /**
  * Subscription limit: 5 channels per wallet + 4 global channels
  * Default 1100 supports ~219 wallets, configurable via environment variable
  */
-export const MAX_SUBSCRIPTIONS_PER_CONNECTION = parseInt(process.env.MAX_WS_SUBSCRIPTIONS || '1100', 10);
+export const MAX_SUBSCRIPTIONS_PER_CONNECTION = limits.maxSubscriptionsPerConnection;
 
 /**
  * Grace period for initial connection setup (auth + subscriptions)
@@ -44,7 +49,7 @@ export const MAX_SUBSCRIPTIONS_PER_CONNECTION = parseInt(process.env.MAX_WS_SUBS
  * Without batch: 1 + (wallets) messages - limit 500 supports many wallets
  */
 export const RATE_LIMIT_GRACE_PERIOD_MS = 5000; // 5 seconds grace period after connection
-export const GRACE_PERIOD_MESSAGE_LIMIT = parseInt(process.env.WS_GRACE_PERIOD_LIMIT || '500', 10);
+export const GRACE_PERIOD_MESSAGE_LIMIT = limits.gracePeriodMessageLimit;
 
 /** Maximum rate limit events to buffer for admin visibility */
 export const MAX_RATE_LIMIT_EVENTS = 50;
@@ -57,7 +62,7 @@ export const MAX_RATE_LIMIT_EVENTS = 50;
  * Maximum messages to queue per client before applying backpressure
  * Prevents memory exhaustion from slow consumers
  */
-export const MAX_QUEUE_SIZE = parseInt(process.env.WS_MAX_QUEUE_SIZE || '100', 10);
+export const MAX_QUEUE_SIZE = limits.maxQueueSize;
 
 /**
  * Policy for handling queue overflow
@@ -65,9 +70,8 @@ export const MAX_QUEUE_SIZE = parseInt(process.env.WS_MAX_QUEUE_SIZE || '100', 1
  * - 'drop_newest': Reject new messages when full
  * - 'disconnect': Disconnect slow consumers
  */
-export type QueueOverflowPolicy = 'drop_oldest' | 'drop_newest' | 'disconnect';
-export const QUEUE_OVERFLOW_POLICY: QueueOverflowPolicy =
-  (process.env.WS_QUEUE_OVERFLOW_POLICY as QueueOverflowPolicy) || 'drop_oldest';
+export type QueueOverflowPolicy = WebSocketConfig['queueOverflowPolicy'];
+export const QUEUE_OVERFLOW_POLICY: QueueOverflowPolicy = limits.queueOverflowPolicy;
 
 // ============================================================================
 // Gateway Configuration

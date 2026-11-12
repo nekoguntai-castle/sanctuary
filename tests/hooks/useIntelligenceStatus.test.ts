@@ -15,6 +15,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   invalidateIntelligenceStatus,
+  resetIntelligenceStatusForSessionEnd,
   useIntelligenceStatus,
 } from '../../src/hooks/useIntelligenceStatus';
 import * as intelligenceApi from '../../src/api/intelligence';
@@ -433,6 +434,42 @@ describe('useIntelligenceStatus', () => {
       expect(calls()).toBe(before);
       await advance(1);
       expect(calls()).toBe(before + 1);
+    });
+  });
+
+  describe('session end', () => {
+    it('forgets the cached status without probing as a logged-out client', async () => {
+      vi.mocked(intelligenceApi.getIntelligenceStatus).mockResolvedValue({ available: true } as never);
+      const first = renderHook(() => useIntelligenceStatus());
+      await waitFor(() => expect(first.result.current.available).toBe(true));
+
+      act(() => resetIntelligenceStatusForSessionEnd());
+
+      expect(first.result.current).toEqual({ available: false, loading: true });
+      expect(intelligenceApi.getIntelligenceStatus).toHaveBeenCalledTimes(1);
+      first.unmount();
+
+      vi.mocked(intelligenceApi.getIntelligenceStatus).mockResolvedValue({ available: false } as never);
+      const next = renderHook(() => useIntelligenceStatus());
+      await waitFor(() => expect(next.result.current.loading).toBe(false));
+      expect(next.result.current.available).toBe(false);
+      expect(intelligenceApi.getIntelligenceStatus).toHaveBeenCalledTimes(2);
+    });
+
+    it('cancels a pending retry and restarts the backoff', async () => {
+      vi.useFakeTimers();
+      try {
+        vi.mocked(intelligenceApi.getIntelligenceStatus).mockRejectedValue(new Error('down'));
+        renderHook(() => useIntelligenceStatus());
+        await act(async () => { await Promise.resolve(); });
+
+        act(() => resetIntelligenceStatusForSessionEnd());
+        await act(async () => { await vi.advanceTimersByTimeAsync(120_000); });
+
+        expect(intelligenceApi.getIntelligenceStatus).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 });

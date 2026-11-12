@@ -183,6 +183,7 @@ const mocks = vi.hoisted(() => {
     initializeRedis: vi.fn(),
     shutdownRedis: vi.fn(),
     initializeCacheInvalidation: vi.fn(),
+    redisBridgeIsActive: vi.fn(() => true),
     shutdownCacheInvalidation: vi.fn(),
     isRedisConnected: vi.fn(),
     shutdownDistributedLock: vi.fn(),
@@ -353,6 +354,7 @@ vi.mock('../../../src/services/cacheInvalidation', () => ({
 vi.mock('../../../src/websocket/redisBridge', () => ({
   initializeRedisBridge: vi.fn(async () => undefined),
   shutdownRedisBridge: vi.fn(async () => undefined),
+  redisBridge: { isActive: mocks.redisBridgeIsActive },
 }));
 
 vi.mock('../../../src/services/supportPackage/captureRuntime', () => ({
@@ -1476,6 +1478,7 @@ describe('worker entrypoint', () => {
       electrum: true,
       jobQueue: true,
       recurringSchedules: true,
+      uiEventBridge: true,
       startedAt: expect.any(String),
       walletSyncActivation: activation,
     });
@@ -1961,6 +1964,7 @@ describe('worker entrypoint', () => {
       electrum: true,
       jobQueue: true,
       recurringSchedules: true,
+      uiEventBridge: true,
       startedAt: expect.any(String),
       walletSyncActivation: {
         status: 'active',
@@ -1975,6 +1979,7 @@ describe('worker entrypoint', () => {
       electrum: false,
       jobQueue: false,
       recurringSchedules: true,
+      uiEventBridge: true,
       startedAt: expect.any(String),
       walletSyncActivation: {
         status: 'active',
@@ -2191,6 +2196,7 @@ describe('worker entrypoint', () => {
       electrum: true,
       jobQueue: true,
       recurringSchedules: true,
+      uiEventBridge: true,
       startedAt: expect.any(String),
       walletSyncActivation: {
         status: 'active',
@@ -2221,6 +2227,7 @@ describe('worker entrypoint', () => {
       electrum: true,
       jobQueue: false,
       recurringSchedules: false,
+      uiEventBridge: true,
       startedAt: expect.any(String),
       walletSyncActivation: {
         status: 'active',
@@ -2257,6 +2264,7 @@ describe('worker entrypoint', () => {
       electrum: true,
       jobQueue: false,
       recurringSchedules: false,
+      uiEventBridge: true,
       startedAt: expect.any(String),
       walletSyncActivation: {
         status: 'active',

@@ -118,6 +118,9 @@ function isControlEnvelope(value: unknown): value is AuthorizationControlEnvelop
     isAuthorizationControl(envelope.control);
 }
 
+const BRIDGE_RETRY_INITIAL_MS = 1_000;
+const BRIDGE_RETRY_MAX_MS = 30_000;
+
 /**
  * Redis WebSocket Bridge for cross-instance broadcasting
  */
@@ -126,6 +129,16 @@ class RedisWebSocketBridge {
   private subscriber: Redis | null = null;
   private isInitialized = false;
   private publishOnly = false;
+  // A failed start is retried: without this the bridge stayed local-only for
+  // the life of the process and every cross-process event was dropped.
+  private retryTimer: NodeJS.Timeout | null = null;
+  private retryDelayMs = BRIDGE_RETRY_INITIAL_MS;
+  private attemptInFlight = false;
+  private reportedLocalOnly = false;
+  /** A start requested while an attempt was in flight; see initialize(). */
+  private queuedStart: RedisWebSocketBridgeOptions | null = null;
+  /** Bumped on shutdown so an attempt that finishes afterwards discards itself. */
+  private lifecycle = 0;
   private broadcastHandler: BroadcastHandler | null = null;
   private controlHandler: ControlHandler | null = null;
   private gatewayEventHandler: GatewayEventHandler | null = null;
@@ -147,17 +160,59 @@ class RedisWebSocketBridge {
       log.warn('Redis WebSocket bridge already initialized');
       return;
     }
-
-    if (!isRedisConnected()) {
-      log.warn('Redis not connected, WebSocket bridge running in local-only mode');
+    if (this.attemptInFlight) {
+      // Usually a duplicate call. After a shutdown, though, the in-flight
+      // attempt is abandoned and will discard itself, so remember this start
+      // and run it once that attempt has released its connections.
+      this.queuedStart = options;
       return;
+    }
+
+    this.clearRetry();
+    this.attemptInFlight = true;
+    const lifecycle = this.lifecycle;
+    let connected = false;
+    try {
+      connected = await this.connect(options);
+      // Shut down while connecting: release what this attempt opened before
+      // any later attempt can store its own connections in the same fields.
+      if (connected && lifecycle !== this.lifecycle) await this.cleanup();
+    } finally {
+      this.attemptInFlight = false;
+    }
+
+    const queuedStart = this.queuedStart;
+    this.queuedStart = null;
+    if (lifecycle !== this.lifecycle) {
+      if (queuedStart) await this.initialize(queuedStart);
+      return;
+    }
+    if (connected) {
+      this.isInitialized = true;
+      this.retryDelayMs = BRIDGE_RETRY_INITIAL_MS;
+      this.reportedLocalOnly = false;
+      log.info('Redis WebSocket bridge initialized', { instanceId, publishOnly: this.publishOnly });
+      return;
+    }
+    this.scheduleRetry(options);
+  }
+
+  /** Open the pub/sub connections. Resolves false when the bridge could not start. */
+  private async connect(options: RedisWebSocketBridgeOptions): Promise<boolean> {
+    if (!isRedisConnected()) {
+      // Warn once; a process running without Redis would otherwise repeat this
+      // on every retry for as long as it runs.
+      const report = this.reportedLocalOnly ? log.debug : log.warn;
+      this.reportedLocalOnly = true;
+      report('Redis not connected, WebSocket bridge running in local-only mode');
+      return false;
     }
 
     try {
       const redisClient = getRedisClient();
       if (!redisClient) {
         log.warn('Redis client not available, WebSocket bridge running in local-only mode');
-        return;
+        return false;
       }
 
       this.publishOnly = options.publishOnly === true;
@@ -205,14 +260,31 @@ class RedisWebSocketBridge {
         this.metrics.errors++;
       });
 
-      this.isInitialized = true;
-      log.info('Redis WebSocket bridge initialized', { instanceId, publishOnly: this.publishOnly });
+      return true;
     } catch (error) {
       log.error('Failed to initialize Redis WebSocket bridge', {
         error: getErrorMessage(error),
       });
       // Clean up partial initialization
       await this.cleanup();
+      return false;
+    }
+  }
+
+  private scheduleRetry(options: RedisWebSocketBridgeOptions): void {
+    const delayMs = this.retryDelayMs;
+    this.retryDelayMs = Math.min(delayMs * 2, BRIDGE_RETRY_MAX_MS);
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      void this.initialize(options);
+    }, delayMs);
+    this.retryTimer.unref();
+  }
+
+  private clearRetry(): void {
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
     }
   }
 
@@ -475,6 +547,11 @@ class RedisWebSocketBridge {
    * Graceful shutdown
    */
   async shutdown(): Promise<void> {
+    this.lifecycle++;
+    this.queuedStart = null;
+    this.clearRetry();
+    this.retryDelayMs = BRIDGE_RETRY_INITIAL_MS;
+    this.reportedLocalOnly = false;
     if (!this.isInitialized) {
       return;
     }
