@@ -173,7 +173,6 @@ async function installRemediationFixture(
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        headers: { 'Content-Disposition': 'attachment; filename="wallet-remediation-evidence.json"' },
         body: JSON.stringify({ proposalId: PROPOSAL_ID, proposalDigest: PROPOSAL_DIGEST }),
       });
       return;

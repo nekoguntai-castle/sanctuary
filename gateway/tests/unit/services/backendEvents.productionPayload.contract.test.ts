@@ -74,6 +74,7 @@ vi.mock('../../../../server/src/websocket/gatewayPresence', () => ({
   markGatewayConnected: vi.fn(async () => undefined),
   clearGatewayConnected: vi.fn(async () => undefined),
   isAnyGatewayConnected: vi.fn(async () => true),
+  isGatewayConnectedElsewhere: vi.fn(async () => false),
 }));
 // Reaches the dead-letter queue, and through it Redis, which the gateway does not install.
 vi.mock('../../../../server/src/websocket/gatewayPushLoss', () => ({

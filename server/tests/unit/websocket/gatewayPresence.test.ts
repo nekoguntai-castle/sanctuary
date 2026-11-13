@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => {
     multi: vi.fn(() => pipeline),
     zrem: vi.fn(async () => 1),
     zcount: vi.fn(async () => 0),
+    zrangebyscore: vi.fn(async (): Promise<string[]> => []),
   },
   redisAvailable: true,
   connected: true,
@@ -37,6 +38,7 @@ import {
   GATEWAY_PRESENCE_TTL_MS,
   clearGatewayConnected,
   isAnyGatewayConnected,
+  isGatewayConnectedElsewhere,
   markGatewayConnected,
 } from '../../../src/websocket/gatewayPresence';
 
@@ -46,6 +48,7 @@ describe('gateway presence', () => {
     mocks.redisAvailable = true;
     mocks.connected = true;
     mocks.redis.zcount.mockResolvedValue(0);
+    mocks.redis.zrangebyscore.mockResolvedValue([]);
     mocks.redis.multi.mockReturnValue(mocks.pipeline);
     mocks.pipeline.zadd.mockReturnValue(mocks.pipeline);
     mocks.pipeline.zremrangebyscore.mockReturnValue(mocks.pipeline);
@@ -90,17 +93,32 @@ describe('gateway presence', () => {
     await expect(isAnyGatewayConnected()).resolves.toBe(false);
   });
 
+  it('does not count this instance\'s own record as a gateway held elsewhere', async () => {
+    // Left behind when Redis was unreachable as this instance's gateway closed.
+    mocks.redis.zrangebyscore.mockResolvedValue(['api-1']);
+    await expect(isGatewayConnectedElsewhere()).resolves.toBe(false);
+    expect(mocks.redis.zrangebyscore).toHaveBeenCalledWith(GATEWAY_PRESENCE_KEY, `(${1_000_000}`, '+inf');
+
+    mocks.redis.zrangebyscore.mockResolvedValue(['api-1', 'api-2']);
+    await expect(isGatewayConnectedElsewhere()).resolves.toBe(true);
+
+    mocks.redis.zrangebyscore.mockResolvedValue([]);
+    await expect(isGatewayConnectedElsewhere()).resolves.toBe(false);
+  });
+
   it('is a no-op without Redis and reports no gateway', async () => {
     mocks.connected = false;
     await markGatewayConnected();
     await clearGatewayConnected();
     await expect(isAnyGatewayConnected()).resolves.toBe(false);
+    await expect(isGatewayConnectedElsewhere()).resolves.toBe(false);
 
     mocks.connected = true;
     mocks.redisAvailable = false;
     await markGatewayConnected();
     await clearGatewayConnected();
     await expect(isAnyGatewayConnected()).resolves.toBe(false);
+    await expect(isGatewayConnectedElsewhere()).resolves.toBe(false);
 
     expect(mocks.redis.multi).not.toHaveBeenCalled();
     expect(mocks.redis.zrem).not.toHaveBeenCalled();
@@ -117,5 +135,7 @@ describe('gateway presence', () => {
 
     mocks.redis.zcount.mockRejectedValueOnce(new Error('read failed'));
     await expect(isAnyGatewayConnected()).rejects.toThrow('read failed');
+    mocks.redis.zrangebyscore.mockRejectedValueOnce(new Error('range failed'));
+    await expect(isGatewayConnectedElsewhere()).rejects.toThrow('range failed');
   });
 });

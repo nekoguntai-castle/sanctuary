@@ -36,7 +36,7 @@ const mocks = vi.hoisted(() => {
     refilterPushAudience: vi.fn(async (event: unknown) => event),
     markGatewayConnected: vi.fn(async () => undefined),
     clearGatewayConnected: vi.fn(async () => undefined),
-    isAnyGatewayConnected: vi.fn(async () => false),
+    isGatewayConnectedElsewhere: vi.fn(async () => false),
     recordGatewayPushLoss: vi.fn(),
     flushGatewayPushLosses: vi.fn(),
     logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -74,7 +74,7 @@ vi.mock('../../../src/observability/metrics', () => ({
 vi.mock('../../../src/websocket/gatewayPresence', () => ({
   markGatewayConnected: mocks.markGatewayConnected,
   clearGatewayConnected: mocks.clearGatewayConnected,
-  isAnyGatewayConnected: mocks.isAnyGatewayConnected,
+  isGatewayConnectedElsewhere: mocks.isGatewayConnectedElsewhere,
 }));
 
 vi.mock('../../../src/websocket/gatewayPushLoss', () => ({
@@ -133,8 +133,8 @@ describe('GatewayWebSocketServer', () => {
     mocks.createdServers.length = 0;
     mocks.mapGatewayEvent.mockReset();
     mocks.mapGatewayEvent.mockImplementation(async (event) => event);
-    mocks.isAnyGatewayConnected.mockReset();
-    mocks.isAnyGatewayConnected.mockResolvedValue(false);
+    mocks.isGatewayConnectedElsewhere.mockReset();
+    mocks.isGatewayConnectedElsewhere.mockResolvedValue(false);
   });
 
   describe('heartbeat', () => {

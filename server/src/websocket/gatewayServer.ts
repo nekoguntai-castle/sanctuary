@@ -39,7 +39,7 @@ import {
   isGatewayPushEvent,
 } from './types';
 import { mapGatewayEvent, refilterPushAudience, type GatewayEvent } from './gatewayEventMapper';
-import { clearGatewayConnected, isAnyGatewayConnected, markGatewayConnected } from './gatewayPresence';
+import { clearGatewayConnected, isGatewayConnectedElsewhere, markGatewayConnected } from './gatewayPresence';
 import { GatewayPushLossLog } from './gatewayPushLoss';
 
 const log = createLogger('WS:GATEWAY');
@@ -177,7 +177,7 @@ export class GatewayWebSocketServer {
   private async isGatewayElsewhere(): Promise<boolean> {
     try {
       return await withTimeout(
-        isAnyGatewayConnected(),
+        isGatewayConnectedElsewhere(),
         GATEWAY_PRESENCE_READ_TIMEOUT_MS,
         'Gateway presence read timed out',
       );

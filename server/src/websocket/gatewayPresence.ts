@@ -69,3 +69,18 @@ export async function isAnyGatewayConnected(): Promise<boolean> {
   // Expired records are ignored by the score range; the writer prunes them.
   return (await redis.zcount(GATEWAY_PRESENCE_KEY, `(${Date.now()}`, '+inf')) > 0;
 }
+
+/**
+ * Whether an API instance other than this one holds a live gateway connection.
+ *
+ * This instance's own record is not counted. It can outlive the connection:
+ * when Redis is unreachable as the gateway socket closes, the record is not
+ * cleared and stays until it expires. Rejects when the record cannot be read.
+ */
+export async function isGatewayConnectedElsewhere(): Promise<boolean> {
+  const redis = presenceRedis();
+  if (!redis) return false;
+  const holders = await redis.zrangebyscore(GATEWAY_PRESENCE_KEY, `(${Date.now()}`, '+inf');
+  const self = redisBridge.getInstanceId();
+  return holders.some((holder) => holder !== self);
+}

@@ -37,6 +37,7 @@ const mocks = vi.hoisted(() => {
     markGatewayConnected: vi.fn(async () => undefined),
     clearGatewayConnected: vi.fn(async () => undefined),
     isAnyGatewayConnected: vi.fn(async () => false),
+    isGatewayConnectedElsewhere: vi.fn(async () => false),
     recordGatewayPushLoss: vi.fn(),
     flushGatewayPushLosses: vi.fn(),
     logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -75,6 +76,7 @@ vi.mock('../../../src/websocket/gatewayPresence', () => ({
   markGatewayConnected: mocks.markGatewayConnected,
   clearGatewayConnected: mocks.clearGatewayConnected,
   isAnyGatewayConnected: mocks.isAnyGatewayConnected,
+  isGatewayConnectedElsewhere: mocks.isGatewayConnectedElsewhere,
 }));
 
 vi.mock('../../../src/websocket/gatewayPushLoss', () => ({
@@ -137,6 +139,8 @@ beforeEach(() => {
   mocks.refilterPushAudience.mockImplementation(async (event) => event);
   mocks.isAnyGatewayConnected.mockReset();
   mocks.isAnyGatewayConnected.mockResolvedValue(false);
+  mocks.isGatewayConnectedElsewhere.mockReset();
+  mocks.isGatewayConnectedElsewhere.mockResolvedValue(false);
 });
 
 describe('push events that could not be delivered', () => {
@@ -250,7 +254,7 @@ describe('push events that could not be delivered', () => {
   });
 
   it('holds nothing while another instance has the gateway', async () => {
-    mocks.isAnyGatewayConnected.mockResolvedValue(true);
+    mocks.isGatewayConnectedElsewhere.mockResolvedValue(true);
     const server = new GatewayWebSocketServer();
     await server.sendEvent(txEvent('tx1'));
 
@@ -260,8 +264,23 @@ describe('push events that could not be delivered', () => {
     expect(sentEvents(client)).toEqual([]);
   });
 
+  it('holds the event when only this instance\'s own stale record says a gateway is connected', async () => {
+    // Redis was unreachable when the gateway socket closed, so this instance's
+    // record was not cleared and still counts as "a gateway is connected".
+    mocks.isAnyGatewayConnected.mockResolvedValue(true);
+    const server = new GatewayWebSocketServer();
+    await server.sendEvent(txEvent('tx1'));
+    await (server as any).reviewHeldWithoutGateway();
+
+    const client = connect(server);
+    await settle();
+
+    expect(sentEvents(client)).toEqual(['tx1']);
+    expect(mocks.recordGatewayPushLoss).not.toHaveBeenCalled();
+  });
+
   it('holds the event when the shared presence record cannot be read', async () => {
-    mocks.isAnyGatewayConnected.mockRejectedValue(new Error('redis down'));
+    mocks.isGatewayConnectedElsewhere.mockRejectedValue(new Error('redis down'));
     const server = new GatewayWebSocketServer();
     await server.sendEvent(txEvent('tx1'));
 
@@ -394,10 +413,10 @@ describe('push events that could not be delivered', () => {
     const server = new GatewayWebSocketServer();
     await server.sendEvent(txEvent('tx1'));
 
-    mocks.isAnyGatewayConnected.mockResolvedValue(true);
+    mocks.isGatewayConnectedElsewhere.mockResolvedValue(true);
     await (server as any).reviewHeldWithoutGateway();
 
-    mocks.isAnyGatewayConnected.mockResolvedValue(false);
+    mocks.isGatewayConnectedElsewhere.mockResolvedValue(false);
     const client = connect(server);
     await settle();
     expect(sentEvents(client)).toEqual([]);
@@ -409,7 +428,7 @@ describe('push events that could not be delivered', () => {
     await server.sendEvent(txEvent('tx1'));
 
     let answer!: (value: boolean) => void;
-    mocks.isAnyGatewayConnected.mockImplementationOnce(() => new Promise<boolean>((resolve) => {
+    mocks.isGatewayConnectedElsewhere.mockImplementationOnce(() => new Promise<boolean>((resolve) => {
       answer = resolve;
     }));
     const review = (server as any).reviewHeldWithoutGateway();
