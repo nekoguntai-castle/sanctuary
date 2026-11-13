@@ -704,11 +704,56 @@ describe('subscriptionCheckpointEnrollment', () => {
 
     expect(releaseBatch).toHaveBeenCalledOnce();
     expect(releaseBatch).toHaveBeenCalledWith(statuses);
-    expect(subscribeBatch).toHaveBeenCalledBefore(serializePersistenceMock);
-    expect(serializePersistenceMock).toHaveBeenCalledBefore(
-      vi.mocked(repository.completeSubscriptionEnrollment),
-    );
+    // The lane is taken twice: once for the read, once for the writes. It is
+    // not held across the Electrum subscribe in between.
+    expect(serializePersistenceMock).toHaveBeenCalledTimes(2);
+    expect(serializePersistenceMock.mock.invocationCallOrder[0])
+      .toBeLessThan(vi.mocked(repository.findPendingSubscriptionEnrollments).mock.invocationCallOrder[0]);
+    expect(subscribeBatch.mock.invocationCallOrder[0])
+      .toBeLessThan(serializePersistenceMock.mock.invocationCallOrder[1]);
+    expect(serializePersistenceMock.mock.invocationCallOrder[1])
+      .toBeLessThan(vi.mocked(repository.completeSubscriptionEnrollment).mock.invocationCallOrder[0]);
     expect(repository.completeSubscriptionEnrollment).toHaveBeenCalledBefore(releaseBatch);
+  });
+
+  it('does not pick up a checkpoint that a serialized writer holds pending for a moment', async () => {
+    // The status refresh marks a checkpoint pending and completes it inside one
+    // serialized operation. A read that ran in the middle saw the pending row,
+    // subscribed to it, lost the completion and was reported as unavailable.
+    const repository = repositoryMock();
+    let tail: Promise<unknown> = Promise.resolve();
+    const serializePersistence = <T>(operation: () => Promise<T>): Promise<T> => {
+      const result = tail.then(operation);
+      tail = result.catch(() => undefined);
+      return result;
+    };
+    let pending = false;
+    vi.mocked(repository.findPendingSubscriptionEnrollments).mockImplementation(
+      async () => (pending ? [candidate('address-1', ADDRESS_1)] : []),
+    );
+    let finishWriter!: () => void;
+    const writer = serializePersistence(async () => {
+      pending = true;
+      await new Promise<void>((resolve) => { finishWriter = resolve; });
+      pending = false;
+    });
+    const enrollment = createSubscriptionCheckpointEnrollment({
+      repository,
+      subscribeBatch,
+      serializePersistence,
+      now: () => NOW,
+    });
+
+    // Let the writer start, so the row is pending when the page is read.
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(pending).toBe(true);
+    const page = enrollment.enrollPage({ network: 'mainnet' });
+    await new Promise((resolve) => setImmediate(resolve));
+    finishWriter();
+    await writer;
+
+    await expect(page).resolves.toMatchObject({ scanned: 0, enrolled: 0, unavailable: 0 });
+    expect(subscribeBatch).not.toHaveBeenCalled();
   });
 
   it.each([0, -1, 1.5, Number.NaN])(

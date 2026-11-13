@@ -291,8 +291,10 @@ async function enrollWalletSubscriptions(
       if (!electrumManager) throw new Error('Electrum subscription manager is not initialized');
       await electrumManager.ensureNetworkConnected(targetNetwork);
     },
-    // The runtime acquires the global mutation lane only after its Electrum
-    // subscription turn, preserving one lock order across every caller.
+    // The runtime takes the global mutation lane itself: briefly for its read
+    // of pending work, then again for its writes after the Electrum subscribe.
+    // It never holds the lane across the subscribe, so wrapping it here would
+    // nest the lane and change the lock order.
     serializeMutation: operation => operation(),
     onPageResult: result => logCheckpointDispatchFailures(`wallet:${walletId}`, result),
   });

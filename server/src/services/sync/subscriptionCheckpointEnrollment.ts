@@ -227,13 +227,20 @@ export function createSubscriptionCheckpointEnrollment(
       throw new Error('Subscription enrollment requires a supported network');
     }
     const limit = enrollmentLimit(options.limit);
+    const findPending = () => dependencies.repository.findPendingSubscriptionEnrollments({
+      network: options.network,
+      ...(options.walletId !== undefined ? { walletId: options.walletId } : {}),
+      ...(options.cursor !== undefined ? { cursor: options.cursor } : {}),
+      limit,
+    });
+    // Read in the persistence lane. A status observation marks its checkpoint
+    // pending and completes it within one serialized write; a read between the
+    // two would subscribe to that address again and then lose the completion.
+    // The lane is released before the Electrum subscribe below.
     const candidates = (
-      await dependencies.repository.findPendingSubscriptionEnrollments({
-        network: options.network,
-        ...(options.walletId !== undefined ? { walletId: options.walletId } : {}),
-        ...(options.cursor !== undefined ? { cursor: options.cursor } : {}),
-        limit,
-      })
+      dependencies.serializePersistence
+        ? await dependencies.serializePersistence(findPending)
+        : await findPending()
     ).slice(0, limit);
     if (candidates.length === 0) return pageResult(candidates, 0);
 

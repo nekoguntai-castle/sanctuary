@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - AI and Intelligence controls come back without a hard reload. An "unavailable" answer (for example, the proxy was still starting) is checked again when a page using it opens more than a minute later.
 - The receive dialog stops offering a fetched address once the wallet marks it used, and fetches the next unused one. A payment arriving while the dialog was open could leave the paid address on screen as unused.
 - The push gateway reports a missing `GATEWAY_SECRET` once instead of retrying and logging an error every five seconds.
+- The worker no longer logs "Subscription checkpoint work remains durable for recovery" about once a minute on a healthy system. The one-second recovery check could read a checkpoint in the instant the status refresh had it marked pending, subscribe to that address a second time, and report the lost completion as unavailable work. The check now reads in the same serialized lane as those writes.
 
 ### Security
 
