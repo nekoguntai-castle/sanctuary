@@ -20,16 +20,12 @@ type Notification = push.PushNotification | null;
 
 const getWalletName = (event: BackendEvent): string => event.walletName || 'Wallet';
 
-const toTransactionNotificationType = (
-  type: NonNullable<BackendEvent['data']['type']>
-): 'received' | 'sent' => (type === 'consolidation' ? 'sent' : type);
-
 const formatTransactionEvent = (event: BackendEvent): Notification => {
   const { data } = event;
   if (!data.type || data.amount == null || !data.txid) return null;
 
   return push.formatTransactionNotification(
-    toTransactionNotificationType(data.type),
+    data.type,
     getWalletName(event),
     data.amount,
     data.txid

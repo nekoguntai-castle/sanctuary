@@ -45,7 +45,7 @@ describe('backendEvents notifications formatter', () => {
     })).toBeNull();
   });
 
-  it('formats transaction event and maps consolidation to sent', () => {
+  it('formats a consolidation as its own notification type, not as a sent payment', () => {
     const notification = formatNotificationForEvent({
       type: 'transaction',
       walletId: 'wallet-1',
@@ -58,7 +58,7 @@ describe('backendEvents notifications formatter', () => {
     });
 
     expect(mockFormatTransactionNotification).toHaveBeenCalledWith(
-      'sent',
+      'consolidation',
       'Treasury',
       9000,
       'tx-1'

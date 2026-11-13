@@ -179,7 +179,7 @@ function formatSats(sats: number): string {
  * Format a transaction notification
  */
 export function formatTransactionNotification(
-  type: 'received' | 'sent' | 'confirmed',
+  type: 'received' | 'sent' | 'consolidation' | 'confirmed',
   walletName: string,
   amount: number,
   txid: string
@@ -198,6 +198,13 @@ export function formatTransactionNotification(
       return {
         title: `Bitcoin Sent`,
         body: `${walletName}: -${amountBtc}`,
+        data: { type: 'transaction', txid, walletName },
+      };
+    case 'consolidation':
+      // The amount of a consolidation is its fee: the funds stay in the wallet.
+      return {
+        title: `Consolidation Sent`,
+        body: `${walletName}: fee ${amountBtc}`,
         data: { type: 'transaction', txid, walletName },
       };
     case 'confirmed':

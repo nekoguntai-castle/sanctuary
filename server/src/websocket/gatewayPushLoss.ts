@@ -11,6 +11,7 @@
 import { deadLetterQueue } from '../services/deadLetterQueue';
 import { getErrorMessage } from '../utils/errors';
 import { createLogger } from '../utils/logger';
+import { redisBridge } from './redisBridge';
 import type { GatewayPushEvent, WebSocketEvent } from './types';
 
 const log = createLogger('WS:GATEWAY:LOSS');
@@ -67,7 +68,9 @@ export class GatewayPushLossLog {
     if (tooSoon && !force) return;
 
     const count = this.count;
-    const payload = { count, events: this.samples };
+    // With several API instances and no gateway, each one holds its own copy
+    // of an event and records its own loss. The instance id tells those apart.
+    const payload = { count, instanceId: redisBridge.getInstanceId(), events: this.samples };
     this.count = 0;
     this.samples = [];
     this.lastWrittenAt = now;

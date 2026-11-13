@@ -101,7 +101,11 @@ export const GATEWAY_HELD_EVENT_TTL_MS = 10 * 60 * 1000;
 /** Most undelivered push events held at once; the oldest is recorded as lost beyond this. */
 export const GATEWAY_HELD_EVENT_LIMIT = 200;
 
-/** Audience lookups allowed to fail for one push event before it is recorded as lost. */
+/**
+ * Failed audience lookups after which a held push event is suspected of being
+ * the cause. It is recorded as lost only if the next event's lookup then
+ * works; while every lookup fails, events are kept until the hold window ends.
+ */
 export const GATEWAY_EVENT_MAX_PREPARATION_FAILURES = 3;
 
 // ============================================================================

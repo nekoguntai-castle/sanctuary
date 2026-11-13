@@ -580,9 +580,10 @@ describe('GatewayWebSocketServer', () => {
       .mockRejectedValueOnce(new Error('audience read failed'))
       .mockImplementationOnce(async (event) => ({ ...event as object, userIds: ['ok'] }));
 
-    await expect(server.sendEvent({ type: 'transaction', data: { txid: 'bad' } } as any))
+    // Non-push events: a push event would be held and retried in order instead.
+    await expect(server.sendEvent({ type: 'balance', data: { txid: 'bad' } } as any))
       .rejects.toThrow('audience read failed');
-    await expect(server.sendEvent({ type: 'transaction', data: { txid: 'good' } } as any))
+    await expect(server.sendEvent({ type: 'balance', data: { txid: 'good' } } as any))
       .resolves.toBeUndefined();
     expect(JSON.parse(client.send.mock.calls[2][0]).event.userIds).toEqual(['ok']);
   });

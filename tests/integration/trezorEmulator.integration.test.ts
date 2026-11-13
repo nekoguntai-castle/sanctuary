@@ -32,7 +32,6 @@ import {
 import {
   closeBridgeProxy,
   confirmOnEmulator,
-  controllerCommand,
   requiredEnvironment,
   startLocalBridgeProxy,
 } from "./trezorEmulator/controller";
@@ -309,12 +308,11 @@ describe.runIf(RUN_PROOF)(
         TREZOR_EMULATOR_PROOF_CONTRACT.connect,
       );
       bridgeProxy = await startLocalBridgeProxy();
-      // Multisig BIP48 paths need non-strict safety checks. On the Model T
-      // this applies the persistent PromptAlways level through the
-      // controller's own trezorlib client, so it is set once here, before
-      // Connect acquires the device: while the node bridge holds a session
-      // that client blocks, and the controller stops answering.
-      await controllerCommand({ type: "emulator-allow-unsafe-paths", id: 1_199 });
+      // run-trezor-emulator-proof.sh has already allowed unsafe paths (needed
+      // for multisig BIP48), before it started the bridge. A controller command
+      // that talks to the emulator must not run from here: the bridge shares
+      // the emulator's UDP port and can take the reply, which hangs the
+      // controller. The emulator-press-yes commands use the debug link port.
       Object.defineProperty(globalThis, "window", {
         configurable: true,
         value: {

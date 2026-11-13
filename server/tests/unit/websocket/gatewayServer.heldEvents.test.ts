@@ -343,30 +343,184 @@ describe('push events that could not be delivered', () => {
     expect(sentEvents(next)).toEqual([]);
   });
 
-  it('records an event it gives up on after repeated lookup failures', async () => {
+  it('keeps an event through repeated lookup failures while nothing shows the lookups work', async () => {
     const server = new GatewayWebSocketServer();
     const client = connect(server);
     mocks.mapGatewayEvent.mockRejectedValue(new Error('db down'));
 
     await expect(server.sendEvent(txEvent('tx1'))).rejects.toThrow('db down');
+    for (let i = 0; i < 5; i++) {
+      client.isAlive = true;
+      (server as any).checkGatewayHeartbeat();
+      await settle();
+    }
+    expect(mocks.recordGatewayPushLoss).not.toHaveBeenCalled();
+
+    // The database is back: the event is delivered, not given up on.
+    mocks.mapGatewayEvent.mockImplementation(async (event) => event);
+    client.isAlive = true;
     (server as any).checkGatewayHeartbeat();
     await settle();
+    expect(sentEvents(client)).toEqual(['tx1']);
     expect(mocks.recordGatewayPushLoss).not.toHaveBeenCalled();
+  });
+
+  it('gives up on an event that keeps failing once a later event shows the lookups work', async () => {
+    const server = new GatewayWebSocketServer();
+    await server.sendEvent(txEvent('bad'));
+    await server.sendEvent(txEvent('tx2'));
+    await server.sendEvent(txEvent('tx3'));
+    mocks.mapGatewayEvent.mockImplementation(async (event: any) => {
+      if (event.data.txid === 'bad') throw new Error('cannot map');
+      return event;
+    });
+
+    // Passes one and two stop at the failing event and leave the rest untried.
+    const client = connect(server);
+    await settle();
+    client.isAlive = true;
+    (server as any).checkGatewayHeartbeat();
+    await settle();
+    expect(sentEvents(client)).toEqual([]);
+    expect(mocks.recordGatewayPushLoss).not.toHaveBeenCalled();
+
+    // Third failure: the pass tries the next event, which succeeds.
+    client.isAlive = true;
+    (server as any).checkGatewayHeartbeat();
+    await settle();
+    expect(sentEvents(client)).toEqual(['tx2', 'tx3']);
+    expect(mocks.recordGatewayPushLoss).toHaveBeenCalledTimes(1);
+    expect(mocks.recordGatewayPushLoss).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ txid: 'bad' }) }),
+      'cannot map',
+      3,
+    );
+
+    // Given up on: a later heartbeat does not try it again.
+    const attempts = mocks.mapGatewayEvent.mock.calls.length;
+    client.isAlive = true;
+    (server as any).checkGatewayHeartbeat();
+    await settle();
+    expect(mocks.mapGatewayEvent).toHaveBeenCalledTimes(attempts);
+  });
+
+  it('records a suspect event once when the server closes before the next lookup finishes', async () => {
+    const server = new GatewayWebSocketServer();
+    await server.sendEvent(txEvent('bad'));
+    await server.sendEvent(txEvent('tx2'));
+    mocks.mapGatewayEvent.mockImplementation(async (event: any) => {
+      if (event.data.txid === 'bad') throw new Error('cannot map');
+      return event;
+    });
+    const client = connect(server);
+    await settle();
     client.isAlive = true;
     (server as any).checkGatewayHeartbeat();
     await settle();
 
-    expect(mocks.recordGatewayPushLoss).toHaveBeenCalledTimes(1);
-    expect(mocks.recordGatewayPushLoss).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'transaction', walletId: 'w1' }),
-      'db down',
-      3,
-    );
-    // Given up on: a later heartbeat does not try again.
+    // Third pass: 'bad' becomes the suspect, and the lookup for tx2 is slow.
+    let release!: () => void;
+    mocks.mapGatewayEvent.mockImplementation((event: any) => {
+      if (event.data.txid === 'bad') return Promise.reject(new Error('cannot map'));
+      return new Promise((resolve) => { release = () => resolve(event); });
+    });
     client.isAlive = true;
     (server as any).checkGatewayHeartbeat();
     await settle();
-    expect(mocks.mapGatewayEvent).toHaveBeenCalledTimes(3);
+    server.close();
+    release();
+    await settle();
+
+    const recorded = mocks.recordGatewayPushLoss.mock.calls.map(([event]: any) => event.data.txid);
+    expect(recorded.filter((txid: string) => txid === 'bad')).toEqual(['bad']);
+  });
+
+  it('keeps a suspect event when the event tried after it fails too', async () => {
+    const server = new GatewayWebSocketServer();
+    await server.sendEvent(txEvent('tx1'));
+    await server.sendEvent(txEvent('tx2'));
+    await server.sendEvent(txEvent('tx3'));
+    mocks.mapGatewayEvent.mockRejectedValue(new Error('db down'));
+
+    const client = connect(server);
+    await settle();
+    for (let i = 0; i < 3; i++) {
+      client.isAlive = true;
+      (server as any).checkGatewayHeartbeat();
+      await settle();
+    }
+    expect(mocks.recordGatewayPushLoss).not.toHaveBeenCalled();
+    // One extra lookup per pass at most: tx3 is never tried during the outage.
+    expect(mocks.mapGatewayEvent.mock.calls.some(([event]: any) => event.data.txid === 'tx3')).toBe(false);
+
+    mocks.mapGatewayEvent.mockImplementation(async (event) => event);
+    client.isAlive = true;
+    (server as any).checkGatewayHeartbeat();
+    await settle();
+    expect(sentEvents(client)).toEqual(['tx1', 'tx2', 'tx3']);
+    expect(mocks.recordGatewayPushLoss).not.toHaveBeenCalled();
+  });
+
+  it('sends a held event before a newer push event instead of letting the newer one overtake it', async () => {
+    const server = new GatewayWebSocketServer();
+    const client = connect(server);
+    mocks.mapGatewayEvent.mockRejectedValueOnce(new Error('db blip'));
+    await expect(server.sendEvent(txEvent('tx1'))).rejects.toThrow('db blip');
+
+    await server.sendEvent({
+      type: 'confirmation',
+      walletId: 'w1',
+      data: { txid: 'tx1', confirmations: 1, previousConfirmations: 0 },
+    } as any);
+    await settle();
+
+    const types = client.send.mock.calls
+      .map(([raw]) => JSON.parse(raw))
+      .filter((message) => message.type === 'event')
+      .map((message) => message.event.type);
+    expect(types).toEqual(['transaction', 'confirmation']);
+  });
+
+  it('keeps the accepted order when a gateway authenticates during the presence read', async () => {
+    const server = new GatewayWebSocketServer();
+    let answer!: (value: boolean) => void;
+    mocks.isGatewayConnectedElsewhere.mockImplementationOnce(() => new Promise<boolean>((resolve) => {
+      answer = resolve;
+    }));
+    const first = server.sendEvent(txEvent('tx1'));
+    const second = server.sendEvent(txEvent('tx2'));
+    await settle();
+
+    const client = connect(server);
+    answer(false);
+    await first;
+    await second;
+    await settle();
+
+    expect(sentEvents(client)).toEqual(['tx1', 'tx2']);
+  });
+
+  it('does not count a non-push event that waited past the hold window as a lost push', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000_000);
+    const server = new GatewayWebSocketServer();
+    const client = connect(server);
+    let release!: () => void;
+    mocks.mapGatewayEvent.mockImplementationOnce((event) => new Promise((resolve) => {
+      release = () => resolve(event);
+    }));
+    const slow = server.sendEvent({ type: 'sync', walletId: 'w1', data: { txid: 'slow' } } as any);
+    const queued = server.sendEvent({ type: 'balance', walletId: 'w1', data: { txid: 'bal' } } as any);
+    await settle();
+
+    vi.setSystemTime(1_000_000 + GATEWAY_HELD_EVENT_TTL_MS + 1);
+    release();
+    await slow;
+    await queued;
+    vi.useRealTimers();
+
+    expect(sentEvents(client)).toEqual(['slow', 'bal']);
+    expect(mocks.recordGatewayPushLoss).not.toHaveBeenCalled();
   });
 
   it('records held events that outlive the hold window with no gateway', async () => {
@@ -452,6 +606,31 @@ describe('push events that could not be delivered', () => {
       expect.stringContaining('limit'),
       0,
     );
+  });
+
+  it('records an event whose lookup finishes after the server closed, instead of holding it', async () => {
+    const server = new GatewayWebSocketServer();
+    connect(server);
+    let release!: () => void;
+    mocks.mapGatewayEvent.mockImplementationOnce((event) => new Promise((resolve) => {
+      release = () => resolve(event);
+    }));
+    const inFlight = server.sendEvent(txEvent('tx1'));
+    const queued = server.sendEvent(txEvent('tx2'));
+    await settle();
+
+    server.close();
+    mocks.flushGatewayPushLosses.mockClear();
+    release();
+    await inFlight;
+    await queued;
+    await settle();
+
+    expect(mocks.recordGatewayPushLoss.mock.calls.map(([event]: any) => event.data.txid))
+      .toEqual(['tx1', 'tx2']);
+    expect((server as any).held).toEqual([]);
+    // The late records are written too, not left in memory.
+    expect(mocks.flushGatewayPushLosses).toHaveBeenLastCalledWith(true);
   });
 
   it('records held events when the server closes', async () => {

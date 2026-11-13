@@ -278,6 +278,19 @@ describe('Push Notification Service', () => {
       expect(notification.data?.type).toBe('transaction');
     });
 
+    it('formats a consolidation with its fee, not as a sent payment', () => {
+      const notification = formatTransactionNotification(
+        'consolidation',
+        'Savings',
+        -321, // A consolidation's wallet delta is its fee
+        'txid789'
+      );
+
+      expect(notification.title).toBe('Consolidation Sent');
+      expect(notification.body).toBe('Savings: fee 0.00000321 BTC');
+      expect(notification.data?.type).toBe('transaction');
+    });
+
     it('should format confirmed transaction notification', () => {
       const notification = formatTransactionNotification(
         'confirmed',

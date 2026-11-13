@@ -61,6 +61,11 @@ interface HeldEvent {
 /** One pass over the held events; a failed lookup ends it for the rest. */
 interface RetryPass {
   stopped: boolean;
+  /**
+   * An event that has failed too often. The pass tries one more event after
+   * it: if that lookup works, the fault is the event's and it is given up on.
+   */
+  suspect: { entry: HeldEvent; reason: string } | null;
 }
 
 /** How long to wait for the shared presence record before holding the event anyway. */
@@ -79,6 +84,8 @@ function isHoldable(event: OutboundEvent): boolean {
   const data: unknown = event.data;
   return typeof data === 'object' && data !== null && isFirstConfirmationMilestone(data);
 }
+
+const SERVER_CLOSING_REASON = 'Server closing with the push event undelivered';
 
 const HOLD_EXPIRED_REASON =
   `No push gateway connected within ${GATEWAY_HELD_EVENT_TTL_MS / 60_000} minutes`;
@@ -100,6 +107,10 @@ export class GatewayWebSocketServer {
   // they expire. Held in memory only: a restart of this process drops them.
   private held: HeldEvent[] = [];
   private losses = new GatewayPushLossLog();
+  // Held events already queued for a retry but not sent yet. A new push event
+  // must queue behind them, not overtake them.
+  private retryPending = 0;
+  private closed = false;
   private heartbeat: NodeJS.Timeout;
 
   constructor() {
@@ -145,6 +156,11 @@ export class GatewayWebSocketServer {
   /** Keep an undelivered push event for a later attempt. */
   private hold(held: HeldEvent): void {
     if (!isHoldable(held.event)) return;
+    if (this.closed) {
+      // Nothing will retry it: an event still in flight when the server closed.
+      this.losses.record(held.event, SERVER_CLOSING_REASON, held.failures);
+      return;
+    }
     if (this.held.length >= GATEWAY_HELD_EVENT_LIMIT) {
       const oldest = this.held.shift()!;
       this.losses.record(oldest.event, 'Held push event limit reached', oldest.failures);
@@ -159,19 +175,44 @@ export class GatewayWebSocketServer {
    */
   private async holdWithoutGateway(held: HeldEvent): Promise<void> {
     if (!isHoldable(held.event)) return;
-    if (await this.isGatewayElsewhere()) return;
+    // Held before the presence read, so a gateway that authenticates during
+    // the read takes it in the order it was accepted.
     this.hold(held);
+    if (await this.isGatewayElsewhere()) {
+      this.held = this.held.filter((entry) => entry !== held);
+    }
   }
 
-  /** Count a failed audience lookup; hold the event unless it has failed too often. */
-  private holdAfterFailure(held: HeldEvent, error: unknown): void {
-    if (!isHoldable(held.event)) return;
-    const failures = held.failures + 1;
-    if (failures >= GATEWAY_EVENT_MAX_PREPARATION_FAILURES) {
-      this.losses.record(held.event, getErrorMessage(error), failures);
-      return;
+  /**
+   * Count a failed audience lookup and hold the event again. A failed lookup
+   * ends a retry pass, with one exception: after an event's third failure the
+   * pass tries the next event too, to tell a broken event from a broken
+   * database (see settleSuspect).
+   */
+  private holdAfterFailure(held: HeldEvent, error: unknown, pass?: RetryPass): void {
+    const failed: HeldEvent = { ...held, failures: held.failures + 1 };
+    this.hold(failed);
+    if (!pass) return;
+    if (failed.failures >= GATEWAY_EVENT_MAX_PREPARATION_FAILURES && !pass.suspect) {
+      pass.suspect = { entry: failed, reason: getErrorMessage(error) };
+    } else {
+      pass.stopped = true;
     }
-    this.hold({ ...held, failures });
+  }
+
+  /**
+   * A lookup just worked in this pass. An event that failed right before it,
+   * for at least the third time, is therefore failing on its own account and
+   * would block every event behind it until it expired: give up on it.
+   */
+  private settleSuspect(pass?: RetryPass): void {
+    const suspect = pass?.suspect;
+    if (!pass || !suspect) return;
+    pass.suspect = null;
+    // Already gone when the server closed, or a newer pass took it over.
+    if (!this.held.includes(suspect.entry)) return;
+    this.held = this.held.filter((entry) => entry !== suspect.entry);
+    this.losses.record(suspect.entry.event, suspect.reason, suspect.entry.failures);
   }
 
   private async isGatewayElsewhere(): Promise<boolean> {
@@ -197,7 +238,8 @@ export class GatewayWebSocketServer {
   private retryHeld(): void {
     const held = this.held;
     this.held = [];
-    const pass: RetryPass = { stopped: false };
+    const pass: RetryPass = { stopped: false, suspect: null };
+    this.retryPending += held.length;
     for (const entry of held) {
       // enqueue() logs a failure, and the event is held again.
       void this.enqueue(entry, pass).catch(() => undefined);
@@ -436,21 +478,39 @@ export class GatewayWebSocketServer {
   }
 
   /**
+   * Settle an event that must not be sent now. True when it was held again or
+   * recorded as lost, so the caller has nothing left to do.
+   */
+  private deferOrDiscard(held: HeldEvent, pass?: RetryPass): boolean {
+    const { event } = held;
+    if (this.closed || pass?.stopped) {
+      this.hold(held);
+      return true;
+    }
+    if (!isHoldable(event)) return false;
+    if (this.isExpired(held)) {
+      // Do not send a push this late.
+      this.losses.record(event, HOLD_EXPIRED_REASON, held.failures);
+      return true;
+    }
+    if (pass || !this.isGatewayConnected()) return false;
+    if (this.held.length === 0 && this.retryPending === 0) return false;
+    // Older push events are still waiting. Join them and retry in order, so
+    // a confirmation is not pushed ahead of its own transaction.
+    this.hold(held);
+    this.retryHeld();
+    return true;
+  }
+
+  /**
    * Push events are not dropped on a failure here: one that meets no gateway,
    * a failed audience lookup or a closed socket is held and sent again.
    */
   private async mapAndSendEvent(held: HeldEvent, pass?: RetryPass): Promise<void> {
     const { event } = held;
-    if (this.isExpired(held)) {
-      // Only a held event can be this old: do not send a push this late.
-      this.losses.record(event, HOLD_EXPIRED_REASON, held.failures);
-      return;
-    }
-    if (pass?.stopped) {
-      this.hold(held);
-      return;
-    }
-    if (!this.gateway || !this.gateway.isAuthenticated) {
+    if (pass) this.retryPending -= 1;
+    if (this.deferOrDiscard(held, pass)) return;
+    if (!this.isGatewayConnected()) {
       log.debug('No authenticated gateway to send event');
       await this.holdWithoutGateway(held);
       return;
@@ -460,10 +520,10 @@ export class GatewayWebSocketServer {
     try {
       mappedEvent = await this.prepareEvent(event);
     } catch (error) {
-      if (pass) pass.stopped = true;
-      this.holdAfterFailure(held, error);
+      this.holdAfterFailure(held, error, pass);
       throw error;
     }
+    this.settleSuspect(pass);
     // A wallet-level push that is malformed or whose re-checked audience is
     // empty has nobody to reach; skip it rather than have the gateway log a
     // missing-recipient event.
@@ -519,11 +579,14 @@ export class GatewayWebSocketServer {
       void clearGatewayConnected();
     }
     // Held events die with the process; say so rather than lose them silently.
+    this.closed = true;
     for (const entry of this.held) {
-      this.losses.record(entry.event, 'Server closing with the push event undelivered', entry.failures);
+      this.losses.record(entry.event, SERVER_CLOSING_REASON, entry.failures);
     }
     this.held = [];
     this.losses.flush(true);
+    // Events still in the send chain are recorded as they come through it.
+    void this.sendTail.then(() => this.losses.flush(true));
     this.wss.close();
   }
 }

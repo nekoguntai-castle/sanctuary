@@ -221,14 +221,21 @@ test('treats an exact unreaped Linux collector as exited', { skip: !LINUX }, asy
 test('reports a bounded stop timeout without escalating to a PID signal fallback', { skip: !LINUX }, async (context) => {
   if (!features.pidfd) { context.skip('pidfd syscalls are unavailable'); return; }
   const child = spawn(process.execPath, [PROCESS_FIXTURE], {
-    stdio: 'ignore', detached: false, env: { ...process.env, SANCTUARY_TEST_IGNORE_TERM: '1' },
+    stdio: ['ignore', 'pipe', 'ignore'], detached: false,
+    env: { ...process.env, SANCTUARY_TEST_IGNORE_TERM: '1' },
   });
   try {
+    // The fixture writes to stdout once it ignores SIGTERM. A fixed delay here
+    // let a slow start take the default action and exit (run 23561).
+    await new Promise((resolve, reject) => {
+      child.once('error', reject);
+      child.once('exit', () => reject(new Error('fixture exited before it was ready')));
+      child.stdout.once('data', resolve);
+    });
     const identity = {
       ...await childIdentity(child), script: readCleanupScriptIdentity(PROCESS_FIXTURE),
       heartbeatPath: '/tmp/sanctuary-helper-heartbeat', terminalPath: '/tmp/sanctuary-helper-terminal',
     };
-    await new Promise((resolve) => setTimeout(resolve, 50));
     assert.deepEqual(stopCleanupProcess(HELPER, { ...identity, timeoutMs: 20 }), { state: 'timeout' });
     assert.equal(child.exitCode, null);
   } finally {

@@ -176,7 +176,7 @@ describe('Backend Events Service transaction notifications', () => {
     expect(push.sendToDevices).not.toHaveBeenCalled();
   });
 
-  it('should handle consolidation transactions as sent', async () => {
+  it('should handle consolidation transactions as their own notification type', async () => {
     startBackendEvents();
     const ws = wsInstances[0];
     ws.simulateOpen();
@@ -199,7 +199,7 @@ describe('Backend Events Service transaction notifications', () => {
     await vi.runAllTimersAsync();
 
     expect(push.formatTransactionNotification).toHaveBeenCalledWith(
-      'sent',
+      'consolidation',
       'Test',
       50000,
       'abc123'

@@ -557,6 +557,18 @@ for attempt in $(seq 1 120); do
   sleep 1
 done
 
+# Every controller command that talks to the emulator runs before the bridge
+# starts. The controller's trezorlib client and the node bridge share the
+# emulator's one UDP port. With the bridge running, the bridge can receive a
+# reply meant for the controller (its log showed the ButtonRequest of
+# emulator-setup); the controller then waits for that reply forever and stops
+# answering. Locally that happened in 2 of 6 runs.
+controller_command "{\"type\":\"emulator-start\",\"model\":\"$TREZOR_MODEL\",\"version\":\"$TREZOR_FIRMWARE\",\"wipe\":true,\"save_screenshots\":true,\"id\":3}"
+controller_command '{"type":"emulator-setup","mnemonic":"all all all all all all all all all all all all","pin":"","passphrase_protection":false,"label":"Sanctuary CI","needs_backup":false,"id":4}' >/dev/null
+controller_command '{"type":"emulator-get-features","id":6}' | tee "$proof_dir/firmware-features.json"
+# Multisig BIP48 paths need non-strict safety checks. On the Model T this is
+# the persistent PromptAlways level, so it is set once here.
+controller_command '{"type":"emulator-allow-unsafe-paths","id":7}' >/dev/null
 controller_command "{\"type\":\"bridge-start\",\"version\":\"$TREZOR_BRIDGE\",\"id\":2}"
 # Trezor's node bridge (required by Connect 10's BridgeTransport protocol)
 # listens on 21328; the legacy trezord-go bridge listened on 21325.
@@ -604,14 +616,11 @@ for attempt in $(seq 1 30); do
   fi
   sleep 1
 done
-controller_command "{\"type\":\"emulator-start\",\"model\":\"$TREZOR_MODEL\",\"version\":\"$TREZOR_FIRMWARE\",\"wipe\":true,\"save_screenshots\":true,\"id\":3}"
-controller_command '{"type":"emulator-setup","mnemonic":"all all all all all all all all all all all all","pin":"","passphrase_protection":false,"label":"Sanctuary CI","needs_backup":false,"id":4}' >/dev/null
 controller_command '{"type":"background-check","id":5}' | tee "$proof_dir/runtime-status.json"
 jq -e --arg bridge "$TREZOR_BRIDGE" --arg firmware "$TREZOR_FIRMWARE ($TREZOR_MODEL)" '
   .bridge_status == {is_running: true, version: $bridge}
   and .emulator_status == {is_running: true, version: $firmware}
 ' "$proof_dir/runtime-status.json" >/dev/null
-controller_command '{"type":"emulator-get-features","id":6}' | tee "$proof_dir/firmware-features.json"
 
 if [ "$docker_is_podman" = 'true' ]; then
   readonly forwarder_endpoints="$diagnostics_dir/docker-exec-forwarder.json"

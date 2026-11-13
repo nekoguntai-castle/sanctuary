@@ -9,6 +9,9 @@ vi.mock('../../../src/services/deadLetterQueue', () => ({
   deadLetterQueue: { add: mocks.add },
 }));
 vi.mock('../../../src/utils/logger', () => ({ createLogger: () => mocks.logger }));
+vi.mock('../../../src/websocket/redisBridge', () => ({
+  redisBridge: { getInstanceId: () => 'api-1' },
+}));
 
 import {
   GATEWAY_PUSH_LOSS_RECORD_INTERVAL_MS,
@@ -49,6 +52,7 @@ describe('GatewayPushLossLog', () => {
       'gateway_event',
       {
         count: 2,
+        instanceId: 'api-1',
         events: [
           { type: 'transaction', walletId: 'w1', txid: 'tx1', reason: 'db down', attempts: 3 },
           { type: 'transaction', walletId: 'w1', txid: 'tx2', reason: 'expired', attempts: 0 },
@@ -134,5 +138,13 @@ describe('GatewayPushLossLog', () => {
       expect.stringContaining('Failed to record'),
       expect.objectContaining({ count: 1, error: 'redis down' }),
     );
+  });
+
+  it('names the API instance, since each instance records its own copy of a loss', () => {
+    const losses = new GatewayPushLossLog();
+    losses.record(txEvent('tx1'), 'expired', 0);
+    losses.flush();
+
+    expect(mocks.add.mock.calls[0][2]).toMatchObject({ count: 1, instanceId: 'api-1' });
   });
 });
