@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-11-13
+
 ### Changed
 
 - An invalid WebSocket limit now stops startup instead of disabling the limit. `MAX_WEBSOCKET_CONNECTIONS`, `MAX_WEBSOCKET_PER_USER`, `MAX_WS_MESSAGES_PER_SECOND`, `MAX_WS_SUBSCRIPTIONS`, `WS_GRACE_PERIOD_LIMIT` and `WS_MAX_QUEUE_SIZE` must be integers of 1 or more, and `WS_QUEUE_OVERFLOW_POLICY` must be `drop_oldest`, `drop_newest` or `disconnect`. Before, a value such as `MAX_WEBSOCKET_PER_USER=abc` was read as NaN and the per-user connection limit silently stopped applying.
@@ -1371,7 +1373,8 @@ upgrade browser-smoke and 2FA preservation assertions.
 
 - Removed navigation-triggered syncs in favor of worker-driven sync
 
-[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.88...v0.9.0
 [0.8.88]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.87...v0.8.88
 [0.8.87]: https://github.com/nekoguntai-castle/sanctuary/compare/v0.8.86...v0.8.87
