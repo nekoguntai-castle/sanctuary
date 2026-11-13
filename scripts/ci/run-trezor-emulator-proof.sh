@@ -458,7 +458,7 @@ else
   IFS=$'\t' read -r publish_bind_ip published_host <<< "$publish_binding"
   readonly publish_bind_ip
   trezor_create_args+=(
-    -p "${publish_bind_ip}::9001/tcp"
+    -p "${publish_bind_ip}::9101/tcp"
     -p "${publish_bind_ip}::21326/tcp"
   )
 fi
@@ -616,6 +616,67 @@ for attempt in $(seq 1 30); do
   fi
   sleep 1
 done
+# The test confirms on the emulator through this relay, not through the
+# controller. The controller's emulator-press-yes pings the emulator's wire
+# port before it presses, and the bridge uses that port for the call the press
+# confirms. This is the same sharing that hangs the controller above. In run
+# 23598 a press timed out during signing and Connect then reported "Device
+# call in progress". The relay presses over the debug link port only and
+# passes every other command to the controller.
+run_bounded_docker "start Trezor press relay" 30 \
+  exec -d "$container_name" .venv/bin/python -c '
+import asyncio
+import json
+import sys
+import time
+
+import websockets
+from trezorlib import models
+from trezorlib.debuglink import DebugLink
+from trezorlib.transport.udp import UdpTransport
+
+MODEL = sys.argv[1]
+
+def press_yes():
+    debug = DebugLink(UdpTransport().find_debug())
+    try:
+        debug.model = models.by_internal_name(MODEL)
+        time.sleep(0.5)
+        debug.press_yes()
+    finally:
+        debug.close()
+
+async def handle(client):
+    async with websockets.connect("ws://127.0.0.1:9001") as controller:
+        await client.send(await controller.recv())
+        request = await client.recv()
+        payload = json.loads(request)
+        if payload.get("type") == "emulator-press-yes":
+            await asyncio.to_thread(press_yes)
+            await client.send(json.dumps(
+                {"response": "Pressed YES", "id": payload.get("id"), "success": True}
+            ))
+            return
+        await controller.send(request)
+        await client.send(await controller.recv())
+
+async def main():
+    async with websockets.serve(handle, "0.0.0.0", 9101):
+        await asyncio.Future()
+
+asyncio.run(main())
+' "$TREZOR_MODEL"
+for attempt in $(seq 1 30); do
+  if docker exec "$container_name" python3 -c \
+    'import socket; socket.create_connection(("127.0.0.1", 9101), 1).close()' 2>/dev/null; then
+    break
+  fi
+  if [ "$attempt" -eq 30 ]; then
+    echo 'Trezor press relay did not become ready' >&2
+    exit 1
+  fi
+  sleep 1
+done
 controller_command '{"type":"background-check","id":5}' | tee "$proof_dir/runtime-status.json"
 jq -e --arg bridge "$TREZOR_BRIDGE" --arg firmware "$TREZOR_FIRMWARE ($TREZOR_MODEL)" '
   .bridge_status == {is_running: true, version: $bridge}
@@ -631,7 +692,7 @@ if [ "$docker_is_podman" = 'true' ]; then
       --import "$SCRIPT_DIR/registered-start-gate.mjs" \
       "$SCRIPT_DIR/docker-exec-tcp-forwarder.mjs" \
       --container "$container_name" \
-      --controller-port 9001 \
+      --controller-port 9101 \
       --bridge-port 21326 \
       --control-token "$forwarder_control_token" \
       > "$forwarder_endpoints" \
@@ -672,7 +733,7 @@ else
     run_bounded_docker "resolve Trezor published ports" \
       "$docker_metadata_timeout_seconds" port "$container_name"
   )"
-  controller_port="$(grep '^9001/tcp' <<< "$published_ports" | head -1 | sed 's/.*://')"
+  controller_port="$(grep '^9101/tcp' <<< "$published_ports" | head -1 | sed 's/.*://')"
   bridge_port="$(grep '^21326/tcp' <<< "$published_ports" | head -1 | sed 's/.*://')"
 fi
 if ! [[ "$published_host" =~ ^[A-Za-z0-9._:-]+$ ]]; then

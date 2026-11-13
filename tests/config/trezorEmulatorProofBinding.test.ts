@@ -63,7 +63,7 @@ describe("Trezor emulator proof publish binding", () => {
     );
     expect(bindingResolver).toContain("SANCTUARY_TREZOR_ALLOW_PUBLIC_BIND=1");
     expect(workflow).toContain("SANCTUARY_TREZOR_ALLOW_PUBLIC_BIND: '0'");
-    expect(runner).toContain('-p "${publish_bind_ip}::9001/tcp"');
+    expect(runner).toContain('-p "${publish_bind_ip}::9101/tcp"');
     expect(runner).toContain('-p "${publish_bind_ip}::21326/tcp"');
     expect(runner).toContain('componentNames | any(. == "Podman Engine")');
     expect(runner).toContain("docker-exec-tcp-forwarder.mjs");
