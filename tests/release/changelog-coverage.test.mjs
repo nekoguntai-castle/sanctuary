@@ -26,7 +26,9 @@ function compareVersions(left, right) {
 }
 
 function stableTagsAfterBaseline() {
-  return git('tag', '--list', 'v0.8.*')
+  // Every stable tag, not one minor series: a 'v0.8.*' glob missed v0.9.0 and
+  // failed the 0.9.1 preparation. parseVersion drops RC and other tags.
+  return git('tag', '--list', 'v[0-9]*')
     .split('\n')
     .filter(Boolean)
     .map(tag => ({ tag, version: parseVersion(tag) }))
