@@ -116,7 +116,8 @@ test('bash hardware proof-source matcher classifies every documentation proof so
       .split('\n')
       .filter((path) => path && docsOnly(path))
   );
-  assert.ok(proofDocs.includes('docs/reference/release-gates.md'));
+  // The reference docs once listed under the Jade proof are ordinary docs now.
+  assert.ok(!proofDocs.includes('docs/reference/release-gates.md'));
   assert.ok(proofDocs.includes('shared/utils/README.md'));
   const script = [
     '. scripts/ci/classify-files-lib.sh',

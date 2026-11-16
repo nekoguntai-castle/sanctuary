@@ -154,13 +154,13 @@ main() {
   base_sha="$head_sha"
 
   # A documentation path hashed into the hardware emulator proof sources
-  # (config/hardware-emulator-source-inventory.json) must run the proofs, via
-  # a literal file and via the shared/** inventory pattern; an ordinary doc
-  # next to them still skips.
-  commit_file "$repo_dir" docs/reference/release-gates.md '# Release gates' "hardware proof-source doc change"
+  # (config/hardware-emulator-source-inventory.json) must run the proofs. The
+  # only such docs are matched by the shared/** inventory pattern; the
+  # reference docs once listed under the Jade proof skip like any other doc.
+  commit_file "$repo_dir" docs/reference/release-gates.md '# Release gates' "former proof-source doc change"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file" "push"
-  assert_exact_output "$output_file" true
+  assert_exact_output "$output_file" false
   base_sha="$head_sha"
 
   commit_file "$repo_dir" shared/utils/README.md '# Shared utils' "shared pattern doc change"

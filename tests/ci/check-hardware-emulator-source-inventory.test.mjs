@@ -31,6 +31,9 @@ const SCRIPT = resolve(
   "scripts/ci/hardware-emulator-source-inventory.mjs",
 );
 
+// docs/reference/{hardware-wallet-validation,release-gates,trust-and-verification}.md
+// were in the Jade list until 2026-11. No proof reads them, so they were
+// dropped on purpose and are ordinary documentation now.
 const LEGACY_SOURCES = {
   trezor: [
     ".github/actions/setup-node-toolchain/action.yml",
@@ -109,9 +112,6 @@ const LEGACY_SOURCES = {
     "config/jade-emulator-proof.json",
     "config/tooling/vitest.jade-emulator.config.ts",
     "config/wallet-safety-critical-paths.json",
-    "docs/reference/hardware-wallet-validation.md",
-    "docs/reference/release-gates.md",
-    "docs/reference/trust-and-verification.md",
     "scripts/ci/check-wallet-safety-classifier.mjs",
     "scripts/ci/docker-exec-tcp-forwarder.mjs",
     "scripts/ci/download-verified-source.sh",
