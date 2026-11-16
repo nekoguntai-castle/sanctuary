@@ -259,14 +259,21 @@ signature, while generic retries remain for idempotent setup/build boundaries.
 This cannot enforce operator actions in Forgejo; UI/API reruns remain procedural
 and must carry the same evidence.
 
-The authenticated Forgejo 16.0.3 schema was rechecked on 2026-09-08. Under
+The authenticated Forgejo 17.0.1 schema was rechecked on 2026-11-16. Under
 `/api/v1/repos/{owner}/{repo}/actions`, it exposes run listing/detail, artifacts,
-jobs, logs, and run cancellation, but no retry or rerun route. The instance UI
-control observed during incident recovery reruns all jobs for a workflow, not one
-failed job. When that whole-workflow retry is justified, first verify the same
-immutable SHA and inputs, wait for the superseded run's resource-owning jobs and
-cleanup receipts to become terminal, and require the new aggregate job as well as
-the formerly failed child. `verify-vectors.yml` exposes no single-emulator
+jobs, logs, and run cancellation, and two rerun routes that the 16.0.3 schema
+(checked 2026-09-08) did not have:
+
+- `actions/runs/{run_id}/rerun` reruns the whole workflow, like the instance UI
+  control observed during incident recovery.
+- `actions/jobs/{job_id}/rerun` reruns one completed job and its dependent jobs.
+
+Neither route has been exercised on this repository, so their behavior here is
+unverified. When a rerun is justified, first verify the same immutable SHA and
+inputs, wait for the superseded run's resource-owning jobs and cleanup receipts
+to become terminal, and require the new aggregate job as well as the formerly
+failed child. After a single-job rerun, confirm that the aggregate job reran on
+the same SHA; do not assume it. `verify-vectors.yml` exposes no single-emulator
 workflow-dispatch input, so dispatch is not a targeted emulator retry. Do not use
 an undocumented endpoint, broad dispatch, or required-check bypass as a
 substitute.

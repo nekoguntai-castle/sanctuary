@@ -167,13 +167,15 @@ documented signature classifiers. They cannot prevent a Forgejo operator from
 pressing a UI rerun control, so UI/API reruns remain a procedural control subject
 to the same evidence rule.
 
-Forgejo 16.0.3 does not expose a failed-job retry/rerun API. Its authenticated
-Swagger lists run inspection, logs, artifacts, and cancellation only. The UI
-control observed on this instance reruns all jobs in the workflow; it is not a
-targeted emulator retry. Before using it, verify the old resource-owning jobs and
-cleanup receipts are terminal, preserve the same immutable SHA and inputs, and
-accept the aggregate required check as part of the rerun. Do not substitute a
-workflow dispatch: `verify-vectors.yml` has no single-emulator dispatch input.
+Forgejo 17.0.1 lists two rerun routes in its authenticated Swagger, alongside
+run inspection, logs, artifacts, and cancellation: `actions/runs/{run_id}/rerun`
+reruns all jobs in the workflow, like the UI control observed on this instance,
+and `actions/jobs/{job_id}/rerun` reruns one completed job and its dependent
+jobs. Neither route has been exercised on this repository. Before using either,
+verify the old resource-owning jobs and cleanup receipts are terminal, preserve
+the same immutable SHA and inputs, and accept the aggregate required check as
+part of the rerun. Do not substitute a workflow dispatch: `verify-vectors.yml`
+has no single-emulator dispatch input.
 
 For a bounded exact-commit view, run `scripts/ci/report-commit-workflows.sh`
 inside `cleanup-ci-callsite.sh run` with a 40-character SHA and an explicit

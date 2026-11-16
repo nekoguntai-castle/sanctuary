@@ -34,9 +34,10 @@ done
 
 strategy="$ROOT_DIR/docs/reference/ci-cd-strategy.md"
 require_text "$strategy" 'Expensive failure and rerun control'
-require_text "$strategy" 'no retry or rerun route'
-require_text "$strategy" 'reruns all'
-require_text "$strategy" 'failed job'
+require_text "$strategy" 'actions/runs/{run_id}/rerun'
+require_text "$strategy" 'actions/jobs/{job_id}/rerun'
+require_text "$strategy" 'Neither route has been exercised'
+require_text "$strategy" 'require the new aggregate job'
 require_text "$strategy" 'no single-emulator'
 require_text "$strategy" 'workflow-dispatch input'
 require_text "$strategy" 'UI/API reruns remain procedural'
