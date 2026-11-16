@@ -179,8 +179,10 @@ else
   while IFS= read -r file; do
     [ -n "$file" ] || continue
     if is_docs_only_file "$file"; then
-      # Documentation that is wallet-safety or hardware proof input still gets a full scan.
-      if is_wallet_safety_critical_file "$file" || is_hardware_proof_source_file "$file"; then
+      # Wallet-safety critical documentation still gets a full scan. Hardware
+      # emulator proof-source docs do not: the proofs run in verify-vectors.yml,
+      # whose own classifier (classify-verify-vectors-scope.sh) runs them.
+      if is_wallet_safety_critical_file "$file"; then
         mark_full_scan
         break
       fi

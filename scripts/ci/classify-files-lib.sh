@@ -444,8 +444,10 @@ is_wallet_safety_critical_file() {
 
 # Hardware emulator proof sources: config/hardware-emulator-source-inventory.json
 # lists every file (and `shared/**`-style pattern) hashed into the emulator proof
-# sources, including documentation. A docs-only change to one breaks the next
-# proof, so the docs allowlists treat them like wallet-safety critical paths.
+# sources, including documentation. A docs-only change to one changes the
+# proof's source hashes, so the verify-vectors docs allowlist
+# (classify-verify-vectors-scope.sh) treats them as proof input and runs the
+# proofs. The test.yml classifiers do not: no test.yml lane reads these docs.
 # Unlike the wallet-safety manifest, arrays are sometimes inline, so this takes
 # every quoted string on each line and drops the object keys (strings followed
 # by `:`). Same location rule, escape chain and fail-closed behaviour as above.

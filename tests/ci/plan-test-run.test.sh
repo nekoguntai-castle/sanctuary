@@ -463,7 +463,7 @@ main() {
   assert_eq "critical doc -> frontend_unit" "true" "$(json_query "$plan" lanes.frontend_unit.run)"
   assert_eq "critical doc -> backend_unit" "true" "$(json_query "$plan" lanes.backend_unit.run)"
 
-  # ---- A hardware proof-source doc is not a no-op ------------------------
+  # ---- A hardware proof-source doc is a no-op here (verify-vectors owns it)
   base="$head"
   mkdir -p "$repo/docs/reference"
   printf '# release gates\n' > "$repo/docs/reference/release-gates.md"
@@ -472,8 +472,9 @@ main() {
   head="$(git -C "$repo" rev-parse HEAD)"
 
   plan="$(EVENT_NAME=pull_request run_planner "$repo" "$base" "$head")"
-  assert_eq "proof-source doc -> full_scan" "true" "$(json_query "$plan" full_scan)"
-  assert_eq "proof-source doc -> backend_unit" "true" "$(json_query "$plan" lanes.backend_unit.run)"
+  assert_eq "proof-source doc -> full_scan" "false" "$(json_query "$plan" full_scan)"
+  assert_eq "proof-source doc -> frontend_unit" "false" "$(json_query "$plan" lanes.frontend_unit.run)"
+  assert_eq "proof-source doc -> backend_unit" "false" "$(json_query "$plan" lanes.backend_unit.run)"
 
   # ---- Repo files a Vitest suite reads select the lane of the reader ------
   base="$head"
