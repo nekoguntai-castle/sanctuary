@@ -71,10 +71,10 @@ export const VERIFIER_PROVENANCE = {
   "schemaVersion": 2,
   "matrixId": "sanctuary-seed-to-address-v2",
   "exactCaseCount": 480,
-  "sourceSha256": "1ed278d3c1ca3f435673ed6d1660adb94e2cc69a7fe8691196c5de6d629bc3a9",
+  "sourceSha256": "24b20802fa119145f8822e97d910110b33246cbfaebd1d94e2bba434c9462be2",
   "coreImage": "bitcoin/bitcoin:31.1@sha256:da25cedc66b1daefff9f412ee196c901a899c3fa68a33b20849c3e08b5c40d63",
   "runtimes": {
-    "node": "24.22.2",
+    "node": "24.22.3",
     "python": "3.13.5",
     "pythonEffectiveUid": 65532,
     "pythonImage": "sanctuary/verify-addresses-python:3.13.5-bip-utils-2.12.1-v1",

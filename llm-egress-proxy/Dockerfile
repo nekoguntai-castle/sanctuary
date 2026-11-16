@@ -1,7 +1,7 @@
 # Sanctuary LLM Egress Proxy
 # Security-focused proxy that owns external LLM provider egress
 
-FROM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85 AS builder
+FROM node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS builder
 ARG NPM_VERSION=12.0.2
 RUN npm install --global --audit=false --fund=false "npm@$NPM_VERSION"
 
@@ -20,7 +20,7 @@ RUN npm run build
 RUN npm prune --omit=dev
 
 # --- Production image ---
-FROM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85 AS runner
+FROM node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS runner
 # Runtime entrypoints use Node or the locally installed Prisma CLI, never npm.
 # Exclude the base image's unused package manager and its vulnerable bundle.
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx

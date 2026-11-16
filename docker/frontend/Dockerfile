@@ -5,7 +5,7 @@
 
 # Shared Node/npm toolchain. npm 12.0.2+ is required for package.json's
 # allowScripts policy; both dependency and build stages inherit this layer.
-FROM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85 AS node-toolchain
+FROM node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS node-toolchain
 ARG NPM_VERSION=12.0.2
 RUN npm install --global --audit=false --fund=false "npm@$NPM_VERSION"
 

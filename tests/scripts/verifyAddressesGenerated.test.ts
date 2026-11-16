@@ -94,9 +94,9 @@ describe('generated address vector provenance', () => {
   it('locks the exact local Node runtime used after the CI bootstrap', () => {
     const packageJson = readFileSync('scripts/verify-addresses/package.json', 'utf8');
     const packageLock = readFileSync('scripts/verify-addresses/package-lock.json', 'utf8');
-    expect(packageJson).toContain('"node-linux-x64": "24.22.2"');
+    expect(packageJson).toContain('"node-linux-x64": "24.22.3"');
     expect(packageLock).toContain('"node_modules/node-linux-x64"');
-    expect(packageLock).toContain('sha512-R5qxeQXhLZLFRzZ0Nh+Ux/dVgIVVbhwCine7eXN2CUaehslzemv24CgzfNb0U+NGOlSOVvlSpabGkiu8lg3oNg==');
+    expect(packageLock).toContain('sha512-KHsob+Fv9YerATvYujMbiyJqnRCvLtrcr/eTNqRqiOSGp97EOiRP1yP47+knGgQ/xnc3XY8xzkW587dlZzNqRA==');
   });
 
   it('locks the exact isolated Python runtime and hash-verified dependencies', () => {

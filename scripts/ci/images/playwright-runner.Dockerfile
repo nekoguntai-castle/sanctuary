@@ -51,7 +51,7 @@
 # would let the base change under CI with no commit in this repository.
 # Bumping it means taking a new digest from runner-infra's act-ubuntu-node
 # build and rebuilding this image on top.
-FROM nexus.tabineko.dev/nekoguntai-castle/act-ubuntu-node@sha256:9a9cf26dae68eb81e0446f91f81427b0c65c380371225b47ece9ddb407a68891
+FROM nexus.tabineko.dev/nekoguntai-castle/act-ubuntu-node@sha256:21ce15a2894d4ddebc21eff238c55e42ca0a0d35fc3e68b469e55f44bfbc7007
 
 # Playwright's bundled Chromium is below Sanctuary's minimum supported browser
 # version. Install Playwright's OS dependencies, then fetch the independently

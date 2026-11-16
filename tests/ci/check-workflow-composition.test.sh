@@ -3931,21 +3931,21 @@ for node_workflow in architecture quality release-candidate test; do
   assert_contains_in_order \
     "$REPO_ROOT/.github/workflows/${node_workflow}.yml" \
     "${node_workflow} pins an allowScripts-capable npm" \
-    "NODE_VERSION: '24.22.2'" \
+    "NODE_VERSION: '24.22.3'" \
     "NPM_VERSION: '12.0.2'"
 done
 
 assert_contains_in_order \
   "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "verify-vectors pins its funds-safety Node and npm runtime exactly" \
-  "NODE_VERSION: '24.22.2'" \
+  "NODE_VERSION: '24.22.3'" \
   "NPM_VERSION: '12.0.2'" \
   "uses: ./.github/actions/setup-node-toolchain" \
   "install-npm: 'false'"
 assert_occurrence_count \
   "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "verify-vectors jobs use the immutable checksum-built wallet verifier image" \
-  "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:14d65190139aad39b2af99b751d12237c259a952b7f908e0dcde25512c09299f" 8
+  "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:89b8e327e5a135548f6bcc143fec2d63031c01b09a177135976fa7ea79cc4f35" 8
 assert_occurrence_count \
   "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "verify-vectors jobs disable network npm repair" \
@@ -3954,10 +3954,10 @@ assert_occurrence_count \
 GO_RUNNER_DOCKERFILE="$REPO_ROOT/scripts/ci/images/go-runner.Dockerfile"
 assert_occurrence_count "$GO_RUNNER_DOCKERFILE" \
   "wallet verifier runner pins Node exactly" \
-  "ARG NODE_VERSION=24.22.2" 1
+  "ARG NODE_VERSION=24.22.3" 1
 assert_occurrence_count "$GO_RUNNER_DOCKERFILE" \
   "wallet verifier runner pins the official Node archive checksum" \
-  "ARG NODE_SHA256=48cc0e21e048790e54c0cf5749c2725005313d652651c40b7a21feb9697aaf75" 1
+  "ARG NODE_SHA256=4f2b175a6d53a5c617a80dba2676238a0688cef28c6da4eba35c7d844e66fcfb" 1
 assert_occurrence_count "$GO_RUNNER_DOCKERFILE" \
   "wallet verifier runner verifies the Node archive checksum" \
   'echo "${NODE_SHA256}  /tmp/node.tar.xz" | sha256sum -c -' 1
@@ -4047,7 +4047,7 @@ for dockerfile in docker/frontend/Dockerfile gateway/Dockerfile; do
   assert_contains_in_order \
     "$REPO_ROOT/$dockerfile" \
     "$dockerfile pins an allowScripts-capable npm" \
-    "FROM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85 AS node-toolchain" \
+    "FROM node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS node-toolchain" \
     "ARG NPM_VERSION=12.0.2" \
     'npm install --global --audit=false --fund=false "npm@$NPM_VERSION"' \
     "FROM node-toolchain AS deps" \
@@ -4057,7 +4057,7 @@ done
 assert_contains_in_order \
   "$REPO_ROOT/server/Dockerfile" \
   "server/Dockerfile pins an allowScripts-capable npm on a digest-locked Node base" \
-  "FROM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85 AS node-toolchain" \
+  "FROM node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS node-toolchain" \
   "ARG NPM_VERSION=12.0.2" \
   'npm install --global --audit=false --fund=false "npm@$NPM_VERSION"' \
   "FROM node-toolchain AS deps" \

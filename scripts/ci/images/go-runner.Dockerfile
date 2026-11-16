@@ -30,8 +30,8 @@ FROM ghcr.io/catthehacker/ubuntu:act-22.04@sha256:41e84facdece5f25b0de00cd69969f
 # Pinned by version and checksum: this image is a supply-chain surface for a
 # tool whose entire purpose is independent verification, so the toolchain it
 # verifies with must not float.
-ARG NODE_VERSION=24.22.2
-ARG NODE_SHA256=48cc0e21e048790e54c0cf5749c2725005313d652651c40b7a21feb9697aaf75
+ARG NODE_VERSION=24.22.3
+ARG NODE_SHA256=4f2b175a6d53a5c617a80dba2676238a0688cef28c6da4eba35c7d844e66fcfb
 ARG NPM_VERSION=12.0.2
 ARG NPM_SHA512=b885e890b9418fa1693544d05f53e64f9a73ec194837d4258b15fecdd692347b1dd2a517b1b0cbaf9d31cd8e92c3b70956bd2ecc72833a57b4b3098f5bfa7943
 ARG GO_VERSION=1.27.1

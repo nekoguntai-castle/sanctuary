@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- The server, gateway, frontend build and LLM egress proxy images move to Node.js 24.22.3 (from 24.22.2) for the Node.js security release of 2026-11-10.
+
+### Changed
+
+- CI: the CI and address-verifier toolchain moves to Node.js 24.22.3, matching the production images. The `sanctuary-ci-go` runner image is rebuilt with it. The `sanctuary-ci-playwright` browser image is rebuilt on the current fleet base image (`act-ubuntu-node:26.13.1`, which carries Node 24.22.3 in its tool cache); Playwright and Chrome are unchanged.
+
 ## [0.9.1] - 2026-11-13
 
 ### Changed

@@ -113,7 +113,7 @@ env:
   GIT_CONFIG_COUNT: '1'
   GIT_CONFIG_KEY_0: init.defaultBranch
   GIT_CONFIG_VALUE_0: main
-  NODE_VERSION: '24.22.2'
+  NODE_VERSION: '24.22.3'
   NPM_VERSION: '12.0.2'
   SANCTUARY_RUNNER_LOCK_DIR: .tmp/runner-locks-v2
 

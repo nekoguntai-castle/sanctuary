@@ -28,7 +28,7 @@ import {
 } from './lib/browser-container-ownership.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const IMAGE = 'nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright:pw1.64.1-chrome157.0.8103.38-sandbox1@sha256:cf627d37888e1ba12e70a73457fb1a226bd24b6a722892af17752b0c9a09a443';
+const IMAGE = 'nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright:pw1.64.1-chrome157.0.8103.38-sandbox1@sha256:6c4d459a569543bde0f20163df199026a0b9ba981afcf56debb89472ac1f8763';
 const PROFILE_FILE = path.join(ROOT, 'config/ci/browser-seccomp/podman-chromium.json');
 const IMAGE_USER = '1000:1000';
 const READY_PREFIX = 'SANCTUARY_BROWSER_SERVER_READY=';

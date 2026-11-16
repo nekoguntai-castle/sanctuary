@@ -3,7 +3,7 @@ set -euo pipefail
 
 test_root="$(mktemp -d "${TMPDIR:-/tmp}/bootstrap-node-test.XXXXXX")"
 trap 'rm -rf -- "$test_root"' EXIT
-node_version=24.22.2
+node_version=24.22.3
 fixture_root="$test_root/fixture/node-v${node_version}-linux-x64"
 mkdir -p "$fixture_root/bin" "$test_root/mock-bin"
 printf '#!/usr/bin/env bash\nprintf "v%s\\n"\n' "$node_version" > "$fixture_root/bin/node"
