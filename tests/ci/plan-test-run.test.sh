@@ -381,8 +381,35 @@ main() {
   assert_eq "full_scan -> backend_unit" "true" "$(json_query "$plan" lanes.backend_unit.run)"
   assert_eq "full_scan -> e2e_full" "true" "$(json_query "$plan" lanes.e2e_full.run)"
   assert_eq "full_scan -> build" "true" "$(json_query "$plan" lanes.build.run)"
+  assert_eq "test.yml full_scan -> critical_mutation" "true" "$(json_query "$plan" lanes.critical_mutation.run)"
   # Files arrays under full_scan are empty (lane runs full suite)
   assert_eq "full_scan -> empty files" "[]" "$(json_query "$plan" lanes.backend_unit.files)"
+
+  # ---- A full scan runs the mutation gate only for the gate's own inputs -----
+  # Same rule as critical_mutation_required in classify-test-changes.sh.
+  base="$head"
+  mkdir -p "$repo/config/tooling"
+  printf 'export default [];\n' > "$repo/config/tooling/eslint.config.js"
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm 'lint config change'
+  head="$(git -C "$repo" rev-parse HEAD)"
+
+  plan="$(EVENT_NAME=pull_request run_planner "$repo" "$base" "$head")"
+  assert_eq "lint config -> full_scan" "true" "$(json_query "$plan" full_scan)"
+  assert_eq "lint config -> backend_unit" "true" "$(json_query "$plan" lanes.backend_unit.run)"
+  assert_eq "lint config -> no critical_mutation" "false" "$(json_query "$plan" lanes.critical_mutation.run)"
+
+  base="$head"
+  mkdir -p "$repo/server/src/middleware"
+  printf 'export default [1];\n' > "$repo/config/tooling/eslint.config.js"
+  printf 'export const auth = 3;\n' > "$repo/server/src/middleware/auth.ts"
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm 'lint config and critical source'
+  head="$(git -C "$repo" rev-parse HEAD)"
+
+  plan="$(EVENT_NAME=pull_request run_planner "$repo" "$base" "$head")"
+  assert_eq "lint config + auth.ts -> full_scan" "true" "$(json_query "$plan" full_scan)"
+  assert_eq "lint config + auth.ts -> critical_mutation" "true" "$(json_query "$plan" lanes.critical_mutation.run)"
 
   # ---- A test.yml lane-infrastructure helper forces a full scan --------------
   local infra_script
@@ -506,6 +533,21 @@ main() {
   assert_eq "dispatch --full tier=full" "full" "$(json_query "$plan" tier)"
   assert_eq "dispatch --full coverage_required" "true" "$(json_query "$plan" coverage_required)"
   assert_eq "dispatch --full full_scan" "true" "$(json_query "$plan" full_scan)"
+
+  # ---- schedule is exhaustive even when a comparison base resolves ---------
+  # Regression: the full-scan condition was `A || B || C && D`, which bash
+  # reads as `(A || B || C) && D`, so a nightly plan without --full stayed
+  # diff-driven whenever a base was available. CI's classifier always runs
+  # everything on schedule.
+  plan="$(EVENT_NAME=schedule run_planner "$repo" "$base" "$head" --base "$base" --head "$head")"
+  assert_eq "schedule + base tier=nightly" "nightly" "$(json_query "$plan" tier)"
+  assert_eq "schedule + base full_scan" "true" "$(json_query "$plan" full_scan)"
+  assert_eq "schedule + base -> critical_mutation" "true" "$(json_query "$plan" lanes.critical_mutation.run)"
+  assert_eq "schedule + base -> backend_unit" "true" "$(json_query "$plan" lanes.backend_unit.run)"
+
+  # A manual dispatch without --full is still diff-driven.
+  plan="$(EVENT_NAME=workflow_dispatch run_planner "$repo" "$base" "$head" --base "$base" --head "$head")"
+  assert_eq "dispatch without --full full_scan" "false" "$(json_query "$plan" full_scan)"
 
   # ---- *.integration.test.* anywhere under server/ routes correctly -------
   base="$head"

@@ -153,6 +153,106 @@ assert_every_test_workflow_script_is_classified() {
   done
 }
 
+# Drift guard for is_mutation_irrelevant_full_scan_trigger_file: nothing the
+# critical mutation jobs execute, or that those files transitively call, source
+# or import, may be on the mutation-irrelevant list. Listing a file the gate
+# reads would let a change to it skip the gate.
+assert_mutation_irrelevant_list_is_unreachable() {
+  local path dep job action
+  # shellcheck source=scripts/ci/classify-files-lib.sh
+  . "$ROOT_DIR/scripts/ci/classify-files-lib.sh"
+
+  local job_bodies
+  job_bodies="$(
+    for job in full-critical-mutation-shards quick-critical-mutation full-test-summary; do
+      awk -v job="  $job:" '
+        $0 == job { inside = 1; print; next }
+        inside && /^  [A-Za-z0-9_-]+:$/ { inside = 0 }
+        inside { print }
+      ' "$ROOT_DIR/.github/workflows/test.yml"
+    done
+  )"
+  [ -n "$job_bodies" ] || fail "could not read the critical mutation jobs from test.yml"
+  printf '%s\n' "$job_bodies" | grep -q 'npm run test:mutation:critical:shard' \
+    || fail "critical mutation shard job body was not extracted from test.yml"
+
+  local -a queue=(
+    server/stryker.critical.config.mjs
+    server/vitest.config.ts
+    .github/ci-performance-budget.json
+  )
+  local -A seen=()
+  while IFS= read -r path; do
+    [ -n "$path" ] && queue+=("$path")
+  done < <(
+    {
+      printf '%s\n' "$job_bodies" | grep -o 'scripts/ci/[A-Za-z0-9_.-]*' || true
+      for action in $(printf '%s\n' "$job_bodies" | grep -o '\./\.github/actions/[A-Za-z0-9_/-]*' | sed 's|^\./||' | sort -u); do
+        printf '%s/action.yml\n' "$action"
+        grep -ho 'scripts/ci/[A-Za-z0-9_.-]*' "$ROOT_DIR/$action/action.yml" || true
+      done
+      (cd "$ROOT_DIR" && find server/scripts/mutation -type f | sort)
+    } | sort -u
+  )
+
+  # Cache-key inputs of those actions: a change to one alters what the job
+  # installs. They are checked but not walked, because a manifest's script
+  # table names helpers the mutation jobs never run.
+  local hashed=0
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    hashed=$((hashed + 1))
+    if is_mutation_irrelevant_full_scan_trigger_file "$path"; then
+      fail "a mutation job cache key hashes $path, so it must not be mutation-irrelevant"
+    fi
+  done < <(
+    for action in $(printf '%s\n' "$job_bodies" | grep -o '\./\.github/actions/[A-Za-z0-9_/-]*' | sed 's|^\./||' | sort -u); do
+      { grep -o "hashFiles([^)]*)" "$ROOT_DIR/$action/action.yml" || true; } \
+        | { grep -o "'[^']*'" || true; } | tr -d "'"
+    done | sort -u
+  )
+  [ "$hashed" -ge 3 ] || fail "found only $hashed cache-key inputs for the mutation jobs; the extraction is broken"
+
+  local reached=0
+  while [ "${#queue[@]}" -gt 0 ]; do
+    path="${queue[0]}"
+    queue=("${queue[@]:1}")
+    [ -z "${seen[$path]:-}" ] || continue
+    seen[$path]=1
+    [ -f "$ROOT_DIR/$path" ] || continue
+    reached=$((reached + 1))
+    if is_mutation_irrelevant_full_scan_trigger_file "$path"; then
+      fail "the critical mutation gate reaches $path, so it must not be mutation-irrelevant"
+    fi
+    while IFS= read -r dep; do
+      [ -n "$dep" ] && queue+=("$dep")
+    done < <(transitive_dependencies "$path")
+  done
+  [ "$reached" -ge 8 ] || fail "mutation gate input walk reached only $reached files; the seed extraction is broken"
+
+  # Every listed path must be a full-scan trigger; anything else is dead text.
+  for path in \
+    gateway/vitest.config.ts llm-egress-proxy/package.json scripts/verify-addresses/package.json \
+    config/tooling/eslint.config.js config/tooling/jscpd.json config/tooling/playwright.config.ts \
+    config/tooling/vite.config.ts config/tooling/vitest.trezor-emulator.config.ts \
+    scripts/ci/prepare-integration-db.sh scripts/ci/run-browser-e2e-subject.sh \
+    scripts/lib/browser-sandbox-contract.mjs; do
+    is_full_scan_trigger_file "$path" || fail "$path is mutation-irrelevant but is not a full-scan trigger"
+    is_mutation_irrelevant_full_scan_trigger_file "$path" || fail "$path should be mutation-irrelevant"
+    ! is_critical_mutation_gate_input_file "$path" || fail "$path must not require the mutation gate"
+  done
+
+  # Inputs the gate does read stay required.
+  for path in \
+    package.json server/package.json gateway/package.json server/tsconfig.json server/vitest.config.ts \
+    config/tooling/tsconfig.json config/tooling/stryker.config.mjs config/tooling/vitest.config.ts \
+    .github/workflows/test.yml .github/actions/setup-server-deps/action.yml \
+    .github/ci-performance-budget.json scripts/ci/time-command.sh scripts/ci/with-runner-lock.sh \
+    scripts/ci/classify-files-lib.sh server/src/middleware/auth.ts; do
+    is_critical_mutation_gate_input_file "$path" || fail "$path must require the mutation gate"
+  done
+}
+
 main() {
   local temp_dir repo_dir output_file base_sha head_sha
 
@@ -270,6 +370,7 @@ EOF_DOC
 
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_exact_output "$output_file" "full_scan" "true"
+  assert_exact_output "$output_file" "critical_mutation_required" "true"
 
   # A documentation path hashed into the hardware emulator proof sources is
   # proof input for verify-vectors.yml only. Here it does not force a full
@@ -565,6 +666,58 @@ EOF_DOC
 
     run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
     assert_exact_output "$output_file" "critical_mutation_changed" "true"
+    assert_exact_output "$output_file" "critical_mutation_required" "true"
+  done
+
+  # The mutation gate follows its own inputs, not the generic full-scan flag.
+  # A lint-config change is a full scan for the other lanes but cannot change
+  # what Stryker proves.
+  base_sha="$head_sha"
+  mkdir -p "$repo_dir/config/tooling"
+  printf 'export default [];\n' > "$repo_dir/config/tooling/eslint.config.js"
+  git -C "$repo_dir" add config/tooling/eslint.config.js
+  git -C "$repo_dir" commit -qm "lint config only"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file" "pull_request"
+  assert_exact_output "$output_file" "full_scan" "true"
+  assert_exact_output "$output_file" "critical_mutation_required" "false"
+
+  # The lane loop stops at the first full-scan trigger (the lint config sorts
+  # first), so the mutation decision must still see the critical file after it.
+  base_sha="$head_sha"
+  mkdir -p "$repo_dir/server/src/middleware"
+  printf 'export default [1];\n' > "$repo_dir/config/tooling/eslint.config.js"
+  printf 'export const auth = 2;\n' > "$repo_dir/server/src/middleware/auth.ts"
+  git -C "$repo_dir" add config/tooling/eslint.config.js server/src/middleware/auth.ts
+  git -C "$repo_dir" commit -qm "lint config and critical source"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file" "pull_request"
+  assert_exact_output "$output_file" "full_scan" "true"
+  assert_exact_output "$output_file" "critical_mutation_required" "true"
+
+  # Full-scan triggers the gate reads keep running it.
+  local mutation_input
+  for mutation_input in server/package.json .github/ci-performance-budget.json config/tooling/tsconfig.json; do
+    base_sha="$head_sha"
+    mkdir -p "$repo_dir/$(dirname "$mutation_input")"
+    printf '{"marker":"%s"}\n' "$mutation_input" > "$repo_dir/$mutation_input"
+    git -C "$repo_dir" add "$mutation_input"
+    git -C "$repo_dir" commit -qm "mutation gate input $mutation_input"
+    head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+    run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file" "pull_request"
+    assert_exact_output "$output_file" "full_scan" "true"
+    assert_exact_output "$output_file" "critical_mutation_required" "true"
+  done
+
+  # Events without a diff stay exhaustive.
+  local exhaustive_event
+  for exhaustive_event in schedule workflow_dispatch; do
+    run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file" "$exhaustive_event"
+    assert_exact_output "$output_file" "full_scan" "true"
+    assert_exact_output "$output_file" "critical_mutation_required" "true"
   done
 
   base_sha="$head_sha"
@@ -577,6 +730,7 @@ EOF_DOC
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_exact_output "$output_file" "frontend_changed" "true"
   assert_contains_output "$output_file" "frontend_files" "tests/components/example.test.tsx"
+  assert_exact_output "$output_file" "critical_mutation_required" "false"
   assert_contains_output "$output_file" "test_files" "tests/components/example.test.tsx"
 
   base_sha="$head_sha"
@@ -1004,6 +1158,7 @@ EOF_DOC
   done
 
   assert_every_test_workflow_script_is_classified
+  assert_mutation_irrelevant_list_is_unreachable
 
   echo "classify-test-changes regression checks passed"
 }

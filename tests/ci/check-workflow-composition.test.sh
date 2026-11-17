@@ -2990,6 +2990,18 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "needs.detect-changes.outputs.full_scan != 'true'" \
   "needs.detect-changes.outputs.test_suite_changed != 'true'"
 
+# The mutation shards follow the classifier's whole-diff decision, not the
+# generic full-scan flag, and the summary requires them by the same expression.
+# "!= 'false'" keeps a missing output on the running side.
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "mutation shards run on the classifier's mutation decision" \
+  "critical_mutation_required: \${{ steps.classify.outputs.critical_mutation_required }}" \
+  "full-critical-mutation-shards:" \
+  "needs.detect-changes.outputs.critical_mutation_required != 'false' ||" \
+  "needs.detect-changes.outputs.critical_mutation_changed == 'true'" \
+  'CRITICAL_MUTATION_REQUIRED: ${{ needs.detect-changes.outputs.critical_mutation_required }}' \
+  'if [ "$CRITICAL_MUTATION_REQUIRED" != "false" ] || is_true "$CRITICAL_MUTATION_CHANGED"; then'
+
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full E2E runs on full scan" \
   "full-browser-e2e-tests:" \

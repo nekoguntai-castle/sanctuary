@@ -17,6 +17,8 @@ frontend_changed=false
 backend_changed=false
 backend_integration_changed=false
 critical_mutation_changed=false
+# Fails closed: only a fully classified diff can lower this to false.
+critical_mutation_required=true
 gateway_changed=false
 llm_egress_proxy_changed=false
 e2e_changed=false
@@ -55,6 +57,7 @@ emit_outputs() {
     "backend_files=$backend_files" \
     "critical_mutation_changed=$critical_mutation_changed" \
     "critical_mutation_files=$critical_mutation_files" \
+    "critical_mutation_required=$critical_mutation_required" \
     "gateway_changed=$gateway_changed" \
     "gateway_files=$gateway_files" \
     "llm_egress_proxy_changed=$llm_egress_proxy_changed" \
@@ -180,6 +183,14 @@ ensure_commit "$base_sha"
 git rev-parse --verify "$base_sha^{commit}" >/dev/null
 git rev-parse --verify "$head_sha^{commit}" >/dev/null
 
+# The lane loop below stops at the first full-scan trigger, so decide the
+# mutation gate over the complete diff first. A failed diff aborts the script.
+changed_files="$(git diff --no-renames --name-only "$base_sha" "$head_sha")"
+critical_mutation_required=false
+if diff_requires_critical_mutation_gate <<< "$changed_files"; then
+  critical_mutation_required=true
+fi
+
 # File-classification predicates live in scripts/ci/classify-files-lib.sh
 # (sourced above). This is CI's scalar-output adapter; plan-test-run.sh is the
 # local/developer JSON adapter over the same predicate owner.
@@ -275,6 +286,6 @@ while IFS= read -r file; do
   if is_test_file "$file"; then
     append_file test_files "$file"
   fi
-done < <(git diff --no-renames --name-only "$base_sha" "$head_sha")
+done <<< "$changed_files"
 
 emit_outputs

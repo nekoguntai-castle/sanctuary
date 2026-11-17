@@ -109,11 +109,24 @@ export function inspectStrictFullTestSummaryGate(workflow, relativePath, state) 
 
 function inspectExhaustivePrDeduplication(workflow, relativePath, state) {
   const mappings = [
-    ['quick-frontend-tests', 'full-frontend-coverage-merge', 'frontend_changed'],
-    ['quick-critical-mutation', 'full-critical-mutation-shards', 'critical_mutation_changed'],
+    [
+      'quick-frontend-tests',
+      'full-frontend-coverage-merge',
+      'frontend_changed',
+      "needs.detect-changes.outputs.full_scan == 'true'",
+    ],
+    // The mutation gate covers a full scan through the classifier's whole-diff
+    // critical_mutation_required output, which is true for every full-scan
+    // trigger the gate can read and for schedule and manual runs.
+    [
+      'quick-critical-mutation',
+      'full-critical-mutation-shards',
+      'critical_mutation_changed',
+      "needs.detect-changes.outputs.critical_mutation_required != 'false'",
+    ],
   ];
 
-  for (const [quickJob, fullJob, relevantOutput] of mappings) {
+  for (const [quickJob, fullJob, relevantOutput, fullScanCondition] of mappings) {
     const quickBody = extractWorkflowJobBody(workflow, quickJob);
     if (!quickBody) {
       continue;
@@ -141,8 +154,8 @@ function inspectExhaustivePrDeduplication(workflow, relativePath, state) {
       relativePath,
       state,
       fullJob,
-      "needs.detect-changes.outputs.full_scan == 'true'",
-      `must cover full_scan before ${quickJob} can skip`,
+      fullScanCondition,
+      `must cover exhaustive runs (${fullScanCondition}) before ${quickJob} can skip`,
     );
     requireJobText(
       fullBody,

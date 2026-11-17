@@ -122,7 +122,10 @@ fi
 
 # Resolve file diff. For unknown events (no base) or schedule, run everything.
 full_scan="false"
-if [ "$tier" = "nightly" ] || [ "$event_name" = "schedule" ] || [ "$event_name" = "workflow_dispatch" ] && [ "$force_full" = true ]; then
+# The braces matter: `||` and `&&` have equal precedence in a bash list, so
+# without them the --full test would apply to the schedule branches too.
+if [ "$tier" = "nightly" ] || [ "$event_name" = "schedule" ] ||
+   { [ "$event_name" = "workflow_dispatch" ] && [ "$force_full" = true ]; }; then
   full_scan="true"
 fi
 
@@ -247,6 +250,14 @@ else
       build_files+=("$file")
     fi
   done <<< "$changed_files"
+
+  # A diff-driven full scan runs the mutation gate only for the gate's own
+  # inputs, decided over the whole diff. This mirrors critical_mutation_required
+  # in classify-test-changes.sh. A full scan that never reaches this diff
+  # branch (no comparison base, or forced before it) keeps the gate on.
+  if [ "$full_scan" = "true" ] && ! diff_requires_critical_mutation_gate <<< "$changed_files"; then
+    critical_mutation_run="false"
+  fi
 
   # A shared change needs the whole backend and gateway suites, not
   # `vitest related` on the server/ and gateway/ paths of a mixed diff.

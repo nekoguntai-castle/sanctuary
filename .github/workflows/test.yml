@@ -45,6 +45,7 @@ jobs:
       backend_files: ${{ steps.classify.outputs.backend_files }}
       critical_mutation_changed: ${{ steps.classify.outputs.critical_mutation_changed }}
       critical_mutation_files: ${{ steps.classify.outputs.critical_mutation_files }}
+      critical_mutation_required: ${{ steps.classify.outputs.critical_mutation_required }}
       gateway_changed: ${{ steps.classify.outputs.gateway_changed }}
       gateway_files: ${{ steps.classify.outputs.gateway_files }}
       llm_egress_proxy_changed: ${{ steps.classify.outputs.llm_egress_proxy_changed }}
@@ -1290,12 +1291,18 @@ jobs:
   # Sharded Stryker runs (full lane). Each shard mutates a disjoint subset of
   # files so they can run in parallel. Full Test Summary merges the shard
   # reports and runs the critical mutation gate.
+  #
+  # critical_mutation_required is the classifier's whole-diff decision: a
+  # critical mutation input, or a full-scan trigger that is not on the
+  # mutation-irrelevant list (is_mutation_irrelevant_full_scan_trigger_file).
+  # Schedule and manual runs always set it. The comparison is "!= 'false'" so
+  # a missing output runs the gate.
   full-critical-mutation-shards:
     name: Full Critical Mutation Gate (shard ${{ matrix.shard }})
     if: >-
       always() &&
       needs.detect-changes.result == 'success' &&
-      (needs.detect-changes.outputs.full_scan == 'true' ||
+      (needs.detect-changes.outputs.critical_mutation_required != 'false' ||
        needs.detect-changes.outputs.critical_mutation_changed == 'true')
     runs-on: ubuntu-22.04
     timeout-minutes: 60
@@ -2107,6 +2114,7 @@ jobs:
           FRONTEND_CHANGED: ${{ needs.detect-changes.outputs.frontend_changed }}
           BACKEND_CHANGED: ${{ needs.detect-changes.outputs.backend_changed }}
           CRITICAL_MUTATION_CHANGED: ${{ needs.detect-changes.outputs.critical_mutation_changed }}
+          CRITICAL_MUTATION_REQUIRED: ${{ needs.detect-changes.outputs.critical_mutation_required }}
           GATEWAY_CHANGED: ${{ needs.detect-changes.outputs.gateway_changed }}
           LLM_EGRESS_PROXY_CHANGED: ${{ needs.detect-changes.outputs.llm_egress_proxy_changed }}
           BROWSER_SMOKE_CHANGED: ${{ needs.detect-changes.outputs.browser_smoke_changed }}
@@ -2178,7 +2186,6 @@ jobs:
             frontend_required=true
             gateway_required=true
             llm_egress_proxy_required=true
-            critical_mutation_required=true
             browser_e2e_required=true
             render_e2e_required=true
             build_required=true
@@ -2210,7 +2217,9 @@ jobs:
             llm_egress_proxy_required=true
           fi
 
-          if is_true "$CRITICAL_MUTATION_CHANGED"; then
+          # Same expression as the shard job's `if`: anything but an explicit
+          # "false" requires the gate.
+          if [ "$CRITICAL_MUTATION_REQUIRED" != "false" ] || is_true "$CRITICAL_MUTATION_CHANGED"; then
             critical_mutation_required=true
           fi
 

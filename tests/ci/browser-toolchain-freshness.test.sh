@@ -4,7 +4,15 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 WORKFLOW="$ROOT_DIR/.github/workflows/browser-toolchain-freshness.yml"
 grep -Fq 'FORGEJO_TOKEN: ${{ github.token }}' "$WORKFLOW"
-grep -Fq 'github.event.repository.default_branch' "$WORKFLOW"
+# Forgejo's schedule payload is {"action":"schedule"}: it has no `repository`
+# object, so a guard built from github.event.repository.* is always false on
+# schedule and the job is skipped on every scheduled run (13 of 13, 2026-11-04
+# to 2026-11-17). The guard must use the literal default-branch ref.
+grep -Fq "if: github.ref == 'refs/heads/main'" "$WORKFLOW"
+if grep -Fq 'github.event.repository' "$WORKFLOW"; then
+  echo 'freshness workflow must not gate on github.event.repository: it is absent from schedule payloads' >&2
+  exit 1
+fi
 if grep -Eq 'enable-openid-connect|ACTIONS_ID_TOKEN_REQUEST|BROWSER_FRESHNESS_AUDIENCE|secrets\.|steps\.oidc|permissions:' "$WORKFLOW"; then
   echo 'freshness workflow must use the built-in repository token without OIDC or PAT configuration' >&2
   exit 1

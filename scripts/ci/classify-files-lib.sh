@@ -253,6 +253,83 @@ is_critical_mutation_file() {
   return 1
 }
 
+# Full-scan triggers the critical mutation gate cannot read.
+#
+# The gate runs Stryker from server/ (server/stryker.critical.config.mjs) after
+# setup-node-toolchain and setup-server-deps, wrapped by run-with-log.sh,
+# with-runner-lock.sh and time-command.sh. Before this list existed, every
+# full-scan trigger also ran the three mutation shards: 21 of 26 PR mutation
+# runs between 2026-11-04 and 2026-11-17 came from the full-scan flag alone,
+# and several of those changed only lint or other-package configuration.
+#
+# This is an exclusion list, so it fails closed: a full-scan trigger that is
+# not named here still runs the mutation gate. Add a path only when the gate
+# cannot load it. Deliberately NOT listed: the root lockfile and every root
+# workspace manifest, gateway's included (the gate's install validates them and
+# setup-server-deps hashes them into its cache key), the shared
+# tsconfig/vitest/stryker files under config/tooling/, test.yml and the
+# composite actions, and .github/ci-performance-budget.json (time-command.sh
+# reads the shard budgets from it).
+is_mutation_irrelevant_full_scan_trigger_file() {
+  case "$1" in
+    gateway/vitest.config.*|gateway/tsconfig*.json)
+      return 0
+      ;;
+    llm-egress-proxy/package.json|llm-egress-proxy/package-lock.json|llm-egress-proxy/vitest.config.*)
+      return 0
+      ;;
+    scripts/verify-addresses/package.json|scripts/verify-addresses/package-lock.json)
+      return 0
+      ;;
+    config/tooling/eslint.config.js|config/tooling/gitleaksignore|config/tooling/gitleaks.toml|config/tooling/jscpd.json|config/tooling/dependency-cruiser.cjs)
+      return 0
+      ;;
+    config/tooling/playwright-browser.ts|config/tooling/playwright.config.ts|config/tooling/vite.config.ts|config/tooling/vite.nodePolyfills.ts)
+      return 0
+      ;;
+    config/tooling/vitest.jade-emulator.config.ts|config/tooling/vitest.ledger-emulator.config.ts|config/tooling/vitest.trezor-emulator.config.ts)
+      return 0
+      ;;
+    scripts/ci/backend-coverage-merge.sh|scripts/ci/backend-coverage-shard.sh|scripts/ci/check-integration-db.mjs|scripts/ci/check-redis-service.mjs|scripts/ci/classify-integration-failure.sh|scripts/ci/integration-db-guard.mjs|scripts/ci/prepare-integration-db.sh|scripts/ci/resolve-postgres-service.sh|scripts/ci/resolve-redis-service.sh)
+      return 0
+      ;;
+    scripts/ci/install-playwright-chromium.sh|scripts/ci/retry-playwright-infrastructure-failure.sh|scripts/ci/run-browser-e2e-subject.sh|scripts/ci/run-sandboxed-playwright.mjs|scripts/ci/lib/browser-container-security.mjs|scripts/lib/browser-sandbox-contract.mjs)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+# True when a changed file requires the critical mutation gate. Callers must
+# test every file in the diff, not stop at the first full-scan trigger.
+is_critical_mutation_gate_input_file() {
+  if is_critical_mutation_file "$1"; then
+    return 0
+  fi
+  # Wallet-safety critical documentation keeps its exhaustive run.
+  if is_docs_only_file "$1" && is_wallet_safety_critical_file "$1"; then
+    return 0
+  fi
+  if is_full_scan_trigger_file "$1" && ! is_mutation_irrelevant_full_scan_trigger_file "$1"; then
+    return 0
+  fi
+  return 1
+}
+
+# Reads a changed-file list on stdin and succeeds when any file requires the
+# critical mutation gate. Both adapters (classify-test-changes.sh and
+# plan-test-run.sh) call this so their mutation decisions cannot drift.
+diff_requires_critical_mutation_gate() {
+  local changed_file
+  while IFS= read -r changed_file; do
+    [ -n "$changed_file" ] || continue
+    if is_critical_mutation_gate_input_file "$changed_file"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 # shared/ is built into shared/dist and consumed by the frontend, server and
 # gateway. It is deliberately not part of is_backend_file/is_gateway_file: those
 # feed related-file lists that run `vitest related` from server/ or gateway/,
