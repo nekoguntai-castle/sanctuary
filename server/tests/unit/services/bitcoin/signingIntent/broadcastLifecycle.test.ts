@@ -228,3 +228,108 @@ describe('signing intent broadcast lifecycle', () => {
     });
   });
 });
+
+describe('durable broadcast metadata boundaries', () => {
+  const TXID = 'c'.repeat(64);
+  const accepts = (value: unknown): boolean => DurableBroadcastMetadataSchema.safeParse(value).success;
+  const withInput = (overrides: Record<string, unknown>) => ({
+    ...metadata,
+    inputs: [{ txid: TXID, vout: 0, address: 'tb1qinput', amount: 5, ...overrides }],
+  });
+  const withOutput = (overrides: Record<string, unknown>) => ({
+    ...metadata,
+    outputs: [{ address: 'tb1qoutput', amount: 4, outputType: 'recipient', isOurs: false, ...overrides }],
+  });
+
+  it('accepts the baseline metadata, inputs and outputs every case below varies', () => {
+    expect(accepts(metadata)).toBe(true);
+    expect(accepts(withInput({}))).toBe(true);
+    expect(accepts(withOutput({}))).toBe(true);
+  });
+
+  it.each([
+    ['a leading extra character', `x${TXID}`],
+    ['a trailing extra character', `${TXID}x`],
+    ['63 hex characters', TXID.slice(1)],
+  ])('rejects a txid with %s', (_reason, txid) => {
+    expect(accepts({ ...metadata, utxos: [{ txid, vout: 0 }] })).toBe(false);
+    expect(accepts({ ...metadata, replacesTxid: txid })).toBe(false);
+  });
+
+  it('requires at least one spent outpoint and accepts several', () => {
+    expect(accepts({ ...metadata, utxos: [] })).toBe(false);
+    expect(accepts({ ...metadata, utxos: [{ txid: TXID, vout: 0 }, { txid: TXID, vout: 1 }] })).toBe(true);
+  });
+
+  it('rejects an empty draft id or derivation path and accepts longer ones', () => {
+    expect(accepts({ ...metadata, draftId: '' })).toBe(false);
+    expect(accepts({ ...metadata, draftId: 'draft-12' })).toBe(true);
+    expect(accepts(withInput({ derivationPath: '' }))).toBe(false);
+    expect(accepts(withInput({ derivationPath: "m/84'/1'/0'/0/5" }))).toBe(true);
+  });
+
+  it.each(['recipient', 'change', 'decoy', 'consolidation', 'unknown'])('accepts the output type %s', (outputType) => {
+    expect(accepts(withOutput({ outputType }))).toBe(true);
+  });
+
+  it.each(['', 'fee', 'Recipient'])('rejects the output type %j', (outputType) => {
+    expect(accepts(withOutput({ outputType }))).toBe(false);
+  });
+
+  it.each(['00', '0014ab'])('accepts the output script %s', (scriptPubKey) => {
+    expect(accepts(withOutput({ scriptPubKey }))).toBe(true);
+  });
+
+  it.each(['', 'a', 'abc', 'zz00', '00zz', '00AB'])('rejects the output script %j', (scriptPubKey) => {
+    expect(accepts(withOutput({ scriptPubKey }))).toBe(false);
+  });
+});
+
+describe('signing intent broadcast claim errors', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  // The route maps `reason` to its response, so the details are part of the contract.
+  it('reports malformed metadata as a metadata mismatch on the metadata field', async () => {
+    await expect(claimSigningIntentBroadcast(artifact, { ...metadata, recipient: '' })).rejects.toMatchObject({
+      message: 'Broadcast metadata is malformed',
+      details: { reason: 'metadata_mismatch', field: 'metadata' },
+    });
+  });
+
+  it('reports a live lease as a duplicate submission', async () => {
+    mocks.claim.mockResolvedValue({ status: 'busy' });
+
+    await expect(claimSigningIntentBroadcast(artifact, metadata)).rejects.toMatchObject({
+      message: 'Signing intent broadcast is already in progress',
+      statusCode: 409,
+      details: { reason: 'duplicate_submission' },
+    });
+  });
+
+  it('reports a digest or txid conflict as a metadata mismatch on the intent id', async () => {
+    mocks.claim.mockResolvedValue({ status: 'conflict' });
+
+    await expect(claimSigningIntentBroadcast(artifact, metadata)).rejects.toMatchObject({
+      message: 'Signing intent does not match the broadcast artifact',
+      details: { reason: 'metadata_mismatch', field: 'intentId' },
+    });
+  });
+});
+
+describe('held policy reservations of a finished intent', () => {
+  // An expired lease only matters while the intent is still `claimed`.
+  it.each(['accepted', 'complete', 'ready', 'rejected'])(
+    'returns null for a %s intent even when its old lease has expired',
+    async (broadcastState) => {
+      const now = new Date('2030-01-01T00:00:00Z');
+      mocks.findById.mockResolvedValue({
+        broadcastState,
+        broadcastTxid: 'b'.repeat(64),
+        broadcastLeaseExpiresAt: new Date(now.getTime() - 1),
+        broadcastMetadata: { ...metadata, policyReservations: [{ windowId: 'w1', amount: '9000' }] },
+      });
+
+      await expect(findHeldPolicyReservations('intent-1', 'b'.repeat(64), now)).resolves.toBeNull();
+    },
+  );
+});

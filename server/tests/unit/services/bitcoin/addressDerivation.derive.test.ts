@@ -370,3 +370,29 @@ describe('Address Derivation Service determinism', () => {
     expect(Buffer.from(result1.publicKey).equals(Buffer.from(result2.publicKey))).toBe(true);
   });
 });
+
+describe('Address Derivation Service single-sig boundaries', () => {
+  const testTpub = testXpubs.testnet.bip84;
+  const options = { scriptType: 'native_segwit', network: 'testnet3', branch: 0 } as const;
+
+  // Untyped callers only. Each value must be refused by the options guard
+  // itself, not by a later check that happens to throw something else.
+  it.each([
+    ['undefined', undefined],
+    ['null', null],
+    ['a string', 'native_segwit'],
+    ['a number', 1],
+    ['true', true],
+  ])('refuses %s in place of the derivation options', (_label, value) => {
+    expect(() => deriveRelativeAddress(testTpub, 0, value as never))
+      .toThrow('Explicit address derivation options are required');
+  });
+
+  it('derives a batch of exactly the maximum size', () => {
+    const batch = deriveRelativeAddresses(testTpub, 0, 1000, options);
+
+    expect(batch).toHaveLength(1000);
+    expect(batch[999].index).toBe(999);
+    expect(new Set(batch.map(({ address }) => address)).size).toBe(1000);
+  });
+});

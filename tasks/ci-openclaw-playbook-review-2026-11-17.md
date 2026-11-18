@@ -547,3 +547,26 @@ derivation plus `signingIntent/artifactValidation.ts` (121 s locally), shard 2 k
 validation, broadcast, the repository, auth and access control, and shard 3 is the rest of
 `signingIntent/**`. Estimated from run 24012 and the local slice times, each shard should land
 near 18-21 minutes; treat that as unconfirmed until a CI run reports it.
+
+Measured in CI (run 24026, PR #1524): shards 1, 2 and 3 took 19 min 21 s, 12 min 39 s and
+16 min 52 s. The slowest shard was 27 min 32 s in run 24000 and 25 min 9 s in run 24012.
+
+### 9.6 Survivors in the signing-intent schemas and single-sig derivation (2026-11-17)
+
+Module-level schemas are the most expensive place for a survivor: every test that loads the
+module covers every mutant of the constant. In run 24026, `signingIntent/schema.ts` and
+`signingIntent/broadcastLifecycle.ts` were 16% of the gate's test executions each, and their 36
+survivors accounted for half of that. All 36 were test gaps: dropped regex anchors, a dropped
+`min(1)`, blanked enum members, error details that no test read, and one branch of the
+held-reservation check. `singleSigDerivation.ts` had three more (the options guard and the batch
+limit of exactly 1,000). No source file changed.
+
+| File | Before | After (Stryker on the file) |
+|---|---|---|
+| `signingIntent/schema.ts` | 13 of 45 survived | 45 of 45 killed |
+| `signingIntent/broadcastLifecycle.ts` | 23 of 129 survived | 129 of 129 killed |
+| `addressDerivation/singleSigDerivation.ts` | 3 of 87 survived | 87 of 87 killed |
+
+Still open, by survivors in run 24026: `artifactValidation.ts` (108), `transactions/broadcasting.ts`
+(74), `api/transactions/broadcasting.ts` (70), `prevoutValidation.ts` (57), `canonical.ts` (44),
+`feePolicy.ts` (43), the signing-intent repository (31).
