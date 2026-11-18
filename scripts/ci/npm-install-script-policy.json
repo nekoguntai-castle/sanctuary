@@ -17,7 +17,7 @@
     {
       "location": "node_modules/@prisma/engines",
       "package": "@prisma/engines",
-      "version": "7.10.0",
+      "version": "7.10.1",
       "scripts": {
         "postinstall": "node scripts/postinstall.js"
       },
@@ -69,7 +69,7 @@
     {
       "location": "node_modules/prisma",
       "package": "prisma",
-      "version": "7.10.0",
+      "version": "7.10.1",
       "scripts": {
         "preinstall": "node scripts/preinstall-entry.js"
       },

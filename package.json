@@ -39,11 +39,11 @@
   },
   "allowScripts": {
     "@firebase/util": false,
-    "@prisma/engines@7.10.0": true,
+    "@prisma/engines@7.10.1": true,
     "cbor-extract": false,
     "fsevents": false,
     "msgpackr-extract": false,
-    "prisma@7.10.0": true,
+    "prisma@7.10.1": true,
     "usb": false,
     "esbuild@0.28.2": true
   },
