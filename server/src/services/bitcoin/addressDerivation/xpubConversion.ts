@@ -8,23 +8,25 @@
 
 import bs58check from 'bs58check';
 
+const MAINNET_STANDARD_VERSION = Buffer.from([0x04, 0x88, 0xB2, 0x1E]); // xpub
+const TESTNET_STANDARD_VERSION = Buffer.from([0x04, 0x35, 0x87, 0xCF]); // tpub
+
 /**
- * Version bytes for different extended key formats (SLIP-132)
- * These are the 4-byte prefixes that determine the key format
+ * SLIP-132 prefixes that carry standard key material under different version
+ * bytes, mapped to the standard version they convert to. xpub and tpub are
+ * absent on purpose: they are already standard and pass through unchanged.
  */
-const XPUB_VERSIONS: Record<string, { prefix: string; targetPrefix: string; targetVersion: Buffer }> = {
+const SLIP132_STANDARD_VERSIONS: Record<string, Buffer> = {
   // Mainnet
-  'xpub': { prefix: 'xpub', targetPrefix: 'xpub', targetVersion: Buffer.from([0x04, 0x88, 0xB2, 0x1E]) },
-  'ypub': { prefix: 'ypub', targetPrefix: 'xpub', targetVersion: Buffer.from([0x04, 0x88, 0xB2, 0x1E]) }, // BIP49 nested segwit
-  'zpub': { prefix: 'zpub', targetPrefix: 'xpub', targetVersion: Buffer.from([0x04, 0x88, 0xB2, 0x1E]) }, // BIP84 native segwit
-  'Ypub': { prefix: 'Ypub', targetPrefix: 'xpub', targetVersion: Buffer.from([0x04, 0x88, 0xB2, 0x1E]) }, // Multisig nested segwit
-  'Zpub': { prefix: 'Zpub', targetPrefix: 'xpub', targetVersion: Buffer.from([0x04, 0x88, 0xB2, 0x1E]) }, // Multisig native segwit
+  'ypub': MAINNET_STANDARD_VERSION, // BIP49 nested segwit
+  'zpub': MAINNET_STANDARD_VERSION, // BIP84 native segwit
+  'Ypub': MAINNET_STANDARD_VERSION, // Multisig nested segwit
+  'Zpub': MAINNET_STANDARD_VERSION, // Multisig native segwit
   // Testnet
-  'tpub': { prefix: 'tpub', targetPrefix: 'tpub', targetVersion: Buffer.from([0x04, 0x35, 0x87, 0xCF]) },
-  'upub': { prefix: 'upub', targetPrefix: 'tpub', targetVersion: Buffer.from([0x04, 0x35, 0x87, 0xCF]) }, // BIP49 nested segwit
-  'vpub': { prefix: 'vpub', targetPrefix: 'tpub', targetVersion: Buffer.from([0x04, 0x35, 0x87, 0xCF]) }, // BIP84 native segwit
-  'Upub': { prefix: 'Upub', targetPrefix: 'tpub', targetVersion: Buffer.from([0x04, 0x35, 0x87, 0xCF]) }, // Multisig nested segwit
-  'Vpub': { prefix: 'Vpub', targetPrefix: 'tpub', targetVersion: Buffer.from([0x04, 0x35, 0x87, 0xCF]) }, // Multisig native segwit
+  'upub': TESTNET_STANDARD_VERSION, // BIP49 nested segwit
+  'vpub': TESTNET_STANDARD_VERSION, // BIP84 native segwit
+  'Upub': TESTNET_STANDARD_VERSION, // Multisig nested segwit
+  'Vpub': TESTNET_STANDARD_VERSION, // Multisig native segwit
 };
 
 const PRIVATE_EXTENDED_KEY_PREFIXES = new Set([
@@ -61,16 +63,36 @@ export function assertPublicExtendedKey(extendedKey: string): void {
 }
 
 /**
- * Version bytes for converting TO specific formats (reverse of XPUB_VERSIONS)
+ * Version bytes for converting TO specific formats
  */
 const XPUB_TARGET_VERSIONS: Record<string, Buffer> = {
-  'xpub': Buffer.from([0x04, 0x88, 0xB2, 0x1E]),
-  'tpub': Buffer.from([0x04, 0x35, 0x87, 0xCF]),
+  'xpub': MAINNET_STANDARD_VERSION,
+  'tpub': TESTNET_STANDARD_VERSION,
   'Zpub': Buffer.from([0x02, 0xAA, 0x7E, 0xD3]), // P2WSH multisig mainnet
   'Vpub': Buffer.from([0x02, 0x57, 0x54, 0x83]), // P2WSH multisig testnet
   'Ypub': Buffer.from([0x02, 0x95, 0xB4, 0x3F]), // P2SH-P2WSH multisig mainnet
   'Upub': Buffer.from([0x02, 0x42, 0x89, 0xEF]), // P2SH-P2WSH multisig testnet
 };
+
+/**
+ * Re-encode an extended key under different version bytes. The key material
+ * after the 4-byte version is kept as it is.
+ *
+ * Callers pass a real version Buffer, so only the decode can fail, and only
+ * the decode is guarded.
+ */
+function withVersionBytes(extendedKey: string, version: Buffer): string {
+  let decoded: Uint8Array;
+  try {
+    decoded = bs58check.decode(extendedKey);
+  } catch (error) {
+    // Not valid base58check: return the key unchanged and let downstream
+    // validation reject it.
+    return extendedKey;
+  }
+
+  return bs58check.encode(Buffer.concat([version, decoded.slice(4)]));
+}
 
 /**
  * Convert extended public key to standard xpub/tpub format
@@ -80,31 +102,14 @@ const XPUB_TARGET_VERSIONS: Record<string, Buffer> = {
 export function convertToStandardXpub(extendedKey: string): string {
   assertPublicExtendedKey(extendedKey);
 
-  // Detect the prefix (first 4 characters)
-  const prefix = extendedKey.slice(0, 4);
-  const versionInfo = XPUB_VERSIONS[prefix];
-
-  // If already standard format or unknown, return as-is
-  if (!versionInfo || prefix === versionInfo.targetPrefix) {
+  // The first 4 characters name the format. Standard and unknown prefixes
+  // have no entry and are returned as they are.
+  const standardVersion = SLIP132_STANDARD_VERSIONS[extendedKey.slice(0, 4)];
+  if (!standardVersion) {
     return extendedKey;
   }
 
-  try {
-    // Decode the base58check encoded key
-    const decoded = bs58check.decode(extendedKey);
-
-    // Replace the version bytes (first 4 bytes) with target version
-    const converted = Buffer.concat([
-      versionInfo.targetVersion,
-      decoded.slice(4)
-    ]);
-
-    // Re-encode with base58check
-    return bs58check.encode(converted);
-  } catch (error) {
-    // If conversion fails, return original and let downstream handle the error
-    return extendedKey;
-  }
+  return withVersionBytes(extendedKey, standardVersion);
 }
 
 /**
@@ -114,32 +119,17 @@ export function convertToStandardXpub(extendedKey: string): string {
 export function convertXpubToFormat(extendedKey: string, targetFormat: 'xpub' | 'tpub' | 'Zpub' | 'Vpub' | 'Ypub' | 'Upub'): string {
   assertPublicExtendedKey(extendedKey);
 
-  const prefix = extendedKey.slice(0, 4);
-
-  // If already in target format, return as-is
-  if (prefix === targetFormat) {
+  // A key already in the target format is returned untouched, including its
+  // exact version bytes.
+  if (extendedKey.slice(0, 4) === targetFormat) {
     return extendedKey;
   }
 
-  const targetVersion = XPUB_TARGET_VERSIONS[targetFormat];
-  if (!targetVersion) {
+  // Own keys only: an untyped caller passing 'constructor' must not reach an
+  // inherited Object member.
+  if (!Object.prototype.hasOwnProperty.call(XPUB_TARGET_VERSIONS, targetFormat)) {
     return extendedKey;
   }
 
-  try {
-    // Decode the base58check encoded key
-    const decoded = bs58check.decode(extendedKey);
-
-    // Replace the version bytes (first 4 bytes) with target version
-    const converted = Buffer.concat([
-      targetVersion,
-      decoded.slice(4)
-    ]);
-
-    // Re-encode with base58check
-    return bs58check.encode(converted);
-  } catch (error) {
-    // If conversion fails, return original
-    return extendedKey;
-  }
+  return withVersionBytes(extendedKey, XPUB_TARGET_VERSIONS[targetFormat]);
 }

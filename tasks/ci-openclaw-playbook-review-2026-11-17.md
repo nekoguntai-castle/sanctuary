@@ -459,3 +459,26 @@ they are equivalent mutants: the `prefix` field of `XPUB_VERSIONS` is never read
 early-return guards at lines 88, 120 and 125 return what the fall-through path would also
 return. Removing them needs a change to that funds-critical source file (and with it the
 mutation-map line pins and the Stryker range pins), which is a separate decision.
+
+### 9.3 The remaining survivors: removed (2026-11-17)
+
+The 29 survivors left after 9.2 were checked one by one against a single rule: remove what
+nothing depends on, keep and test what does something no other code covers.
+
+| Survivors | What they were | Outcome |
+|---|---|---|
+| `prefix` and `targetPrefix` string literals, `xpub`/`tpub` table rows | A field never read, a field only compared with the key's own prefix, and two identity conversions | Removed. A standard key has no table entry and passes through as before. |
+| Early return for a key already in the target format (`convertXpubToFormat`) | Leaves the key's exact version bytes alone; re-encoding would rewrite an off-canonical version to the canonical one | Kept, now tested with an off-canonical `Zpub`. |
+| Unknown target format guard | Returns the key to an untyped caller instead of throwing | Kept, now tested, and tightened to own keys so `'constructor'` behaves like any other unknown format. |
+| No-table-entry guard (`convertToStandardXpub`) | Pass-through for standard and unknown prefixes | Kept, now tested. |
+
+These guards could not be killed before because each function wrapped decode, concat and encode
+in one catch-all that returned the input, so removing a guard produced the same result by a
+different route. The two functions now share one helper whose `try` covers only the base58check
+decode.
+
+Evidence: old and new source agree on 3,367,749 differential comparisons (160,369 inputs,
+including short payloads, non-strings and inherited-key target formats); a Stryker run on the
+file alone reports 49 mutants, 49 killed, none surviving, at about 61 tests per mutant, where
+run 23957 had 95 mutants, 29 surviving, at about 2,170 tests per mutant. The effect on shard 2's
+duration has to be read from CI.
