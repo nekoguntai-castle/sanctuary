@@ -25,8 +25,8 @@
   "fundsCriticalPackages": [
     {
       "name": "bitcoinjs-lib",
-      "version": "7.0.2",
-      "integrity": "sha512-ugLk9SR+2gvhpNA7kqQL1eVDKyBNo/rbr+df72nrZj4OOdZvQRHDVtyogPGXAU2MLQimLL7EbUdz95QGh6Th5Q==",
+      "version": "7.0.5",
+      "integrity": "sha512-xH24P1ile3QtyChzX1ITitcgpfZgDzG986gy1glbGXFsvcSnRX0P6p4m3nuTQfJ+j97va8py0leEK7xG8oxMqQ==",
       "manifests": [
         "package.json",
         "server/package.json",
@@ -96,8 +96,8 @@
     },
     {
       "name": "cbor-x",
-      "version": "1.6.6",
-      "integrity": "sha512-8QiD9PGOxyQHo7s2pzwTBH6lTjqekxPdl9Aq6fXvZgCuCJHOht1puDEA/fTr6mciB76c+M+Gi0qT2i1a4pm4Wg==",
+      "version": "1.6.9",
+      "integrity": "sha512-TCT9XHLb4iPGQ99fpQjcTRncbus6cXHvSD/RY+bPrDACBCJKiQLmAM6r7/BgQcI5i+8h4gwp4vjfb6S6T8bPGw==",
       "manifests": [
         "package.json"
       ],

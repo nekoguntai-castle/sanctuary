@@ -66,7 +66,7 @@ describe('generated address vector provenance', () => {
     );
     expect(VERIFIER_PROVENANCE.evidenceScopes).toEqual([
       { implementation: 'Bitcoin Core 31.1.0', scope: 'root-private-descriptor-to-output' },
-      { implementation: 'bitcoinjs-lib 7.0.2', scope: 'seed-to-account-and-output' },
+      { implementation: 'bitcoinjs-lib 7.0.5', scope: 'seed-to-account-and-output' },
       { implementation: 'bip_utils (Python) 2.12.1', scope: 'seed-to-account-and-output' },
       { implementation: 'btcd/btcutil (Go) btcsuite address/chaincfg/txscript 2.0.0 + btcutil 2.0.1 + go-bip39 1.1.0', scope: 'seed-to-account-and-output' },
     ]);

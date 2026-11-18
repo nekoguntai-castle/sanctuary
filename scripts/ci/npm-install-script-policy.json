@@ -30,7 +30,7 @@
     {
       "location": "node_modules/cbor-extract",
       "package": "cbor-extract",
-      "version": "2.2.2",
+      "version": "2.2.3",
       "scripts": {
         "install": "node-gyp-build-optional-packages"
       },

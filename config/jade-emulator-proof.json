@@ -53,8 +53,8 @@
     "webDisplayPort": 30122
   },
   "sdk": {
-    "cborX": "1.6.6",
-    "cborXIntegrity": "sha512-8QiD9PGOxyQHo7s2pzwTBH6lTjqekxPdl9Aq6fXvZgCuCJHOht1puDEA/fTr6mciB76c+M+Gi0qT2i1a4pm4Wg=="
+    "cborX": "1.6.9",
+    "cborXIntegrity": "sha512-TCT9XHLb4iPGQ99fpQjcTRncbus6cXHvSD/RY+bPrDACBCJKiQLmAM6r7/BgQcI5i+8h4gwp4vjfb6S6T8bPGw=="
   },
   "runtimeCompatibility": {
     "node": "24.22.3",

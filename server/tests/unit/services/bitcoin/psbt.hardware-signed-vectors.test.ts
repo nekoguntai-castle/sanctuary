@@ -303,9 +303,9 @@ function physicalEvidence(
           ? [
               {
                 package: "cbor-x" as const,
-                version: "1.6.6",
+                version: "1.6.9",
                 integrity:
-                  "sha512-8QiD9PGOxyQHo7s2pzwTBH6lTjqekxPdl9Aq6fXvZgCuCJHOht1puDEA/fTr6mciB76c+M+Gi0qT2i1a4pm4Wg==",
+                  "sha512-TCT9XHLb4iPGQ99fpQjcTRncbus6cXHvSD/RY+bPrDACBCJKiQLmAM6r7/BgQcI5i+8h4gwp4vjfb6S6T8bPGw==",
               },
             ]
           : [
