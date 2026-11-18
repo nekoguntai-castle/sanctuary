@@ -400,3 +400,62 @@ A `docs/reference/ci-experiments.md` seeded from those files, plus a three-quest
 
 C3 (rebalance shards) and the fourth render worker are small and reversible. C1 is the largest
 gain for most PRs but touches the provenance-pinned workflow. C2 and the experiment log follow.
+
+## 9. Results of the two follow-up experiments (2026-11-17, PR #1521)
+
+### 9.1 Fourth render worker: no gain, reverted
+
+| Run | Workers | Playwright time | Browser child CPU | Throttled |
+|---|---|---|---|---|
+| 23792 | 3 | 1,104 s | 3,087 CPU-s | 0 |
+| 23944 (PR #1520, same day) | 3 | 1,032 s | 2,662 CPU-s | 0 |
+| 23957 (PR #1521) | 4 | 1,076 s | 3,415 CPU-s | 0 |
+
+The fourth worker used more CPU and saved no time. Worker count is not the limit in CI, even
+though three workers finish the same suite in about 5 minutes locally. The change was reverted
+before merge. What does limit it is not known; candidates are the preview server, serial
+sections in the spec, and the Playwright runner outside the browser child. Each is one sample,
+so differences under about 10% mean nothing.
+
+### 9.2 Mutation shards: cannot be rebalanced by moving files
+
+Section 8.1 proposed moving files out of shard 2. That does not work. Per-file test executions
+from the merged report of run 23792:
+
+| File | Test executions | Share of the gate |
+|---|---|---|
+| `addressDerivation/xpubConversion.ts` | 261,232 | 44.9% |
+| `addressDerivation/descriptorDerivation.ts` | 120,571 | 20.7% |
+| `signingIntent/schema.ts` | 40,742 | 7.0% |
+| All 23 others | 159,404 | 27.4% |
+
+Shard 2 is `xpubConversion.ts` plus three files worth 0.5%. Inside that file, 38 surviving
+mutants ran 209,821 tests (about 5,500 each), against 51,411 for the 51 killed ones. A surviving
+mutant runs every covering test, and the address vector suites cover this module thousands of
+times. Across the whole gate, 644 survivors ran 317,160 tests and 3,357 killed mutants ran
+264,789.
+
+So the cost is in survivors, not in how files are split. New boundary tests
+(`server/tests/unit/services/bitcoin/addressDerivation.xpubConversion-boundaries.test.ts`) kill
+the eleven that were real gaps: nine private-key prefixes that no test named, the missing
+private-key refusal in `convertXpubToFormat`, and the `Ypub` version bytes.
+
+| Measure | Run 23792 | Run 23957 (with the tests) |
+|---|---|---|
+| `xpubConversion.ts` survivors | 38 | 29 |
+| `xpubConversion.ts` test executions | 261,232 | 206,452 |
+| Whole-gate test executions | 581,949 | 534,761 |
+| Shard 2 duration | 35 min 4 s (40 min 57 s in run 23944) | 24 min 35 s |
+| Slowest shard | shard 2, 35 min | shard 3, 36 min 32 s |
+
+Two cautions. Shard times vary a lot by host: shard 3 took 25, 41 and 36 minutes across these
+three runs with no change to it, so the shard 2 drop is partly noise and the gate's wall time
+did not improve in this run. And the survivor count is not exactly 38 minus 11, because a few
+mutants move between "timeout" and "survived" from run to run.
+
+The 29 remaining survivors still cost 158,542 executions, 30% of the gate. By reading the code
+they are equivalent mutants: the `prefix` field of `XPUB_VERSIONS` is never read,
+`targetPrefix` is only compared, the `xpub` and `tpub` rows are identity conversions, and the
+early-return guards at lines 88, 120 and 125 return what the fall-through path would also
+return. Removing them needs a change to that funds-critical source file (and with it the
+mutation-map line pins and the Stryker range pins), which is a separate decision.
