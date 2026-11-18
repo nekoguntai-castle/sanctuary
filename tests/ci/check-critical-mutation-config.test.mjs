@@ -36,13 +36,16 @@ test('accepts the repository mutation baseline and shard contract', () => {
   assert.doesNotThrow(() => checkCriticalMutationConfig(root));
 });
 
-test('assigns real address derivation targets to their exclusive shards', () => {
+test('assigns real mutation targets to their exclusive shards', () => {
   const serverRoot = join(import.meta.dirname, '../../server');
   const targets = [
     ['src/services/bitcoin/addressDerivation/descriptorDerivation.ts', 1],
     ['src/services/bitcoin/addressDerivation/xpubConversion.ts', 2],
-    ['src/services/bitcoin/addressDerivation/descriptorParser.ts', 1],
-    ['src/services/bitcoin/addressDerivation.ts', 1],
+    ['src/services/bitcoin/addressDerivation/descriptorParser.ts', 2],
+    ['src/services/bitcoin/addressDerivation.ts', 2],
+    ['src/services/bitcoin/psbtValidation.ts', 2],
+    ['src/services/accessControl.ts', 2],
+    ['src/services/bitcoin/signingIntent/schema.ts', 3],
   ];
 
   for (const [path, expectedShard] of targets) {

@@ -6,15 +6,26 @@
  * are merged by `merge-shard-reports.mjs` into the canonical report path that
  * `check-critical-mutation-gate.mjs` consumes.
  *
- * Shards are balanced by measured cost, not file or mutant count. A mutant's
- * cost is the tests it runs (`testsCompleted` in the shard report), and every
- * surviving mutant runs all of its covering tests. The address-derivation
- * mutants are covered by thousands of vector tests each, so 542 of them cost
- * more than shard 3's ~3,900 mutants. In the November 2026 reports,
- * xpubConversion.ts alone was 52-58% of the address-derivation test
- * executions (223k-301k of 433k-515k). With it in shard 1, that shard ran
- * 38-59 minutes and hit its 60-minute deadline on busy hosts, while shard 2
- * finished in about 75 seconds. xpubConversion.ts therefore runs in shard 2.
+ * Shards are balanced by measured wall time, not by file, mutant or test
+ * count. None of the three counts predicts time on its own: a surviving mutant
+ * runs all of its covering tests, the address-derivation mutants are each
+ * covered by thousands of vector tests, and the broadcast and signing-intent
+ * files have seven times as many mutants with slower tests behind them. Before
+ * this layout, shard 3 ran fewer test executions than shard 1 (151k against
+ * 217k) and still took longer (27.5 against 22 minutes, run 24000).
+ *
+ * Slices timed on one host on 2026-11-17, Stryker start-up included:
+ *
+ *   descriptorDerivation.ts alone                    753 s
+ *   signingIntent/**                                  710 s
+ *   the rest of address derivation                    313 s
+ *   broadcast, repository, auth and access control    494 s
+ *   psbt validation and evidence contracts (CI)       168 s
+ *
+ * descriptorDerivation.ts and signingIntent/** therefore each get a shard, and
+ * everything else shares shard 2, which took 810 s as a whole on the same
+ * host. Re-time the slices before moving a file:
+ *   MUTATION_SHARD=<n> npx stryker run stryker.critical.config.mjs --mutate <files>
  *
  * A shard may carve a file out of another shard's glob. When it does, that
  * file must also be listed explicitly in ALL_MUTATE, because
@@ -24,30 +35,23 @@
 
 const SHARDS = {
   1: {
-    label: 'address-derivation',
+    label: 'descriptor-derivation',
     mutate: [
-      'src/services/bitcoin/addressDerivation.ts',
-      'src/services/bitcoin/addressDerivation/**/*.ts',
-      '!src/services/bitcoin/addressDerivation/xpubConversion.ts',
+      'src/services/bitcoin/addressDerivation/descriptorDerivation.ts',
       '!src/**/*.d.ts',
     ],
   },
   2: {
-    label: 'psbt-validation-xpub-conversion',
+    label: 'address-psbt-broadcast-access',
     mutate: [
-      'src/services/bitcoin/addressDerivation/xpubConversion.ts',
+      'src/services/bitcoin/addressDerivation.ts',
+      'src/services/bitcoin/addressDerivation/**/*.ts',
+      '!src/services/bitcoin/addressDerivation/descriptorDerivation.ts',
       'src/services/bitcoin/psbtValidation.ts',
       'src/services/bitcoin/psbtInfo.ts',
       'src/services/bitcoin/validationEvidenceContracts.ts',
-      '!src/**/*.d.ts',
-    ],
-  },
-  3: {
-    label: 'broadcast-auth-access',
-    mutate: [
       'src/services/bitcoin/transactions/broadcastContracts.ts',
       'src/services/bitcoin/blockchain/broadcastPreflight.ts',
-      'src/services/bitcoin/signingIntent/**/*.ts',
       'src/repositories/transactionSigningIntentRepository.ts',
       'src/services/bitcoin/transactions/broadcasting.ts',
       'src/api/transactions/broadcasting.ts',
@@ -56,13 +60,20 @@ const SHARDS = {
       '!src/**/*.d.ts',
     ],
   },
+  3: {
+    label: 'signing-intent',
+    mutate: [
+      'src/services/bitcoin/signingIntent/**/*.ts',
+      '!src/**/*.d.ts',
+    ],
+  },
 };
 
 const ALL_MUTATE = [
   'src/services/bitcoin/addressDerivation.ts',
   'src/services/bitcoin/addressDerivation/**/*.ts',
-  // Already matched by the glob above; listed so shard 2 can own it.
-  'src/services/bitcoin/addressDerivation/xpubConversion.ts',
+  // Already matched by the glob above; listed so shard 1 can own it.
+  'src/services/bitcoin/addressDerivation/descriptorDerivation.ts',
   'src/services/bitcoin/psbtValidation.ts',
   'src/services/bitcoin/psbtInfo.ts',
   'src/services/bitcoin/validationEvidenceContracts.ts',

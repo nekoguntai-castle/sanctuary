@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- CI: the critical mutation shards are split by measured wall time. `descriptorDerivation.ts` and `signingIntent/**` each get a shard; the rest of address derivation, PSBT validation, broadcast, the signing-intent repository, auth and access control share shard 2. Removing the unkillable mutants from `xpubConversion.ts` (#1522) had left shard 2 at under 3 minutes while shards 1 and 3 ran 22 and 27.5 minutes. The gate's files, tests and thresholds are unchanged.
 - CI: the CI and address-verifier toolchain moves to Node.js 24.22.3, matching the production images. The `sanctuary-ci-go` runner image is rebuilt with it. The `sanctuary-ci-playwright` browser image is rebuilt on the current fleet base image (`act-ubuntu-node:26.13.1`, which carries Node 24.22.3 in its tool cache); Playwright and Chrome are unchanged.
 
 ## [0.9.1] - 2026-11-13

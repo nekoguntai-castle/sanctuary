@@ -480,5 +480,36 @@ decode.
 Evidence: old and new source agree on 3,367,749 differential comparisons (160,369 inputs,
 including short payloads, non-strings and inherited-key target formats); a Stryker run on the
 file alone reports 49 mutants, 49 killed, none surviving, at about 61 tests per mutant, where
-run 23957 had 95 mutants, 29 surviving, at about 2,170 tests per mutant. The effect on shard 2's
-duration has to be read from CI.
+run 23957 had 95 mutants, 29 surviving, at about 2,170 tests per mutant.
+
+Measured in CI (run 24000, PR #1522): shard 2 took 2 min 48 s, against 24 min 35 s in run 23957
+and 35-41 minutes before #1521. The whole gate ran 379,818 test executions, against 581,949 in
+run 23792.
+
+### 9.4 Rebalancing the shards by wall time (2026-11-17)
+
+With shard 2 at under 3 minutes, moving files became worthwhile. Test executions turned out to
+be the wrong measure for it: in run 24000 shard 3 ran about 151,000 test executions and took
+27 min 32 s, while shard 1 ran about 217,000 and took 21 min 53 s. Shard 3 has about seven times
+as many mutants, and its tests are slower. CI logs carry no per-file timing, so four slices were
+timed with Stryker on one host, start-up included:
+
+| Slice | Mutants | Time |
+|---|---|---|
+| `descriptorDerivation.ts` alone | 225 | 753 s |
+| `signingIntent/**` | 1,780 | 710 s |
+| Broadcast, signing-intent repository, auth, access control | 1,528 | 494 s |
+| The rest of address derivation (without `xpubConversion.ts`) | 222 | 313 s |
+| PSBT validation, evidence contracts, `xpubConversion.ts` (CI, run 24000) | about 250 | 168 s |
+
+The two largest slices cannot be split further without splitting a file or a directory, and
+each is close to the sum of the other three less their shared start-up. The new layout is
+therefore: shard 1 `descriptorDerivation.ts`, shard 3 `signingIntent/**`, shard 2 everything
+else. The same 31 source files are mutated, each in exactly one shard.
+
+The new shard 2 took 810 s as a whole on the same host, against 753 s and 710 s for the other
+two, so the three are within about 15% of each other locally. CI times will differ by host.
+
+`descriptorDerivation.ts` is now the floor for the gate. Its 12 surviving mutants run about
+720 tests per mutant on average, so it is the next place to look, in the same way as
+`xpubConversion.ts`.
