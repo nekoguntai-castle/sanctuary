@@ -513,3 +513,37 @@ two, so the three are within about 15% of each other locally. CI times will diff
 `descriptorDerivation.ts` is now the floor for the gate. Its 12 surviving mutants run about
 720 tests per mutant on average, so it is the next place to look, in the same way as
 `xpubConversion.ts`.
+
+Measured in CI (run 24012, PR #1523), against run 24000:
+
+| Shard | Run 24000 | Run 24012 |
+|---|---|---|
+| 1 | 21 min 53 s | 16 min 30 s |
+| 2 | 2 min 48 s | 25 min 9 s |
+| 3 | 27 min 32 s | 23 min 33 s |
+
+The slowest shard fell from 27.5 to 25 minutes, less than the 17-20 estimated. The local timings
+understated the mutant-heavy shards: shards 2 and 3 ran about 1.9 times slower in CI than on the
+measuring host, shard 1 about 1.3 times. A local slice time is a guide to the order of the
+slices, not to their CI duration.
+
+### 9.5 The survivors in `descriptorDerivation.ts`, and a second rebalance (2026-11-17)
+
+All 12 survivors in `descriptorDerivation.ts` are gone: 220 of 220 mutants killed, and the file's
+Stryker run fell from 753 s to 429 s on the measuring host.
+
+| Survivors | Outcome |
+|---|---|
+| `h` hardened marker; fingerprint anchors; branch-suffix anchors at both entry points; `some` over signer suffixes; key binding at the pre-parsed entry point (single-sig and multisig); the batch limit of exactly 1,000 | Real gaps. Tested in `descriptorDerivation.defense.test.ts`. |
+| Key-binding call in `deriveCanonicalAddress` | Duplicate: `deriveAddressFromParsedDescriptor` makes the same call before it derives. Removed, and the canonical entry point's binding is now tested for single-sig and multisig. |
+| Empty-array fallback in the pre-parsed entry point | The same expression existed twice; both sites now share one helper, where the mutant is killed. |
+
+A 400,000-case differential of old against new `deriveCanonicalAddress` found no case where the
+outcome or a returned value differs. For inputs the parser cannot produce (a single-sig
+descriptor without an xpub or with multisig keys), the error message changes.
+
+With address derivation cheaper again, the layout changes once more: shard 1 is all of address
+derivation plus `signingIntent/artifactValidation.ts` (121 s locally), shard 2 keeps PSBT
+validation, broadcast, the repository, auth and access control, and shard 3 is the rest of
+`signingIntent/**`. Estimated from run 24012 and the local slice times, each shard should land
+near 18-21 minutes; treat that as unconfirmed until a CI run reports it.

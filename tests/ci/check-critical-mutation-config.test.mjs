@@ -40,9 +40,10 @@ test('assigns real mutation targets to their exclusive shards', () => {
   const serverRoot = join(import.meta.dirname, '../../server');
   const targets = [
     ['src/services/bitcoin/addressDerivation/descriptorDerivation.ts', 1],
-    ['src/services/bitcoin/addressDerivation/xpubConversion.ts', 2],
-    ['src/services/bitcoin/addressDerivation/descriptorParser.ts', 2],
-    ['src/services/bitcoin/addressDerivation.ts', 2],
+    ['src/services/bitcoin/addressDerivation/xpubConversion.ts', 1],
+    ['src/services/bitcoin/addressDerivation/descriptorParser.ts', 1],
+    ['src/services/bitcoin/addressDerivation.ts', 1],
+    ['src/services/bitcoin/signingIntent/artifactValidation.ts', 1],
     ['src/services/bitcoin/psbtValidation.ts', 2],
     ['src/services/accessControl.ts', 2],
     ['src/services/bitcoin/signingIntent/schema.ts', 3],

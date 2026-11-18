@@ -52,9 +52,13 @@ const canonicalFingerprint = (fingerprint: string): string => {
   return normalized;
 };
 
-const assertDescriptorBranch = (parsed: ParsedDescriptor, branch: 0 | 1): void => {
-  const paths = parsed.keys?.map(({ derivationPath }) => derivationPath)
+// One suffix per signer; empty when the descriptor names no branch at all.
+const descriptorBranchSuffixes = (parsed: ParsedDescriptor): string[] =>
+  parsed.keys?.map(({ derivationPath }) => derivationPath)
     ?? (parsed.path ? [parsed.path] : []);
+
+const assertDescriptorBranch = (parsed: ParsedDescriptor, branch: 0 | 1): void => {
+  const paths = descriptorBranchSuffixes(parsed);
   if (paths.length === 0) {
     throw new Error('Canonical descriptor must contain an explicit branch wildcard');
   }
@@ -212,7 +216,8 @@ export function deriveCanonicalAddress(
   const parsed = parseDescriptor(descriptor);
   assertDescriptorBranch(parsed, coordinate.branch);
   const signerOrigins = canonicalSignerOrigins(parsed, coordinate.branch, coordinate.index);
-  assertCanonicalExtendedKeyBindings(parsed, coordinate.network);
+  // deriveAddressFromParsedDescriptor binds every extended key to its declared
+  // origin and the wallet network before it derives anything.
   const derived = deriveAddressFromParsedDescriptor(
     parsed,
     coordinate.index,
@@ -267,8 +272,7 @@ export function deriveAddressFromParsedDescriptor(
   const network = options.network ?? 'mainnet';
   // The persisted descriptor branch is authoritative. A caller flag may check
   // intent, but must never rewrite receive keys into change keys (or vice versa).
-  const suffixes = parsed.keys?.map(key => key.derivationPath)
-    ?? (parsed.path ? [parsed.path] : []);
+  const suffixes = descriptorBranchSuffixes(parsed);
   if (suffixes.length === 0 || suffixes.some(suffix => !/^(0|1)\/\*$/.test(suffix))) {
     throw new Error('Descriptor requires an explicit fixed branch wildcard');
   }
