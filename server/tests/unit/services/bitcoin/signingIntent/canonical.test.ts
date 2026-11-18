@@ -262,3 +262,144 @@ describe('signing intent canonical authentication', () => {
     expect(action).toThrow();
   });
 });
+
+describe('signing intent canonical boundaries', () => {
+  // Byte-order-sensitive ids: a repeated byte reads the same reversed, which
+  // hid a dropped `.reverse()` from every earlier case in this file.
+  const TXID_A = '00112233445566778899aabbccddeeff00112233445566778899aabbccddee01';
+  const TXID_B = 'ff112233445566778899aabbccddeeff00112233445566778899aabbccddee02';
+  const SCRIPT = '0014' + '22'.repeat(20);
+
+  const realPsbt = (sequence?: number, outputValue = 9_000n) => {
+    const psbt = new bitcoin.Psbt({ network: bitcoin.networks.testnet });
+    psbt.addInput({ hash: TXID_A, index: 3, ...(sequence !== undefined && { sequence }) });
+    psbt.addOutput({ script: Buffer.from(SCRIPT, 'hex'), value: outputValue });
+    return psbt;
+  };
+  const prevout = (overrides: Partial<SigningIntentPrevout> = {}): SigningIntentPrevout => ({
+    amountSats: '10000', scriptPubKeyHex: SCRIPT, role: 'wallet', ...overrides,
+  });
+  const build = (
+    psbt: bitcoin.Psbt,
+    prevouts: SigningIntentPrevout[] = [prevout()],
+    replacementTxid?: string,
+    expectedFeeSats = 1_000,
+  ) => buildSigningIntentSnapshot(
+    'wallet-1', 'testnet3', psbt, prevouts, { ...feePolicy, expectedFeeSats }, replacementTxid,
+  );
+  const rejection = (message: string, details: Record<string, unknown>) =>
+    expect.objectContaining({ message, details });
+
+  it('records the input outpoint in display byte order with its own sequence', () => {
+    const { inputs } = build(realPsbt(0xfffffffd)).transaction;
+
+    expect(inputs).toEqual([{
+      txid: TXID_A,
+      vout: 3,
+      sequence: 0xfffffffd,
+      prevout: { amountSats: '10000', scriptPubKeyHex: SCRIPT, role: 'wallet' },
+    }]);
+    expect(build(realPsbt(0)).transaction.inputs[0].sequence).toBe(0);
+  });
+
+  it('matches Payjoin outpoints in the same byte order on both sides', () => {
+    const original = realPsbt();
+    const proposal = bitcoin.Psbt.fromBase64(original.toBase64());
+    proposal.addInput({ hash: TXID_B, index: 3 });
+    // Same txid as the wallet input, different output index: still the peer's.
+    proposal.addInput({ hash: TXID_A, index: 4 });
+
+    expect(derivePayjoinInputRoles(original.toBase64(), proposal.toBase64()))
+      .toEqual(['wallet', 'payjoin_peer', 'payjoin_peer']);
+  });
+
+  it.each([
+    ['unpadded', 'AAA'],
+    ['with a trailing newline', 'AAAA\n'],
+    ['url-safe alphabet', '-_-_'],
+  ])('rejects %s base64 that still decodes to bytes', (_label, value) => {
+    expect(() => unsignedPsbtSha256(value)).toThrow(rejection(
+      'Unsigned PSBT is not canonical base64', { reason: 'invalid_psbt', field: 'psbtBase64' },
+    ));
+    expect(unsignedPsbtSha256('AAAA')).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it.each([
+    ['a leading extra character', `0${TXID_B}`],
+    ['a trailing extra character', `${TXID_B}0`],
+    ['63 characters', TXID_B.slice(1)],
+    ['a non-hex character', `${TXID_B.slice(1)}g`],
+  ])('rejects a replacement txid with %s', (_label, replacementTxid) => {
+    expect(() => build(realPsbt(), [prevout()], replacementTxid)).toThrow(rejection(
+      'Signing intent contains an invalid transaction id',
+      { reason: 'invalid_psbt', field: 'replacementTxid' },
+    ));
+  });
+
+  it('names the input whose hash is not a 32-byte txid', () => {
+    // bitcoinjs never yields this; the structural stand-in reaches the guard.
+    const malformed = {
+      version: 2,
+      locktime: 0,
+      txInputs: [
+        { hash: Buffer.from(TXID_A, 'hex').reverse(), index: 0, sequence: 1 },
+        { hash: Buffer.alloc(31, 7), index: 0, sequence: 1 },
+      ],
+      txOutputs: [{ script: Buffer.from(SCRIPT, 'hex'), value: 19_000n }],
+    } as unknown as bitcoin.Psbt;
+
+    expect(() => build(malformed, [prevout(), prevout()])).toThrow(rejection(
+      'Signing intent contains an invalid transaction id',
+      { reason: 'invalid_psbt', field: 'inputs.1.txid' },
+    ));
+  });
+
+  it.each(['zz', 'abc', '0x00', 'zz0014', '0014zz', '00 14'])('rejects the prevout script %j', (scriptPubKeyHex) => {
+    expect(() => build(realPsbt(), [prevout({ scriptPubKeyHex })])).toThrow(rejection(
+      'Signing intent contains an invalid script',
+      { reason: 'invalid_psbt', field: 'inputs.0.scriptPubKeyHex' },
+    ));
+  });
+
+  it('accepts an empty prevout script', () => {
+    expect(build(realPsbt(), [prevout({ scriptPubKeyHex: '' })]).transaction.inputs[0].prevout.scriptPubKeyHex)
+      .toBe('');
+  });
+
+  it('rejects amounts outside the supported range and names the field', () => {
+    expect(() => build(realPsbt(), [prevout({ amountSats: '-1' })])).toThrow(rejection(
+      'Signing intent amount is outside the supported range',
+      { reason: 'unknown_input_value', field: 'inputs.0.amountSats' },
+    ));
+    expect(() => build(realPsbt(undefined, BigInt(Number.MAX_SAFE_INTEGER) + 1n))).toThrow(rejection(
+      'Signing intent amount is outside the supported range',
+      { reason: 'unknown_input_value', field: 'outputs.0.amountSats' },
+    ));
+  });
+
+  it('accepts zero-value inputs and outputs', () => {
+    const { transaction } = build(realPsbt(undefined, 0n), [prevout({ amountSats: '0' })], undefined, 0);
+
+    expect(transaction.inputs[0].prevout.amountSats).toBe('0');
+    expect(transaction.outputs[0].amountSats).toBe('0');
+  });
+
+  it('reports an empty transaction and incomplete prevout evidence with their reasons', () => {
+    expect(() => build(new bitcoin.Psbt(), [])).toThrow(rejection(
+      'Signing intent requires inputs and outputs', { reason: 'invalid_psbt', field: 'psbtBase64' },
+    ));
+    for (const prevouts of [[], [prevout(), prevout()]]) {
+      expect(() => build(realPsbt(), prevouts)).toThrow(rejection(
+        'Signing intent prevout evidence is incomplete',
+        { reason: 'unknown_input_value', field: 'psbtBase64' },
+      ));
+    }
+  });
+
+  it('reports a fee mismatch on the fee policy with both amounts', () => {
+    expect(() => build(realPsbt(), [prevout()], undefined, 999)).toThrow(rejection(
+      'Signing intent fee does not match the authenticated transaction',
+      { reason: 'fee_too_high', actualFeeSats: '1000', expectedFeeSats: 999, field: 'feePolicy' },
+    ));
+  });
+});

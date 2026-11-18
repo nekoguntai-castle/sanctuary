@@ -570,3 +570,17 @@ limit of exactly 1,000). No source file changed.
 Still open, by survivors in run 24026: `artifactValidation.ts` (108), `transactions/broadcasting.ts`
 (74), `api/transactions/broadcasting.ts` (70), `prevoutValidation.ts` (57), `canonical.ts` (44),
 `feePolicy.ts` (43), the signing-intent repository (31).
+
+Measured in CI (run 24038, PR #1525): shards 1, 2 and 3 took 17 min 42 s, 16 min 12 s and
+11 min 19 s. Shard 3 fell from 16 min 52 s; shard 2 has no changed file and moved from
+12 min 39 s to 16 min 12 s, which is the run-to-run spread to expect on this fleet.
+
+### 9.7 Survivors in `signingIntent/canonical.ts` (2026-11-17)
+
+44 survivors, 42 of them test gaps; Stryker on the file now reports 136 killed and 2 survived.
+The notable gap: every test built its transactions from a repeated byte (`'11'.repeat(32)`),
+which reads the same reversed, so removing the txid byte-order reversal went unnoticed in the
+snapshot and in the Payjoin input-role matching. The source was correct. The two mutants left
+are equivalent (a field label on a check that cannot fail, and `<` against `<=` inside a
+not-equal branch) and run about 40 tests between them, so the source is unchanged. These
+survivors were cheap; this is a test-quality gain more than a time saving.
