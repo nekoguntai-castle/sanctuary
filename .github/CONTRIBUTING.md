@@ -171,7 +171,8 @@ Forgejo 17.0.1 lists two rerun routes in its authenticated Swagger, alongside
 run inspection, logs, artifacts, and cancellation: `actions/runs/{run_id}/rerun`
 reruns all jobs in the workflow, like the UI control observed on this instance,
 and `actions/jobs/{job_id}/rerun` reruns one completed job and its dependent
-jobs. Neither route has been exercised on this repository. Before using either,
+jobs. The job route was used once, on PR #1526; the run route has not been
+exercised on this repository. Before using either,
 verify the old resource-owning jobs and cleanup receipts are terminal, preserve
 the same immutable SHA and inputs, and accept the aggregate required check as
 part of the rerun. Do not substitute a workflow dispatch: `verify-vectors.yml`

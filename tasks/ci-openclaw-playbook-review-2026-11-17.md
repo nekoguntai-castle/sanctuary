@@ -584,3 +584,26 @@ snapshot and in the Payjoin input-role matching. The source was correct. The two
 are equivalent (a field label on a check that cannot fail, and `<` against `<=` inside a
 not-equal branch) and run about 40 tests between them, so the source is unchanged. These
 survivors were cheap; this is a test-quality gain more than a time saving.
+
+### 9.8 Where the time goes after the survivor work (2026-11-17)
+
+Time from push to the last required check, one run each: 29.2 min (#1522, before any rebalance),
+26.8 (#1523), 24.4 (#1524), 18.9 (#1525).
+
+| Finding | Evidence |
+|---|---|
+| C1 (start the long verify-vectors jobs without the scope job) is not worth doing | The scope job runs about 6 s and the long jobs start within a minute of the push on a free fleet. The saving would be about half a minute. Dropped. |
+| The floor on a free fleet is mutation shard 1 and the fee mutation proof | Run 24038: shard 1 18.2 min, fee proof 15.8 min (13 min 45 s in Stryker); everything else done by about 12 min. |
+| Beyond the floor, the delay is queueing | On #1524, pushed right after a merge, the shards started 4 min late, the fee proof 7 min late and the emulators waited 5 min. Seven runner slots are shared with the post-merge run on `main`. |
+| The fee proof cannot be shortened by killing survivors | It sets `disableBail`, so every mutant runs every covering test whatever its status. `transactionWeight.ts` is 67% of its test executions. Splitting it into two jobs is the only lever and has not been done. |
+| Single runs do not resolve a few minutes | Run 24046 (shards 23.1, 19.4, 15.6 min) against run 24038 (17.7, 16.2, 11.3): no file in shards 1 or 2 changed. |
+
+`artifactValidation.ts` goes back from shard 1 to shard 3, so shard 1 is address derivation only.
+Expected effect: about 3 minutes off shard 1 and onto shard 3. Given the spread above, this needs
+several runs to confirm, not one.
+
+A `verify-trezor-emulator` failure on PR #1526 (`Trezor controller timed out for
+emulator-press-yes`, then `Device call in progress` on every later case) passed on a rerun of
+that one job through `actions/jobs/{job_id}/rerun`, and the dependent `summary` job reran with
+it. That route had not been used on this repository before. The cause of the stall is not
+established; the evidence is in the PR's comments.

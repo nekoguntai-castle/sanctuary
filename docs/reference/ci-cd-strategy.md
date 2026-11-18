@@ -268,7 +268,11 @@ jobs, logs, and run cancellation, and two rerun routes that the 16.0.3 schema
   control observed during incident recovery.
 - `actions/jobs/{job_id}/rerun` reruns one completed job and its dependent jobs.
 
-Neither route has been exercised on this repository, so their behavior here is
+The job route was used once, on PR #1526 (2026-11-17, job 295840
+`verify-trezor-emulator` in run 24047): the failed job and its dependent
+`summary` job reran as attempt 2 on the same SHA, and the required
+`Verify Bitcoin Vectors / summary` status moved from failure to success. The run
+route has not been exercised on this repository, so its behavior here is
 unverified. When a rerun is justified, first verify the same immutable SHA and
 inputs, wait for the superseded run's resource-owning jobs and cleanup receipts
 to become terminal, and require the new aggregate job as well as the formerly

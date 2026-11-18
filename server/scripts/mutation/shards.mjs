@@ -27,6 +27,13 @@
  * Local times understate CI unevenly. In run 24012 the mutant-heavy slices
  * ran about 1.9 times slower in CI than here and descriptorDerivation.ts about
  * 1.3 times, so check a new layout against a CI run, not only these numbers.
+ * One CI run is not enough either: runs 24038 and 24046 differ by 3-5 minutes
+ * on every shard with no change to the files in two of them.
+ *
+ * After the surviving mutants in the signing-intent schemas were killed,
+ * signingIntent/** fell to 11-15 minutes in CI while address derivation stayed
+ * at 18-23, so artifactValidation.ts, which shard 1 had borrowed, is back in
+ * shard 3 and each shard is one directory or one list of files.
  * Re-time the slices before moving a file:
  *   MUTATION_SHARD=<n> npx stryker run stryker.critical.config.mjs --mutate <files>
  *
@@ -38,11 +45,10 @@
 
 const SHARDS = {
   1: {
-    label: 'address-derivation-artifact-validation',
+    label: 'address-derivation',
     mutate: [
       'src/services/bitcoin/addressDerivation.ts',
       'src/services/bitcoin/addressDerivation/**/*.ts',
-      'src/services/bitcoin/signingIntent/artifactValidation.ts',
       '!src/**/*.d.ts',
     ],
   },
@@ -66,7 +72,6 @@ const SHARDS = {
     label: 'signing-intent',
     mutate: [
       'src/services/bitcoin/signingIntent/**/*.ts',
-      '!src/services/bitcoin/signingIntent/artifactValidation.ts',
       '!src/**/*.d.ts',
     ],
   },
@@ -81,8 +86,6 @@ const ALL_MUTATE = [
   'src/services/bitcoin/transactions/broadcastContracts.ts',
   'src/services/bitcoin/blockchain/broadcastPreflight.ts',
   'src/services/bitcoin/signingIntent/**/*.ts',
-  // Already matched by the glob above; listed so shard 1 can own it.
-  'src/services/bitcoin/signingIntent/artifactValidation.ts',
   'src/repositories/transactionSigningIntentRepository.ts',
   'src/services/bitcoin/transactions/broadcasting.ts',
   'src/api/transactions/broadcasting.ts',
