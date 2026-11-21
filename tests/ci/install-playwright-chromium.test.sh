@@ -106,7 +106,7 @@ main() {
   mkdir -p "$bin_dir"
   write_mock_npx "$bin_dir" "$log_file"
   local browser_executable="$TEST_TEMP_DIR/chrome"
-  printf '#!/usr/bin/env bash\necho "Google Chrome 157.0.8103.38"\nexit 0\n' >"$browser_executable"
+  printf '#!/usr/bin/env bash\necho "Google Chrome 158.0.8127.36"\nexit 0\n' >"$browser_executable"
   chmod +x "$browser_executable"
 
   # Case 1: the image-provided pinned browser launches; only FFmpeg is
@@ -185,7 +185,7 @@ main() {
 
   # The minimal fixture follows Playwright's registry API and pinned browsers.json
   # descriptor; it proves the exact registry-selected executable, not a glob.
-  write_mock_playwright_registry "$isolated_repo" 1.64.1 1013
+  write_mock_playwright_registry "$isolated_repo" 1.65.1 1013
   local browsers_path="$TEST_TEMP_DIR/browsers"
   local ffmpeg_path="$browsers_path/ffmpeg-1013/ffmpeg-linux"
   local ffmpeg_call_log="$TEST_TEMP_DIR/ffmpeg-calls"
@@ -273,7 +273,7 @@ main() {
 
   # A mismatched Playwright package is not allowed to authorize this image's
   # FFmpeg revision, even if the candidate executable runs.
-  sed -i 's/1\.64\.1/1.63.0/g' "$isolated_repo/node_modules/playwright/package.json" \
+  sed -i 's/1\.65\.1/1.63.0/g' "$isolated_repo/node_modules/playwright/package.json" \
     "$isolated_repo/node_modules/playwright-core/package.json"
   if (cd "$isolated_repo" && env -u SANCTUARY_PLAYWRIGHT_PROBE_CMD \
     PATH="$bin_dir:$PATH" SANCTUARY_SANDBOXED_BROWSER=1 \
@@ -287,9 +287,9 @@ main() {
 
   # Restore the package version before local-mode tests: local mode retains its
   # existing installer and canonical chromium launch behavior.
-  sed -i 's/1\.63\.0/1.64.1/g' "$isolated_repo/node_modules/playwright/package.json" \
+  sed -i 's/1\.63\.0/1.65.1/g' "$isolated_repo/node_modules/playwright/package.json" \
     "$isolated_repo/node_modules/playwright-core/package.json"
-  sed -i 's/"version":"1\.64\.1"/"version":"1.63.0"/' \
+  sed -i 's/"version":"1\.65\.1"/"version":"1.63.0"/' \
     "$isolated_repo/node_modules/playwright-core/package.json"
   if (cd "$isolated_repo" && env -u SANCTUARY_PLAYWRIGHT_PROBE_CMD \
     PATH="$bin_dir:$PATH" SANCTUARY_SANDBOXED_BROWSER=1 \
@@ -300,7 +300,7 @@ main() {
   fi
   assert_contains "$TEST_TEMP_DIR/wrong-core.log" 'installed Playwright Core version differs'
   [ ! -s "$log_file" ] || fail 'mismatched Playwright Core invoked an installer'
-  sed -i 's/"version":"1\.63\.0"/"version":"1.64.1"/' \
+  sed -i 's/"version":"1\.63\.0"/"version":"1.65.1"/' \
     "$isolated_repo/node_modules/playwright-core/package.json"
   assert_not_contains "$log_file" 'install-deps'
 

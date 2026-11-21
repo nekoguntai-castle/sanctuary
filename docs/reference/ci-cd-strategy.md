@@ -624,9 +624,9 @@ Initial targets:
 
 ### Playwright version and follow-up capability inventory
 
-`@playwright/test` is pinned to `1.64.1`. Playwright's bundled Chromium does
+`@playwright/test` is pinned to `1.65.1`. Playwright's bundled Chromium does
 not meet Sanctuary's minimum browser floor, so `config/browser-toolchain.json`
-independently pins Chrome for Testing `157.0.8103.38`, its minimum accepted
+independently pins Chrome for Testing `158.0.8127.36`, its minimum accepted
 version `156.0.8078.73`, and the archive SHA-256. Browser and mobile-Chrome
 projects use that executable explicitly. The CI image verifies and bakes the
 same archive; `scripts/ci/install-playwright-chromium.sh` installs the same

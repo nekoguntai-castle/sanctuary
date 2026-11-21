@@ -22,8 +22,10 @@
 # Unlike a runner-label image, this one is consumed directly by a job-level
 # `container:` block (runner-infra's docs/how-to/runner-job-images.md,
 # "Prefer container: for new images" -- see .github/workflows/test.yml's
-# full-browser-e2e-tests / full-render-e2e-tests). Paste the digest the
-# build prints straight into both jobs' `container.image`:
+# full-browser-e2e-tests / full-render-e2e-tests). Pin the digest the
+# registry serves for the tag, not the one the build prints (Podman's local
+# RepoDigest does not resolve on pull; see docs/reference/ci-cd-strategy.md),
+# in both jobs' `container.image`:
 #
 #   image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright@sha256:...
 #
@@ -56,12 +58,12 @@ FROM nexus.tabineko.dev/nekoguntai-castle/act-ubuntu-node@sha256:21ce15a2894d4dd
 # Playwright's bundled Chromium is below Sanctuary's minimum supported browser
 # version. Install Playwright's OS dependencies, then fetch the independently
 # pinned Chrome for Testing archive and verify it before extraction.
-ARG TOOLCHAIN_VERSION=pw1.64.1-chrome157.0.8103.38-sandbox1
+ARG TOOLCHAIN_VERSION=pw1.65.1-chrome158.0.8127.36-sandbox1
 ARG SANDBOX_POLICY_REVISION=1
-ARG PLAYWRIGHT_VERSION=1.64.1
-ARG CHROME_VERSION=157.0.8103.38
+ARG PLAYWRIGHT_VERSION=1.65.1
+ARG CHROME_VERSION=158.0.8127.36
 ARG MINIMUM_BROWSER_VERSION=156.0.8078.73
-ARG CHROME_SHA256=8cdeb344e9b2cefe59f4aea8d1d93d5d93054c03cde217665c16fc1f62e72a66
+ARG CHROME_SHA256=dba9cc838e1ce269c33ea68170881127bd15d078fc3ca5891c90802819a4d7c7
 ENV PLAYWRIGHT_VERSION=${PLAYWRIGHT_VERSION} \
     PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers \
     SANDBOX_POLICY_REVISION=${SANDBOX_POLICY_REVISION} \

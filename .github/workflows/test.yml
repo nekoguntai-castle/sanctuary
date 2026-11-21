@@ -1385,7 +1385,7 @@ jobs:
     # jobs to pin the same real digest.
     runs-on: docker-socket
     container:
-      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright:pw1.64.1-chrome157.0.8103.38-sandbox1@sha256:6c4d459a569543bde0f20163df199026a0b9ba981afcf56debb89472ac1f8763
+      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright:pw1.65.1-chrome158.0.8127.36-sandbox1@sha256:286edefb48c90499a73670121c82461f615463ed6b1262b3c4cc7ec3e3ee2c73
       options: --group-add 0
     timeout-minutes: 90
     # Deliberately not ordered after full-backend-unit-coverage-shards. That
@@ -1619,7 +1619,7 @@ jobs:
     # the placeholder-digest gate.
     runs-on: docker-socket
     container:
-      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright:pw1.64.1-chrome157.0.8103.38-sandbox1@sha256:6c4d459a569543bde0f20163df199026a0b9ba981afcf56debb89472ac1f8763
+      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright:pw1.65.1-chrome158.0.8127.36-sandbox1@sha256:286edefb48c90499a73670121c82461f615463ed6b1262b3c4cc7ec3e3ee2c73
       options: --group-add 0
     timeout-minutes: 60
     # Runs beside full-browser-e2e-tests rather than after it: each lane has

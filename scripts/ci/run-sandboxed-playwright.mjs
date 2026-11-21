@@ -28,7 +28,7 @@ import {
 } from './lib/browser-container-ownership.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const IMAGE = 'nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright:pw1.64.1-chrome157.0.8103.38-sandbox1@sha256:6c4d459a569543bde0f20163df199026a0b9ba981afcf56debb89472ac1f8763';
+const IMAGE = 'nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright:pw1.65.1-chrome158.0.8127.36-sandbox1@sha256:286edefb48c90499a73670121c82461f615463ed6b1262b3c4cc7ec3e3ee2c73';
 const PROFILE_FILE = path.join(ROOT, 'config/ci/browser-seccomp/podman-chromium.json');
 const IMAGE_USER = '1000:1000';
 const READY_PREFIX = 'SANCTUARY_BROWSER_SERVER_READY=';
@@ -238,7 +238,7 @@ async function verifyImage(socket, command = docker) {
     throw new Error('pinned browser image digest or default UID does not match inspected image');
   }
   const env = new Map((image.Config.Env ?? []).map(value => [value.slice(0, value.indexOf('=')), value.slice(value.indexOf('=') + 1)]));
-  if (env.get('PLAYWRIGHT_VERSION') !== '1.64.1' || env.get('CHROME_VERSION') !== '157.0.8103.38' || env.get('SANDBOX_POLICY_REVISION') !== '1' || !path.isAbsolute(env.get('PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH') ?? '')) {
+  if (env.get('PLAYWRIGHT_VERSION') !== '1.65.1' || env.get('CHROME_VERSION') !== '158.0.8127.36' || env.get('SANDBOX_POLICY_REVISION') !== '1' || !path.isAbsolute(env.get('PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH') ?? '')) {
     throw new Error('pinned browser image environment differs from the reviewed browser toolchain');
   }
   return { id: image.Id, env: [...env].map(([key, value]) => `${key}=${value}`).filter(value => /^(CHROME_VERSION|PLAYWRIGHT_VERSION|PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH|SANDBOX_POLICY_REVISION|PATH|HOME|PLAYWRIGHT_BROWSERS_PATH)=/.test(value)) };
@@ -247,7 +247,7 @@ async function verifyImage(socket, command = docker) {
 function verifyClientVersion() {
   const require = createRequire(path.join(ROOT, 'package.json'));
   const version = require('playwright/package.json').version;
-  if (version !== '1.64.1') throw new Error(`outer Playwright client ${version} does not match pinned image version 1.64.1`);
+  if (version !== '1.65.1') throw new Error(`outer Playwright client ${version} does not match pinned image version 1.65.1`);
 }
 
 async function startTest(args, endpoint, signal) {

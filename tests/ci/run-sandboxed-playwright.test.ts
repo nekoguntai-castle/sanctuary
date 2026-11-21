@@ -20,7 +20,7 @@ const PROFILE = `/etc/forgejo-runner/browser-seccomp/${PROFILE_HASH}.json`;
 const OUTER_ID = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
 const CHILD_ID = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
 const IMAGE_ID = `sha256:${"a".repeat(64)}`;
-const IMAGE = "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright:pw1.64.1-chrome157.0.8103.38-sandbox1@sha256:6c4d459a569543bde0f20163df199026a0b9ba981afcf56debb89472ac1f8763";
+const IMAGE = "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright:pw1.65.1-chrome158.0.8127.36-sandbox1@sha256:286edefb48c90499a73670121c82461f615463ed6b1262b3c4cc7ec3e3ee2c73";
 const OWNERSHIP = {
   project: "sanctuary-ci", deploymentId: "run-deployment", ownerId: "runner-owner",
   operationRunId: "run-browser", createdAt: "2026-11-04T00:00:00.000Z",
@@ -75,11 +75,11 @@ function browserInspect(name: string) {
 function imageInspect() {
   return {
     Id: IMAGE_ID,
-    RepoDigests: ["nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright@sha256:6c4d459a569543bde0f20163df199026a0b9ba981afcf56debb89472ac1f8763"],
+    RepoDigests: ["nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-playwright@sha256:286edefb48c90499a73670121c82461f615463ed6b1262b3c4cc7ec3e3ee2c73"],
     Config: {
       User: "1000:1000",
       Env: [
-        "PLAYWRIGHT_VERSION=1.64.1", "CHROME_VERSION=157.0.8103.38", "SANDBOX_POLICY_REVISION=1",
+        "PLAYWRIGHT_VERSION=1.65.1", "CHROME_VERSION=158.0.8127.36", "SANDBOX_POLICY_REVISION=1",
         "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/opt/chrome/chrome-linux64/chrome", "PATH=/usr/local/bin:/usr/bin",
         "HOME=/home/pwuser", "PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers"
       ]
