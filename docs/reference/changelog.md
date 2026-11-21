@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The server, gateway, frontend build and LLM egress proxy images move to Node.js 24.22.3 (from 24.22.2) for the Node.js security release of 2026-11-10.
 - Signing dependencies: `bitcoinjs-lib` 7.0.5 (from 7.0.2), `tiny-secp256k1` 2.2.5, `bip39` 3.1.2, `cbor-x` 1.6.9 and `@keystonehq/bc-ur-registry` 0.8.1. `bitcoinjs-lib` now checks a PSBT input's previous transaction against the input before using its amount for the fee, and rejects a witness UTXO that disagrees with it. The CBOR decoders gain size, depth and truncation limits. Regenerated address and PSBT vectors are unchanged apart from version labels; see `docs/plans/signing-upgrade-evidence-2026-11-18.md`.
+- `effect` is pinned to 3.22.4 (from 3.20.0) through root overrides, fixing a regular-expression denial of service in `Schema.TemplateLiteral` decoding (GHSA-7589-6fvf-x4pw, high). It reaches the tree only through the Prisma CLI's `@prisma/config`, whose newest 7.x release pins 3.20.0 exactly. Fixed rather than waived.
 
 ### Changed
 

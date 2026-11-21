@@ -274,3 +274,24 @@ describe("deepmerge-ts stays on the patched major (GHSA-ggr8-5vv4-36mx, #830)", 
     }
   });
 });
+
+/**
+ * effect <= 3.22.0 decodes multi-span `Schema.TemplateLiteral` with a
+ * backtracking regex whose matching time is cubic in input length
+ * (GHSA-7589-6fvf-x4pw, #1532). @prisma/config 7.10.1, the newest 7.x, pins
+ * effect to exactly 3.20.0, so only this override keeps the patched build. The
+ * generic block above already holds every resolved copy to the override; this
+ * keeps the override itself from dropping below the fix.
+ */
+describe("effect stays on the TemplateLiteral fix (GHSA-7589-6fvf-x4pw, #1532)", () => {
+  it("is overridden to a release at or above the first patched 3.22.1", () => {
+    const { overrides } = readJson<{ overrides: Record<string, string> }>(
+      "package.json",
+    );
+    const [major = 0, minor = 0, patch = 0] = (overrides.effect ?? "0.0.0")
+      .split(".")
+      .map((part) => Number.parseInt(part, 10));
+    expect(major).toBe(3);
+    expect(minor * 1000 + patch).toBeGreaterThanOrEqual(22 * 1000 + 1);
+  });
+});
