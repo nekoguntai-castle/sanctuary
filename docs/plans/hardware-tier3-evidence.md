@@ -1,8 +1,13 @@
 # Trezor Tier 3 physical evidence
 
-Status: draft 2026-11-13, reviewed 2026-11-20 (recursive plan review, §10).
-Nothing implemented. Phase 0 is a go/no-go gate: its decisions are the
-user's, and later phases do not start until they are recorded here.
+Status: **shelved 2026-11-20 (Phase 0 no-go).** Drafted 2026-11-13 and
+reviewed 2026-11-20 (recursive plan review, §10). Nothing is implemented.
+
+D1 has no option-1 answer: there is no independent second reviewer, and
+self-review (option 2) would only be ceremonial. Per-instance operator
+attestation (§9) is therefore the supported way to sign with Trezor. Reopen
+this plan only if a second reviewer becomes available; its source references
+will need re-checking against `main` first.
 
 Written to be executed from a fresh context. Source references are to `main`
 at `914bbc5a9`.

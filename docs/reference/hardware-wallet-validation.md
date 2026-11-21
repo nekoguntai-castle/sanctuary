@@ -511,6 +511,11 @@ attested capability decision (vendor, model family, capability).
   verified".
 - **To revoke:** remove both keys and restart.
 
+This is the supported mode, not a stopgap. Tier 3 needs an independent
+reviewer who holds a separate key, and this deployment has one maintainer, so
+the Tier 3 plan (`docs/plans/hardware-tier3-evidence.md`) was shelved at its
+Phase 0 go/no-go on 2026-11-20.
+
 ## Acceptance Criteria
 
 The hardware phase passes only when:
