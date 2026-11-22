@@ -27,6 +27,6 @@
     "@typescript/native": "npm:typescript@7.0.2"
   },
   "overrides": {
-    "qs": "6.16.2"
+    "qs": "6.17.1"
   }
 }
