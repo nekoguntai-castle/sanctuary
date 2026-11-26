@@ -181,10 +181,11 @@ export async function updateEndpoint(
       // never enqueued for. Retire the outstanding ones in the same
       // transaction as the change, so no window exists where the new
       // destination is live and old deliveries are still claimable.
-      // `claimDeliveryAttempt` only claims pending/failed rows, so `dead` is
-      // sufficient to take them out of circulation.
+      // Retire pending, failed, and pre-rotation dead deliveries in the same
+      // transaction so neither automatic claims nor manual replays can send
+      // pre-rotation payloads under the new destination or signing secret.
       await tx.webhookDelivery.updateMany({
-        where: { endpointId, status: { in: ['pending', 'failed'] } },
+        where: { endpointId, status: { in: ['pending', 'failed', 'dead'] } },
         data: {
           status: 'dead',
           nextAttemptAt: null,
@@ -393,11 +394,12 @@ export async function claimDeliveryAttempt(
 export interface MarkDeliveryPendingForReplayResult {
   count: number;
   delivery: WebhookDelivery | null;
-  refusal?: 'endpoint_identity_changed';
+  refusal?: 'endpoint_identity_changed' | 'endpoint_disabled';
 }
 
 interface ReplayStateRow {
   endpointUrl: string;
+  endpointEnabled?: boolean;
   targetUrl: string;
   status: string;
   lastError: string | null;
@@ -437,12 +439,15 @@ export async function markDeliveryPendingForReplay(
     if (lockedRows.length === 0) return { count: 0, delivery: null };
 
     const [replayState] = await tx.$queryRaw<ReplayStateRow[]>(Prisma.sql`
-      SELECT e."url" AS "endpointUrl", d."targetUrl", d."status", d."lastError"
+      SELECT e."url" AS "endpointUrl", e."enabled" AS "endpointEnabled", d."targetUrl", d."status", d."lastError"
       FROM "webhook_endpoints" e
       JOIN "webhook_deliveries" d ON d."endpointId" = e."id"
       WHERE d."id" = ${deliveryId}
     `);
     if (!replayState) return { count: 0, delivery: null };
+    if (replayState.endpointEnabled === false) {
+      return { count: 0, delivery: null, refusal: 'endpoint_disabled' };
+    }
     if (isReplayRefused(replayState)) {
       return { count: 0, delivery: null, refusal: 'endpoint_identity_changed' };
     }

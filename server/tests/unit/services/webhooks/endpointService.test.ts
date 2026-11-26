@@ -368,6 +368,40 @@ describe('webhook endpoint service', () => {
     expect(mockSendWebhookDelivery).not.toHaveBeenCalled();
   });
 
+  it('refuses to replay a delivery when the endpoint is disabled', async () => {
+    mockFindDeliveryById.mockResolvedValueOnce(
+      makeDelivery({ status: 'dead', endpoint: makeEndpoint({ enabled: false }) }),
+    );
+
+    await expect(replayWalletWebhookDelivery('wallet-1', 'endpoint-1', 'delivery-1', 'owner'))
+      .rejects.toMatchObject({
+        statusCode: 409,
+        message: expect.stringContaining('disabled'),
+        details: { reason: 'endpoint_disabled' },
+      });
+    expect(mockMarkDeliveryPendingForReplay).not.toHaveBeenCalled();
+    expect(mockQueueWebhookDeliveryNotification).not.toHaveBeenCalled();
+    expect(mockSendWebhookDelivery).not.toHaveBeenCalled();
+  });
+
+  it('refuses to replay a delivery if the endpoint is disabled concurrently', async () => {
+    mockFindDeliveryById.mockResolvedValueOnce(makeDelivery({ status: 'dead' }));
+    mockMarkDeliveryPendingForReplay.mockResolvedValue({
+      count: 0,
+      delivery: null,
+      refusal: 'endpoint_disabled',
+    });
+
+    await expect(replayWalletWebhookDelivery('wallet-1', 'endpoint-1', 'delivery-1', 'owner'))
+      .rejects.toMatchObject({
+        statusCode: 409,
+        message: expect.stringContaining('disabled'),
+        details: { reason: 'endpoint_disabled' },
+      });
+    expect(mockQueueWebhookDeliveryNotification).not.toHaveBeenCalled();
+    expect(mockSendWebhookDelivery).not.toHaveBeenCalled();
+  });
+
   it('refuses to replay a delivery retired by an endpoint change', async () => {
     mockFindDeliveryById.mockResolvedValueOnce(makeDelivery({ status: 'dead' }));
     mockMarkDeliveryPendingForReplay.mockResolvedValue({
@@ -664,7 +698,9 @@ function makeEndpoint(overrides: Partial<WebhookEndpoint> = {}): WebhookEndpoint
   };
 }
 
-function makeDelivery(overrides: Partial<WebhookDelivery> = {}): WebhookDelivery {
+function makeDelivery(
+  overrides: Partial<WebhookDelivery & { endpoint: WebhookEndpoint }> = {},
+): WebhookDelivery & { endpoint: WebhookEndpoint } {
   return {
     id: 'delivery-1',
     endpointId: 'endpoint-1',
@@ -689,6 +725,7 @@ function makeDelivery(overrides: Partial<WebhookDelivery> = {}): WebhookDelivery
     responseBodyHash: null,
     createdAt: new Date('2026-05-22T00:00:00.000Z'),
     updatedAt: new Date('2026-05-22T00:00:00.000Z'),
+    endpoint: makeEndpoint(),
     ...overrides,
   };
 }

@@ -21,7 +21,7 @@ vi.mock('../../../src/models/prisma', () => ({
   },
 }));
 
-import { lockUtxos } from '../../../src/repositories/draftLockRepository';
+import { lockUtxos, resolveUtxoRefs } from '../../../src/repositories/draftLockRepository';
 import prisma from '../../../src/models/prisma';
 
 describe('draftLockRepository', () => {
@@ -69,6 +69,31 @@ describe('draftLockRepository', () => {
         { draftId: 'draft-1', utxoId: 'utxo-1' },
         { draftId: 'draft-1', utxoId: 'utxo-2' },
       ],
+    });
+  });
+
+  it('filters out spent and frozen UTXOs when resolving UTXO refs for locking', async () => {
+    mocks.prismaUTXO.findMany.mockResolvedValue([
+      { id: 'utxo-1', txid: 'tx-1', vout: 0 },
+    ]);
+
+    const result = await resolveUtxoRefs('wallet-1', [
+      { txid: 'tx-1', vout: 0 },
+      { txid: 'tx-2', vout: 1 },
+    ]);
+
+    expect(result).toEqual([{ id: 'utxo-1', txid: 'tx-1', vout: 0 }]);
+    expect(mocks.prismaUTXO.findMany).toHaveBeenCalledWith({
+      where: {
+        walletId: 'wallet-1',
+        spent: false,
+        frozen: false,
+        OR: [
+          { txid: 'tx-1', vout: 0 },
+          { txid: 'tx-2', vout: 1 },
+        ],
+      },
+      select: { id: true, txid: true, vout: true },
     });
   });
 });

@@ -10,17 +10,26 @@
  */
 
 import type { ApprovalRequest, ApprovalVote } from '../../generated/prisma/client';
+import type { PrismaTxClient } from '../../models/prisma';
+import { ACTIONABLE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/constants/drafts';
 import { policyRepository } from '../../repositories/policyRepository';
 import type { PolicyDbClient } from '../../repositories/policyRepository';
 import { draftRepository } from '../../repositories/draftRepository';
 import type { DraftDbClient } from '../../repositories/draftRepository';
 import { RESOLVED_APPROVAL_STATUSES } from '../../repositories/approvalStatuses';
 import { draftLockRepository } from '../../repositories/draftLockRepository';
-import { walletSharingRepository, type EffectiveApproverDbClient } from '../../repositories/walletSharingRepository';
+import type { EffectiveApproverDbClient } from '../../repositories/walletSharingRepository';
 import { NotFoundError, ForbiddenError, InvalidInputError, ConflictError } from '../../errors';
 import { createLogger } from '../../utils/logger';
-import { getErrorMessage } from '../../utils/errors';
+import { getErrorMessage, isUniqueConstraintError } from '../../utils/errors';
 import { notifyApprovalResolved } from './approvalNotifications';
+import {
+  checkAllQuorumMet,
+  checkAnyNQuorumMet,
+  checkSpecificQuorumMet,
+  getEligibleApproverIds,
+  isEligibleSpecificApprover,
+} from './approvalQuorum';
 import { isSelfApprovalBlocked } from './approvalVoteGuards';
 import type {
   ApprovalRequiredConfig,
@@ -29,11 +38,12 @@ import type {
   PolicyEvaluationResult,
 } from './types';
 
+export { isEligibleSpecificApprover };
+
 const log = createLogger('VAULT_POLICY:SVC_APPROVAL');
 
 type ApprovalRequestWithVotes = ApprovalRequest & { votes: ApprovalVote[] };
 type ApprovalDraft = Awaited<ReturnType<typeof draftRepository.findById>>;
-type SpecificEligibilityRequest = Pick<ApprovalRequest, 'quorumType' | 'policyId'>;
 export type ApprovalDbClient = DraftDbClient & PolicyDbClient & EffectiveApproverDbClient;
 
 /**
@@ -156,8 +166,22 @@ export async function createApprovalRequestsForDraft(
 // VOTE ON APPROVAL REQUESTS
 // ========================================
 
+type CastVoteTxOutcome =
+  | { kind: 'expired' }
+  | {
+      kind: 'voted';
+      vote: ApprovalVote;
+      request: ApprovalRequestWithVotes;
+      finalRequest: ApprovalRequestWithVotes;
+      draft: ApprovalDraft;
+      approvedNotification: { walletId: string; draftId: string } | null;
+    };
+
 /**
  * Cast a vote on an approval request.
+ *
+ * Runs inside a transaction that locks the ApprovalRequest row `FOR UPDATE` so
+ * status/expiry/duplicate-vote checks and vote insertion serialize cleanly.
  */
 export async function castVote(
   requestId: string,
@@ -165,28 +189,59 @@ export async function castVote(
   decision: VoteDecision,
   reason?: string
 ): Promise<{ vote: ApprovalVote; request: ApprovalRequest & { votes: ApprovalVote[] } }> {
-  const request = await getPendingApprovalRequest(requestId);
-  await ensureUserHasNotVoted(requestId, userId);
-  await ensureEligibleToVote(request, userId);
-  const draft = await getDraftForAllowedVote(request, userId);
-  const vote = await createApprovalVote(requestId, userId, decision, reason);
-  const updatedRequest = await getApprovalRequestAfterVote(requestId);
+  const outcome = await policyRepository.withTransaction<CastVoteTxOutcome>(async (tx) => {
+    await policyRepository.lockApprovalRequestForUpdate(requestId, tx);
 
-  // Check if the request should be resolved
-  await checkAndResolveRequest(updatedRequest, draft);
+    const request = await loadPendingRequestOrExpire(requestId, tx);
+    if (request === 'expired') {
+      return { kind: 'expired' };
+    }
 
-  // Resolution may have committed here or in a concurrent resolver. Return
-  // the persisted snapshot, not the pending snapshot used to evaluate quorum.
-  const finalRequest = await getApprovalRequestAfterVote(requestId);
+    await ensureUserHasNotVoted(requestId, userId, tx);
+    await ensureEligibleToVote(request, userId, tx);
+    const draft = await getDraftForAllowedVote(request, userId, tx);
+    const vote = await createApprovalVote(requestId, userId, decision, reason, tx);
+    const updatedRequest = await getApprovalRequestAfterVote(requestId, tx);
+
+    // Check if the request should be resolved
+    const approvedNotification = await checkAndResolveRequest(updatedRequest, draft, userId, tx);
+
+    // Resolution may have committed here or in a concurrent resolver. Return
+    // the persisted snapshot, not the pending snapshot used to evaluate quorum.
+    const finalRequest = await getApprovalRequestAfterVote(requestId, tx);
+
+    return {
+      kind: 'voted',
+      vote,
+      request,
+      finalRequest,
+      draft,
+      approvedNotification,
+    };
+  });
+
+  if (outcome.kind === 'expired') {
+    throw new ConflictError('Approval request has expired');
+  }
+
+  if (outcome.approvedNotification) {
+    dispatchApprovedNotification(
+      outcome.approvedNotification.walletId,
+      outcome.approvedNotification.draftId
+    );
+  }
 
   // Log policy event
-  logApprovalVoteEvent(request, finalRequest, draft, userId, decision, reason);
+  logApprovalVoteEvent(outcome.request, outcome.finalRequest, outcome.draft, userId, decision, reason);
 
-  return { vote, request: finalRequest };
+  return { vote: outcome.vote, request: outcome.finalRequest };
 }
 
-async function getPendingApprovalRequest(requestId: string): Promise<ApprovalRequestWithVotes> {
-  const request = await policyRepository.findApprovalRequestById(requestId);
+async function loadPendingRequestOrExpire(
+  requestId: string,
+  tx: PrismaTxClient
+): Promise<ApprovalRequestWithVotes | 'expired'> {
+  const request = await policyRepository.findApprovalRequestById(requestId, tx);
   if (!request) {
     throw new NotFoundError('Approval request not found');
   }
@@ -196,8 +251,8 @@ async function getPendingApprovalRequest(requestId: string): Promise<ApprovalReq
   }
 
   if (isPastExpiry(request)) {
-    await expireRequests([request], request.draftTransactionId);
-    throw new ConflictError('Approval request has expired');
+    await expireRequests([request], request.draftTransactionId, tx);
+    return 'expired';
   }
 
   return request;
@@ -212,19 +267,27 @@ function isPastExpiry(request: Pick<ApprovalRequest, 'expiresAt'>, now = new Dat
  * status from that, so the draft is released instead of staying 'pending'.
  * Returns how many requests this call expired.
  */
-async function expireRequests(requests: Array<Pick<ApprovalRequest, 'id'>>, draftId: string): Promise<number> {
+async function expireRequests(
+  requests: Array<Pick<ApprovalRequest, 'id'>>,
+  draftId: string,
+  tx?: PrismaTxClient
+): Promise<number> {
   let expired = 0;
   for (const request of requests) {
-    if (await resolveRequest(request.id, 'expired')) expired += 1;
+    if (await resolveRequest(request.id, 'expired', tx)) expired += 1;
   }
   if (expired > 0) {
-    await updateDraftApprovalFromRequests(draftId);
+    await updateDraftApprovalFromRequests(draftId, { client: tx });
   }
   return expired;
 }
 
-async function ensureUserHasNotVoted(requestId: string, userId: string): Promise<void> {
-  const existingVote = await policyRepository.findVoteByUserAndRequest(requestId, userId);
+async function ensureUserHasNotVoted(
+  requestId: string,
+  userId: string,
+  tx: PrismaTxClient
+): Promise<void> {
+  const existingVote = await policyRepository.findVoteByUserAndRequest(requestId, userId, tx);
   if (existingVote) {
     throw new ConflictError('You have already voted on this request');
   }
@@ -235,74 +298,42 @@ async function ensureUserHasNotVoted(requestId: string, userId: string): Promise
  * unlisted user must be refused here so ineligible votes never accumulate
  * toward the request's quorum count. No-op for 'any_n' and 'all'.
  */
-async function ensureEligibleToVote(request: ApprovalRequestWithVotes, userId: string): Promise<void> {
-  if (!(await isEligibleSpecificApprover(request, userId))) {
+async function ensureEligibleToVote(
+  request: ApprovalRequestWithVotes,
+  userId: string,
+  tx?: PrismaTxClient
+): Promise<void> {
+  if (!(await isEligibleSpecificApprover(request, userId, tx))) {
     throw new ForbiddenError('You are not an eligible approver for this request');
   }
 }
 
-/**
- * True when the user may vote on the request under its quorum rule: always
- * for 'any_n'/'all', and for 'specific' only when the live policy lists them.
- * Shared by castVote and callers that pick a request to vote on, so the two
- * cannot drift.
- */
-export async function isEligibleSpecificApprover(
-  request: SpecificEligibilityRequest,
-  userId: string
-): Promise<boolean> {
-  if (request.quorumType !== 'specific') {
-    return true;
-  }
-
-  const { specificApprovers } = await loadSpecificApprovers(request.policyId);
-  return specificApprovers.includes(userId);
-}
-
 /** Once a draft holds a resolved status, no later vote or override may re-derive it as approved. */
 const RESOLVED_DRAFT_APPROVAL_STATUSES: ReadonlySet<string> = new Set(RESOLVED_APPROVAL_STATUSES);
+const ACTIONABLE_DRAFT_STATUSES: ReadonlySet<string> = new Set(ACTIONABLE_DRAFT_STATUS_VALUES);
 
-function ensureDraftNotResolved(draft: { approvalStatus: string } | null | undefined): void {
+function ensureDraftNotResolved(draft: { approvalStatus?: string } | null | undefined): void {
   const status = draft?.approvalStatus;
   if (status !== undefined && RESOLVED_DRAFT_APPROVAL_STATUSES.has(status)) {
     throw new ConflictError(`Draft is already ${status}`);
   }
 }
 
-/**
- * Load the current specificApprovers list and requiredApprovals threshold
- * from the policy backing a 'specific'-quorum request. Always read live
- * (never cached on the request) so a policy edit, or a vote that predates
- * the eligibility check at castVote, is still honored at resolution time.
- *
- * `requiredApprovals` is returned exactly as stored (possibly `undefined` or
- * not a valid positive integer) — callers that use it as a quorum threshold
- * must validate it themselves rather than defaulting it here, since a silent
- * `?? 0` default would let an empty/invalid config resolve a request with
- * zero votes. See `checkSpecificQuorumMet`.
- */
-async function loadSpecificApprovers(
-  policyId: string
-): Promise<{ specificApprovers: string[]; requiredApprovals: unknown }> {
-  const policy = await policyRepository.findPolicyById(policyId);
-  const config = policy?.config as unknown as ApprovalRequiredConfig | undefined;
-  return {
-    specificApprovers: config?.specificApprovers ?? [],
-    requiredApprovals: config?.requiredApprovals,
-  };
-}
-
-/** True only for a finite whole number >= 1 — a usable quorum threshold. */
-function isPositiveInteger(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value >= 1;
+function ensureDraftActionable(draft: { status?: string } | null | undefined): void {
+  const status = draft?.status;
+  if (status !== undefined && !ACTIONABLE_DRAFT_STATUSES.has(status)) {
+    throw new ConflictError('Draft is no longer actionable');
+  }
 }
 
 async function getDraftForAllowedVote(
   request: ApprovalRequest,
-  userId: string
+  userId: string,
+  tx: PrismaTxClient
 ): Promise<ApprovalDraft> {
-  const draft = await draftRepository.findById(request.draftTransactionId);
+  const draft = await draftRepository.findById(request.draftTransactionId, tx);
   ensureDraftNotResolved(draft);
+  ensureDraftActionable(draft);
   if (draft && isSelfApprovalBlocked(request, draft.userId, userId)) {
     throw new ForbiddenError('Self-approval is not allowed for this policy');
   }
@@ -314,14 +345,23 @@ async function createApprovalVote(
   requestId: string,
   userId: string,
   decision: VoteDecision,
-  reason?: string
+  reason: string | undefined,
+  tx: PrismaTxClient
 ): Promise<ApprovalVote> {
-  const vote = await policyRepository.createVote({
-    approvalRequestId: requestId,
-    userId,
-    decision,
-    reason,
-  });
+  let vote: ApprovalVote;
+  try {
+    vote = await policyRepository.createVote({
+      approvalRequestId: requestId,
+      userId,
+      decision,
+      reason,
+    }, tx);
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      throw new ConflictError('You have already voted on this request');
+    }
+    throw error;
+  }
 
   log.info('Vote cast', {
     requestId,
@@ -333,8 +373,11 @@ async function createApprovalVote(
   return vote;
 }
 
-async function getApprovalRequestAfterVote(requestId: string): Promise<ApprovalRequestWithVotes> {
-  const updatedRequest = await policyRepository.findApprovalRequestById(requestId);
+async function getApprovalRequestAfterVote(
+  requestId: string,
+  tx: PrismaTxClient
+): Promise<ApprovalRequestWithVotes> {
+  const updatedRequest = await policyRepository.findApprovalRequestById(requestId, tx);
   if (!updatedRequest) {
     throw new NotFoundError('Approval request not found after vote');
   }
@@ -433,7 +476,7 @@ export async function ownerOverride(
   // for the requests it won. The override's own 'overridden' notification
   // below is the single notification for this path, so suppress the derive
   // step's own notification to avoid double-notifying.
-  await updateDraftApprovalFromRequests(draftId, { notify: false });
+  await updateDraftApprovalFromRequests(draftId, { notify: false, approvedBy: ownerId });
 
   // Log override event for each policy
   for (const request of overridden) {
@@ -539,190 +582,30 @@ export async function getApprovalsForDraft(
 // INTERNAL HELPERS
 // ========================================
 
-/**
- * Resolve the wallet's currently eligible approvers — users with an
- * approving role (owner or approver) on the wallet — excluding the
- * requester when self-approval is not allowed. Always derived live so a
- * membership change after request creation is honored on the next check.
- */
-async function getEligibleApproverIds(
-  walletId: string,
-  requesterId: string,
-  allowSelfApproval: boolean,
-  client?: EffectiveApproverDbClient,
-): Promise<string[]> {
-  const eligible = await walletSharingRepository.findEffectiveApproverIds(walletId, client);
-
-  if (allowSelfApproval) {
-    return eligible;
-  }
-
-  return eligible.filter(id => id !== requesterId);
-}
-
-/**
- * 'all' quorum is met only when every currently eligible approver has an
- * approve vote on record. An empty eligible set (e.g. the requester was the
- * sole approver and self-approval is disallowed) never resolves on its own —
- * that would approve a request with zero votes.
- */
-async function checkAllQuorumMet(
-  request: ApprovalRequest,
-  approveVotes: ApprovalVote[],
-  draft: ApprovalDraft
-): Promise<boolean> {
-  if (!draft) {
-    return false;
-  }
-
-  const eligibleIds = await getEligibleApproverIds(draft.walletId, draft.userId, request.allowSelfApproval);
-  if (eligibleIds.length === 0) {
-    return false;
-  }
-
-  const approveUserIds = new Set(approveVotes.map(v => v.userId));
-  return eligibleIds.every(id => approveUserIds.has(id));
-}
-
-/**
- * Counts the approve votes cast by users who are currently effective wallet
- * approvers (the live set 'all' uses, including the self-approval rule).
- */
-async function countEligibleApproveVotes(
-  request: ApprovalRequest,
-  draft: NonNullable<ApprovalDraft>,
-  votes: ApprovalVote[]
-): Promise<number> {
-  const eligibleIds = new Set(
-    await getEligibleApproverIds(draft.walletId, draft.userId, request.allowSelfApproval)
-  );
-  return votes.filter(v => eligibleIds.has(v.userId)).length;
-}
-
-/**
- * 'any_n' quorum is met only by approve votes from currently eligible
- * approvers (the same live set 'all' uses). The threshold is the request's
- * creation-time `requiredApprovals` snapshot, never clamped to the eligible
- * set's size: a removal must not quietly weaken a 2-of-N policy. Fails closed
- * on a missing draft or a non-positive/non-integer snapshot.
- */
-async function checkAnyNQuorumMet(
-  request: ApprovalRequest,
-  approveVotes: ApprovalVote[],
-  draft: ApprovalDraft
-): Promise<boolean> {
-  if (!draft || !isPositiveInteger(request.requiredApprovals)) {
-    return false;
-  }
-  if (approveVotes.length < request.requiredApprovals) {
-    return false;
-  }
-
-  return (await countEligibleApproveVotes(request, draft, approveVotes)) >= request.requiredApprovals;
-}
-
-/**
- * 'specific' quorum is met only by approve votes from users currently on the
- * policy's specificApprovers list — a vote from anyone else (cast before the
- * castVote-time eligibility check existed, or before a policy edit dropped
- * them from the list) must not count toward the threshold — AND who are still
- * effective wallet approvers (the same live set 'all'/'any_n' use, including
- * the self-approval rule). Revoking or downgrading a user's wallet access
- * does not edit specificApprovers, so without this intersection a listed
- * user's approve vote would keep counting after they lost access.
- *
- * The threshold itself is always the *live* policy's
- * `min(requiredApprovals, specificApprovers.length)`, never the request's
- * `requiredApprovals` snapshot from creation time:
- *
- * - `validateApprovalRequiredConfig` (vaultPolicyService.ts) already enforces
- *   `requiredApprovals <= specificApprovers.length` on every policy write
- *   while `quorumType === 'specific'`, so the live values alone can never
- *   demand more votes than the live roster has. A `min` against the
- *   request's stale snapshot would solve a problem the live values don't
- *   have, while reintroducing a real one: after a roster shrink (e.g.
- *   [A,B,C,D]/3 edited down to [A,B]/2), the stale snapshot of 3 can never
- *   be reached by a 2-person roster, deadlocking the request forever.
- * - Comparing only against the live values also means a policy *tightened*
- *   after creation (e.g. requiredApprovals raised 3 -> 4 on the same
- *   roster) is honored immediately: an in-flight request cannot resolve on
- *   fewer votes than the live policy currently requires. This mirrors
- *   `checkAllQuorumMet`/`'all'` quorum below, which also always re-derives
- *   its required count from live state rather than trusting a
- *   creation-time snapshot.
- *
- * The threshold is NOT capped by the size of specificApprovers ∩ eligible:
- * like 'any_n', an access removal must not quietly weaken the policy. A
- * request whose listed approvers lost access stays pending until the roster
- * is edited or the request expires.
- *
- * Fails closed, mirroring `checkAllQuorumMet`'s empty-eligible-set guard:
- * a missing draft never resolves, an empty live `specificApprovers` list
- * never resolves on its own (there is no one to demand a vote from), and a
- * missing/invalid live
- * `requiredApprovals` falls back to the request's snapshot rather than a
- * `0`/`NaN` default — a threshold that quietly floors at 0 would let the
- * request resolve on zero votes, which is worse than the deadlock this
- * function exists to fix. If neither the live value nor the snapshot is a
- * usable threshold, the request never resolves via this path.
- */
-async function checkSpecificQuorumMet(
-  request: ApprovalRequest,
-  approveVotes: ApprovalVote[],
-  draft: ApprovalDraft
-): Promise<boolean> {
-  if (!draft) {
-    return false;
-  }
-
-  const { specificApprovers, requiredApprovals: liveRequiredApprovals } =
-    await loadSpecificApprovers(request.policyId);
-
-  if (specificApprovers.length === 0) {
-    return false;
-  }
-
-  const validRequiredApprovals = isPositiveInteger(liveRequiredApprovals)
-    ? liveRequiredApprovals
-    : isPositiveInteger(request.requiredApprovals)
-      ? request.requiredApprovals
-      : undefined;
-
-  if (validRequiredApprovals === undefined) {
-    return false;
-  }
-
-  const liveThreshold = Math.min(validRequiredApprovals, specificApprovers.length);
-  const listedApproveVotes = approveVotes.filter(v => specificApprovers.includes(v.userId));
-  if (listedApproveVotes.length < liveThreshold) {
-    return false;
-  }
-
-  return (await countEligibleApproveVotes(request, draft, listedApproveVotes)) >= liveThreshold;
-}
-
 async function checkAndResolveRequest(
   request: ApprovalRequest & { votes: ApprovalVote[] },
-  draft: ApprovalDraft
-): Promise<void> {
+  draft: ApprovalDraft,
+  voterUserId: string,
+  tx: PrismaTxClient
+): Promise<{ walletId: string; draftId: string } | null> {
   const approveVotes = request.votes.filter(v => v.decision === 'approve');
   const rejectVotes = request.votes.filter(v => v.decision === 'reject');
   const vetoVotes = request.votes.filter(v => v.decision === 'veto');
 
   // Any rejection → reject the request
   if (rejectVotes.length > 0) {
-    if (await resolveRequest(request.id, 'rejected')) {
-      await updateDraftApprovalFromRequests(request.draftTransactionId);
+    if (await resolveRequest(request.id, 'rejected', tx)) {
+      await updateDraftApprovalFromRequests(request.draftTransactionId, { client: tx });
     }
-    return;
+    return null;
   }
 
   // Any veto → veto the request
   if (vetoVotes.length > 0) {
-    if (await resolveRequest(request.id, 'vetoed')) {
-      await updateDraftApprovalFromRequests(request.draftTransactionId);
+    if (await resolveRequest(request.id, 'vetoed', tx)) {
+      await updateDraftApprovalFromRequests(request.draftTransactionId, { client: tx });
     }
-    return;
+    return null;
   }
 
   // Check quorum
@@ -732,7 +615,7 @@ async function checkAndResolveRequest(
     case 'any_n':
       // Like checkAllQuorumMet, re-derive eligibility from live membership: an
       // approve vote from a user who has since lost approver access must not count.
-      quorumMet = await checkAnyNQuorumMet(request, approveVotes, draft);
+      quorumMet = await checkAnyNQuorumMet(request, approveVotes, draft, tx);
       break;
     case 'all':
       // "all" quorum resolves against live wallet membership, not the count
@@ -743,7 +626,7 @@ async function checkAndResolveRequest(
       // when a vote is cast (or via owner override, which resolves
       // unconditionally); a removal by itself does not re-trigger it, so a
       // request can still sit pending until the next vote or an expiry sweep.
-      quorumMet = await checkAllQuorumMet(request, approveVotes, draft);
+      quorumMet = await checkAllQuorumMet(request, approveVotes, draft, tx);
       break;
     case 'specific':
       // Re-filter against the live specificApprovers list rather than
@@ -752,15 +635,18 @@ async function checkAndResolveRequest(
       // voter from the list after they already approved. Only a vote from a
       // currently-listed approver who is still an effective wallet approver
       // counts toward requiredApprovals.
-      quorumMet = await checkSpecificQuorumMet(request, approveVotes, draft);
+      quorumMet = await checkSpecificQuorumMet(request, approveVotes, draft, tx);
       break;
   }
 
-  if (quorumMet) {
-    if (await resolveRequest(request.id, 'approved')) {
-      await updateDraftApprovalFromRequests(request.draftTransactionId);
-    }
+  if (quorumMet && await resolveRequest(request.id, 'approved', tx)) {
+    return updateDraftApprovalFromRequests(request.draftTransactionId, {
+      approvedBy: voterUserId,
+      client: tx,
+      deferNotify: true,
+    });
   }
+  return null;
 }
 
 /**
@@ -770,9 +656,12 @@ async function checkAndResolveRequest(
  */
 async function resolveRequest(
   requestId: string,
-  status: Exclude<ApprovalRequestStatus, 'pending'>
+  status: Exclude<ApprovalRequestStatus, 'pending'>,
+  tx?: PrismaTxClient
 ): Promise<boolean> {
-  const resolved = await policyRepository.resolveApprovalRequestIfPending(requestId, status);
+  const resolved = await (tx !== undefined
+    ? policyRepository.resolveApprovalRequestIfPending(requestId, status, undefined, tx)
+    : policyRepository.resolveApprovalRequestIfPending(requestId, status));
 
   if (!resolved) {
     log.info('Approval request already resolved by a concurrent resolver', {
@@ -786,6 +675,12 @@ async function resolveRequest(
   return true;
 }
 
+function dispatchApprovedNotification(walletId: string, draftId: string): void {
+  notifyApprovalResolved(walletId, draftId, 'approved', null).catch(err => {
+    log.warn('Failed to send resolution notification', { error: getErrorMessage(err) });
+  });
+}
+
 /**
  * Update draft approval status based on all its approval requests.
  *
@@ -796,59 +691,86 @@ async function resolveRequest(
  */
 async function updateDraftApprovalFromRequests(
   draftId: string,
-  options: { notify?: boolean } = {}
-): Promise<void> {
-  const { notify = true } = options;
-  const requests = await policyRepository.findApprovalRequestsByDraftId(draftId);
+  options: {
+    notify?: boolean;
+    deferNotify?: boolean;
+    approvedBy?: string;
+    client?: PrismaTxClient;
+  } = {}
+): Promise<{ walletId: string; draftId: string } | null> {
+  const { notify = true, deferNotify = false, approvedBy, client } = options;
+  const requests = client !== undefined
+    ? await policyRepository.findApprovalRequestsByDraftId(draftId, client)
+    : await policyRepository.findApprovalRequestsByDraftId(draftId);
 
   if (requests.length === 0) {
     // Deleting a policy cascades its requests away. A pending draft with no
     // requests left has nothing to vote on, so it no longer needs approval.
-    const draft = await draftRepository.findById(draftId);
+    const draft = client !== undefined
+      ? await draftRepository.findById(draftId, client)
+      : await draftRepository.findById(draftId);
     if (draft?.approvalStatus === 'pending') {
-      await updateDraftApprovalStatus(draftId, 'not_required');
+      await draftRepository.updateApprovalStatus(draftId, 'not_required', {
+        allowedFrom: ['pending'],
+        ...(client !== undefined ? { client } : {}),
+      });
     }
-    return;
+    return null;
   }
 
   // Rejected beats vetoed beats expired. An expired request can no longer be
   // approved. Each is terminal for the draft, so its UTXOs are released.
   const refusal = RESOLVED_APPROVAL_STATUSES.find(status => requests.some(r => r.status === status));
   if (refusal) {
-    await updateDraftApprovalStatus(draftId, refusal);
-    await draftLockRepository.deleteByDraftId(draftId);
-    return;
+    const transitioned = await draftRepository.updateApprovalStatus(draftId, refusal, {
+      allowedFrom: ['pending'],
+      ...(client !== undefined ? { client } : {}),
+    });
+    if (transitioned) {
+      if (client !== undefined) {
+        await draftLockRepository.deleteByDraftId(draftId, client);
+      } else {
+        await draftLockRepository.deleteByDraftId(draftId);
+      }
+    }
+    return null;
   }
 
   // If all requests are approved, the draft is approved
   if (requests.every(r => r.status === 'approved')) {
-    await updateDraftApprovalStatus(draftId, 'approved');
+    const transitioned = await draftRepository.updateApprovalStatus(draftId, 'approved', {
+      allowedFrom: ['pending'],
+      ...(approvedBy !== undefined ? { approvedBy } : {}),
+      ...(client !== undefined ? { client } : {}),
+    });
 
-    if (notify) {
-      // Notify about resolution (async)
-      const draft = await draftRepository.findById(draftId);
+    if (transitioned && notify) {
+      const draft = await (client !== undefined
+        ? draftRepository.findById(draftId, client)
+        : draftRepository.findById(draftId));
       if (draft) {
-        notifyApprovalResolved(draft.walletId, draftId, 'approved', null).catch(err => {
-          log.warn('Failed to send resolution notification', { error: getErrorMessage(err) });
-        });
+        if (deferNotify) {
+          return { walletId: draft.walletId, draftId };
+        }
+        dispatchApprovedNotification(draft.walletId, draftId);
       }
     }
-    return;
+    return null;
   }
 
   // Otherwise still pending
+  return null;
 }
 
 async function updateDraftApprovalStatus(
   draftId: string,
   status: string,
   client?: DraftDbClient
-): Promise<void> {
+): Promise<boolean> {
   if (client !== undefined) {
-    await draftRepository.updateApprovalStatus(draftId, status, client);
-  } else {
-    await draftRepository.updateApprovalStatus(draftId, status);
+    return draftRepository.updateApprovalStatus(draftId, status, client);
   }
+  return draftRepository.updateApprovalStatus(draftId, status);
 }
 
 // ========================================
@@ -859,8 +781,11 @@ async function updateDraftApprovalStatus(
  * Re-derive a draft's approval status from its remaining requests, e.g. after
  * deleting a policy cascaded some of them away.
  */
-export async function rederiveDraftApprovalStatus(draftId: string): Promise<void> {
-  await updateDraftApprovalFromRequests(draftId);
+export async function rederiveDraftApprovalStatus(
+  draftId: string,
+  client?: PrismaTxClient
+): Promise<void> {
+  await updateDraftApprovalFromRequests(draftId, { client });
 }
 
 export const approvalService = {

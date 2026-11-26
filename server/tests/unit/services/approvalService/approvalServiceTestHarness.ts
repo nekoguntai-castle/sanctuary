@@ -8,7 +8,10 @@ const approvalMocks = vi.hoisted(() => ({
     warn: vi.fn(),
     debug: vi.fn(),
   },
+  mockTx: { _tx: true },
   mockPolicyRepo: {
+    withTransaction: vi.fn(),
+    lockApprovalRequestForUpdate: vi.fn().mockResolvedValue(true),
     findPolicyById: vi.fn(),
     findApprovalRequestById: vi.fn(),
     findApprovalRequestsByDraftId: vi.fn(),
@@ -25,7 +28,7 @@ const approvalMocks = vi.hoisted(() => ({
   mockDraftRepo: {
     findById: vi.fn(),
     update: vi.fn(),
-    updateApprovalStatus: vi.fn().mockResolvedValue(undefined),
+    updateApprovalStatus: vi.fn().mockResolvedValue(true),
   },
   mockNotify: {
     notifyApprovalResolved: vi.fn().mockResolvedValue(undefined),
@@ -39,6 +42,7 @@ const approvalMocks = vi.hoisted(() => ({
 }));
 
 export const mockLog = approvalMocks.mockLog;
+export const mockTx = approvalMocks.mockTx;
 export const mockPolicyRepo = approvalMocks.mockPolicyRepo;
 export const mockDraftRepo = approvalMocks.mockDraftRepo;
 export const mockNotify = approvalMocks.mockNotify;
@@ -51,6 +55,8 @@ vi.mock('../../../../src/utils/logger', () => ({
 
 vi.mock('../../../../src/utils/errors', () => ({
   getErrorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
+  isUniqueConstraintError: (err: unknown) =>
+    typeof err === 'object' && err !== null && 'code' in err && (err as { code?: unknown }).code === 'P2002',
 }));
 
 vi.mock('../../../../src/repositories/policyRepository', () => ({
@@ -102,6 +108,10 @@ export function registerApprovalServiceTestHarness() {
   beforeEach(() => {
     vi.clearAllMocks();
     // Each contract must provide its own ordered database snapshots.
+    mockPolicyRepo.withTransaction.mockImplementation(
+      (operation: (tx: unknown) => Promise<unknown>) => operation(mockTx)
+    );
+    mockPolicyRepo.lockApprovalRequestForUpdate.mockResolvedValue(true);
     mockPolicyRepo.findApprovalRequestById.mockReset();
     // Default to winning the conditional resolution. Tests that exercise the
     // lost-race path override this with `null`, which is what the repository
@@ -110,7 +120,7 @@ export function registerApprovalServiceTestHarness() {
       async (id: string, status: string) => ({ id, status })
     );
     mockPolicyRepo.createPolicyEvent.mockResolvedValue({});
-    mockDraftRepo.updateApprovalStatus.mockResolvedValue(undefined);
+    mockDraftRepo.updateApprovalStatus.mockResolvedValue(true);
     mockNotify.notifyApprovalResolved.mockResolvedValue(undefined);
     // Default to no wallet members so 'all'-quorum paths that don't set up
     // membership explicitly resolve to an empty eligible set rather than

@@ -14,8 +14,17 @@ import { SystemSettingSchemas } from '../../../../utils/safeJson';
 import { executeInChunks } from './batchUpdates';
 import type { ConfirmationUpdate, PopulateFieldsCommitHandler } from './types';
 
-interface ConfirmationWriteOptions {
-  markNewlyConfirmedRbfStatus: boolean;
+function deriveConfirmationRbfStatus(
+  oldConfirmations: number,
+  newConfirmations: number,
+): { rbfStatus: 'confirmed' | 'active' } | Record<string, never> {
+  if (oldConfirmations === 0 && newConfirmations > 0) {
+    return { rbfStatus: 'confirmed' };
+  }
+  if (oldConfirmations > 0 && newConfirmations === 0) {
+    return { rbfStatus: 'active' };
+  }
+  return {};
 }
 
 function assertNotAborted(signal?: AbortSignal): void {
@@ -31,7 +40,6 @@ function assertAuthoritativeHeight(currentHeight: number): void {
 async function updatePersistedConfirmations(
   walletId: string,
   currentHeightSource: number | (() => Promise<number>),
-  options: ConfirmationWriteOptions,
   signal?: AbortSignal,
   onCommit?: PopulateFieldsCommitHandler,
 ): Promise<ConfirmationUpdate[]> {
@@ -85,11 +93,7 @@ async function updatePersistedConfirmations(
       ...update,
       data: {
         confirmations: update.newConfirmations,
-        ...(options.markNewlyConfirmedRbfStatus
-          && update.oldConfirmations === 0
-          && update.newConfirmations > 0
-          ? { rbfStatus: 'confirmed' }
-          : {}),
+        ...deriveConfirmationRbfStatus(update.oldConfirmations, update.newConfirmations),
       },
     })),
     walletId,
@@ -115,8 +119,8 @@ async function updatePersistedConfirmations(
 
 /**
  * Refresh already-persisted transaction confirmations from a reconciled tip.
- * This path deliberately performs no wallet-history, missing-field, or live-tip
- * lookup and writes no transaction field other than `confirmations`.
+ * Keeps `rbfStatus` aligned with confirmation transitions (`0 -> >0` marks
+ * `'confirmed'`; reorg `>0 -> 0` resets `'active'`).
  */
 export async function updateTransactionConfirmationsAtHeight(
   walletId: string,
@@ -127,7 +131,6 @@ export async function updateTransactionConfirmationsAtHeight(
   return updatePersistedConfirmations(
     walletId,
     authoritativeHeight,
-    { markNewlyConfirmedRbfStatus: false },
     signal,
     onCommit,
   );
@@ -153,7 +156,6 @@ export async function updateTransactionConfirmations(
   return updatePersistedConfirmations(
     walletId,
     () => getBlockHeight(castNetwork),
-    { markNewlyConfirmedRbfStatus: true },
     signal,
     onCommit,
   );

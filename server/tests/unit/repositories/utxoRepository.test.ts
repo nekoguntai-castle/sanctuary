@@ -541,7 +541,7 @@ describe('UTXO Repository', () => {
   });
 
   describe('getConfirmedUnconfirmedBalance', () => {
-    it('should return confirmed and unconfirmed balances separately', async () => {
+    it('should return confirmed and unconfirmed balances separately using confirmations', async () => {
       (prisma.uTXO.aggregate as Mock)
         .mockResolvedValueOnce({ _sum: { amount: BigInt(300000) } })
         .mockResolvedValueOnce({ _sum: { amount: BigInt(50000) } });
@@ -550,11 +550,11 @@ describe('UTXO Repository', () => {
 
       expect(result).toEqual({ confirmed: 300000, unconfirmed: 50000 });
       expect(prisma.uTXO.aggregate).toHaveBeenNthCalledWith(1, {
-        where: { walletId: 'wallet-456', spent: false, blockHeight: { not: null } },
+        where: { walletId: 'wallet-456', spent: false, confirmations: { gt: 0 } },
         _sum: { amount: true },
       });
       expect(prisma.uTXO.aggregate).toHaveBeenNthCalledWith(2, {
-        where: { walletId: 'wallet-456', spent: false, blockHeight: null },
+        where: { walletId: 'wallet-456', spent: false, confirmations: 0 },
         _sum: { amount: true },
       });
     });
@@ -567,6 +567,34 @@ describe('UTXO Repository', () => {
       const result = await utxoRepository.getConfirmedUnconfirmedBalance('empty-wallet');
 
       expect(result).toEqual({ confirmed: 0, unconfirmed: 0 });
+    });
+  });
+
+  describe('freezeIfUnspentAndUnlocked', () => {
+    it('freezes an unspent, unlocked UTXO and returns the updated record', async () => {
+      const frozenUtxo = { ...mockUtxo, frozen: true };
+      (prisma.uTXO.updateMany as Mock).mockResolvedValue({ count: 1 });
+      (prisma.uTXO.findUnique as Mock).mockResolvedValue(frozenUtxo);
+
+      const result = await utxoRepository.freezeIfUnspentAndUnlocked('utxo-123');
+
+      expect(result).toEqual(frozenUtxo);
+      expect(prisma.uTXO.updateMany).toHaveBeenCalledWith({
+        where: { id: 'utxo-123', spent: false, draftLock: null },
+        data: { frozen: true },
+      });
+      expect(prisma.uTXO.findUnique).toHaveBeenCalledWith({
+        where: { id: 'utxo-123' },
+      });
+    });
+
+    it('returns null when the UTXO is spent or locked by a draft', async () => {
+      (prisma.uTXO.updateMany as Mock).mockResolvedValue({ count: 0 });
+
+      const result = await utxoRepository.freezeIfUnspentAndUnlocked('utxo-123');
+
+      expect(result).toBeNull();
+      expect(prisma.uTXO.findUnique).not.toHaveBeenCalled();
     });
   });
 

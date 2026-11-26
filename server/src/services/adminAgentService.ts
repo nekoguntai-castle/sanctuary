@@ -476,22 +476,27 @@ export async function createAgentFundingOverride(
     throw new InvalidInputError('expiresAt must be in the future');
   }
 
-  const agent = await agentRepository.findAgentById(agentId);
-  if (!agent) {
-    throw new NotFoundError('Wallet agent not found');
-  }
-  if (agent.revokedAt || agent.status === 'revoked') {
-    throw new InvalidInputError('Cannot create funding overrides for a revoked agent');
-  }
+  return agentRepository.withAgentFundingTransaction(agentId, async tx => {
+    const agent = await agentRepository.findAgentById(agentId, tx);
+    if (!agent) {
+      throw new NotFoundError('Wallet agent not found');
+    }
+    if (agent.revokedAt || agent.status === 'revoked') {
+      throw new InvalidInputError('Cannot create funding overrides for a revoked agent');
+    }
 
-  return agentRepository.createFundingOverride({
-    agentId,
-    fundingWalletId: agent.fundingWalletId,
-    operationalWalletId: agent.operationalWalletId,
-    createdByUserId: createdByUserId ?? null,
-    reason: input.reason.trim(),
-    maxAmountSats: input.maxAmountSats,
-    expiresAt: input.expiresAt,
+    return agentRepository.createFundingOverride(
+      {
+        agentId,
+        fundingWalletId: agent.fundingWalletId,
+        operationalWalletId: agent.operationalWalletId,
+        createdByUserId: createdByUserId ?? null,
+        reason: input.reason.trim(),
+        maxAmountSats: input.maxAmountSats,
+        expiresAt: input.expiresAt,
+      },
+      tx
+    );
   });
 }
 
@@ -527,27 +532,32 @@ export async function createAgentApiKey(
     throw new InvalidInputError('expiresAt must be in the future');
   }
 
-  const agent = await agentRepository.findAgentById(agentId);
-  if (!agent) {
-    throw new NotFoundError('Wallet agent not found');
-  }
-  if (agent.revokedAt || agent.status === 'revoked') {
-    throw new InvalidInputError('Cannot create API keys for a revoked agent');
-  }
+  return agentRepository.withAgentFundingTransaction(agentId, async tx => {
+    const agent = await agentRepository.findAgentById(agentId, tx);
+    if (!agent) {
+      throw new NotFoundError('Wallet agent not found');
+    }
+    if (agent.revokedAt || agent.status === 'revoked') {
+      throw new InvalidInputError('Cannot create API keys for a revoked agent');
+    }
 
-  const apiKey = generateAgentApiKey();
-  const scope = buildAgentKeyScope({ allowedActions: input.allowedActions });
-  const key = await agentRepository.createApiKey({
-    agentId,
-    createdByUserId: createdByUserId ?? null,
-    name: input.name.trim(),
-    keyHash: hashAgentApiKey(apiKey),
-    keyPrefix: getAgentApiKeyPrefix(apiKey),
-    scope: scope as Prisma.InputJsonValue,
-    expiresAt: input.expiresAt ?? null,
+    const apiKey = generateAgentApiKey();
+    const scope = buildAgentKeyScope({ allowedActions: input.allowedActions });
+    const key = await agentRepository.createApiKey(
+      {
+        agentId,
+        createdByUserId: createdByUserId ?? null,
+        name: input.name.trim(),
+        keyHash: hashAgentApiKey(apiKey),
+        keyPrefix: getAgentApiKeyPrefix(apiKey),
+        scope: scope as Prisma.InputJsonValue,
+        expiresAt: input.expiresAt ?? null,
+      },
+      tx
+    );
+
+    return { key, apiKey, scope };
   });
-
-  return { key, apiKey, scope };
 }
 
 export async function revokeAgentApiKey(agentId: string, keyId: string) {

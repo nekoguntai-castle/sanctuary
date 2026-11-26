@@ -305,11 +305,12 @@ describe('agentRepository', () => {
     });
   });
 
-  it('revokes an agent and every unrevoked API key in one transaction', async () => {
+  it('revokes an agent, every unrevoked API key, and active funding overrides in one transaction', async () => {
     const tx = {
       $executeRaw: vi.fn().mockResolvedValue(1),
       walletAgent: { updateMany: vi.fn().mockResolvedValue({ count: 1 }), findUnique: vi.fn().mockResolvedValue({ id: 'agent-1', status: 'revoked' }) },
       agentApiKey: { updateMany: vi.fn().mockResolvedValue({ count: 2 }) },
+      agentFundingOverride: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
     };
     prisma.$transaction.mockImplementation(async (fn: (client: typeof tx) => unknown) => fn(tx));
 
@@ -326,20 +327,26 @@ describe('agentRepository', () => {
       where: { agentId: 'agent-1', revokedAt: null },
       data: { revokedAt: expect.any(Date) },
     });
+    expect(tx.agentFundingOverride.updateMany).toHaveBeenCalledWith({
+      where: { agentId: 'agent-1', status: 'active', revokedAt: null, usedAt: null },
+      data: { status: 'revoked', revokedAt: expect.any(Date) },
+    });
     // Serialized against funding requests, which re-check the agent under this lock.
     expect(tx.$executeRaw).toHaveBeenCalled();
   });
 
-  it('still revokes leftover API keys when the agent was already revoked', async () => {
+  it('still revokes leftover API keys and active overrides when the agent was already revoked', async () => {
     const tx = {
       $executeRaw: vi.fn().mockResolvedValue(1),
       walletAgent: { updateMany: vi.fn().mockResolvedValue({ count: 0 }), findUnique: vi.fn().mockResolvedValue({ id: 'agent-1', status: 'revoked' }) },
       agentApiKey: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      agentFundingOverride: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
     };
     prisma.$transaction.mockImplementation(async (fn: (client: typeof tx) => unknown) => fn(tx));
 
     await expect(agentRepository.revokeAgentWithApiKeys('agent-1')).resolves.toMatchObject({ alreadyRevoked: true });
     expect(tx.agentApiKey.updateMany).toHaveBeenCalled();
+    expect(tx.agentFundingOverride.updateMany).toHaveBeenCalled();
   });
 
   it('creates, finds, revokes, and updates agent API keys', async () => {

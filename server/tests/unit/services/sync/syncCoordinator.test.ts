@@ -335,4 +335,37 @@ describe('SyncCoordinator.resyncNetwork', () => {
     await expect(getSyncCoordinator().getNetworkSyncStatus('user-1', 'mainnet'))
       .resolves.toMatchObject({ total: 3, syncing: 0, synced: 1, failed: 1, pending: 1 });
   });
+
+  it('classifies legacy partial and retrying wallets exhaustively without dropping them from totals', async () => {
+    mocks.findByNetworkWithSyncStatus.mockResolvedValue([
+      {
+        id: 'legacy-partial', syncInProgress: false, lastSyncStatus: 'partial', lastSyncedAt: NOW,
+        requestedIncrementalSyncGeneration: 1, processedIncrementalSyncGeneration: 1,
+        requestedFullResyncGeneration: 0, processedFullResyncGeneration: 0,
+        syncActionRequiredAt: null,
+      },
+      {
+        id: 'retrying-idle', syncInProgress: false, lastSyncStatus: 'retrying', lastSyncedAt: NOW,
+        requestedIncrementalSyncGeneration: 1, processedIncrementalSyncGeneration: 1,
+        requestedFullResyncGeneration: 0, processedFullResyncGeneration: 0,
+        syncActionRequiredAt: null,
+      },
+      {
+        id: 'failed-idle', syncInProgress: false, lastSyncStatus: 'failed', lastSyncedAt: NOW,
+        requestedIncrementalSyncGeneration: 1, processedIncrementalSyncGeneration: 1,
+        requestedFullResyncGeneration: 0, processedFullResyncGeneration: 0,
+        syncActionRequiredAt: null,
+      },
+      {
+        id: 'running', syncInProgress: true, lastSyncStatus: 'syncing', lastSyncedAt: NOW,
+        requestedIncrementalSyncGeneration: 2, processedIncrementalSyncGeneration: 1,
+        requestedFullResyncGeneration: 0, processedFullResyncGeneration: 0,
+        syncActionRequiredAt: null,
+      },
+    ]);
+
+    const status = await getSyncCoordinator().getNetworkSyncStatus('user-1', 'mainnet');
+    expect(status).toMatchObject({ total: 4, syncing: 1, synced: 0, failed: 1, pending: 2 });
+    expect(status.syncing + status.synced + status.failed + status.pending).toBe(status.total);
+  });
 });

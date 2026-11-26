@@ -214,7 +214,11 @@ describe('assistant read batch 2 repository helpers', () => {
       assistantReadRepository.findWalletInsightsForAssistant(walletId, { status: 'active' }, 4)
     ).resolves.toEqual([{ id: insightId }]);
     expect(prisma.aIInsight.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { walletId, status: 'active' },
+      where: {
+        walletId,
+        status: 'active',
+        OR: [{ expiresAt: null }, { expiresAt: { gt: expect.any(Date) } }],
+      },
       take: 4,
     }));
 

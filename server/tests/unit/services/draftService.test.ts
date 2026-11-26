@@ -441,23 +441,23 @@ describe('DraftService', () => {
       expect(draftRepository.removeActionable).not.toHaveBeenCalled();
     });
 
-    it('continues when some selected UTXOs are not found', async () => {
+    it('rejects draft creation with ConflictError when any selected UTXO is spent, frozen, or missing', async () => {
       (resolveUtxoIds as Mock).mockResolvedValue({
         found: ['utxo-id-1'],
         notFound: ['missing-utxo'],
       });
 
-      await expect(createDraft(walletId, userId, validInput)).resolves.toEqual(mockDraft);
-      expect(lockUtxosForDraft).toHaveBeenCalledWith(mockDraft.id, ['utxo-id-1'], { isRBF: false, client: expect.anything() });
+      await expect(createDraft(walletId, userId, validInput)).rejects.toThrow(ConflictError);
+      expect(lockUtxosForDraft).not.toHaveBeenCalled();
     });
 
-    it('skips lock call when selected UTXOs resolve to an empty set', async () => {
+    it('rejects draft creation with ConflictError when no selected UTXOs are spendable', async () => {
       (resolveUtxoIds as Mock).mockResolvedValue({
         found: [],
         notFound: ['missing-utxo'],
       });
 
-      await expect(createDraft(walletId, userId, validInput)).resolves.toEqual(mockDraft);
+      await expect(createDraft(walletId, userId, validInput)).rejects.toThrow(ConflictError);
       expect(lockUtxosForDraft).not.toHaveBeenCalled();
     });
 
@@ -937,6 +937,40 @@ describe('DraftService', () => {
       await expect(
         updateDraft(walletId, draftId,{ signedDeviceId: 'device-err' })
       ).rejects.toThrow('db down');
+    });
+
+    it.each(['rejected', 'vetoed', 'expired'])('refuses updating a %s draft with ConflictError', async (approvalStatus) => {
+      (draftRepository.findByIdInWallet as Mock).mockResolvedValueOnce({
+        ...mockDraft,
+        approvalStatus,
+      });
+
+      await expect(
+        updateDraft(walletId, draftId, { label: 'cannot edit' })
+      ).rejects.toThrow(ConflictError);
+      expect(draftRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects edits to a draft that has already been broadcast', async () => {
+      (draftRepository.findByIdInWallet as Mock).mockResolvedValueOnce({
+        ...mockDraft,
+        status: 'broadcasted',
+      });
+
+      await expect(updateDraft(walletId, draftId, { label: 'late edit' })).rejects.toThrow(ConflictError);
+      expect(draftRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses updating an expired draft with ConflictError', async () => {
+      (draftRepository.findByIdInWallet as Mock).mockResolvedValueOnce({
+        ...mockDraft,
+        expiresAt: new Date(Date.now() - 60_000),
+      });
+
+      await expect(
+        updateDraft(walletId, draftId, { label: 'expired edit' })
+      ).rejects.toThrow(ConflictError);
+      expect(draftRepository.update).not.toHaveBeenCalled();
     });
   });
 

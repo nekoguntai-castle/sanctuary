@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 
-import { draftId, makePendingRequest, mockDraftRepo, mockPolicyRepo, otherUserId, policyId, requestId, userId, walletId } from './approvalServiceTestHarness';
+import { draftId, makePendingRequest, mockDraftRepo, mockPolicyRepo, mockTx, otherUserId, policyId, requestId, userId, walletId } from './approvalServiceTestHarness';
 import { approvalService } from '../../../../src/services/vaultPolicy/approvalService';
 
 /**
@@ -18,9 +18,12 @@ export function registerApprovalExpiryContracts() {
 
     await expect(approvalService.castVote(requestId, otherUserId, 'approve')).rejects.toThrow('expired');
 
-    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'expired');
-    expect(mockPolicyRepo.findApprovalRequestsByDraftId).toHaveBeenCalledWith(draftId);
-    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'expired');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'expired', undefined, mockTx);
+    expect(mockPolicyRepo.findApprovalRequestsByDraftId).toHaveBeenCalledWith(draftId, mockTx);
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'expired', {
+      allowedFrom: ['pending'],
+      client: mockTx,
+    });
     expect(mockPolicyRepo.createVote).not.toHaveBeenCalled();
   });
 
@@ -52,7 +55,7 @@ export function registerApprovalExpiryContracts() {
     expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith('r1', 'expired');
     expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith('r2', 'expired');
     expect(mockPolicyRepo.findApprovalRequestsByDraftId).toHaveBeenCalledTimes(1);
-    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'expired');
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'expired', { allowedFrom: ['pending'] });
   });
 
   it('sweep repairs a draft left pending with an already-expired request', async () => {
@@ -64,7 +67,7 @@ export function registerApprovalExpiryContracts() {
       .resolves.toEqual({ expiredRequests: 0, updatedDrafts: 1 });
 
     expect(mockPolicyRepo.resolveApprovalRequestIfPending).not.toHaveBeenCalled();
-    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'expired');
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'expired', { allowedFrom: ['pending'] });
   });
 
   it('sweep clears a draft left pending after its requests were cascaded away', async () => {
@@ -76,7 +79,7 @@ export function registerApprovalExpiryContracts() {
 
     await expect(approvalService.expireOverdueApprovals())
       .resolves.toEqual({ expiredRequests: 0, updatedDrafts: 1 });
-    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'not_required');
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'not_required', { allowedFrom: ['pending'] });
   });
 
   it('sweep does not re-evaluate a draft the overdue pass already updated', async () => {
@@ -113,7 +116,7 @@ export function registerApprovalExpiryContracts() {
     await approvalService.expireOverdueApprovals();
 
     expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledTimes(1);
-    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, status);
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, status, { allowedFrom: ['pending'] });
   });
 
   it('owner override on a past-expiry request expires it and refuses without approving', async () => {
@@ -126,7 +129,7 @@ export function registerApprovalExpiryContracts() {
 
     expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledTimes(1);
     expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith('r1', 'expired');
-    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'expired');
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'expired', { allowedFrom: ['pending'] });
     expect(mockPolicyRepo.createPolicyEvent).not.toHaveBeenCalled();
   });
 
@@ -146,7 +149,7 @@ export function registerApprovalExpiryContracts() {
 
     expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledTimes(1);
     expect(mockPolicyRepo.resolveApprovalRequestIfPending).not.toHaveBeenCalledWith('r2', expect.anything());
-    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'expired');
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'expired', { allowedFrom: ['pending'] });
     expect(mockPolicyRepo.createPolicyEvent).not.toHaveBeenCalled();
   });
 }

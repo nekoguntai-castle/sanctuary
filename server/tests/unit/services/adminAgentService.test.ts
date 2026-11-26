@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  mockTx: { tx: 'agent-funding-tx' },
   agentRepository: {
     createAgent: vi.fn(),
     findAgentById: vi.fn(),
@@ -9,6 +10,7 @@ const mocks = vi.hoisted(() => ({
     createApiKey: vi.fn(),
     updateAgent: vi.fn(),
     revokeAgentWithApiKeys: vi.fn(),
+    withAgentFundingTransaction: vi.fn(),
   },
   userRepository: {
     findById: vi.fn(),
@@ -92,6 +94,9 @@ describe('adminAgentService', () => {
       id: 'key-1',
       ...input,
     }));
+    mocks.agentRepository.withAgentFundingTransaction.mockImplementation(
+      async (_agentId: string, fn: (client: unknown) => Promise<unknown>) => fn(mocks.mockTx)
+    );
     mocks.userRepository.findById.mockResolvedValue({ id: 'user-1' });
     mocks.walletRepository.findById.mockResolvedValueOnce(fundingWallet).mockResolvedValueOnce(operationalWallet);
     mocks.walletRepository.findByIdWithSigningDevices.mockResolvedValue({
@@ -193,6 +198,11 @@ describe('adminAgentService', () => {
       reason: '  temporary refill  ',
     });
 
+    expect(mocks.agentRepository.withAgentFundingTransaction).toHaveBeenCalledWith(
+      'agent-1',
+      expect.any(Function)
+    );
+    expect(mocks.agentRepository.findAgentById).toHaveBeenCalledWith('agent-1', mocks.mockTx);
     expect(mocks.agentRepository.createFundingOverride).toHaveBeenCalledWith(
       expect.objectContaining({
         agentId: 'agent-1',
@@ -201,7 +211,8 @@ describe('adminAgentService', () => {
         createdByUserId: null,
         reason: 'temporary refill',
         maxAmountSats: 25_000n,
-      })
+      }),
+      mocks.mockTx
     );
   });
 
@@ -212,6 +223,11 @@ describe('adminAgentService', () => {
     });
 
     expect(result.apiKey).toMatch(/^agt_/);
+    expect(mocks.agentRepository.withAgentFundingTransaction).toHaveBeenCalledWith(
+      'agent-1',
+      expect.any(Function)
+    );
+    expect(mocks.agentRepository.findAgentById).toHaveBeenCalledWith('agent-1', mocks.mockTx);
     expect(mocks.agentRepository.createApiKey).toHaveBeenCalledWith(
       expect.objectContaining({
         agentId: 'agent-1',
@@ -221,7 +237,8 @@ describe('adminAgentService', () => {
         keyHash: expect.any(String),
         scope: { allowedActions: ['create_funding_draft'] },
         expiresAt: null,
-      })
+      }),
+      mocks.mockTx
     );
   });
   describe('linked user wallet roles (same rule as the agent key at runtime)', () => {
@@ -358,6 +375,29 @@ describe('adminAgentService', () => {
       mocks.agentRepository.revokeAgentWithApiKeys.mockResolvedValue({ agent: null, alreadyRevoked: true });
 
       await expect(revokeWalletAgent('agent-1')).rejects.toThrow(NotFoundError);
+    });
+
+    it('re-checks revocation inside the agent funding transaction when creating overrides and API keys', async () => {
+      mocks.agentRepository.findAgentById.mockResolvedValue(revokedAgent);
+
+      await expect(
+        createAgentFundingOverride('agent-1', {
+          maxAmountSats: 25_000n,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          reason: 'late override',
+        })
+      ).rejects.toThrow('Cannot create funding overrides for a revoked agent');
+
+      await expect(
+        createAgentApiKey('agent-1', {
+          name: 'late key',
+          allowedActions: ['create_funding_draft'],
+        })
+      ).rejects.toThrow('Cannot create API keys for a revoked agent');
+
+      expect(mocks.agentRepository.withAgentFundingTransaction).toHaveBeenCalledTimes(2);
+      expect(mocks.agentRepository.createFundingOverride).not.toHaveBeenCalled();
+      expect(mocks.agentRepository.createApiKey).not.toHaveBeenCalled();
     });
   });
 });

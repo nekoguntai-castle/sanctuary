@@ -1,6 +1,7 @@
 import { vi } from 'vitest';
 
 const policyRepositoryPrismaMock = vi.hoisted(() => ({
+  $transaction: vi.fn(),
   vaultPolicy: {
     findMany: vi.fn(),
     findUnique: vi.fn(),

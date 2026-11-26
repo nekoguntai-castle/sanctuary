@@ -6,6 +6,7 @@ import {
   makePendingRequest,
   mockDraftRepo,
   mockPolicyRepo,
+  mockTx,
   mockWalletSharingRepo,
   mockVoteRequestReads,
   otherUserId,
@@ -37,7 +38,7 @@ export function registerQuorumMembershipContracts() {
 
     await approvalService.castVote(requestId, otherUserId, 'approve');
 
-    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved', undefined, mockTx);
   });
 
   it('all-quorum waits for a group approver after the direct owner votes', async () => {
@@ -99,7 +100,7 @@ export function registerQuorumMembershipContracts() {
     const { vote } = await approvalService.castVote(requestId, userId, 'approve');
 
     expect(vote.decision).toBe('approve');
-    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved', undefined, mockTx);
   });
 
   it('all-quorum: membership growth after creation means the original approvers alone do not resolve', async () => {
@@ -161,7 +162,7 @@ export function registerQuorumMembershipContracts() {
 
     await approvalService.castVote(requestId, otherUserId, 'approve');
 
-    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved', undefined, mockTx);
   });
 
   it('creation: derives all-quorum requiredApprovals from live wallet membership, not the admin-typed config value', async () => {
@@ -242,7 +243,7 @@ export function registerQuorumMembershipContracts() {
 
     await approvalService.castVote(requestId, otherUserId, 'approve');
 
-    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved', undefined, mockTx);
   });
 
   it('all-quorum: never resolves on an empty eligible set (requester was the sole approver)', async () => {
@@ -401,7 +402,7 @@ export function registerQuorumMembershipContracts() {
 
     // userId and thirdApproverId are both listed and have approved (2 of 2) —
     // the unlisted otherUserId vote must not be needed or double-counted.
-    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved', undefined, mockTx);
   });
 
   it('specific quorum: roster shrink resolves against the live threshold instead of the stale requiredApprovals snapshot', async () => {
@@ -445,7 +446,7 @@ export function registerQuorumMembershipContracts() {
     // Live min(requiredApprovals: 2, specificApprovers.length: 2) = 2, and
     // both listed approvers have voted — the request must resolve even
     // though the stale snapshot on the request is 3.
-    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved', undefined, mockTx);
   });
 
   it('specific quorum: tightening requiredApprovals on the live policy keeps a request pending on the stale vote count', async () => {
@@ -645,7 +646,7 @@ export function registerQuorumMembershipContracts() {
 
     await approvalService.castVote(requestId, otherUserId, 'approve');
 
-    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved', undefined, mockTx);
   });
 
   it('specific quorum: the live threshold clamps down to the roster size when requiredApprovals exceeds it', async () => {
@@ -685,6 +686,6 @@ export function registerQuorumMembershipContracts() {
 
     await approvalService.castVote(requestId, otherUserId, 'approve');
 
-    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved', undefined, mockTx);
   });
 }

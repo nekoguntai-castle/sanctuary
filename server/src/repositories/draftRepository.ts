@@ -80,6 +80,15 @@ export interface UpdateDraftInput {
 
 export type DraftDbClient = Pick<typeof prisma, 'draftTransaction'>;
 
+export interface UpdateApprovalStatusOptions {
+  /** Allowed current approvalStatus values for atomic compare-and-swap. */
+  allowedFrom?: readonly string[];
+  /** Optional approver user ID recorded when transitioning to `'approved'`. */
+  approvedBy?: string | null;
+  /** Optional transaction client. */
+  client?: DraftDbClient;
+}
+
 /**
  * Runs an atomic draft workflow behind the repository-owned Prisma boundary.
  * Callers must perform every database operation through the provided client.
@@ -88,6 +97,29 @@ export async function withDraftTransaction<T>(
   operation: (client: PrismaTxClient) => Promise<T>
 ): Promise<T> {
   return prisma.$transaction(operation);
+}
+
+/**
+ * Lock draft rows in deterministic ID order inside an active transaction to
+ * serialize concurrent approval-status transitions (e.g. policy delete vs vote).
+ */
+export async function lockDraftsForUpdate(
+  draftIds: readonly string[],
+  client: PrismaTxClient
+): Promise<string[]> {
+  const uniqueSortedIds = [...new Set(draftIds)].sort();
+  if (uniqueSortedIds.length === 0) {
+    return [];
+  }
+
+  const rows = await client.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT "id"
+    FROM "draft_transactions"
+    WHERE "id" IN (${Prisma.join(uniqueSortedIds)})
+    ORDER BY "id" ASC
+    FOR UPDATE
+  `);
+  return rows.map(row => row.id);
 }
 
 const mobileAgentDraftInclude = {
@@ -147,8 +179,12 @@ export async function findByWalletId(walletId: string): Promise<DraftTransaction
 /**
  * Find a draft by ID
  */
-export async function findById(draftId: string): Promise<DraftTransaction | null> {
-  return prisma.draftTransaction.findUnique({
+export async function findById(
+  draftId: string,
+  client?: DraftDbClient
+): Promise<DraftTransaction | null> {
+  const db = client ?? prisma;
+  return db.draftTransaction.findUnique({
     where: { id: draftId },
   });
 }
@@ -331,11 +367,17 @@ function buildActionableDraftWhere(
 
 function buildDraftUpdateWhere(
   draftId: string,
-  expectedUpdatedAt: Date | undefined
+  expectedUpdatedAt: Date | undefined,
+  now: Date = new Date()
 ): Prisma.DraftTransactionWhereInput {
   return {
     id: draftId,
     status: { in: [...ACTIONABLE_DRAFT_STATUS_VALUES] },
+    approvalStatus: { notIn: [...RESOLVED_APPROVAL_STATUSES] },
+    OR: [
+      { expiresAt: null },
+      { expiresAt: { gt: now } },
+    ],
     ...(expectedUpdatedAt !== undefined && { updatedAt: expectedUpdatedAt }),
   };
 }
@@ -402,22 +444,51 @@ export async function deleteExpired(): Promise<number> {
   return result.count;
 }
 
+function isDraftDbClient(
+  value: DraftDbClient | UpdateApprovalStatusOptions | undefined
+): value is DraftDbClient {
+  return value !== undefined && 'draftTransaction' in value;
+}
+
 /**
- * Update the approval status of a draft
+ * Atomically compare-and-swap the approval status of an actionable draft.
+ *
+ * Requires the draft to remain actionable (`unsigned`/`partial`/`signed`), so
+ * archived `broadcasted` drafts can never be mutated. When `allowedFrom` is
+ * specified, requires `approvalStatus` to be in that exact set; otherwise
+ * prevents overwriting terminal refusal states (`rejected`/`vetoed`/`expired`).
+ * Returns whether the row transitioned.
  */
 export async function updateApprovalStatus(
   draftId: string,
   approvalStatus: string,
-  client?: DraftDbClient
-): Promise<void> {
-  const db = client ?? prisma;
-  await db.draftTransaction.update({
-    where: { id: draftId },
+  optionsOrClient?: DraftDbClient | UpdateApprovalStatusOptions
+): Promise<boolean> {
+  const options: UpdateApprovalStatusOptions = isDraftDbClient(optionsOrClient)
+    ? { client: optionsOrClient }
+    : (optionsOrClient ?? {});
+  const db = options.client ?? prisma;
+  const approvalStatusGuard: Prisma.StringFilter = options.allowedFrom !== undefined
+    ? { in: [...options.allowedFrom] }
+    : { notIn: [...RESOLVED_APPROVAL_STATUSES] };
+
+  const result = await db.draftTransaction.updateMany({
+    where: {
+      id: draftId,
+      status: { in: [...ACTIONABLE_DRAFT_STATUS_VALUES] },
+      approvalStatus: approvalStatusGuard,
+    },
     data: {
       approvalStatus,
-      ...(approvalStatus === 'approved' ? { approvedAt: new Date() } : {}),
+      ...(approvalStatus === 'approved'
+        ? {
+            approvedAt: new Date(),
+            ...(options.approvedBy !== undefined ? { approvedBy: options.approvedBy } : {}),
+          }
+        : {}),
     },
   });
+  return result.count > 0;
 }
 
 /**
@@ -494,6 +565,7 @@ export async function deleteManyByIds(
 // Export all functions as namespace
 export const draftRepository = {
   withTransaction: withDraftTransaction,
+  lockDraftsForUpdate,
   findByWalletId,
   findById,
   findByIdInWallet,

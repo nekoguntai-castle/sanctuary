@@ -6,6 +6,7 @@ import {
   makePendingRequest,
   mockDraftRepo,
   mockPolicyRepo,
+  mockTx,
   mockVoteRequestReads,
   mockWalletSharingRepo,
   otherUserId,
@@ -73,7 +74,7 @@ export function registerAnyNEligibilityContracts() {
     await approvalService.castVote(requestId, otherUserId, 'approve');
 
     expectNotResolved();
-    expect(mockWalletSharingRepo.findEffectiveApproverIds).toHaveBeenCalledWith(walletId, undefined);
+    expect(mockWalletSharingRepo.findEffectiveApproverIds).toHaveBeenCalledWith(walletId, mockTx);
   });
 
   it("any_n: never counts the requester's own approve vote when self-approval is disallowed", async () => {
@@ -140,8 +141,12 @@ export function registerAnyNEligibilityContracts() {
 
     await approvalService.castVote(requestId, userId, 'approve');
 
-    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved');
-    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'approved');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved', undefined, mockTx);
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'approved', {
+      allowedFrom: ['pending'],
+      approvedBy: userId,
+      client: mockTx,
+    });
   });
 
   it("any_n: counts the requester's own approve vote when allowSelfApproval is true", async () => {
@@ -154,6 +159,6 @@ export function registerAnyNEligibilityContracts() {
 
     await approvalService.castVote(requestId, 'creator', 'approve');
 
-    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved', undefined, mockTx);
   });
 }

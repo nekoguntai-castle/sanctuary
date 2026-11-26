@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 
-import { mockVoteRequestReads, makePendingRequest, mockDraftRepo, mockPolicyRepo, mockWalletSharingRepo, otherUserId, requestId, walletId } from './approvalServiceTestHarness';
+import { mockTx, mockVoteRequestReads, makePendingRequest, mockDraftRepo, mockPolicyRepo, mockWalletSharingRepo, otherUserId, requestId, walletId } from './approvalServiceTestHarness';
 import { approvalService } from '../../../../src/services/vaultPolicy/approvalService';
 
 /**
@@ -41,7 +41,7 @@ export function registerConcurrentResolutionContracts() {
 
     await approvalService.castVote(requestId, otherUserId, 'approve');
 
-    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved', undefined, mockTx);
     // The loser must not re-derive the draft status off a resolution it did not perform.
     expect(mockPolicyRepo.findApprovalRequestsByDraftId).not.toHaveBeenCalled();
     expect(mockDraftRepo.updateApprovalStatus).not.toHaveBeenCalled();
@@ -71,7 +71,7 @@ export function registerConcurrentResolutionContracts() {
 
     await approvalService.castVote(requestId, otherUserId, 'reject', 'Too risky');
 
-    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'rejected');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'rejected', undefined, mockTx);
     expect(mockPolicyRepo.findApprovalRequestsByDraftId).toHaveBeenCalled();
   });
 
@@ -94,7 +94,7 @@ export function registerConcurrentResolutionContracts() {
 
       await approvalService.castVote(requestId, otherUserId, decision);
 
-      expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, status);
+      expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, status, undefined, mockTx);
       expect(mockPolicyRepo.findApprovalRequestsByDraftId).not.toHaveBeenCalled();
       expect(mockDraftRepo.updateApprovalStatus).not.toHaveBeenCalled();
     }
@@ -113,7 +113,7 @@ export function registerConcurrentResolutionContracts() {
       'Approval request has expired'
     );
 
-    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'expired');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'expired', undefined, mockTx);
     expect(mockPolicyRepo.createVote).not.toHaveBeenCalled();
   });
 
@@ -147,8 +147,8 @@ export function registerConcurrentResolutionContracts() {
     expect(overrideEvents[0][0].details.requestId).toBe('r1');
     // The draft must be derived from ALL requests, not force-approved: r2's
     // concurrently-recorded rejection must win over r1's override.
-    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith('draft-1', 'rejected');
-    expect(mockDraftRepo.updateApprovalStatus).not.toHaveBeenCalledWith('draft-1', 'approved');
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith('draft-1', 'rejected', { allowedFrom: ['pending'] });
+    expect(mockDraftRepo.updateApprovalStatus).not.toHaveBeenCalledWith('draft-1', 'approved', expect.anything());
   });
 
   it('owner override derives the draft as rejected when a settled request was concurrently rejected', async () => {
@@ -167,8 +167,8 @@ export function registerConcurrentResolutionContracts() {
 
     await approvalService.ownerOverride('draft-1', walletId, 'owner-1', 'operational override');
 
-    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith('draft-1', 'rejected');
-    expect(mockDraftRepo.updateApprovalStatus).not.toHaveBeenCalledWith('draft-1', 'approved');
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith('draft-1', 'rejected', { allowedFrom: ['pending'] });
+    expect(mockDraftRepo.updateApprovalStatus).not.toHaveBeenCalledWith('draft-1', 'approved', expect.anything());
   });
 
   it('owner override derives the draft as vetoed when a settled request was concurrently vetoed', async () => {
@@ -187,8 +187,8 @@ export function registerConcurrentResolutionContracts() {
 
     await approvalService.ownerOverride('draft-1', walletId, 'owner-1', 'operational override');
 
-    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith('draft-1', 'vetoed');
-    expect(mockDraftRepo.updateApprovalStatus).not.toHaveBeenCalledWith('draft-1', 'approved');
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith('draft-1', 'vetoed', { allowedFrom: ['pending'] });
+    expect(mockDraftRepo.updateApprovalStatus).not.toHaveBeenCalledWith('draft-1', 'approved', expect.anything());
   });
 
   it('owner override reports a conflict when every request was settled concurrently', async () => {

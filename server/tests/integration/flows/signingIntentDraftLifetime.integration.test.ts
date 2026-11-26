@@ -24,6 +24,7 @@ import { createDraft, deleteDraft } from '../../../src/services/draftService';
 import {
   cleanupTestData,
   createTestUser,
+  createTestUtxo,
   createTestWallet,
   describeIfDatabase,
   disconnectTestDatabase,
@@ -97,6 +98,9 @@ describeIfDatabase('signing intent lifetime follows its draft', () => {
     const db = await getTestPrisma();
     const user = await createTestUser(db, { username: 'intent-lifetime', email: 'intent-lifetime@example.com' });
     const wallet = await createTestWallet(db, user.id, { network: 'testnet3' });
+    await createTestUtxo(db, wallet.id, {
+      txid: '11'.repeat(32), vout: 0, amount: 10_000n, scriptPubKey: `0014${'22'.repeat(20)}`,
+    });
     userId = user.id;
     walletId = wallet.id;
   });

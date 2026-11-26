@@ -127,7 +127,9 @@ export async function linkReplacementIfUnreplaced(
       where: {
         id: originalTransactionId,
         walletId,
-        rbfStatus: { not: 'replaced' },
+        confirmations: 0,
+        blockHeight: null,
+        rbfStatus: 'active',
         replacedByTxid: null,
       },
       data: {

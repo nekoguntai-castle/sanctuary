@@ -2,6 +2,7 @@ import type { DraftTransaction } from '../generated/prisma/client';
 import * as bitcoin from 'bitcoinjs-lib';
 import { ACTIONABLE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/constants/drafts';
 import { draftRepository, type DraftStatus } from '../repositories';
+import { RESOLVED_APPROVAL_STATUSES } from '../repositories/approvalStatuses';
 import { ConflictError, InvalidInputError, NotFoundError } from '../errors';
 import { createLogger } from '../utils/logger';
 import {
@@ -198,6 +199,21 @@ const toDraftUpdateConflictError = (): ConflictError => {
   );
 };
 
+const ACTIONABLE_DRAFT_STATUS_SET = new Set<string>(ACTIONABLE_DRAFT_STATUS_VALUES);
+const RESOLVED_APPROVAL_STATUS_SET = new Set<string>(RESOLVED_APPROVAL_STATUSES);
+
+const assertDraftEditable = (draft: DraftTransaction): void => {
+  if (!ACTIONABLE_DRAFT_STATUS_SET.has(draft.status)) {
+    throw toDraftUpdateConflictError();
+  }
+  if (draft.approvalStatus && RESOLVED_APPROVAL_STATUS_SET.has(draft.approvalStatus)) {
+    throw new ConflictError(`Draft is already ${draft.approvalStatus} and cannot be updated`);
+  }
+  if (draft.expiresAt && draft.expiresAt <= new Date()) {
+    throw new ConflictError('Draft has expired and cannot be updated');
+  }
+};
+
 const refreshDraftForRetry = async (
   walletId: string,
   draftId: string,
@@ -207,6 +223,7 @@ const refreshDraftForRetry = async (
   if (!refreshedDraft) {
     throw new NotFoundError('Draft not found');
   }
+  assertDraftEditable(refreshedDraft);
 
   log.debug('Retrying draft update after concurrent modification', {
     draftId,
@@ -227,6 +244,7 @@ export async function updateDraft(
   if (!existingDraft) {
     throw new NotFoundError('Draft not found');
   }
+  assertDraftEditable(existingDraft);
 
   assertValidDraftStatus(data.status);
   if (data.status !== undefined) {

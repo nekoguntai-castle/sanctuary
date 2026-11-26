@@ -5,6 +5,7 @@
  */
 
 import prisma from '../models/prisma';
+import type { PrismaTxClient } from '../models/prisma';
 import type { VaultPolicy, ApprovalRequest, ApprovalVote, PolicyEvent, PolicyAddress } from '../generated/prisma/client';
 import { Prisma } from '../generated/prisma/client';
 import { ACTIONABLE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/constants/drafts';
@@ -23,6 +24,33 @@ import type {
 export const WALLET_SCOPED_USAGE_WINDOW_USER_ID = '00000000-0000-0000-0000-000000000000';
 
 export type PolicyDbClient = Pick<typeof prisma, 'vaultPolicy' | 'approvalRequest'>;
+export type PolicyVoteDbClient = Pick<typeof prisma, 'vaultPolicy' | 'approvalRequest' | 'approvalVote'>;
+
+/**
+ * Run a policy/approval workflow atomically inside a single Prisma transaction.
+ */
+export async function withPolicyTransaction<T>(
+  operation: (client: PrismaTxClient) => Promise<T>
+): Promise<T> {
+  return prisma.$transaction(operation);
+}
+
+/**
+ * Lock an ApprovalRequest row `FOR UPDATE` inside an active transaction to
+ * serialize votes, expiry resolution, and policy deletion.
+ */
+export async function lockApprovalRequestForUpdate(
+  requestId: string,
+  client: PrismaTxClient
+): Promise<boolean> {
+  const rows = await client.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT "id"
+    FROM "approval_requests"
+    WHERE "id" = ${requestId}
+    FOR UPDATE
+  `);
+  return rows.length > 0;
+}
 
 // ========================================
 // VAULT POLICY CRUD
@@ -156,8 +184,9 @@ export async function updatePolicy(
   });
 }
 
-export async function removePolicy(policyId: string): Promise<void> {
-  await prisma.vaultPolicy.delete({
+export async function removePolicy(policyId: string, client?: PolicyDbClient): Promise<void> {
+  const db = client ?? prisma;
+  await db.vaultPolicy.delete({
     where: { id: policyId },
   });
 }
@@ -170,8 +199,12 @@ export async function removePolicy(policyId: string): Promise<void> {
  * Drafts still pending approval that hold a request under a policy (each listed
  * once). Resolved drafts are excluded so a policy delete can't overturn them.
  */
-export async function findPendingDraftIdsWithApprovalRequestsForPolicy(policyId: string): Promise<string[]> {
-  const rows = await prisma.approvalRequest.findMany({
+export async function findPendingDraftIdsWithApprovalRequestsForPolicy(
+  policyId: string,
+  client?: PolicyDbClient
+): Promise<string[]> {
+  const db = client ?? prisma;
+  const rows = await db.approvalRequest.findMany({
     where: { policyId, draftTransaction: { approvalStatus: 'pending' } },
     select: { draftTransactionId: true },
     distinct: ['draftTransactionId'],
@@ -180,9 +213,11 @@ export async function findPendingDraftIdsWithApprovalRequestsForPolicy(policyId:
 }
 
 export async function findApprovalRequestsByDraftId(
-  draftTransactionId: string
+  draftTransactionId: string,
+  client?: PolicyDbClient
 ): Promise<(ApprovalRequest & { votes: ApprovalVote[] })[]> {
-  return prisma.approvalRequest.findMany({
+  const db = client ?? prisma;
+  return db.approvalRequest.findMany({
     where: { draftTransactionId },
     include: { votes: true },
     orderBy: { createdAt: 'asc' },
@@ -190,9 +225,11 @@ export async function findApprovalRequestsByDraftId(
 }
 
 export async function findApprovalRequestById(
-  requestId: string
+  requestId: string,
+  client?: PolicyDbClient
 ): Promise<(ApprovalRequest & { votes: ApprovalVote[] }) | null> {
-  return prisma.approvalRequest.findUnique({
+  const db = client ?? prisma;
+  return db.approvalRequest.findUnique({
     where: { id: requestId },
     include: { votes: true },
   });
@@ -306,9 +343,11 @@ export async function findPendingDraftIdsWithExpiredRequests(): Promise<string[]
 export async function resolveApprovalRequestIfPending(
   requestId: string,
   status: Exclude<ApprovalRequestStatus, 'pending'>,
-  resolvedAt?: Date
+  resolvedAt?: Date,
+  client?: PolicyDbClient
 ): Promise<ApprovalRequest | null> {
-  const { count } = await prisma.approvalRequest.updateMany({
+  const db = client ?? prisma;
+  const { count } = await db.approvalRequest.updateMany({
     where: { id: requestId, status: 'pending' },
     data: {
       status,
@@ -320,20 +359,24 @@ export async function resolveApprovalRequestIfPending(
     return null;
   }
 
-  return prisma.approvalRequest.findUnique({ where: { id: requestId } });
+  return db.approvalRequest.findUnique({ where: { id: requestId } });
 }
 
 // ========================================
 // APPROVAL VOTES
 // ========================================
 
-export async function createVote(data: {
-  approvalRequestId: string;
-  userId: string;
-  decision: VoteDecision;
-  reason?: string;
-}): Promise<ApprovalVote> {
-  return prisma.approvalVote.create({
+export async function createVote(
+  data: {
+    approvalRequestId: string;
+    userId: string;
+    decision: VoteDecision;
+    reason?: string;
+  },
+  client?: PolicyVoteDbClient
+): Promise<ApprovalVote> {
+  const db = client ?? prisma;
+  return db.approvalVote.create({
     data: {
       approvalRequestId: data.approvalRequestId,
       userId: data.userId,
@@ -345,9 +388,11 @@ export async function createVote(data: {
 
 export async function findVoteByUserAndRequest(
   approvalRequestId: string,
-  userId: string
+  userId: string,
+  client?: PolicyVoteDbClient
 ): Promise<ApprovalVote | null> {
-  return prisma.approvalVote.findUnique({
+  const db = client ?? prisma;
+  return db.approvalVote.findUnique({
     where: {
       approvalRequestId_userId: {
         approvalRequestId,
@@ -676,6 +721,8 @@ export async function getSupportStats(now: Date = new Date()): Promise<PolicySup
 // ========================================
 
 export const policyRepository = {
+  withTransaction: withPolicyTransaction,
+  lockApprovalRequestForUpdate,
   findPendingDraftIdsWithoutApprovalRequests,
   findPendingDraftIdsWithApprovalRequestsForPolicy,
   // Policies

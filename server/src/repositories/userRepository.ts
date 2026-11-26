@@ -333,6 +333,87 @@ export async function consumeBackupCodesIfUnchanged(
 }
 
 /**
+ * Store a newly generated 2FA secret only while 2FA is still disabled.
+ * Prevents a concurrent setup request from overwriting an already-enabled live secret.
+ */
+export async function setTwoFactorSecretIfDisabled(
+  userId: string,
+  encryptedSecret: string
+): Promise<boolean> {
+  const result = await prisma.user.updateMany({
+    where: { id: userId, twoFactorEnabled: false },
+    data: { twoFactorSecret: encryptedSecret },
+  });
+  return result.count === 1;
+}
+
+/**
+ * Enable 2FA only if it is still disabled and the stored secret matches the one
+ * verified against the user's TOTP token.
+ */
+export async function enableTwoFactorIfSecretMatches(
+  userId: string,
+  expectedSecret: string,
+  hashedBackupCodes: string
+): Promise<boolean> {
+  const result = await prisma.user.updateMany({
+    where: {
+      id: userId,
+      twoFactorEnabled: false,
+      twoFactorSecret: expectedSecret,
+    },
+    data: {
+      twoFactorEnabled: true,
+      twoFactorBackupCodes: hashedBackupCodes,
+    },
+  });
+  return result.count === 1;
+}
+
+/**
+ * Disable 2FA only if it is still enabled with the exact secret that was verified.
+ */
+export async function disableTwoFactorIfSecretMatches(
+  userId: string,
+  expectedSecret: string | null
+): Promise<boolean> {
+  const result = await prisma.user.updateMany({
+    where: {
+      id: userId,
+      twoFactorEnabled: true,
+      twoFactorSecret: expectedSecret,
+    },
+    data: {
+      twoFactorEnabled: false,
+      twoFactorSecret: null,
+      twoFactorBackupCodes: null,
+    },
+  });
+  return result.count === 1;
+}
+
+/**
+ * Replace backup codes only while 2FA remains enabled with the verified secret.
+ */
+export async function updateBackupCodesIfEnabled(
+  userId: string,
+  expectedSecret: string,
+  hashedBackupCodes: string
+): Promise<boolean> {
+  const result = await prisma.user.updateMany({
+    where: {
+      id: userId,
+      twoFactorEnabled: true,
+      twoFactorSecret: expectedSecret,
+    },
+    data: {
+      twoFactorBackupCodes: hashedBackupCodes,
+    },
+  });
+  return result.count === 1;
+}
+
+/**
  * Check if email is already in use
  */
 export async function emailExists(email: string): Promise<boolean> {
@@ -456,6 +537,10 @@ export const userRepository = {
   searchByUsername,
   update2FA,
   consumeBackupCodesIfUnchanged,
+  setTwoFactorSecretIfDisabled,
+  enableTwoFactorIfSecretMatches,
+  disableTwoFactorIfSecretMatches,
+  updateBackupCodesIfEnabled,
   emailExists,
   findByWalletAccess,
   findAllWithWalletAssociations,

@@ -157,7 +157,9 @@ describe('persistTransaction — RBF replacement linkage', () => {
       where: {
         id: 'original-db-id',
         walletId,
-        rbfStatus: { not: 'replaced' },
+        rbfStatus: 'active',
+        confirmations: 0,
+        blockHeight: null,
         replacedByTxid: null,
       },
       data: { rbfStatus: 'replaced', replacedByTxid: newTxid },

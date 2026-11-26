@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
 
-import { mockVoteRequestReads, draftId, makePendingRequest, mockDraftLockRepo, mockDraftRepo, mockLog, mockNotify, mockPolicyRepo, mockWalletSharingRepo, otherUserId, requestId, walletId } from './approvalServiceTestHarness';
+import { mockTx, mockVoteRequestReads, draftId, makePendingRequest, mockDraftLockRepo, mockDraftRepo, mockLog, mockNotify, mockPolicyRepo, mockWalletSharingRepo, otherUserId, requestId, walletId } from './approvalServiceTestHarness';
 import { approvalService } from '../../../../src/services/vaultPolicy/approvalService';
 
 export function registerUpdateDraftApprovalFromRequestsContracts() {
@@ -26,7 +26,10 @@ export function registerUpdateDraftApprovalFromRequestsContracts() {
 
     await approvalService.castVote(requestId, otherUserId, 'reject');
 
-    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'rejected');
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'rejected', {
+      allowedFrom: ['pending'],
+      client: mockTx,
+    });
   });
 
   it('releases the UTXO locks of a draft whose approval resolves to a terminal refusal', async () => {
@@ -34,8 +37,31 @@ export function registerUpdateDraftApprovalFromRequestsContracts() {
 
     await approvalService.rederiveDraftApprovalStatus(draftId);
 
-    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'rejected');
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'rejected', {
+      allowedFrom: ['pending'],
+    });
     expect(mockDraftLockRepo.deleteByDraftId).toHaveBeenCalledWith(draftId);
+  });
+
+  it('preserves locks when a concurrent transition wins before refusal is applied', async () => {
+    mockPolicyRepo.findApprovalRequestsByDraftId.mockResolvedValue([{ status: 'rejected' }]);
+    mockDraftRepo.updateApprovalStatus.mockResolvedValueOnce(false);
+
+    await approvalService.rederiveDraftApprovalStatus(draftId);
+
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'rejected', {
+      allowedFrom: ['pending'],
+    });
+    expect(mockDraftLockRepo.deleteByDraftId).not.toHaveBeenCalled();
+  });
+
+  it('notifies the wallet when rederivation approves the remaining requests', async () => {
+    mockPolicyRepo.findApprovalRequestsByDraftId.mockResolvedValue([{ status: 'approved' }]);
+    mockDraftRepo.findById.mockResolvedValue({ walletId });
+
+    await approvalService.rederiveDraftApprovalStatus(draftId);
+
+    expect(mockNotify.notifyApprovalResolved).toHaveBeenCalledWith(walletId, draftId, 'approved', null);
   });
 
   it('keeps the UTXO locks of an approved draft', async () => {
@@ -44,7 +70,9 @@ export function registerUpdateDraftApprovalFromRequestsContracts() {
 
     await approvalService.rederiveDraftApprovalStatus(draftId);
 
-    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'approved');
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'approved', {
+      allowedFrom: ['pending'],
+    });
     expect(mockDraftLockRepo.deleteByDraftId).not.toHaveBeenCalled();
   });
 
@@ -54,7 +82,19 @@ export function registerUpdateDraftApprovalFromRequestsContracts() {
 
     await approvalService.rederiveDraftApprovalStatus(draftId);
 
-    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'not_required');
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'not_required', {
+      allowedFrom: ['pending'],
+    });
+  });
+
+  it('ignores a draft deleted along with its approval requests', async () => {
+    mockPolicyRepo.findApprovalRequestsByDraftId.mockResolvedValue([]);
+    mockDraftRepo.findById.mockResolvedValue(null);
+
+    await approvalService.rederiveDraftApprovalStatus(draftId);
+
+    expect(mockDraftRepo.updateApprovalStatus).not.toHaveBeenCalled();
+    expect(mockNotify.notifyApprovalResolved).not.toHaveBeenCalled();
   });
 
   it('leaves a non-pending draft with no requests alone', async () => {
@@ -86,7 +126,10 @@ export function registerUpdateDraftApprovalFromRequestsContracts() {
 
     await approvalService.castVote(requestId, otherUserId, 'veto');
 
-    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'vetoed');
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'vetoed', {
+      allowedFrom: ['pending'],
+      client: mockTx,
+    });
   });
 
   it('updates draft to approved and sends notification when all requests are approved', async () => {
@@ -112,7 +155,11 @@ export function registerUpdateDraftApprovalFromRequestsContracts() {
 
     await approvalService.castVote(requestId, otherUserId, 'approve');
 
-    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'approved');
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'approved', {
+      allowedFrom: ['pending'],
+      approvedBy: otherUserId,
+      client: mockTx,
+    });
     expect(mockNotify.notifyApprovalResolved).toHaveBeenCalledWith(walletId, draftId, 'approved', null);
   });
 
@@ -139,35 +186,35 @@ export function registerUpdateDraftApprovalFromRequestsContracts() {
 
     await approvalService.castVote(requestId, otherUserId, 'approve');
 
-    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'approved');
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'approved', {
+      allowedFrom: ['pending'],
+      approvedBy: otherUserId,
+      client: mockTx,
+    });
     expect(mockNotify.notifyApprovalResolved).not.toHaveBeenCalled();
   });
 
-  it('does nothing when requests list is empty (early return)', async () => {
-    const updatedReq = {
+  it.each(['pending', 'approved'])('reconciles a %s draft in the vote transaction when all requests disappear', async approvalStatus => {
+    const updatedRequest = {
       ...pendingRequest,
       votes: [{ id: 'v1', userId: otherUserId, decision: 'reject' }],
     };
-
-    mockVoteRequestReads(
-      pendingRequest,
-      updatedReq,
-      'rejected',
-    );
+    mockVoteRequestReads(pendingRequest, updatedRequest, 'rejected');
     mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
-    mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId });
+    mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId, approvalStatus });
     mockPolicyRepo.createVote.mockResolvedValue({ id: 'v1', decision: 'reject' });
-    // First call resolves the request, second call from updateDraftApprovalFromRequests returns empty
     mockPolicyRepo.findApprovalRequestsByDraftId.mockResolvedValue([]);
 
     await approvalService.castVote(requestId, otherUserId, 'reject');
 
-    // resolveApprovalRequestIfPending called for the resolve, but not for draft status
-    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'rejected');
-    // updateApprovalStatus should NOT be called because requests.length === 0
-    // Only the resolveRequest call triggers resolveApprovalRequestIfPending
-    // The draft updateApprovalStatus should not be called in updateDraftApprovalFromRequests
-    // because requests is empty
+    if (approvalStatus === 'approved') {
+      expect(mockDraftRepo.updateApprovalStatus).not.toHaveBeenCalled();
+      return;
+    }
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'not_required', {
+      allowedFrom: ['pending'],
+      client: mockTx,
+    });
   });
 
   it('stays pending when requests have mixed pending/approved statuses', async () => {
@@ -193,7 +240,7 @@ export function registerUpdateDraftApprovalFromRequestsContracts() {
 
     await approvalService.castVote(requestId, otherUserId, 'approve');
 
-    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved', undefined, mockTx);
     // updateApprovalStatus should NOT be called for the draft because not all are approved
     // Count calls: first from resolveRequest inner updateDraftApprovalFromRequests
     // Since we have approved + pending, none of the branches (rejected/vetoed/all approved) match

@@ -54,6 +54,9 @@ export async function initiateTransfer(
       throw new ForbiddenError(`You are not the owner of this ${resourceType}`);
     }
 
+    // Lazily expire overdue transfers for this resource before checking active ones
+    await transferRepository.expireOverdueForResource(resourceType, resourceId, tx);
+
     // Validation: check no active transfer exists for this resource
     // This check is inside the transaction to prevent TOCTOU race condition
     const hasActive = await transferRepository.hasActiveTransfer(resourceType, resourceId, tx);

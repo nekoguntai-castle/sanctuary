@@ -45,7 +45,7 @@ export function registerTwoFactorSetupContracts() {
       username: 'testuser',
       twoFactorEnabled: false,
     });
-    mockPrismaClient.user.update.mockResolvedValue({});
+    mockPrismaClient.user.updateMany.mockResolvedValue({ count: 1 });
 
     const response = await request(app)
       .post('/api/v1/auth/2fa/setup')
@@ -55,7 +55,8 @@ export function registerTwoFactorSetupContracts() {
     // The manual-entry code is the base32 secret; only the ciphertext is stored.
     expect(response.body.secret).toBe('JBSWY3DPEHPK3PXP');
     expect(response.body.qrCodeDataUrl).toBeDefined();
-    expect(mockPrismaClient.user.update).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mockPrismaClient.user.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'test-user-id', twoFactorEnabled: false },
       data: expect.objectContaining({ twoFactorSecret: 'iv:tag:ct' }),
     }));
 
@@ -74,6 +75,21 @@ export function registerTwoFactorSetupContracts() {
 
     expect(response.status).toBe(500);
     expect(response.body.code).toBe('INTERNAL_ERROR');
+  });
+
+  it('should return 409 Conflict when 2FA is enabled concurrently during setup', async () => {
+    mockPrismaClient.user.findUnique.mockResolvedValue({
+      id: 'test-user-id',
+      username: 'testuser',
+      twoFactorEnabled: false,
+    });
+    mockPrismaClient.user.updateMany.mockResolvedValue({ count: 0 });
+
+    const response = await request(app)
+      .post('/api/v1/auth/2fa/setup')
+      .send({});
+
+    expect(response.status).toBe(409);
   });
 }
 
@@ -197,7 +213,7 @@ export function registerTwoFactorEnableContracts() {
       twoFactorSecret: 'some-secret',
       twoFactorEnabled: false,
     });
-    mockPrismaClient.user.update.mockResolvedValue({});
+    mockPrismaClient.user.updateMany.mockResolvedValue({ count: 1 });
 
     const response = await request(app)
       .post('/api/v1/auth/2fa/enable')
@@ -217,5 +233,21 @@ export function registerTwoFactorEnableContracts() {
 
     expect(response.status).toBe(500);
     expect(response.body.code).toBe('INTERNAL_ERROR');
+  });
+
+  it('should return 409 Conflict when the pending secret changed concurrently before enable commits', async () => {
+    mockPrismaClient.user.findUnique.mockResolvedValue({
+      id: 'test-user-id',
+      username: 'testuser',
+      twoFactorSecret: 'secret-s1',
+      twoFactorEnabled: false,
+    });
+    mockPrismaClient.user.updateMany.mockResolvedValue({ count: 0 });
+
+    const response = await request(app)
+      .post('/api/v1/auth/2fa/enable')
+      .send({ token: '123456' });
+
+    expect(response.status).toBe(409);
   });
 }

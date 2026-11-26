@@ -226,6 +226,25 @@ export const registerTransferStateChangeContracts = () => {
         declineTransfer(recipientId, transferId, 'no')
       ).rejects.toThrow(/current status: unknown/i);
     });
+
+    it('should lazily expire and reject declining an overdue pending transfer', async () => {
+      mockPrismaClient.ownershipTransfer.findUnique.mockResolvedValue({
+        id: transferId,
+        toUserId: recipientId,
+        status: 'pending',
+        expiresAt: new Date(Date.now() - 1000),
+      });
+      mockPrismaClient.ownershipTransfer.updateMany.mockResolvedValue({ count: 1 });
+
+      await expect(
+        declineTransfer(recipientId, transferId, 'too late')
+      ).rejects.toThrow(/expired/i);
+
+      expect(mockPrismaClient.ownershipTransfer.updateMany).toHaveBeenCalledWith({
+        where: { id: transferId, status: { in: ['pending', 'accepted'] } },
+        data: { status: 'expired' },
+      });
+    });
   });
 
   describe('cancelTransfer', () => {
@@ -338,6 +357,25 @@ export const registerTransferStateChangeContracts = () => {
       await expect(
         cancelTransfer(ownerId, transferId)
       ).rejects.toThrow(/current status: unknown/i);
+    });
+
+    it('should lazily expire and reject cancelling an overdue pending or accepted transfer', async () => {
+      mockPrismaClient.ownershipTransfer.findUnique.mockResolvedValue({
+        id: transferId,
+        fromUserId: ownerId,
+        status: 'accepted',
+        expiresAt: new Date(Date.now() - 1000),
+      });
+      mockPrismaClient.ownershipTransfer.updateMany.mockResolvedValue({ count: 1 });
+
+      await expect(
+        cancelTransfer(ownerId, transferId)
+      ).rejects.toThrow(/expired/i);
+
+      expect(mockPrismaClient.ownershipTransfer.updateMany).toHaveBeenCalledWith({
+        where: { id: transferId, status: { in: ['pending', 'accepted'] } },
+        data: { status: 'expired' },
+      });
     });
   });
 };

@@ -295,10 +295,13 @@ describe('mobileAgentDraftService', () => {
 
     it('declines an unpolicied draft directly and returns the rejected review payload', async () => {
       (draftRepository.findPendingAgentDraftByIdForUser as Mock).mockResolvedValue(makeDraft());
+      (draftRepository.updateApprovalStatus as Mock).mockResolvedValue(true);
 
       const result = await mobileAgentDraftService.rejectAgentFundingDraft('user-1', 'draft-1', 'Not expected');
 
-      expect(draftRepository.updateApprovalStatus).toHaveBeenCalledWith('draft-1', 'rejected');
+      expect(draftRepository.updateApprovalStatus).toHaveBeenCalledWith('draft-1', 'rejected', {
+        allowedFrom: ['not_required'],
+      });
       // A rejected draft can never broadcast, so its UTXOs are released.
       expect(draftLockRepository.deleteByDraftId).toHaveBeenCalledWith('draft-1');
       expect(approvalService.castVote).not.toHaveBeenCalled();
@@ -311,6 +314,19 @@ describe('mobileAgentDraftService', () => {
           approvalStatus: 'rejected',
         },
       });
+    });
+
+    it('throws ConflictError and preserves locks when rejecting an unpolicied draft loses the CAS (e.g. concurrently broadcasted)', async () => {
+      (draftRepository.findPendingAgentDraftByIdForUser as Mock).mockResolvedValue(makeDraft());
+      (draftRepository.updateApprovalStatus as Mock).mockResolvedValue(false);
+
+      await expect(mobileAgentDraftService.rejectAgentFundingDraft('user-1', 'draft-1', 'Too late'))
+        .rejects.toThrow(ConflictError);
+
+      expect(draftRepository.updateApprovalStatus).toHaveBeenCalledWith('draft-1', 'rejected', {
+        allowedFrom: ['not_required'],
+      });
+      expect(draftLockRepository.deleteByDraftId).not.toHaveBeenCalled();
     });
 
     it('casts a reject vote on the pending approval request instead of writing the draft status', async () => {
@@ -543,6 +559,7 @@ describe('mobileAgentDraftService', () => {
 
   it('returns not found when a rejected draft cannot be loaded after status update', async () => {
     (draftRepository.findPendingAgentDraftByIdForUser as Mock).mockResolvedValue(makeDraft());
+    (draftRepository.updateApprovalStatus as Mock).mockResolvedValue(true);
     (draftRepository.findAgentDraftByIdForUser as Mock).mockResolvedValue(null);
     (approvalService.getApprovalsForDraft as Mock).mockResolvedValue([]);
     (mobilePermissionService.getEffectivePermissions as Mock).mockResolvedValue({

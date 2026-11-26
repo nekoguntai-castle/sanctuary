@@ -228,7 +228,9 @@ describe('resolveReplacementLinkAfterBroadcast', () => {
       where: {
         id: 'original-id',
         walletId,
-        rbfStatus: { not: 'replaced' },
+        rbfStatus: 'active',
+        confirmations: 0,
+        blockHeight: null,
         replacedByTxid: null,
       },
       data: {

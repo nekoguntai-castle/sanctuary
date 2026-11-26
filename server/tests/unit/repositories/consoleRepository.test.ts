@@ -87,10 +87,19 @@ describe("consoleRepository", () => {
       },
     });
     expect(prisma.consoleSession.findFirst).toHaveBeenCalledWith({
-      where: { id: sessionId, userId, deletedAt: null },
+      where: {
+        id: sessionId,
+        userId,
+        deletedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: expect.any(Date) } }],
+      },
     });
     expect(prisma.consoleSession.findMany).toHaveBeenCalledWith({
-      where: { userId, deletedAt: null },
+      where: {
+        userId,
+        deletedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: expect.any(Date) } }],
+      },
       orderBy: { updatedAt: "desc" },
       take: 10,
       skip: 5,
@@ -136,7 +145,11 @@ describe("consoleRepository", () => {
         data: { deletedAt, saved: false },
       });
       expect(prisma.consoleSession.findMany).toHaveBeenCalledWith({
-        where: { userId, deletedAt: null },
+        where: {
+          userId,
+          deletedAt: null,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: deletedAt } }],
+        },
         orderBy: { updatedAt: "desc" },
         take: 10,
         skip: 0,

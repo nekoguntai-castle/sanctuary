@@ -232,7 +232,7 @@ export function registerTwoFactorBackupCodeRegenerateContracts() {
       twoFactorEnabled: true,
       twoFactorSecret: 'some-secret',
     });
-    mockPrismaClient.user.update.mockResolvedValue({});
+    mockPrismaClient.user.updateMany.mockResolvedValue({ count: 1 });
 
     // Reset and explicitly set verifyTokenStep to return valid
     const twoFactorService = await import('../../../../src/services/twoFactorService');
@@ -269,5 +269,28 @@ export function registerTwoFactorBackupCodeRegenerateContracts() {
 
     expect(response.status).toBe(500);
     expect(response.body.code).toBe('INTERNAL_ERROR');
+  });
+
+  it('should return 409 Conflict when 2FA is disabled concurrently before backup-code regeneration commits', async () => {
+    const correctPassword = 'CorrectPassword123!';
+    const hashedPassword = await hashPassword(correctPassword);
+
+    mockPrismaClient.user.findUnique.mockResolvedValue({
+      id: 'test-user-id',
+      username: 'testuser',
+      password: hashedPassword,
+      twoFactorEnabled: true,
+      twoFactorSecret: 'some-secret',
+    });
+    mockPrismaClient.user.updateMany.mockResolvedValue({ count: 0 });
+
+    const twoFactorService = await import('../../../../src/services/twoFactorService');
+    vi.mocked(twoFactorService.verifyTokenStep).mockReturnValueOnce({ valid: true, timeStep: 1 });
+
+    const response = await request(app)
+      .post('/api/v1/auth/2fa/backup-codes/regenerate')
+      .send({ password: correctPassword, token: '123456' });
+
+    expect(response.status).toBe(409);
   });
 }

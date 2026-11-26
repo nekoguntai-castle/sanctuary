@@ -1,7 +1,7 @@
 import { faker } from '@faker-js/faker';
 import { expect, it } from 'vitest';
 
-import { mockVoteRequestReads, draftId, makePendingRequest, mockDraftRepo, mockLog, mockPolicyRepo, mockWalletSharingRepo, otherUserId, requestId, walletId } from './approvalServiceTestHarness';
+import { mockTx, mockVoteRequestReads, draftId, makePendingRequest, mockDraftRepo, mockLog, mockPolicyRepo, mockWalletSharingRepo, otherUserId, requestId, walletId } from './approvalServiceTestHarness';
 import { approvalService } from '../../../../src/services/vaultPolicy/approvalService';
 
 export function registerCastVoteGuardContracts() {
@@ -41,7 +41,7 @@ export function registerCastVoteGuardContracts() {
     ).rejects.toThrow('expired');
 
     // Should have resolved request as expired
-    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'expired');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'expired', undefined, mockTx);
     expect(mockLog.info).toHaveBeenCalledWith('Approval request resolved', { requestId, status: 'expired' });
   });
 
@@ -94,7 +94,7 @@ export function registerCastVoteGuardContracts() {
     const { vote } = await approvalService.castVote(requestId, creatorId, 'approve');
 
     expect(vote.decision).toBe('approve');
-    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved', undefined, mockTx);
   });
 
   it('records approve vote (happy path, quorum not yet met)', async () => {
@@ -126,7 +126,8 @@ export function registerCastVoteGuardContracts() {
         userId: otherUserId,
         decision: 'approve',
         reason: 'Looks good',
-      })
+      }),
+      mockTx
     );
     expect(mockLog.info).toHaveBeenCalledWith('Vote cast', expect.objectContaining({
       requestId,

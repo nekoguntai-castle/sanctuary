@@ -8,7 +8,9 @@ const vaultPolicyMocks = vi.hoisted(() => ({
     warn: vi.fn(),
     debug: vi.fn(),
   },
+  mockTx: { _tx: true },
   mockPolicyRepo: {
+    withTransaction: vi.fn(),
     findPoliciesByWalletId: vi.fn(),
     findAllPoliciesForWallet: vi.fn(),
     findSystemPolicies: vi.fn(),
@@ -26,6 +28,9 @@ const vaultPolicyMocks = vi.hoisted(() => ({
     findPolicyAddressById: vi.fn(),
     removePolicyAddress: vi.fn(),
   },
+  mockDraftRepo: {
+    lockDraftsForUpdate: vi.fn().mockResolvedValue([]),
+  },
   mockWalletRepo: {
     findById: vi.fn(),
     findNetwork: vi.fn(),
@@ -36,7 +41,9 @@ const vaultPolicyMocks = vi.hoisted(() => ({
 }));
 
 export const mockLog = vaultPolicyMocks.mockLog;
+export const mockTx = vaultPolicyMocks.mockTx;
 export const mockPolicyRepo = vaultPolicyMocks.mockPolicyRepo;
+export const mockDraftRepo = vaultPolicyMocks.mockDraftRepo;
 export const mockWalletRepo = vaultPolicyMocks.mockWalletRepo;
 export const mockApprovalService = vaultPolicyMocks.mockApprovalService;
 
@@ -46,6 +53,10 @@ vi.mock('../../../../src/utils/logger', () => ({
 
 vi.mock('../../../../src/repositories/policyRepository', () => ({
   policyRepository: vaultPolicyMocks.mockPolicyRepo,
+}));
+
+vi.mock('../../../../src/repositories/draftRepository', () => ({
+  draftRepository: vaultPolicyMocks.mockDraftRepo,
 }));
 
 vi.mock('../../../../src/repositories/walletRepository', () => ({
@@ -74,6 +85,11 @@ export function registerVaultPolicyServiceTestHarness(): void {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPolicyRepo.withTransaction.mockImplementation(
+      (operation: (tx: unknown) => Promise<unknown>) => operation(mockTx)
+    );
+    mockPolicyRepo.findPendingDraftIdsWithApprovalRequestsForPolicy.mockResolvedValue([]);
+    mockDraftRepo.lockDraftsForUpdate.mockResolvedValue([]);
     mockWalletRepo.findNetwork.mockResolvedValue('testnet');
   });
 }

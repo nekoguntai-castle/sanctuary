@@ -15,7 +15,7 @@ import { DEFAULT_CONFIRMATION_THRESHOLD } from '../../constants';
 import { bigIntToNumberOrZero } from '../../utils/errors';
 import { extractPagination, setTruncationHeaders } from '../../utils/pagination';
 import { asyncHandler } from '../../errors/errorHandler';
-import { NotFoundError, ForbiddenError } from '../../errors/ApiError';
+import { ConflictError, NotFoundError, ForbiddenError } from '../../errors/ApiError';
 import { requireAuthenticatedUser } from '../../middleware/auth';
 
 const router = Router();
@@ -107,8 +107,14 @@ router.patch('/utxos/:utxoId/freeze', validate(
     throw new ForbiddenError('You do not have permission to modify UTXOs in this wallet');
   }
 
-  // Update the frozen status
-  const updatedUtxo = await utxoRepository.updateById(utxoId, { frozen });
+  // Update the frozen status; refuse freezing a spent or draft-locked UTXO atomically
+  const updatedUtxo = await (frozen
+    ? utxoRepository.freezeIfUnspentAndUnlocked(utxoId)
+    : utxoRepository.updateById(utxoId, { frozen: false }));
+
+  if (!updatedUtxo) {
+    throw new ConflictError('Cannot freeze a spent or draft-locked UTXO');
+  }
 
   res.json({
     id: updatedUtxo.id,

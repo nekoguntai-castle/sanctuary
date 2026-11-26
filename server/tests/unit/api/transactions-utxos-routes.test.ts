@@ -364,19 +364,19 @@ describe('Transactions UTXO Routes', () => {
       wallet: { users: [{ userId: 'user-1' }] },
     } as any);
 
-    mockPrismaClient.uTXO.update
-      .mockResolvedValueOnce({
-        id: 'utxo-1',
-        txid: 'tx-1',
-        vout: 0,
-        frozen: true,
-      })
-      .mockResolvedValueOnce({
-        id: 'utxo-1',
-        txid: 'tx-1',
-        vout: 0,
-        frozen: false,
-      });
+    mockPrismaClient.uTXO.updateMany.mockResolvedValueOnce({ count: 1 });
+    mockPrismaClient.uTXO.findUnique.mockResolvedValueOnce({
+      id: 'utxo-1',
+      txid: 'tx-1',
+      vout: 0,
+      frozen: true,
+    } as any);
+    mockPrismaClient.uTXO.update.mockResolvedValueOnce({
+      id: 'utxo-1',
+      txid: 'tx-1',
+      vout: 0,
+      frozen: false,
+    });
 
     const freezeResponse = await request(app)
       .patch('/api/v1/utxos/utxo-1/freeze')
@@ -391,6 +391,10 @@ describe('Transactions UTXO Routes', () => {
       frozen: true,
       message: 'UTXO frozen successfully',
     });
+    expect(mockPrismaClient.uTXO.updateMany).toHaveBeenCalledWith({
+      where: { id: 'utxo-1', spent: false, draftLock: null },
+      data: { frozen: true },
+    });
 
     expect(unfreezeResponse.status).toBe(200);
     expect(unfreezeResponse.body).toMatchObject({
@@ -399,6 +403,29 @@ describe('Transactions UTXO Routes', () => {
       message: 'UTXO unfrozen successfully',
     });
     expect(mockCheckWalletAccess).toHaveBeenCalledWith('wallet-1', 'user-1');
+  });
+
+  it('returns 409 Conflict when trying to freeze a spent or draft-locked UTXO', async () => {
+    mockPrismaClient.uTXO.findFirst.mockResolvedValue({
+      id: 'utxo-1',
+      walletId: 'wallet-1',
+      txid: 'tx-1',
+      vout: 0,
+      wallet: { users: [{ userId: 'user-1' }] },
+    } as any);
+    mockPrismaClient.uTXO.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    const response = await request(app)
+      .patch('/api/v1/utxos/utxo-1/freeze')
+      .send({ frozen: true });
+
+    expect(response.status).toBe(409);
+    expect(response.body.message).toMatch(/spent|draft-locked/i);
+    expect(mockPrismaClient.uTXO.updateMany).toHaveBeenCalledWith({
+      where: { id: 'utxo-1', spent: false, draftLock: null },
+      data: { frozen: true },
+    });
+    expect(mockPrismaClient.uTXO.findUnique).not.toHaveBeenCalled();
   });
 
   it('returns 500 when freezing UTXO fails unexpectedly', async () => {

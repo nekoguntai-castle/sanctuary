@@ -176,7 +176,7 @@ describe('Transfer Repository', () => {
       );
     });
 
-    it('should filter by active status', async () => {
+    it('should filter by active status including live expiry check', async () => {
       (prisma.ownershipTransfer.findMany as Mock).mockResolvedValue([]);
 
       await transferRepository.findByUser('user-1', { status: 'active' });
@@ -185,6 +185,7 @@ describe('Transfer Repository', () => {
         expect.objectContaining({
           where: expect.objectContaining({
             status: { in: ['pending', 'accepted'] },
+            expiresAt: { gt: expect.any(Date) },
           }),
         })
       );
@@ -274,6 +275,7 @@ describe('Transfer Repository', () => {
           resourceType: 'wallet',
           resourceId: 'wallet-1',
           status: { in: ['pending', 'accepted'] },
+          expiresAt: { gt: expect.any(Date) },
         },
       });
     });
@@ -402,7 +404,7 @@ describe('Transfer Repository', () => {
   });
 
   describe('getPendingIncomingCount', () => {
-    it('should count pending incoming transfers', async () => {
+    it('should count live pending incoming transfers', async () => {
       (prisma.ownershipTransfer.count as Mock).mockResolvedValue(3);
 
       const result = await transferRepository.getPendingIncomingCount('user-2');
@@ -412,13 +414,14 @@ describe('Transfer Repository', () => {
         where: {
           toUserId: 'user-2',
           status: 'pending',
+          expiresAt: { gt: expect.any(Date) },
         },
       });
     });
   });
 
   describe('getAwaitingConfirmationCount', () => {
-    it('should count transfers awaiting owner confirmation', async () => {
+    it('should count live transfers awaiting owner confirmation', async () => {
       (prisma.ownershipTransfer.count as Mock).mockResolvedValue(2);
 
       const result = await transferRepository.getAwaitingConfirmationCount('user-1');
@@ -428,6 +431,7 @@ describe('Transfer Repository', () => {
         where: {
           fromUserId: 'user-1',
           status: 'accepted',
+          expiresAt: { gt: expect.any(Date) },
         },
       });
     });
@@ -546,6 +550,22 @@ describe('Transfer Repository', () => {
       );
 
       expect(mockTx.ownershipTransfer.update).toHaveBeenCalled();
+    });
+  });
+
+  it('expires only overdue live transfers for the given resource without an explicit transaction', async () => {
+    const now = new Date('2026-01-01T00:00:00Z');
+    (prisma.ownershipTransfer.updateMany as Mock).mockResolvedValue({ count: 2 });
+
+    await expect(transferRepository.expireOverdueForResource('wallet', 'w1', undefined, now)).resolves.toBe(2);
+    expect(prisma.ownershipTransfer.updateMany).toHaveBeenCalledWith({
+      where: {
+        resourceType: 'wallet',
+        resourceId: 'w1',
+        status: { in: ['pending', 'accepted'] },
+        expiresAt: { lte: now },
+      },
+      data: { status: 'expired' },
     });
   });
 

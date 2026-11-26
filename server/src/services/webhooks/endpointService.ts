@@ -238,8 +238,22 @@ export async function replayWalletWebhookDelivery(
   if (!delivery || delivery.walletId !== walletId || delivery.endpointId !== endpointId) {
     return null;
   }
+  if (!delivery.endpoint.enabled) {
+    throw new ConflictError(
+      'Webhook endpoint is disabled; enable it before replaying deliveries',
+      undefined,
+      { deliveryId: delivery.id, reason: 'endpoint_disabled' },
+    );
+  }
 
   const replayReset = await webhookRepository.markDeliveryPendingForReplay(delivery.id);
+  if (replayReset.refusal === 'endpoint_disabled') {
+    throw new ConflictError(
+      'Webhook endpoint is disabled; enable it before replaying deliveries',
+      undefined,
+      { deliveryId: delivery.id, reason: 'endpoint_disabled' },
+    );
+  }
   if (replayReset.refusal === 'endpoint_identity_changed') {
     throw new ConflictError(
       'Webhook delivery was retired because the endpoint destination or signing secret changed; it cannot be replayed',

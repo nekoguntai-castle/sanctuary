@@ -918,6 +918,18 @@ describe('transaction signing-intent broadcast route', () => {
       }));
     });
 
+    it('rejects broadcasting an expired draft with 409 Conflict', async () => {
+      mocks.findLinkedDraft.mockResolvedValue(draft({
+        approvalStatus: 'approved',
+        expiresAt: new Date(Date.now() - 60_000),
+      }));
+      const response = await request(app)
+        .post('/api/v1/wallets/wallet-1/transactions/broadcast')
+        .send(body);
+      expect(response.status).toBe(409);
+      expect(mocks.broadcastAndSave).not.toHaveBeenCalled();
+    });
+
     it('does not fall back to any draft field for replacesTxid when the request omits it', async () => {
       // Unlike label/memo, replacesTxid has no draft-persisted column to fall
       // back to (see CreateDraftRequest.replacesTxid in src/api/drafts.ts) -

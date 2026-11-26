@@ -330,8 +330,12 @@ export async function findAgents(filter: FindWalletAgentsFilter = {}): Promise<W
   });
 }
 
-export async function findAgentById(agentId: string): Promise<WalletAgent | null> {
-  return prisma.walletAgent.findUnique({
+export async function findAgentById(
+  agentId: string,
+  client?: Pick<AgentFundingDbClient, 'walletAgent'>
+): Promise<WalletAgent | null> {
+  const db = client ?? prisma;
+  return db.walletAgent.findUnique({
     where: { id: agentId },
   });
 }
@@ -442,6 +446,10 @@ export async function revokeAgentWithApiKeys(
     await tx.agentApiKey.updateMany({
       where: { agentId, revokedAt: null },
       data: { revokedAt },
+    });
+    await tx.agentFundingOverride.updateMany({
+      where: { agentId, status: 'active', revokedAt: null, usedAt: null },
+      data: { status: 'revoked', revokedAt },
     });
     const agent = await tx.walletAgent.findUnique({ where: { id: agentId } });
     return { agent, alreadyRevoked: count === 0 };
@@ -621,8 +629,12 @@ export async function transitionAlertStatus(
   return { alert, changed: count > 0 };
 }
 
-export async function createFundingOverride(input: CreateAgentFundingOverrideInput): Promise<AgentFundingOverride> {
-  return prisma.agentFundingOverride.create({
+export async function createFundingOverride(
+  input: CreateAgentFundingOverrideInput,
+  client?: Pick<AgentFundingDbClient, 'agentFundingOverride'>
+): Promise<AgentFundingOverride> {
+  const db = client ?? prisma;
+  return db.agentFundingOverride.create({
     data: {
       agentId: input.agentId,
       fundingWalletId: input.fundingWalletId,
@@ -640,6 +652,7 @@ export async function findFundingOverrides(filter: FindAgentFundingOverridesFilt
     where: {
       agentId: filter.agentId,
       ...(filter.status && { status: filter.status }),
+      ...(filter.status === 'active' && { expiresAt: { gt: new Date() } }),
     },
     orderBy: { createdAt: 'desc' },
     take: filter.limit,
@@ -673,18 +686,20 @@ export async function markFundingOverrideUsed(
   client?: Pick<AgentFundingDbClient, 'agentFundingOverride'>
 ): Promise<AgentFundingOverride> {
   const db = client ?? prisma;
+  const now = new Date();
   // Conditional update claims the override atomically so concurrent draft
-  // creation or admin revocation cannot consume the same owner override twice.
+  // creation, expiry, or admin revocation cannot consume the same owner override twice.
   const result = await db.agentFundingOverride.updateMany({
     where: {
       id,
       status: 'active',
       revokedAt: null,
       usedAt: null,
+      expiresAt: { gt: now },
     },
     data: {
       status: 'used',
-      usedAt: new Date(),
+      usedAt: now,
       usedDraftId: draftId,
     },
   });
@@ -717,8 +732,12 @@ export async function revokeFundingOverride(
   return { override, revoked: count === 1 };
 }
 
-export async function createApiKey(input: CreateAgentApiKeyInput): Promise<AgentApiKey> {
-  return prisma.agentApiKey.create({
+export async function createApiKey(
+  input: CreateAgentApiKeyInput,
+  client?: Pick<AgentFundingTransactionClient, 'agentApiKey'>
+): Promise<AgentApiKey> {
+  const db = client ?? prisma;
+  return db.agentApiKey.create({
     data: {
       agentId: input.agentId,
       createdByUserId: input.createdByUserId ?? null,

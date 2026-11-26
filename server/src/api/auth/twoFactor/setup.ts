@@ -12,7 +12,7 @@ import { auditService, AuditAction, AuditCategory } from '../../../services/audi
 import { authenticate, requireAuthenticatedUser } from '../../../middleware/auth';
 import { validate } from '../../../middleware/validate';
 import { asyncHandler } from '../../../errors/errorHandler';
-import { NotFoundError, InvalidInputError } from '../../../errors/ApiError';
+import { ConflictError, NotFoundError, InvalidInputError } from '../../../errors/ApiError';
 import { TwoFactorEnableSchema } from '../../schemas/auth';
 
 /**
@@ -41,7 +41,10 @@ export function createSetupRouter(): Router {
       await twoFactorService.generateSecret(user.username);
 
     // Store only the encrypted secret, temporarily (not enabled yet)
-    await userRepository.update(user.id, { twoFactorSecret: encryptedSecret });
+    const secretStored = await userRepository.setTwoFactorSecretIfDisabled(user.id, encryptedSecret);
+    if (!secretStored) {
+      throw new ConflictError('2FA state changed concurrently; please retry');
+    }
 
     // Audit 2FA setup started
     await auditService.logFromRequest(req, AuditAction.TWO_FACTOR_SETUP, AuditCategory.AUTH, {
@@ -86,11 +89,15 @@ export function createSetupRouter(): Router {
     const backupCodes = twoFactorService.generateBackupCodes();
     const hashedBackupCodes = await twoFactorService.hashBackupCodes(backupCodes);
 
-    // Enable 2FA
-    await userRepository.update(user.id, {
-      twoFactorEnabled: true,
-      twoFactorBackupCodes: hashedBackupCodes,
-    });
+    // Enable 2FA atomically only if the verified secret is still current and disabled
+    const enabled = await userRepository.enableTwoFactorIfSecretMatches(
+      user.id,
+      user.twoFactorSecret,
+      hashedBackupCodes
+    );
+    if (!enabled) {
+      throw new ConflictError('2FA setup changed concurrently; please restart setup');
+    }
 
     // Audit 2FA enabled
     await auditService.logFromRequest(req, AuditAction.TWO_FACTOR_ENABLED, AuditCategory.AUTH, {

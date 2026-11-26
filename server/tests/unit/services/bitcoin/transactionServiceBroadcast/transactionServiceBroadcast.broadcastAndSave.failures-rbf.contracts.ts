@@ -102,7 +102,9 @@ export const registerBroadcastAndSaveFailureAndRbfContracts = () => {
         expect.objectContaining({
           where: expect.objectContaining({
             id: 'original-tx-db-id',
-            rbfStatus: { not: 'replaced' },
+            rbfStatus: 'active',
+            confirmations: 0,
+            blockHeight: null,
             replacedByTxid: null,
           }),
           data: expect.objectContaining({

@@ -120,6 +120,7 @@ describe("Admin wallet agent route controls", () => {
         reason: "emergency refill",
         expiresAt: expect.any(Date),
       }),
+      expect.anything(),
     );
     expect(mocks.logFromRequest).toHaveBeenCalledWith(
       expect.anything(),
@@ -308,6 +309,7 @@ describe("Admin wallet agent route controls", () => {
         scope: { allowedActions: ["create_funding_draft"] },
         expiresAt: expect.any(Date),
       }),
+      expect.anything(),
     );
 
     mocks.agentRepository.findApiKeyById.mockResolvedValueOnce(keyFixture());

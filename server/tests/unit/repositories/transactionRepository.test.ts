@@ -737,7 +737,7 @@ describe('Transaction Repository', () => {
   });
 
   describe('linkReplacementIfUnreplaced', () => {
-    it('performs a compare-and-swap update guarded by rbfStatus and replacedByTxid', async () => {
+    it('performs a compare-and-swap update guarded by unconfirmed status, rbfStatus active, and replacedByTxid', async () => {
       (prisma.transaction.updateMany as Mock).mockResolvedValue({ count: 1 });
 
       await expect(transactionRepository.linkReplacementIfUnreplaced(
@@ -750,7 +750,9 @@ describe('Transaction Repository', () => {
         where: {
           id: 'original-id',
           walletId: 'wallet-1',
-          rbfStatus: { not: 'replaced' },
+          confirmations: 0,
+          blockHeight: null,
+          rbfStatus: 'active',
           replacedByTxid: null,
         },
         data: {

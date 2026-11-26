@@ -178,6 +178,8 @@ export async function resolveUtxoRefs(
   return db.uTXO.findMany({
     where: {
       walletId,
+      spent: false,
+      frozen: false,
       OR: refs.map(ref => ({ txid: ref.txid, vout: ref.vout })),
     },
     select: { id: true, txid: true, vout: true },

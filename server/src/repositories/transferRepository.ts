@@ -70,12 +70,23 @@ export async function findByIdWithUsers(
   });
 }
 
+/** Shared predicate for live (unexpired pending/accepted) transfers. */
+export function liveTransferWhere(
+  now: Date = new Date()
+): Prisma.OwnershipTransferWhereInput {
+  return {
+    status: { in: ['pending', 'accepted'] },
+    expiresAt: { gt: now },
+  };
+}
+
 /**
  * Build where clause for user transfer queries
  */
 function buildUserTransferWhere(
   userId: string,
-  filters: TransferQueryFilters = {}
+  filters: TransferQueryFilters = {},
+  now: Date = new Date()
 ): Prisma.OwnershipTransferWhereInput {
   const { role = 'all', status = 'all', resourceType } = filters;
   const where: Prisma.OwnershipTransferWhereInput = {};
@@ -91,7 +102,7 @@ function buildUserTransferWhere(
 
   // Status filter
   if (status === 'active') {
-    where.status = { in: ['pending', 'accepted'] };
+    Object.assign(where, liveTransferWhere(now));
   } else if (status !== 'all') {
     where.status = status;
   }
@@ -131,7 +142,7 @@ export async function countByUser(
 }
 
 /**
- * Check if a resource has an active transfer (pending or accepted)
+ * Check if a resource has an active (unexpired pending or accepted) transfer
  */
 export async function hasActiveTransfer(
   resourceType: string,
@@ -143,10 +154,34 @@ export async function hasActiveTransfer(
     where: {
       resourceType,
       resourceId,
-      status: { in: ['pending', 'accepted'] },
+      ...liveTransferWhere(),
     },
   });
   return count > 0;
+}
+
+/**
+ * Lazily expire overdue pending/accepted transfers for a single resource.
+ */
+export async function expireOverdueForResource(
+  resourceType: string,
+  resourceId: string,
+  tx?: PrismaTx,
+  now: Date = new Date()
+): Promise<number> {
+  const client = tx ?? prisma;
+  const result = await client.ownershipTransfer.updateMany({
+    where: {
+      resourceType,
+      resourceId,
+      status: { in: ['pending', 'accepted'] },
+      expiresAt: { lte: now },
+    },
+    data: {
+      status: 'expired',
+    },
+  });
+  return result.count;
 }
 
 /**
@@ -247,11 +282,12 @@ export async function lockResourceOwnership(
 }
 
 /**
- * Get count of pending incoming transfers for a user (notification badge)
+ * Get count of live pending incoming transfers for a user (notification badge)
  */
 export async function getPendingIncomingCount(userId: string): Promise<number> {
   return prisma.ownershipTransfer.count({
     where: {
+      ...liveTransferWhere(),
       toUserId: userId,
       status: 'pending',
     },
@@ -259,11 +295,12 @@ export async function getPendingIncomingCount(userId: string): Promise<number> {
 }
 
 /**
- * Get count of transfers awaiting owner confirmation (notification badge)
+ * Get count of live transfers awaiting owner confirmation (notification badge)
  */
 export async function getAwaitingConfirmationCount(userId: string): Promise<number> {
   return prisma.ownershipTransfer.count({
     where: {
+      ...liveTransferWhere(),
       fromUserId: userId,
       status: 'accepted',
     },
@@ -358,6 +395,8 @@ export const transferRepository = {
   findByUser,
   countByUser,
   hasActiveTransfer,
+  expireOverdueForResource,
+  liveTransferWhere,
   isDirectResourceOwner,
   isEffectiveResourceOwner,
   lockResourceOwnership,

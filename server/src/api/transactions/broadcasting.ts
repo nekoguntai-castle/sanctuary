@@ -55,6 +55,12 @@ const assertDraftAllowsBroadcast = (draft: NonNullable<BroadcastDraft>): void =>
       draftId: draft.id,
     });
   }
+  if (draft.expiresAt && draft.expiresAt <= new Date()) {
+    throw new ConflictError('Draft has expired and cannot be broadcast', undefined, {
+      reason: 'draft_expired',
+      draftId: draft.id,
+    });
+  }
   if (!APPROVED_STATUSES.has(draft.approvalStatus)) {
     throw new ForbiddenError('Draft approval is required before broadcast', undefined, {
       reason: draft.approvalStatus === 'rejected' ? 'approval_rejected' : 'pending_approval',

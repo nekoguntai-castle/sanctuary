@@ -1,7 +1,7 @@
 import { faker } from '@faker-js/faker';
 import { expect, it } from 'vitest';
 
-import { mockVoteRequestReads, makePendingRequest, mockDraftRepo, mockPolicyRepo, mockNotify, mockWalletSharingRepo, otherUserId, requestId, walletId } from './approvalServiceTestHarness';
+import { mockTx, mockVoteRequestReads, makePendingRequest, mockDraftRepo, mockPolicyRepo, mockNotify, mockWalletSharingRepo, otherUserId, requestId, walletId } from './approvalServiceTestHarness';
 import { approvalService } from '../../../../src/services/vaultPolicy/approvalService';
 
 export function registerCastVoteResolutionContracts() {
@@ -27,7 +27,7 @@ export function registerCastVoteResolutionContracts() {
 
     await approvalService.castVote(requestId, otherUserId, 'reject', 'Too risky');
 
-    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'rejected');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'rejected', undefined, mockTx);
   });
 
   it('records veto vote and triggers veto resolution', async () => {
@@ -50,7 +50,7 @@ export function registerCastVoteResolutionContracts() {
 
     await approvalService.castVote(requestId, otherUserId, 'veto', 'Absolutely not');
 
-    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'vetoed');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'vetoed', undefined, mockTx);
   });
 
   it('resolves request when any_n quorum is met', async () => {
@@ -76,7 +76,7 @@ export function registerCastVoteResolutionContracts() {
 
     await approvalService.castVote(requestId, otherUserId, 'approve');
 
-    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved', undefined, mockTx);
   });
 
   it('resolves request when all quorum is met', async () => {
@@ -113,7 +113,7 @@ export function registerCastVoteResolutionContracts() {
 
     await approvalService.castVote(requestId, otherUserId, 'approve');
 
-    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved', undefined, mockTx);
   });
 
   it('resolves request when specific quorum is met', async () => {
@@ -146,7 +146,7 @@ export function registerCastVoteResolutionContracts() {
 
     await approvalService.castVote(requestId, otherUserId, 'approve');
 
-    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved', undefined, mockTx);
   });
 
   it.each([
@@ -168,7 +168,7 @@ export function registerCastVoteResolutionContracts() {
 
     const result = await approvalService.castVote(requestId, otherUserId, decision);
 
-    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, status);
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, status, undefined, mockTx);
     expect(result.vote).toBe(vote);
     expect(result.request).toEqual(persisted);
     expect(afterVote.status).toBe('pending');
@@ -228,7 +228,7 @@ export function registerCastVoteResolutionContracts() {
       const result = await approvalService.castVote(requestId, otherUserId, decision);
 
       expect(result.request).toEqual(persisted);
-      expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, attemptedStatus);
+      expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, attemptedStatus, undefined, mockTx);
       expect(mockPolicyRepo.findApprovalRequestsByDraftId).not.toHaveBeenCalled();
       expect(mockDraftRepo.updateApprovalStatus).not.toHaveBeenCalled();
       expect(mockNotify.notifyApprovalResolved).not.toHaveBeenCalled();

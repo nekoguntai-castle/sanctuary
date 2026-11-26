@@ -4,8 +4,10 @@ import { faker } from '@faker-js/faker';
 import { InvalidInputError } from '../../../../src/errors/ApiError';
 import {
   mockApprovalService,
+  mockDraftRepo,
   mockLog,
   mockPolicyRepo,
+  mockTx,
   policyId,
   userId,
   vaultPolicyService,
@@ -115,19 +117,25 @@ export function registerVaultPolicyUpdateDeleteContracts(): void {
 
       await vaultPolicyService.deletePolicy(policyId, walletId);
 
-      expect(mockPolicyRepo.removePolicy).toHaveBeenCalledWith(policyId);
+      expect(mockPolicyRepo.withTransaction).toHaveBeenCalledTimes(1);
+      expect(mockPolicyRepo.removePolicy).toHaveBeenCalledWith(policyId, mockTx);
+      expect(mockDraftRepo.lockDraftsForUpdate).not.toHaveBeenCalled();
     });
 
-    it('re-derives the approval status of drafts whose requests the delete cascades away', async () => {
+    it('locks affected drafts, deletes the policy, and re-derives approvals inside one transaction', async () => {
       mockPolicyRepo.findPolicyById.mockResolvedValue({ id: policyId, walletId, sourceType: 'wallet' });
       mockPolicyRepo.findPendingDraftIdsWithApprovalRequestsForPolicy.mockResolvedValue(['draft-1', 'draft-2']);
 
       await vaultPolicyService.deletePolicy(policyId, walletId);
 
-      expect(mockPolicyRepo.findPendingDraftIdsWithApprovalRequestsForPolicy.mock.invocationCallOrder[0])
+      expect(mockPolicyRepo.withTransaction).toHaveBeenCalledTimes(1);
+      expect(mockPolicyRepo.findPendingDraftIdsWithApprovalRequestsForPolicy).toHaveBeenCalledWith(policyId, mockTx);
+      expect(mockDraftRepo.lockDraftsForUpdate).toHaveBeenCalledWith(['draft-1', 'draft-2'], mockTx);
+      expect(mockDraftRepo.lockDraftsForUpdate.mock.invocationCallOrder[0])
         .toBeLessThan(mockPolicyRepo.removePolicy.mock.invocationCallOrder[0]);
-      expect(mockApprovalService.rederiveDraftApprovalStatus).toHaveBeenCalledWith('draft-1');
-      expect(mockApprovalService.rederiveDraftApprovalStatus).toHaveBeenCalledWith('draft-2');
+      expect(mockPolicyRepo.removePolicy).toHaveBeenCalledWith(policyId, mockTx);
+      expect(mockApprovalService.rederiveDraftApprovalStatus).toHaveBeenCalledWith('draft-1', mockTx);
+      expect(mockApprovalService.rederiveDraftApprovalStatus).toHaveBeenCalledWith('draft-2', mockTx);
     });
 
     it('still completes the delete when re-deriving a draft fails', async () => {
@@ -183,7 +191,7 @@ export function registerVaultPolicyUpdateDeleteContracts(): void {
 
       await vaultPolicyService.deletePolicy(policyId);
 
-      expect(mockPolicyRepo.removePolicy).toHaveBeenCalledWith(policyId);
+      expect(mockPolicyRepo.removePolicy).toHaveBeenCalledWith(policyId, mockTx);
     });
   });
 

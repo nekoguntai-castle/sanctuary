@@ -61,6 +61,15 @@ export const registerTransferInitiateContracts = () => {
 
       expect(result.id).toBe(transferId);
       expect(result.status).toBe('pending');
+      expect(mockPrismaClient.ownershipTransfer.updateMany).toHaveBeenCalledWith({
+        where: {
+          resourceType: 'wallet',
+          resourceId: walletId,
+          status: { in: ['pending', 'accepted'] },
+          expiresAt: { lte: expect.any(Date) },
+        },
+        data: { status: 'expired' },
+      });
       expect(mockPrismaClient.ownershipTransfer.create).toHaveBeenCalled();
     });
 

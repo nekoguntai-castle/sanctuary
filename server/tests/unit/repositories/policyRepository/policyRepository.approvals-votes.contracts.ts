@@ -1,6 +1,8 @@
 import { prisma, type Mock } from './policyRepositoryTestHarness';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
+  lockApprovalRequestForUpdate,
+  withPolicyTransaction,
   findApprovalRequestsByDraftId,
   findPendingDraftIdsWithApprovalRequestsForPolicy,
   findPendingDraftIdsWithoutApprovalRequests,
@@ -16,6 +18,20 @@ import {
 } from '../../../../src/repositories/policyRepository';
 
 export const registerPolicyRepositoryApprovalVoteContracts = () => {
+  it('runs row locking through the policy transaction and reports missing requests', async () => {
+    const query = vi.fn().mockResolvedValueOnce([{ id: 'ar1' }]).mockResolvedValueOnce([]);
+    prisma.$transaction.mockImplementation(operation => operation({ $queryRaw: query }));
+
+    const results = await withPolicyTransaction(async tx => [
+      await lockApprovalRequestForUpdate('ar1', tx),
+      await lockApprovalRequestForUpdate('missing', tx),
+    ]);
+
+    expect(results).toEqual([true, false]);
+    expect(query.mock.calls.map(([statement]) => statement.values)).toEqual([['ar1'], ['missing']]);
+    expect(query.mock.calls[0][0].sql).toMatch(/FROM "approval_requests"\s+WHERE "id" = \?\s+FOR UPDATE/);
+  });
+
   describe('findPendingDraftIdsWithoutApprovalRequests', () => {
     it('finds actionable drafts pending approval with no request rows left', async () => {
       (prisma.draftTransaction.findMany as Mock).mockResolvedValue([{ id: 'draft-1' }]);

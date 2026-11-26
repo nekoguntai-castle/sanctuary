@@ -21,6 +21,7 @@ vi.mock('../../../src/models/prisma', () => ({
 
 import prisma from '../../../src/models/prisma';
 import {
+  lockDraftsForUpdate,
   create,
   countByStatus,
   countByWalletId,
@@ -45,6 +46,18 @@ import {
 describe('draftRepository', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('locks unique draft IDs in deterministic order and returns existing IDs', async () => {
+    const query = vi.fn().mockResolvedValue([{ id: 'a' }, { id: 'c' }]);
+    const tx = { $queryRaw: query } as unknown as Parameters<typeof lockDraftsForUpdate>[1];
+
+    await expect(lockDraftsForUpdate([], tx)).resolves.toEqual([]);
+    expect(query).not.toHaveBeenCalled();
+    await expect(lockDraftsForUpdate(['c', 'b', 'c', 'a'], tx)).resolves.toEqual(['a', 'c']);
+    const statement = query.mock.calls[0][0];
+    expect(statement.values).toEqual(['a', 'b', 'c']);
+    expect(statement.sql).toMatch(/FROM "draft_transactions"[\s\S]*ORDER BY "id" ASC\s+FOR UPDATE/);
   });
 
   it('owns draft transaction execution', async () => {
@@ -305,6 +318,11 @@ describe('draftRepository', () => {
       where: {
         id: 'd1',
         status: { in: ['unsigned', 'partial', 'signed'] },
+        approvalStatus: { notIn: ['rejected', 'vetoed', 'expired'] },
+        OR: [
+          { expiresAt: null },
+          { expiresAt: { gt: expect.any(Date) } },
+        ],
       },
       data: expect.objectContaining({
         status: 'partial',
@@ -325,6 +343,11 @@ describe('draftRepository', () => {
       where: {
         id: 'd1',
         status: { in: ['unsigned', 'partial', 'signed'] },
+        approvalStatus: { notIn: ['rejected', 'vetoed', 'expired'] },
+        OR: [
+          { expiresAt: null },
+          { expiresAt: { gt: expect.any(Date) } },
+        ],
       },
       data: expect.objectContaining({
         status: 'signed',
@@ -371,6 +394,11 @@ describe('draftRepository', () => {
       where: {
         id: 'd1',
         status: { in: ['unsigned', 'partial', 'signed'] },
+        approvalStatus: { notIn: ['rejected', 'vetoed', 'expired'] },
+        OR: [
+          { expiresAt: null },
+          { expiresAt: { gt: expect.any(Date) } },
+        ],
         updatedAt: new Date('2026-01-01T00:00:00.000Z'),
       },
       data: expect.objectContaining({
@@ -432,29 +460,105 @@ describe('draftRepository', () => {
   });
 
   describe('updateApprovalStatus', () => {
-    it('should update approval status without approvedAt for non-approved', async () => {
-      (prisma.draftTransaction.update as Mock).mockResolvedValue(undefined);
+    it('uses a transaction client passed directly by an existing caller', async () => {
+      const updateMany = vi.fn().mockResolvedValue({ count: 0 });
+      const client = { draftTransaction: { updateMany } } as unknown as typeof prisma;
 
-      await updateApprovalStatus('d1', 'rejected');
+      await expect(updateApprovalStatus('d1', 'rejected', client)).resolves.toBe(false);
 
-      expect(prisma.draftTransaction.update).toHaveBeenCalledWith({
-        where: { id: 'd1' },
+      expect(updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'd1',
+          status: { in: ['unsigned', 'partial', 'signed'] },
+          approvalStatus: { notIn: expect.arrayContaining(['rejected', 'vetoed', 'expired']) },
+        },
+        data: { approvalStatus: 'rejected' },
+      });
+      expect(prisma.draftTransaction.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('should atomically CAS actionable drafts without reversing terminal statuses', async () => {
+      (prisma.draftTransaction.updateMany as Mock).mockResolvedValue({ count: 1 });
+
+      const updated = await updateApprovalStatus('d1', 'rejected', { allowedFrom: ['pending'] });
+
+      expect(updated).toBe(true);
+      expect(prisma.draftTransaction.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'd1',
+          status: { in: ['unsigned', 'partial', 'signed'] },
+          approvalStatus: { in: ['pending'] },
+        },
         data: { approvalStatus: 'rejected' },
       });
     });
 
-    it('should set approvedAt when status is approved', async () => {
-      (prisma.draftTransaction.update as Mock).mockResolvedValue(undefined);
+    it('should return false when CAS guard does not match (e.g. broadcasted or already rejected)', async () => {
+      (prisma.draftTransaction.updateMany as Mock).mockResolvedValue({ count: 0 });
 
-      await updateApprovalStatus('d1', 'approved');
+      const updated = await updateApprovalStatus('d1', 'approved', { allowedFrom: ['pending'] });
 
-      expect(prisma.draftTransaction.update).toHaveBeenCalledWith({
-        where: { id: 'd1' },
+      expect(updated).toBe(false);
+    });
+
+    it('should set approvedAt and optional approvedBy when status is approved', async () => {
+      (prisma.draftTransaction.updateMany as Mock).mockResolvedValue({ count: 1 });
+
+      const updated = await updateApprovalStatus('d1', 'approved', {
+        allowedFrom: ['pending'],
+        approvedBy: 'approver-1',
+      });
+
+      expect(updated).toBe(true);
+      expect(prisma.draftTransaction.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'd1',
+          status: { in: ['unsigned', 'partial', 'signed'] },
+          approvalStatus: { in: ['pending'] },
+        },
         data: {
           approvalStatus: 'approved',
           approvedAt: expect.any(Date),
+          approvedBy: 'approver-1',
         },
       });
+    });
+
+    it('should guard against overwriting terminal approval statuses when allowedFrom is omitted', async () => {
+      (prisma.draftTransaction.updateMany as Mock).mockResolvedValue({ count: 1 });
+
+      const updated = await updateApprovalStatus('d1', 'pending');
+
+      expect(updated).toBe(true);
+      expect(prisma.draftTransaction.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'd1',
+          status: { in: ['unsigned', 'partial', 'signed'] },
+          approvalStatus: { notIn: ['rejected', 'vetoed', 'expired'] },
+        },
+        data: { approvalStatus: 'pending' },
+      });
+    });
+  });
+
+  it('update guards against resolved approvalStatus and expired drafts', async () => {
+    (prisma.draftTransaction.updateMany as Mock).mockResolvedValue({ count: 0 });
+
+    await expect(update('d1', { label: 'new' })).rejects.toThrow('DRAFT_UPDATE_CONFLICT');
+    expect(prisma.draftTransaction.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'd1',
+        status: { in: ['unsigned', 'partial', 'signed'] },
+        approvalStatus: { notIn: ['rejected', 'vetoed', 'expired'] },
+        OR: [
+          { expiresAt: null },
+          { expiresAt: { gt: expect.any(Date) } },
+        ],
+      },
+      data: expect.objectContaining({
+        label: 'new',
+        updatedAt: expect.any(Date),
+      }),
     });
   });
 

@@ -181,11 +181,11 @@ export function registerUpdateTransactionConfirmationsContracts() {
       { id: 't-reorged', txid: 'tx-reorged', oldConfirmations: 4,
         newConfirmations: 2, data: { confirmations: 2 } },
       { id: 't-unconfirmed', txid: 'tx-unconfirmed', oldConfirmations: 1,
-        newConfirmations: 0, data: { confirmations: 0 } },
+        newConfirmations: 0, data: { confirmations: 0, rbfStatus: 'active' } },
     ]);
   });
 
-  it('does not mutate RBF state when an authoritative height first confirms a transaction', async () => {
+  it('marks rbfStatus confirmed when an authoritative height first confirms a transaction', async () => {
     mockPrismaClient.systemSetting.findUnique.mockResolvedValue({ value: '100' });
     mockPrismaClient.transaction.findMany.mockResolvedValue([
       { id: 't-confirmed', txid: 'tx-confirmed', blockHeight: 100, confirmations: 0 },
@@ -195,7 +195,7 @@ export function registerUpdateTransactionConfirmationsContracts() {
 
     expect(committedTransactionPatches()).toEqual([{
       id: 't-confirmed', txid: 'tx-confirmed', oldConfirmations: 0,
-      newConfirmations: 1, data: { confirmations: 1 },
+      newConfirmations: 1, data: { confirmations: 1, rbfStatus: 'confirmed' },
     }]);
   });
 

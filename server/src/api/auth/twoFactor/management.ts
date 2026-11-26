@@ -14,7 +14,7 @@ import { authenticate, requireAuthenticatedUser } from '../../../middleware/auth
 import { rateLimitByUser } from '../../../middleware/rateLimit';
 import { validate } from '../../../middleware/validate';
 import { asyncHandler } from '../../../errors/errorHandler';
-import { NotFoundError, InvalidInputError, StepUpCredentialInvalidError } from '../../../errors/ApiError';
+import { ConflictError, NotFoundError, InvalidInputError, StepUpCredentialInvalidError } from '../../../errors/ApiError';
 import {
   BackupCodesRegenerateSchema,
   BackupCodesRequestSchema,
@@ -69,12 +69,11 @@ export function createManagementRouter(): Router {
       throw new StepUpCredentialInvalidError('Invalid 2FA code');
     }
 
-    // Disable 2FA
-    await userRepository.update(user.id, {
-      twoFactorEnabled: false,
-      twoFactorSecret: null,
-      twoFactorBackupCodes: null,
-    });
+    // Disable 2FA atomically only if enabled with the same secret that was verified
+    const disabled = await userRepository.disableTwoFactorIfSecretMatches(user.id, user.twoFactorSecret);
+    if (!disabled) {
+      throw new ConflictError('2FA state changed concurrently; please retry');
+    }
 
     // Audit 2FA disabled
     await auditService.logFromRequest(req, AuditAction.TWO_FACTOR_DISABLED, AuditCategory.AUTH, {
@@ -148,7 +147,14 @@ export function createManagementRouter(): Router {
     const backupCodes = twoFactorService.generateBackupCodes();
     const hashedBackupCodes = await twoFactorService.hashBackupCodes(backupCodes);
 
-    await userRepository.update(user.id, { twoFactorBackupCodes: hashedBackupCodes });
+    const updated = await userRepository.updateBackupCodesIfEnabled(
+      user.id,
+      user.twoFactorSecret,
+      hashedBackupCodes
+    );
+    if (!updated) {
+      throw new ConflictError('2FA state changed concurrently; please retry');
+    }
 
     // Audit backup codes regenerated
     await auditService.logFromRequest(

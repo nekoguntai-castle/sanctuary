@@ -146,6 +146,9 @@ export async function countUnspentUnfrozen(walletId: string): Promise<number> {
   });
 }
 
+const CONFIRMED_UTXO_WHERE: Prisma.UTXOWhereInput = { confirmations: { gt: 0 } };
+const UNCONFIRMED_UTXO_WHERE: Prisma.UTXOWhereInput = { confirmations: 0 };
+
 /**
  * Count UTXOs by eligibility categories for payjoin
  * Returns counts for: eligible, total, frozen, unconfirmed, locked
@@ -159,7 +162,7 @@ export async function countEligibility(walletId: string): Promise<{
 }> {
   const [eligible, total, frozen, unconfirmed, locked] = await Promise.all([
     prisma.uTXO.count({
-      where: { walletId, spent: false, frozen: false, confirmations: { gt: 0 }, draftLock: null },
+      where: { walletId, spent: false, frozen: false, ...CONFIRMED_UTXO_WHERE, draftLock: null },
     }),
     prisma.uTXO.count({
       where: { walletId, spent: false },
@@ -168,7 +171,7 @@ export async function countEligibility(walletId: string): Promise<{
       where: { walletId, spent: false, frozen: true },
     }),
     prisma.uTXO.count({
-      where: { walletId, spent: false, confirmations: 0 },
+      where: { walletId, spent: false, ...UNCONFIRMED_UTXO_WHERE },
     }),
     prisma.uTXO.count({
       where: { walletId, spent: false, draftLock: { isNot: null } },
@@ -757,6 +760,21 @@ export async function findLargestSpendableByTxid(
 }
 
 /**
+ * Atomically freeze a UTXO only while it is unspent and not locked by a draft.
+ * Returns the updated UTXO, or null when the UTXO is spent, draft-locked, or missing.
+ */
+export async function freezeIfUnspentAndUnlocked(utxoId: string): Promise<UTXO | null> {
+  const result = await prisma.uTXO.updateMany({
+    where: { id: utxoId, spent: false, draftLock: null },
+    data: { frozen: true },
+  });
+  if (result.count === 0) {
+    return null;
+  }
+  return prisma.uTXO.findUnique({ where: { id: utxoId } });
+}
+
+/**
  * Get confirmed and unconfirmed balance separately for a wallet
  */
 export async function getConfirmedUnconfirmedBalance(
@@ -764,11 +782,11 @@ export async function getConfirmedUnconfirmedBalance(
 ): Promise<{ confirmed: number; unconfirmed: number }> {
   const [confirmedResult, unconfirmedResult] = await Promise.all([
     prisma.uTXO.aggregate({
-      where: { walletId, spent: false, blockHeight: { not: null } },
+      where: { walletId, spent: false, ...CONFIRMED_UTXO_WHERE },
       _sum: { amount: true },
     }),
     prisma.uTXO.aggregate({
-      where: { walletId, spent: false, blockHeight: null },
+      where: { walletId, spent: false, ...UNCONFIRMED_UTXO_WHERE },
       _sum: { amount: true },
     }),
   ]);
@@ -844,6 +862,7 @@ export const utxoRepository = {
   findByIdWithWalletAccess,
   findWalletIdByUtxoId,
   updateById,
+  freezeIfUnspentAndUnlocked,
   aggregateUnspent,
   findUnspentWithDraftLocks,
   findByTxidsUnspent,

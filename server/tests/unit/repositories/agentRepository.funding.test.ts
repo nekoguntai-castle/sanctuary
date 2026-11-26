@@ -210,6 +210,7 @@ describe('agentRepository funding controls', () => {
       where: {
         agentId: 'agent-1',
         status: 'active',
+        expiresAt: { gt: expect.any(Date) },
       },
       orderBy: { createdAt: 'desc' },
       take: 10,
@@ -271,6 +272,7 @@ describe('agentRepository funding controls', () => {
         status: 'active',
         revokedAt: null,
         usedAt: null,
+        expiresAt: { gt: expect.any(Date) },
       },
       data: {
         status: 'used',

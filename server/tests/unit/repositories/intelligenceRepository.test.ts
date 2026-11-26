@@ -222,7 +222,7 @@ describe('Intelligence Repository', () => {
       });
     });
 
-    it('should apply all filters and custom limit/offset', async () => {
+    it('should apply all filters and custom limit/offset with live expiry filter for active status', async () => {
       (prisma.aIInsight.findMany as Mock).mockResolvedValue([]);
 
       await intelligenceRepository.findInsightsByWallet(
@@ -233,10 +233,35 @@ describe('Intelligence Repository', () => {
       );
 
       expect(prisma.aIInsight.findMany).toHaveBeenCalledWith({
-        where: { walletId: 'wallet-1', type: 'anomaly', severity: 'warning', status: 'active' },
+        where: {
+          walletId: 'wallet-1',
+          type: 'anomaly',
+          severity: 'warning',
+          status: 'active',
+          OR: [{ expiresAt: null }, { expiresAt: { gt: expect.any(Date) } }],
+        },
         orderBy: { createdAt: 'desc' },
         take: 10,
         skip: 20,
+      });
+    });
+
+    it('should include unswept overdue active insights when filtering by expired status', async () => {
+      (prisma.aIInsight.findMany as Mock).mockResolvedValue([]);
+
+      await intelligenceRepository.findInsightsByWallet('wallet-1', { status: 'expired' });
+
+      expect(prisma.aIInsight.findMany).toHaveBeenCalledWith({
+        where: {
+          walletId: 'wallet-1',
+          OR: [
+            { status: 'expired' },
+            { status: 'active', expiresAt: { lte: expect.any(Date) } },
+          ],
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+        skip: 0,
       });
     });
   });

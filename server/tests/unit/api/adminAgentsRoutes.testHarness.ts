@@ -22,6 +22,7 @@ const mockState = vi.hoisted(() => ({
     createApiKey: vi.fn(),
     findApiKeyById: vi.fn(),
     revokeApiKey: vi.fn(),
+    withAgentFundingTransaction: vi.fn(),
   },
   userRepository: {
     findById: vi.fn(),
@@ -89,5 +90,8 @@ export const createAdminAgentsRouteTestApp = (): Express => {
 
 export const resetAdminAgentsRouteMocks = () => {
   vi.clearAllMocks();
+  mockState.agentRepository.withAgentFundingTransaction.mockImplementation(
+    async (_agentId: string, fn: (client: unknown) => Promise<unknown>) => fn({ tx: 'admin-agent-route-tx' }),
+  );
   configureDefaultAdminAgentRouteMocks(mocks);
 };

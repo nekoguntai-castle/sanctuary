@@ -199,12 +199,10 @@ const lockSelectedUtxos = async (
   }
 
   const { found: utxoIds, notFound } = await resolveUtxoIds(walletId, data.selectedUtxoIds, client);
-  if (notFound.length > 0) {
-    log.warn('Some UTXOs not found for locking', { notFound, draftId: draft.id });
-  }
-
-  if (utxoIds.length === 0) {
-    return;
+  if (notFound.length > 0 || utxoIds.length === 0) {
+    log.warn('Some selected UTXOs are unavailable for locking', { notFound, draftId: draft.id });
+    // Thrown inside the draft's transaction, so the draft insert rolls back.
+    throw new ConflictError('One or more selected UTXOs are spent, frozen, or no longer available');
   }
 
   const lockResult = await lockUtxosForDraft(draft.id, utxoIds, { isRBF: false, client });

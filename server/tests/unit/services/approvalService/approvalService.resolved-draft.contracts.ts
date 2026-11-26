@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 
-import { draftId, makePendingRequest, mockDraftRepo, mockPolicyRepo, otherUserId, policyId, requestId, userId, walletId } from './approvalServiceTestHarness';
+import { draftId, makePendingRequest, mockDraftRepo, mockPolicyRepo, mockTx, otherUserId, policyId, requestId, userId, walletId } from './approvalServiceTestHarness';
 import { approvalService } from '../../../../src/services/vaultPolicy/approvalService';
 
 /**
@@ -84,8 +84,11 @@ export function registerResolvedDraftContracts() {
     await approvalService.castVote('r1', otherUserId, 'reject', 'Wrong recipient');
 
     expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledTimes(1);
-    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith('r1', 'rejected');
-    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'rejected');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith('r1', 'rejected', undefined, mockTx);
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'rejected', {
+      allowedFrom: ['pending'],
+      client: mockTx,
+    });
 
     // A later approve vote on the still-pending sibling cannot flip the draft back.
     mockPolicyRepo.findApprovalRequestById.mockResolvedValueOnce(sibling);
@@ -95,5 +98,49 @@ export function registerResolvedDraftContracts() {
       approvalService.castVote('r2', userId, 'approve')
     ).rejects.toThrow('Draft is already rejected');
     expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledTimes(1);
+  });
+
+  it('castVote refuses a vote on a broadcasted draft', async () => {
+    mockPolicyRepo.findApprovalRequestById.mockResolvedValue(makePendingRequest());
+    mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
+    mockDraftRepo.findById.mockResolvedValue({
+      userId: 'other-creator',
+      walletId,
+      status: 'broadcasted',
+      approvalStatus: 'pending',
+    });
+
+    await expect(
+      approvalService.castVote(requestId, otherUserId, 'approve')
+    ).rejects.toThrow('Draft is no longer actionable');
+    expect(mockPolicyRepo.createVote).not.toHaveBeenCalled();
+  });
+
+  it('propagates storage failures without resolving the request', async () => {
+    const failure = new Error('Connection lost');
+    mockPolicyRepo.findApprovalRequestById.mockResolvedValue(makePendingRequest());
+    mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
+    mockDraftRepo.findById.mockResolvedValue({ userId: 'creator', walletId, status: 'unsigned' });
+    mockPolicyRepo.createVote.mockRejectedValueOnce(failure);
+
+    await expect(approvalService.castVote(requestId, otherUserId, 'approve')).rejects.toBe(failure);
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).not.toHaveBeenCalled();
+  });
+
+  it('castVote maps Prisma P2002 duplicate vote error to ConflictError', async () => {
+    mockPolicyRepo.findApprovalRequestById.mockResolvedValue(makePendingRequest());
+    mockPolicyRepo.findVoteByUserAndRequest.mockResolvedValue(null);
+    mockDraftRepo.findById.mockResolvedValue({
+      userId: 'other-creator',
+      walletId,
+      status: 'unsigned',
+      approvalStatus: 'pending',
+    });
+    const duplicateError = Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
+    mockPolicyRepo.createVote.mockRejectedValueOnce(duplicateError);
+
+    await expect(
+      approvalService.castVote(requestId, otherUserId, 'approve')
+    ).rejects.toMatchObject({ statusCode: 409, message: expect.stringContaining('already voted') });
   });
 }

@@ -664,6 +664,7 @@ export async function resetIncrementalSyncAttempt(
         "lastSyncStatus" = NULL,
         "lastSyncError" = NULL,
         "lastSyncFailureClass" = NULL,
+        "syncActionRequiredAt" = NULL,
         "syncExecutionOwner" = NULL,
         "syncRetryCount" = 0,
         "syncNextRetryAt" = NULL,

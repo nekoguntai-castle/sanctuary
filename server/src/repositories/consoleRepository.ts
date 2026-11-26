@@ -96,12 +96,24 @@ async function createSession(
   });
 }
 
+function activeSessionWhere(
+  userId: string,
+  now: Date = new Date(),
+): Prisma.ConsoleSessionWhereInput {
+  return {
+    userId,
+    deletedAt: null,
+    OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+  };
+}
+
 async function findSessionForUser(
   id: string,
   userId: string,
+  now: Date = new Date(),
 ): Promise<ConsoleSession | null> {
   return prisma.consoleSession.findFirst({
-    where: { id, userId, deletedAt: null },
+    where: { id, ...activeSessionWhere(userId, now) },
   });
 }
 
@@ -109,9 +121,10 @@ async function listSessions(
   userId: string,
   limit: number,
   offset: number,
+  now: Date = new Date(),
 ): Promise<ConsoleSession[]> {
   return prisma.consoleSession.findMany({
-    where: { userId, deletedAt: null },
+    where: activeSessionWhere(userId, now),
     orderBy: { updatedAt: "desc" },
     take: limit,
     skip: offset,

@@ -495,6 +495,22 @@ describe('webhookRepository', () => {
     expect(mockTx.webhookDelivery.updateMany).not.toHaveBeenCalled();
   });
 
+  it('refuses a delivery when the endpoint is disabled', async () => {
+    mockTx.$queryRaw.mockResolvedValueOnce([{ id: 'endpoint-1' }]);
+    mockTx.$queryRaw.mockResolvedValueOnce([{
+      endpointUrl: 'https://example.com/hook',
+      endpointEnabled: false,
+      targetUrl: 'https://example.com/hook',
+      status: 'dead',
+      lastError: 'HTTP 500',
+    }]);
+
+    const result = await webhookRepository.markDeliveryPendingForReplay('delivery-1');
+
+    expect(result).toEqual({ count: 0, delivery: null, refusal: 'endpoint_disabled' });
+    expect(mockTx.webhookDelivery.updateMany).not.toHaveBeenCalled();
+  });
+
   it('refuses a delivery retired by an endpoint change', async () => {
     queueReplayRows({
       status: 'dead',
@@ -749,7 +765,7 @@ describe('webhookRepository', () => {
      * is committed and the old deliveries are still claimable — which is the
      * exact bug, just narrowed to a race.
      */
-    it('retires pending and failed deliveries when the predicate says so', async () => {
+    it('retires pending, failed, and dead deliveries when the predicate says so', async () => {
       mockTx.$queryRaw.mockResolvedValueOnce([{ id: 'endpoint-1' }]);
       mockTx.webhookEndpoint.findUniqueOrThrow.mockResolvedValueOnce(makeEndpoint());
       mockTx.webhookEndpoint.update.mockResolvedValueOnce(makeEndpoint());
@@ -762,7 +778,7 @@ describe('webhookRepository', () => {
       );
 
       expect(mockTx.webhookDelivery.updateMany).toHaveBeenCalledWith({
-        where: { endpointId: 'endpoint-1', status: { in: ['pending', 'failed'] } },
+        where: { endpointId: 'endpoint-1', status: { in: ['pending', 'failed', 'dead'] } },
         data: {
           status: 'dead',
           nextAttemptAt: null,

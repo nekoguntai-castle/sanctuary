@@ -131,23 +131,18 @@ type NetworkWalletSyncState = Awaited<
 ReturnType<typeof walletRepository.findByNetworkWithSyncStatus>
 >[number];
 
-function isNetworkSyncFailed(wallet: NetworkWalletSyncState): boolean {
-  if (wallet.syncInProgress) return false;
-  if (wallet.syncActionRequiredAt !== null) return true;
-  return !hasDurablePendingSync(wallet) && wallet.lastSyncStatus === 'failed';
-}
+type NetworkSyncBucket = 'syncing' | 'synced' | 'failed' | 'pending';
 
-function isNetworkSyncPending(wallet: NetworkWalletSyncState): boolean {
-  return !wallet.syncInProgress
-    && wallet.syncActionRequiredAt === null
-    && (hasDurablePendingSync(wallet) || wallet.lastSyncStatus === null);
-}
-
-function isNetworkSyncCurrent(wallet: NetworkWalletSyncState): boolean {
-  return !wallet.syncInProgress
-    && wallet.syncActionRequiredAt === null
-    && !hasDurablePendingSync(wallet)
-    && wallet.lastSyncStatus === 'success';
+export function classifyWalletNetworkSyncBucket(
+  wallet: NetworkWalletSyncState,
+): NetworkSyncBucket {
+  if (wallet.syncInProgress) return 'syncing';
+  if (wallet.syncActionRequiredAt !== null) return 'failed';
+  if (hasDurablePendingSync(wallet)) return 'pending';
+  if (wallet.lastSyncStatus === 'success') return 'synced';
+  if (wallet.lastSyncStatus === 'failed') return 'failed';
+  // Includes never-synced (null), retrying, and legacy 'partial' rows.
+  return 'pending';
 }
 
 export type LegacyWalletSyncResponse = WalletSyncResponse;
@@ -600,10 +595,15 @@ export class SyncCoordinator {
     const syncNetwork = parseSyncNetwork(network);
     const wallets = await walletRepository.findByNetworkWithSyncStatus(userId, syncNetwork);
 
-    const syncing = wallets.filter(w => w.syncInProgress).length;
-    const synced = wallets.filter(isNetworkSyncCurrent).length;
-    const failed = wallets.filter(isNetworkSyncFailed).length;
-    const pending = wallets.filter(isNetworkSyncPending).length;
+    const counts: Record<NetworkSyncBucket, number> = {
+      syncing: 0,
+      synced: 0,
+      failed: 0,
+      pending: 0,
+    };
+    for (const wallet of wallets) {
+      counts[classifyWalletNetworkSyncBucket(wallet)] += 1;
+    }
     const syncTimes = wallets
       .filter(w => w.lastSyncedAt)
       .map(w => new Date(w.lastSyncedAt!).getTime());
@@ -612,10 +612,10 @@ export class SyncCoordinator {
     return {
       network: syncNetwork,
       total: wallets.length,
-      syncing,
-      synced,
-      failed,
-      pending,
+      syncing: counts.syncing,
+      synced: counts.synced,
+      failed: counts.failed,
+      pending: counts.pending,
       lastSyncAt,
     };
   }

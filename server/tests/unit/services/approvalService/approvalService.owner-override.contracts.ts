@@ -28,7 +28,10 @@ export function registerOwnerOverrideContracts() {
     expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith('r2', 'approved');
 
     // Draft status updated to approved
-    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'approved');
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'approved', {
+      allowedFrom: ['pending'],
+      approvedBy: userId,
+    });
 
     // Policy events logged for each pending request
     expect(mockPolicyRepo.createPolicyEvent).toHaveBeenCalledTimes(2);
@@ -91,7 +94,10 @@ export function registerOwnerOverrideContracts() {
 
     await approvalService.ownerOverride(draftId, walletId, userId, 'Emergency');
 
-    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'approved');
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'approved', {
+      allowedFrom: ['pending'],
+      approvedBy: userId,
+    });
   });
 
   it('sends exactly one notification (overridden, never approved) on the all-approved override path', async () => {

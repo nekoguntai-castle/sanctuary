@@ -6,6 +6,7 @@
 
 import type { PolicyAddress, PolicyEvent, VaultPolicy, Prisma } from '../../generated/prisma/client';
 import { policyRepository } from '../../repositories/policyRepository';
+import { draftRepository } from '../../repositories/draftRepository';
 import { walletRepository } from '../../repositories/walletRepository';
 import { NotFoundError, ForbiddenError, InvalidInputError, ConflictError } from '../../errors';
 import { getErrorMessage, isUniqueConstraintError } from '../../utils/errors';
@@ -243,23 +244,30 @@ export async function deletePolicy(policyId: string, walletId?: string): Promise
     throw new ForbiddenError('Cannot delete inherited policies from wallet context');
   }
 
-  // Deleting the policy cascades its approval requests away, so drafts that
-  // held one must re-derive their approval status or they stay pending forever.
-  const affectedDraftIds = await policyRepository.findPendingDraftIdsWithApprovalRequestsForPolicy(policyId);
-  await policyRepository.removePolicy(policyId);
-
-  for (const draftId of affectedDraftIds) {
-    try {
-      await approvalService.rederiveDraftApprovalStatus(draftId);
-    } catch (error) {
-      // The policy is already gone; report the draft rather than fail the delete.
-      log.error('Failed to re-derive draft approval after policy delete', {
-        policyId,
-        draftId,
-        error: getErrorMessage(error),
-      });
+  // Deleting the policy cascades its approval requests away, so lock affected
+  // pending drafts, delete the policy, and re-derive their approval statuses in
+  // one transaction so a concurrent rejection cannot be flipped back to approved.
+  const affectedDraftIds = await policyRepository.withTransaction(async (tx) => {
+    const draftIds = await policyRepository.findPendingDraftIdsWithApprovalRequestsForPolicy(policyId, tx);
+    if (draftIds.length > 0) {
+      await draftRepository.lockDraftsForUpdate(draftIds, tx);
     }
-  }
+    await policyRepository.removePolicy(policyId, tx);
+
+    for (const draftId of draftIds) {
+      try {
+        await approvalService.rederiveDraftApprovalStatus(draftId, tx);
+      } catch (error) {
+        log.error('Failed to re-derive draft approval after policy delete', {
+          policyId,
+          draftId,
+          error: getErrorMessage(error),
+        });
+      }
+    }
+
+    return draftIds;
+  });
 
   log.info('Deleted vault policy', { policyId, walletId, affectedDrafts: affectedDraftIds.length });
 }

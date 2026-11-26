@@ -35,6 +35,14 @@ describe('User Repository', () => {
     vi.clearAllMocks();
   });
 
+  it('updates the requested user and returns the persisted row', async () => {
+    const row = { id: 'u1', username: 'renamed' };
+    (prisma.user.update as Mock).mockResolvedValue(row);
+
+    await expect(userRepository.update('u1', { username: 'renamed' })).resolves.toBe(row);
+    expect(prisma.user.update).toHaveBeenCalledWith({ where: { id: 'u1' }, data: { username: 'renamed' } });
+  });
+
   describe('findById', () => {
     it('should return user when found', async () => {
       const mockUser = {
@@ -701,6 +709,52 @@ describe('User Repository', () => {
         '[{"hash":"old","used":false}]',
         '[{"hash":"old","used":true}]',
       )).resolves.toBe(false);
+    });
+  });
+
+  describe('2FA atomic CAS transitions', () => {
+    it('setTwoFactorSecretIfDisabled only writes when twoFactorEnabled is false', async () => {
+      (prisma.user.updateMany as Mock).mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
+
+      await expect(userRepository.setTwoFactorSecretIfDisabled('user-123', 'enc-secret')).resolves.toBe(true);
+      await expect(userRepository.setTwoFactorSecretIfDisabled('user-123', 'enc-secret-2')).resolves.toBe(false);
+      expect(prisma.user.updateMany).toHaveBeenNthCalledWith(1, {
+        where: { id: 'user-123', twoFactorEnabled: false },
+        data: { twoFactorSecret: 'enc-secret' },
+      });
+    });
+
+    it('enableTwoFactorIfSecretMatches requires disabled state and matching secret', async () => {
+      (prisma.user.updateMany as Mock).mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
+
+      await expect(userRepository.enableTwoFactorIfSecretMatches('user-123', 'enc-s1', 'hashed-codes')).resolves.toBe(true);
+      await expect(userRepository.enableTwoFactorIfSecretMatches('user-123', 'enc-s1', 'hashed-codes')).resolves.toBe(false);
+      expect(prisma.user.updateMany).toHaveBeenNthCalledWith(1, {
+        where: { id: 'user-123', twoFactorEnabled: false, twoFactorSecret: 'enc-s1' },
+        data: { twoFactorEnabled: true, twoFactorBackupCodes: 'hashed-codes' },
+      });
+    });
+
+    it('disableTwoFactorIfSecretMatches requires enabled state and matching secret', async () => {
+      (prisma.user.updateMany as Mock).mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
+
+      await expect(userRepository.disableTwoFactorIfSecretMatches('user-123', 'enc-s1')).resolves.toBe(true);
+      await expect(userRepository.disableTwoFactorIfSecretMatches('user-123', 'enc-s1')).resolves.toBe(false);
+      expect(prisma.user.updateMany).toHaveBeenNthCalledWith(1, {
+        where: { id: 'user-123', twoFactorEnabled: true, twoFactorSecret: 'enc-s1' },
+        data: { twoFactorEnabled: false, twoFactorSecret: null, twoFactorBackupCodes: null },
+      });
+    });
+
+    it('updateBackupCodesIfEnabled requires enabled state and matching secret', async () => {
+      (prisma.user.updateMany as Mock).mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
+
+      await expect(userRepository.updateBackupCodesIfEnabled('user-123', 'enc-s1', 'new-codes')).resolves.toBe(true);
+      await expect(userRepository.updateBackupCodesIfEnabled('user-123', 'enc-s1', 'new-codes')).resolves.toBe(false);
+      expect(prisma.user.updateMany).toHaveBeenNthCalledWith(1, {
+        where: { id: 'user-123', twoFactorEnabled: true, twoFactorSecret: 'enc-s1' },
+        data: { twoFactorBackupCodes: 'new-codes' },
+      });
     });
   });
 

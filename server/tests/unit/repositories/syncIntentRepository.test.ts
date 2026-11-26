@@ -753,6 +753,7 @@ describe('syncIntentRepository', () => {
       '"claimedIncrementalSyncGeneration" = "processedIncrementalSyncGeneration"',
     );
     expect(sql).toContain('"incrementalSyncLeaseToken" = NULL');
+    expect(sql).toContain('"syncActionRequiredAt" = NULL');
     expect(sql).toContain('"syncStateVersion" = "syncStateVersion" + 1');
     const snapshot = {
       syncStateVersion: 7,

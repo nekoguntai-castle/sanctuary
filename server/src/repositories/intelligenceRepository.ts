@@ -80,6 +80,20 @@ async function findInsightById(id: string): Promise<AIInsight | null> {
   return prisma.aIInsight.findUnique({ where: { id } });
 }
 
+/** Active and not past expiresAt; the expiry sweep only runs periodically. */
+const liveInsightWhere = (now: Date = new Date()): Prisma.AIInsightWhereInput => ({
+  status: 'active',
+  OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+});
+
+/** Marked expired or still active past expiresAt before the sweep runs. */
+const expiredInsightWhere = (now: Date = new Date()): Prisma.AIInsightWhereInput => ({
+  OR: [
+    { status: 'expired' },
+    { status: 'active', expiresAt: { lte: now } },
+  ],
+});
+
 async function findInsightsByWallet(
   walletId: string,
   filters?: Omit<InsightFilter, 'walletId'>,
@@ -89,7 +103,13 @@ async function findInsightsByWallet(
   const where: Prisma.AIInsightWhereInput = { walletId };
   if (filters?.type) where.type = filters.type;
   if (filters?.severity) where.severity = filters.severity;
-  if (filters?.status) where.status = filters.status;
+  if (filters?.status === 'active') {
+    Object.assign(where, liveInsightWhere());
+  } else if (filters?.status === 'expired') {
+    Object.assign(where, expiredInsightWhere());
+  } else if (filters?.status) {
+    where.status = filters.status;
+  }
 
   return prisma.aIInsight.findMany({
     where,
@@ -98,12 +118,6 @@ async function findInsightsByWallet(
     skip: offset,
   });
 }
-
-/** Active and not past expiresAt; the expiry sweep only runs periodically. */
-const liveInsightWhere = (): Prisma.AIInsightWhereInput => ({
-  status: 'active',
-  OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
-});
 
 async function findActiveInsights(walletId: string): Promise<AIInsight[]> {
   return prisma.aIInsight.findMany({

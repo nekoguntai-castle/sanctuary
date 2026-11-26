@@ -6,6 +6,7 @@ import {
   makePendingRequest,
   mockDraftRepo,
   mockPolicyRepo,
+  mockTx,
   mockVoteRequestReads,
   mockWalletSharingRepo,
   otherUserId,
@@ -85,7 +86,7 @@ export function registerSpecificEligibilityContracts() {
     await approvalService.castVote(requestId, otherUserId, 'approve');
 
     expectNotResolved();
-    expect(mockWalletSharingRepo.findEffectiveApproverIds).toHaveBeenCalledWith(walletId, undefined);
+    expect(mockWalletSharingRepo.findEffectiveApproverIds).toHaveBeenCalledWith(walletId, mockTx);
   });
 
   it('specific: a listed approver downgraded below approver (no longer effective) does not count, and the threshold does not shrink', async () => {
@@ -130,7 +131,7 @@ export function registerSpecificEligibilityContracts() {
 
     await approvalService.castVote(requestId, 'creator', 'approve');
 
-    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved', undefined, mockTx);
   });
 
   it('specific: never resolves when the backing draft is missing', async () => {
@@ -159,7 +160,11 @@ export function registerSpecificEligibilityContracts() {
 
     await approvalService.castVote(requestId, userId, 'approve');
 
-    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved');
-    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'approved');
+    expect(mockPolicyRepo.resolveApprovalRequestIfPending).toHaveBeenCalledWith(requestId, 'approved', undefined, mockTx);
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'approved', {
+      allowedFrom: ['pending'],
+      approvedBy: userId,
+      client: mockTx,
+    });
   });
 }

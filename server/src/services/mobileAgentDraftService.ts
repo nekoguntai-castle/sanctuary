@@ -379,7 +379,12 @@ async function rejectWithoutRequests(draft: MobileAgentDraftRecord): Promise<voi
   if (draft.approvalStatus !== 'not_required') {
     throw new ConflictError('Draft has no approval request to vote on');
   }
-  await draftRepository.updateApprovalStatus(draft.id, 'rejected');
+  const transitioned = await draftRepository.updateApprovalStatus(draft.id, 'rejected', {
+    allowedFrom: ['not_required'],
+  });
+  if (!transitioned) {
+    throw new ConflictError('Draft can no longer be rejected');
+  }
   // A rejected draft can never broadcast; release its UTXOs like any other refusal.
   await draftLockRepository.deleteByDraftId(draft.id);
 }
