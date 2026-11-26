@@ -247,6 +247,9 @@ describe('tracer', () => {
 
     expect(tracer.getTracerProvider()).toBe(fakeProvider);
     expect(tracer.getTracer('component')).toBe(fakeTracer);
+    expect(tracer.startSpan('dynamic-span')).toBe(fakeSpan);
+    expect(fakeProvider.getTracer).toHaveBeenCalledWith('sanctuary', undefined);
+    expect(fakeTracer.startSpan).toHaveBeenCalledWith('dynamic-span', undefined);
     await expect(tracer.getTracerProvider().shutdown()).resolves.toBeUndefined();
   });
 

@@ -45,6 +45,26 @@ const featurePools = new Map<string, ElectrumPool>();
 const featurePoolInitPromises = new Map<string, Promise<ElectrumPool>>();
 const MAX_FEATURE_POOL_INSTANCES = 16;
 
+// Reset generation fences prevent an in-flight createPool/initialize call that
+// spanned a network reset or global shutdown from committing a zombie pool.
+let globalResetGeneration = 0;
+const networkResetGenerations: Partial<Record<NetworkType, number>> = {};
+
+function getNetworkResetGeneration(network: NetworkType): string {
+  return `${globalResetGeneration}:${networkResetGenerations[network] ?? 0}`;
+}
+
+function bumpNetworkResetGeneration(network: NetworkType): void {
+  networkResetGenerations[network] = (networkResetGenerations[network] ?? 0) + 1;
+}
+
+/**
+ * Read-only lookup for an already-created Electrum pool without instantiating one.
+ */
+export function getExistingElectrumPool(network: NetworkType = 'mainnet'): ElectrumPool | null {
+  return networkPools.get(network) ?? (network === 'mainnet' ? poolInstance : null);
+}
+
 /**
  * Pools built while the node-config read failed (empty defaults), keyed by
  * registry key (a network, or a feature-pool key). Without this a pool kept
@@ -203,6 +223,7 @@ export async function getElectrumPoolForNetwork(network: NetworkType): Promise<E
   }
 
   // We're the first caller for this network - create and store the init promise
+  const generation = getNetworkResetGeneration(network);
   const initPromise = (async () => {
     // Double-check in case of race
     const poolCheck = networkPools.get(network);
@@ -215,15 +236,24 @@ export async function getElectrumPoolForNetwork(network: NetworkType): Promise<E
     const generalScope: ElectrumPoolFeatureScope = { serverUsage: 'general' };
     const { pool, serverCount, configLoadFailed } = await createPool(network, generalScope);
 
+    if (getNetworkResetGeneration(network) !== generation) {
+      await shutdownPoolSafely(pool, { network, scope: 'network', reason: 'invalidated-during-init' });
+      throw new Error(`Electrum pool initialization for ${network} was invalidated by a reset`);
+    }
+
     // Store in registry
     networkPools.set(network, pool);
     if (configLoadFailed) {
       markDegraded(network, { pool, network, scope: generalScope, recover: () => pool.reloadServers() });
     }
 
-    // Also set as the global pool instance if this is mainnet (backward compat)
-    if (network === 'mainnet' && !poolInstance) {
+    // Always bind the legacy mainnet singleton to the real DB-backed mainnet pool.
+    if (network === 'mainnet') {
+      const previousPool = poolInstance;
       poolInstance = pool;
+      if (previousPool && previousPool !== pool && !previousPool.isPoolInitialized()) {
+        await shutdownPoolSafely(previousPool, { network, scope: 'legacy-replaced' });
+      }
     }
 
     log.info(`Electrum pool for ${network} initialized with ${serverCount} servers`);
@@ -236,8 +266,10 @@ export async function getElectrumPoolForNetwork(network: NetworkType): Promise<E
   try {
     return await initPromise;
   } finally {
-    // Clear the init promise once resolved
-    networkPoolInitPromises.delete(network);
+    // Clear only our own init promise once resolved
+    if (networkPoolInitPromises.get(network) === initPromise) {
+      networkPoolInitPromises.delete(network);
+    }
   }
 }
 
@@ -279,6 +311,7 @@ export async function getElectrumPoolForNetworkAndFeatures(
     return existingPromise;
   }
 
+  const generation = getNetworkResetGeneration(network);
   const initPromise = (async () => {
     const poolCheck = featurePools.get(key);
     if (poolCheck) {
@@ -297,7 +330,15 @@ export async function getElectrumPoolForNetworkAndFeatures(
       serverUsage,
     };
     const { pool, serverCount, configLoadFailed } = await createPool(network, featureScope);
+    if (getNetworkResetGeneration(network) !== generation) {
+      await shutdownPoolSafely(pool, { network, key, scope: 'feature', reason: 'invalidated-during-init' });
+      throw new Error(`Feature-scoped Electrum pool initialization for ${network} was invalidated by a reset`);
+    }
     await trimFeaturePoolRegistry(MAX_FEATURE_POOL_INSTANCES - 1);
+    if (getNetworkResetGeneration(network) !== generation) {
+      await shutdownPoolSafely(pool, { network, key, scope: 'feature', reason: 'invalidated-during-trim' });
+      throw new Error(`Feature-scoped Electrum pool initialization for ${network} was invalidated by a reset`);
+    }
     featurePools.set(key, pool);
     if (configLoadFailed) {
       // `reloadServers()` would reload unscoped servers, so retire the pool
@@ -325,7 +366,9 @@ export async function getElectrumPoolForNetworkAndFeatures(
   try {
     return await initPromise;
   } finally {
-    featurePoolInitPromises.delete(key);
+    if (featurePoolInitPromises.get(key) === initPromise) {
+      featurePoolInitPromises.delete(key);
+    }
   }
 }
 
@@ -349,10 +392,17 @@ export async function getSubscriptionConnectionForFeatures(
  * Reset the pool for a specific network (for testing or config changes)
  */
 export async function resetElectrumPoolForNetwork(network: NetworkType): Promise<void> {
+  bumpNetworkResetGeneration(network);
+  networkPoolInitPromises.delete(network);
+  if (network === 'mainnet') {
+    poolInitPromise = null;
+  }
   const pool = networkPools.get(network);
   if (pool) {
     await shutdownPoolSafely(pool, { network, scope: 'network' });
-    networkPools.delete(network);
+    if (networkPools.get(network) === pool) {
+      networkPools.delete(network);
+    }
     if (poolInstance === pool) {
       poolInstance = null;
     }
@@ -401,7 +451,8 @@ export async function getElectrumPoolAsync(): Promise<ElectrumPool> {
   }
 
   // We're the first caller - create and store the init promise
-  poolInitPromise = (async () => {
+  const generation = getNetworkResetGeneration('mainnet');
+  const initPromise = (async () => {
     // Load config and servers from database
     const { config: dbConfig, servers, proxy } = await loadPoolConfigFromDatabase();
 
@@ -409,14 +460,14 @@ export async function getElectrumPoolAsync(): Promise<ElectrumPool> {
     const envConfig = loadElectrumPoolEnvConfig();
 
     // Database config takes precedence over environment variables
-    poolInstance = new ElectrumPool({
+    const candidate = new ElectrumPool({
       ...envConfig,
       ...dbConfig,
     });
 
     // Set proxy config if loaded from database
     if (proxy) {
-      poolInstance.setProxyConfig(proxy);
+      candidate.setProxyConfig(proxy);
       log.info('Electrum pool configured with Tor proxy', {
         host: proxy.host,
         port: proxy.port,
@@ -425,33 +476,49 @@ export async function getElectrumPoolAsync(): Promise<ElectrumPool> {
 
     // Set servers if any were loaded from database
     if (servers.length > 0) {
-      poolInstance.setServers(servers);
+      candidate.setServers(servers);
       log.info('Electrum pool configured with servers from database', {
         serverCount: servers.length,
         servers: servers.map(s => `${s.label} (${s.host}:${s.port})`),
       });
     }
 
-    // Initialize the pool (creates minimum connections)
-    await poolInstance.initialize();
+    // Initialize the pool (creates minimum connections); clean up on failure
+    try {
+      await candidate.initialize();
+    } catch (error) {
+      await shutdownPoolSafely(candidate, { scope: 'global', reason: 'init-failed' });
+      throw error;
+    }
+
+    if (getNetworkResetGeneration('mainnet') !== generation) {
+      await shutdownPoolSafely(candidate, { scope: 'global', reason: 'invalidated-during-init' });
+      throw new Error('Electrum pool initialization was invalidated by a reset');
+    }
+
+    poolInstance = candidate;
 
     log.info('Electrum pool initialized', {
-      enabled: poolInstance['config'].enabled,
-      minConnections: poolInstance['config'].minConnections,
-      maxConnections: poolInstance['config'].maxConnections,
-      loadBalancing: poolInstance['config'].loadBalancing,
+      enabled: candidate['config'].enabled,
+      minConnections: candidate['config'].minConnections,
+      maxConnections: candidate['config'].maxConnections,
+      loadBalancing: candidate['config'].loadBalancing,
       proxyEnabled: proxy?.enabled ?? false,
     });
 
-    return poolInstance;
+    return candidate;
   })();
 
+  poolInitPromise = initPromise;
+
   try {
-    return await poolInitPromise;
+    return await initPromise;
   } finally {
     // Clear the promise after completion (success or failure)
     // This allows retry on failure
-    poolInitPromise = null;
+    if (poolInitPromise === initPromise) {
+      poolInitPromise = null;
+    }
   }
 }
 
@@ -471,6 +538,7 @@ export async function initializeElectrumPool(
  * Shutdown the Electrum pool
  */
 export async function shutdownElectrumPool(): Promise<void> {
+  globalResetGeneration += 1;
   // Clear init promise to prevent new initialization during shutdown
   poolInitPromise = null;
   networkPoolInitPromises.clear();

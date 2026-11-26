@@ -40,6 +40,7 @@ describe("blockHeight utils", () => {
       expect(getCachedBlockHeight("testnet3")).toBe(0);
 
       setCachedBlockHeight(123, "mainnet");
+      setCachedBlockHeight(123, "mainnet");
       setCachedBlockHeight(99, "mainnet");
       setCachedBlockHeight(456, "testnet3");
 
@@ -186,6 +187,23 @@ describe("blockHeight utils", () => {
       await expect(getBlockHeight("regtest")).rejects.toThrow("totally down");
       expect(mockLogger.error).toHaveBeenCalled();
     });
+
+    it("P2-3: refuses to return arbitrarily stale cached height past MAX_STALE_FALLBACK_AGE_MS", async () => {
+      const mod = await loadModule();
+      const nowSpy = vi.spyOn(Date, "now");
+      try {
+        nowSpy.mockReturnValue(1_000_000);
+        mod.setCachedBlockHeight(850_000, "mainnet");
+
+        // Advance well past staleness ceiling (e.g., 1 hour)
+        nowSpy.mockReturnValue(1_000_000 + 60 * 60 * 1000);
+        mockGetNodeClient.mockRejectedValueOnce(new Error("node unreachable"));
+
+        await expect(mod.getBlockHeight("mainnet")).rejects.toThrow("node unreachable");
+      } finally {
+        nowSpy.mockRestore();
+      }
+    });
   });
 
   describe("LRUCache", () => {
@@ -264,6 +282,42 @@ describe("blockHeight utils", () => {
 
       await expect(getBlockTimestamp(42, "mainnet")).resolves.toBeNull();
       expect(mockLogger.warn).toHaveBeenCalled();
+    });
+
+    it("P2-3: invalidates cached block timestamps at and above the reorg height", async () => {
+      const {
+        getBlockTimestamp,
+        setAuthoritativeBlockHeight,
+      } = await loadModule();
+      const makeHeader = (unix: number) => {
+        const ts = Buffer.alloc(4);
+        ts.writeUInt32LE(unix, 0);
+        return "00".repeat(68) + ts.toString("hex") + "00".repeat(8);
+      };
+      const getBlockHeader = vi.fn()
+        .mockResolvedValueOnce(makeHeader(1_700_000_100)) // height 499
+        .mockResolvedValueOnce(makeHeader(1_700_000_200)) // height 500 (orphaned)
+        .mockResolvedValueOnce(makeHeader(1_600_000_000)) // signet
+        .mockResolvedValueOnce(makeHeader(1_600_000_001)) // surviving mainnet height
+        .mockResolvedValueOnce(makeHeader(1_700_000_999)); // height 500 (post-reorg)
+      mockGetNodeClient.mockResolvedValue({ getBlockHeader });
+
+      setAuthoritativeBlockHeight(498);
+      setAuthoritativeBlockHeight(500);
+      await expect(getBlockTimestamp(499, "mainnet")).resolves.toEqual(new Date(1_700_000_100 * 1000));
+      await expect(getBlockTimestamp(500, "mainnet")).resolves.toEqual(new Date(1_700_000_200 * 1000));
+
+      const signet = await getBlockTimestamp(500, "signet");
+      const surviving = await getBlockTimestamp(498, "mainnet");
+
+      // Reorg drops tip from 500 to 499
+      setAuthoritativeBlockHeight(499, "mainnet");
+
+      // Block 500 timestamp must be refetched rather than serving orphaned timestamp
+      await expect(getBlockTimestamp(500, "mainnet")).resolves.toEqual(new Date(1_700_000_999 * 1000));
+      expect(await getBlockTimestamp(500, "signet")).toBe(signet);
+      expect(await getBlockTimestamp(498, "mainnet")).toBe(surviving);
+      expect(getBlockHeader).toHaveBeenCalledTimes(5);
     });
   });
 });

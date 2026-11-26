@@ -15,6 +15,7 @@ vi.mock("../../../../src/utils/logger", () => ({
 }));
 
 import { BasePriceProvider } from "../../../../src/services/price/providers/base";
+import { circuitBreakerRegistry } from "../../../../src/services/circuitBreaker";
 import type { PriceData } from "../../../../src/services/price/types";
 
 class TestPriceProvider extends BasePriceProvider {
@@ -324,5 +325,21 @@ describe("BasePriceProvider", () => {
     expect(mockLogger.info).toHaveBeenCalledWith("Health status changed", {
       healthy: true,
     });
+  });
+
+  it("P2-10: unregisters its circuit breaker on onUnregister only when still the registered instance", async () => {
+    const first = new TestPriceProvider();
+    expect(circuitBreakerRegistry.get("price-test-provider")).toBe((first as any).circuit);
+
+    // Replacing with a new instance keeps the newer breaker when the old instance unregisters
+    const replacement = new TestPriceProvider();
+    expect(circuitBreakerRegistry.get("price-test-provider")).toBe((replacement as any).circuit);
+
+    await first.onUnregister();
+    expect(circuitBreakerRegistry.get("price-test-provider")).toBe((replacement as any).circuit);
+
+    // Unregistering the active instance removes the breaker from the registry
+    await replacement.onUnregister();
+    expect(circuitBreakerRegistry.get("price-test-provider")).toBeUndefined();
   });
 });

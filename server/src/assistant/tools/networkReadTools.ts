@@ -3,14 +3,19 @@ import { getCachedBtcPrice, getCachedFeeEstimates } from './cache';
 import { AssistantToolError, createToolEnvelope, type AssistantReadToolDefinition } from './types';
 import { parseSats } from './utils';
 import * as mempool from '../../services/bitcoin/mempool';
+import {
+  getCachedMempoolStatus,
+  resetMempoolStatusCacheForTests,
+  type MempoolStatus,
+} from '../../services/bitcoin/mempoolStatusCache';
 import { getBitcoinNetworkStatus } from '../../services/bitcoin/networkStatusService';
 import { getErrorMessage } from '../../utils/errors';
+
+export { resetMempoolStatusCacheForTests };
 
 const genericOutputSchema = z.object({}).passthrough();
 const publicBudget = { maxRows: 1, maxBytes: 32_000 };
 const blockListBudget = { maxRows: 100, maxBytes: 128_000 };
-const MEMPOOL_CACHE_TTL_MS = 15_000;
-const MEMPOOL_STALE_TTL_MS = 300_000;
 const MAX_RECENT_BLOCKS_COUNT = 100;
 
 const bitcoinNetworkStatusInputSchema = {} as const;
@@ -31,17 +36,6 @@ const priceConversionInputSchema = {
 type PriceConversionAmountInput =
   | { kind: 'sats'; sats: string | number }
   | { kind: 'fiat'; fiatAmount: number };
-type MempoolStatus = Awaited<ReturnType<typeof mempool.getBlocksAndMempool>>;
-type MempoolCacheEntry = {
-  data: MempoolStatus;
-  timestamp: number;
-};
-
-let mempoolStatusCache: MempoolCacheEntry | null = null;
-
-export function resetMempoolStatusCacheForTests(): void {
-  mempoolStatusCache = null;
-}
 
 function requireSafeSatsNumber(sats: bigint): number {
   if (sats > BigInt(Number.MAX_SAFE_INTEGER) || sats < BigInt(Number.MIN_SAFE_INTEGER)) {
@@ -76,40 +70,16 @@ async function readMainnetMempoolStatus(): Promise<{
   warnings: string[];
   sourceType: 'sanctuary_cache' | 'computed';
 }> {
-  const now = Date.now();
-  const cached = mempoolStatusCache;
-
-  if (cached && now - cached.timestamp < MEMPOOL_CACHE_TTL_MS) {
-    return {
-      data: cached.data,
-      asOf: new Date(cached.timestamp).toISOString(),
-      stale: false,
-      warnings: [],
-      sourceType: 'sanctuary_cache',
-    };
-  }
-
   try {
-    const data = await mempool.getBlocksAndMempool('mainnet');
-    mempoolStatusCache = { data, timestamp: now };
+    const result = await getCachedMempoolStatus('mainnet');
     return {
-      data,
-      asOf: new Date(now).toISOString(),
-      stale: false,
-      warnings: [],
-      sourceType: 'computed',
+      data: result.data,
+      asOf: new Date(result.timestamp).toISOString(),
+      stale: result.stale,
+      warnings: result.stale ? ['mempool_status_stale'] : [],
+      sourceType: result.fromCache ? 'sanctuary_cache' : 'computed',
     };
   } catch (error) {
-    if (cached && now - cached.timestamp < MEMPOOL_STALE_TTL_MS) {
-      return {
-        data: { ...cached.data, stale: true },
-        asOf: new Date(cached.timestamp).toISOString(),
-        stale: true,
-        warnings: ['mempool_status_stale'],
-        sourceType: 'sanctuary_cache',
-      };
-    }
-
     throw new AssistantToolError(502, `Failed to fetch mempool data: ${getErrorMessage(error)}`);
   }
 }

@@ -13,6 +13,8 @@ export {
   getDistributedEventBus,
   isRedisConnected,
   getRedisClient,
+  getBullMqConnectionOptions,
+  getBullMqConnectionKey,
   checkRedisHealth,
 } from './redis';
 

@@ -1,16 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
-import { connectNetwork, setupEventHandlers, subscribeHeaders } from '../../../../src/worker/electrumManager/networkConnection';
-import { scheduleReconnect } from '../../../../src/worker/electrumManager/reconnection';
+import { connectNetwork, setupEventHandlers } from '../../../../src/worker/electrumManager/networkConnection';
+import { registerHeaderSubscriptionContracts } from './electrumManager.header-subscription.contracts';
+import { registerReconnectionContracts } from './electrumManager.reconnection.contracts';
 import { subscribeAddressBatch, subscribeAllAddresses, subscribeNetworkAddresses } from '../../../../src/worker/electrumManager/addressSubscriptions';
 import { checkHealth, reconcileSubscriptions } from '../../../../src/worker/electrumManager/healthMonitoring';
 import {
   getAddressSubscriptionKey,
-  RECONNECT_BASE_DELAY_MS,
-  type AddressWalletInfo,
   type BitcoinNetwork,
   type NetworkState,
 } from '../../../../src/worker/electrumManager/types';
 import {
+  createTimeoutHandle,
+  getAddressToWallet,
+  getNetworks,
   manager,
   mockClient,
   mockCallbacks,
@@ -19,14 +21,8 @@ import prisma from '../../../../src/models/prisma';
 import { acquireLock, extendLock, releaseLock } from '../../../../src/infrastructure';
 import { closeAllElectrumClients } from '../../../../src/services/bitcoin/electrum';
 
-const createTimeoutHandle = () => ({}) as NodeJS.Timeout;
-
 export function registerElectrumManagerStandaloneContracts() {
   describe('standalone function behavior', () => {
-    // Helper to get internal state
-    const getNetworks = () => (manager as any).networks as Map<BitcoinNetwork, NetworkState>;
-    const getAddressToWallet = () => (manager as any).addressToWallet as Map<string, AddressWalletInfo>;
-
     it('handles connectNetwork fast-path and connection failure reconnect scheduling', async () => {
       const networks = getNetworks();
       const addressToWallet = getAddressToWallet();
@@ -676,7 +672,7 @@ export function registerElectrumManagerStandaloneContracts() {
       await manager.stop();
 
       expect(vi.mocked(releaseLock)).toHaveBeenCalled();
-      expect(vi.mocked(closeAllElectrumClients)).toHaveBeenCalled();
+      expect(mockClient.disconnect).toHaveBeenCalled();
       expect(state.reconnectTimer).toBeNull();
       expect(networks.size).toBe(0);
       expect(addressToWallet.size).toBe(0);
@@ -715,7 +711,7 @@ export function registerElectrumManagerStandaloneContracts() {
 
       expect(manager.getHealthMetrics().isRunning).toBe(false);
       expect(manager.getHealthMetrics().ownershipRetryActive).toBe(true);
-      expect(vi.mocked(closeAllElectrumClients)).toHaveBeenCalled();
+      expect(mockClient.disconnect).toHaveBeenCalled();
 
       vi.useRealTimers();
     });
@@ -730,7 +726,7 @@ export function registerElectrumManagerStandaloneContracts() {
       await vi.advanceTimersByTimeAsync(60_000);
 
       expect(manager.getHealthMetrics().isRunning).toBe(false);
-      expect(vi.mocked(closeAllElectrumClients)).toHaveBeenCalled();
+      expect(mockClient.disconnect).toHaveBeenCalled();
 
       vi.useRealTimers();
     });
@@ -759,570 +755,12 @@ export function registerElectrumManagerStandaloneContracts() {
       expect(mockClient.subscribeAddressBatch).not.toHaveBeenCalled();
       expect(mockClient.disconnect).toHaveBeenCalled();
       expect(getNetworks().size).toBe(0);
-      expect(vi.mocked(closeAllElectrumClients)).toHaveBeenCalled();
+      expect(vi.mocked(closeAllElectrumClients)).not.toHaveBeenCalled();
       vi.useRealTimers();
     });
 
-    it('skips subscribeHeaders when already subscribed', async () => {
-      const state: NetworkState = {
-        network: 'mainnet',
-        client: mockClient as any,
-        connected: true,
-        subscribedToHeaders: true,
-        subscribedAddresses: new Set<string>(),
-        lastBlockHeight: 0,
-        reconnectTimer: null,
-        reconnectAttempts: 0,
-      };
-
-      await subscribeHeaders(state, mockCallbacks);
-      expect(mockClient.subscribeHeaders).not.toHaveBeenCalled();
-    });
-
-    it('covers direct header subscription and inactive entry/failure guards', async () => {
-      const state: NetworkState = {
-        network: 'mainnet', client: mockClient as any, connected: true,
-        subscribedToHeaders: false, subscribedAddresses: new Set<string>(),
-        lastBlockHeight: 0, reconnectTimer: null, reconnectAttempts: 0,
-      };
-      await subscribeHeaders(state, mockCallbacks);
-      expect(state.subscribedToHeaders).toBe(true);
-
-      state.subscribedToHeaders = false;
-      await subscribeHeaders(state, mockCallbacks, () => false);
-      expect(mockClient.disconnect).toHaveBeenCalled();
-
-      let active = true;
-      mockClient.subscribeHeaders.mockImplementationOnce(async () => {
-        active = false;
-        throw new Error('closed during headers');
-      });
-      await expect(subscribeHeaders(state, mockCallbacks, () => active)).resolves.toBeUndefined();
-      expect(state.subscribedToHeaders).toBe(false);
-    });
-
-    it('ingresses the startup tip before a live header that races its subscribe response', async () => {
-      const state: NetworkState = {
-        network: 'mainnet', client: mockClient as any, connected: true,
-        subscribedToHeaders: false, subscribedAddresses: new Set<string>(),
-        lastBlockHeight: 0, reconnectTimer: null, reconnectAttempts: 0,
-      };
-      let resolveSubscription!: (header: { height: number; hex: string }) => void;
-      mockClient.subscribeHeaders.mockReturnValueOnce(new Promise(resolve => {
-        resolveSubscription = resolve;
-      }));
-      const observations: number[] = [];
-      vi.mocked(mockCallbacks.onHeaderObservation).mockImplementation(async (_network, header, fetch) => {
-        await fetch(header.height, 1);
-        observations.push(header.height);
-      });
-      setupEventHandlers(state, new Map(), mockCallbacks, () => true, vi.fn());
-
-      const subscription = subscribeHeaders(state, mockCallbacks);
-      mockClient.emit('newBlock', { height: 101, hex: 'a'.repeat(160) });
-      resolveSubscription({ height: 100, hex: 'b'.repeat(160) });
-      await subscription;
-
-      expect(observations).toEqual([100, 101]);
-      expect(state.lastBlockHeight).toBe(101);
-      expect(state.subscribedToHeaders).toBe(true);
-    });
-
-    it('disconnects when ownership is lost while persisting the startup header', async () => {
-      const state: NetworkState = {
-        network: 'mainnet', client: mockClient as any, connected: true,
-        subscribedToHeaders: false, subscribedAddresses: new Set<string>(),
-        lastBlockHeight: 0, reconnectTimer: null, reconnectAttempts: 0,
-      };
-      let active = true;
-      vi.mocked(mockCallbacks.onHeaderObservation).mockImplementationOnce(async () => {
-        active = false;
-      });
-
-      await subscribeHeaders(state, mockCallbacks, () => active);
-
-      expect(mockClient.disconnect).toHaveBeenCalled();
-      expect(state.subscribedToHeaders).toBe(false);
-      expect(state.lastBlockHeight).toBe(0);
-    });
-
-    it('disconnects without rethrowing when startup observation fails after shutdown', async () => {
-      const state: NetworkState = {
-        network: 'mainnet', client: mockClient as any, connected: true,
-        subscribedToHeaders: false, subscribedAddresses: new Set<string>(),
-        lastBlockHeight: 0, reconnectTimer: null, reconnectAttempts: 0,
-      };
-      let active = true;
-      vi.mocked(mockCallbacks.onHeaderObservation).mockImplementationOnce(async () => {
-        active = false;
-        throw new Error('shutdown interrupted startup persistence');
-      });
-      setupEventHandlers(state, new Map(), mockCallbacks, () => active, vi.fn());
-
-      await expect(subscribeHeaders(state, mockCallbacks, () => active)).resolves.toBeUndefined();
-
-      expect(mockClient.disconnect).toHaveBeenCalled();
-      expect(state.subscribedToHeaders).toBe(false);
-    });
-
-    it('stops draining buffered live headers when ownership is lost', async () => {
-      const state: NetworkState = {
-        network: 'mainnet', client: mockClient as any, connected: true,
-        subscribedToHeaders: false, subscribedAddresses: new Set<string>(),
-        lastBlockHeight: 0, reconnectTimer: null, reconnectAttempts: 0,
-      };
-      let resolveSubscription!: (header: { height: number; hex: string }) => void;
-      mockClient.subscribeHeaders.mockReturnValueOnce(new Promise(resolve => {
-        resolveSubscription = resolve;
-      }));
-      let active = true;
-      const observed: number[] = [];
-      vi.mocked(mockCallbacks.onHeaderObservation).mockImplementation(async (_network, header) => {
-        observed.push(header.height);
-        if (header.height === 102) active = false;
-      });
-      setupEventHandlers(state, new Map(), mockCallbacks, () => active, vi.fn());
-
-      const subscription = subscribeHeaders(state, mockCallbacks, () => active);
-      mockClient.emit('newBlock', { height: 101, hex: 'a'.repeat(160) });
-      mockClient.emit('newBlock', { height: 102, hex: 'b'.repeat(160) });
-      resolveSubscription({ height: 100, hex: 'c'.repeat(160) });
-      await subscription;
-
-      expect(observed).toEqual([100, 102]);
-      expect(mockClient.disconnect).toHaveBeenCalled();
-      expect(state.subscribedToHeaders).toBe(false);
-    });
-
-    it('bounds startup to one coalesced header when live notifications keep arriving', async () => {
-      const state: NetworkState = {
-        network: 'mainnet', client: mockClient as any, connected: true,
-        subscribedToHeaders: false, subscribedAddresses: new Set<string>(),
-        lastBlockHeight: 0, reconnectTimer: null, reconnectAttempts: 0,
-      };
-      let finishBuffered!: () => void;
-      const buffered = new Promise<void>(resolve => { finishBuffered = resolve; });
-      const neverSettles = new Promise<void>(() => undefined);
-      vi.mocked(mockCallbacks.onHeaderObservation).mockImplementation(async (_network, header) => {
-        if (header.height === 101) await buffered;
-        if (header.height === 102) await neverSettles;
-        return null;
-      });
-      setupEventHandlers(state, new Map(), mockCallbacks, () => true, vi.fn());
-
-      mockClient.emit('newBlock', { height: 101, hex: 'a'.repeat(160) });
-      const subscription = subscribeHeaders(state, mockCallbacks);
-      await vi.waitFor(() => expect(mockCallbacks.onHeaderObservation).toHaveBeenCalledTimes(2));
-      for (let height = 102; height <= 110; height += 1) {
-        mockClient.emit('newBlock', { height, hex: 'b'.repeat(160) });
-      }
-      expect(mockCallbacks.onHeaderObservation).toHaveBeenCalledTimes(2);
-      finishBuffered();
-
-      await expect(subscription).resolves.toBeUndefined();
-      await vi.waitFor(() => expect(mockCallbacks.onHeaderObservation).toHaveBeenCalledTimes(3));
-      expect(mockCallbacks.onHeaderObservation).toHaveBeenLastCalledWith(
-        'mainnet',
-        { height: 110, hex: 'b'.repeat(160) },
-        expect.any(Function),
-      );
-      expect(state.subscribedToHeaders).toBe(true);
-    });
-
-    it('clears existing reconnect timer and logs when attempts exceed max', () => {
-      const networks = getNetworks();
-      const addressToWallet = getAddressToWallet();
-      const clearTimeoutSpy = vi.spyOn(global, 'clearTimeout');
-      const reconnectTimer = createTimeoutHandle();
-
-      networks.set('mainnet', {
-        network: 'mainnet',
-        client: mockClient as any,
-        connected: false,
-        subscribedToHeaders: false,
-        subscribedAddresses: new Set<string>(),
-        lastBlockHeight: 0,
-        reconnectTimer,
-        reconnectAttempts: 10,
-      });
-
-      scheduleReconnect('mainnet', networks, addressToWallet, mockCallbacks, () => true, vi.fn());
-      expect(clearTimeoutSpy).toHaveBeenCalledWith(reconnectTimer);
-
-      clearTimeoutSpy.mockRestore();
-    });
-
-    it('returns early from reconnect timer callback when manager is not running', async () => {
-      vi.useFakeTimers();
-      const networks = getNetworks();
-      const addressToWallet = getAddressToWallet();
-
-      const state: NetworkState = {
-        network: 'mainnet',
-        client: mockClient as any,
-        connected: false,
-        subscribedToHeaders: false,
-        subscribedAddresses: new Set<string>(),
-        lastBlockHeight: 0,
-        reconnectTimer: null,
-        reconnectAttempts: 0,
-      };
-      networks.set('mainnet', state);
-
-      scheduleReconnect('mainnet', networks, addressToWallet, mockCallbacks, () => false, vi.fn());
-      await vi.advanceTimersByTimeAsync(5_000);
-
-      // connectNetwork should not have been called since isRunning returns false
-      expect(mockClient.connect).not.toHaveBeenCalled();
-      expect(state.reconnectAttempts).toBe(0);
-
-      vi.useRealTimers();
-    });
-
-    it('handles reconnect timer callback when original state is missing and skips resubscribe', async () => {
-      vi.useFakeTimers();
-      const networks = getNetworks();
-      const addressToWallet = getAddressToWallet();
-      const resubscribeSpy = vi.fn();
-
-      networks.clear();
-
-      // Mock connect to fail silently (so network stays disconnected)
-      mockClient.connect.mockRejectedValueOnce(new Error('still down'));
-
-      scheduleReconnect('mainnet', networks, addressToWallet, mockCallbacks, () => true, resubscribeSpy);
-      await vi.advanceTimersByTimeAsync(5_000);
-
-      // State was created but not connected, so resubscribe should not be called
-      expect(resubscribeSpy).not.toHaveBeenCalled();
-
-      const state = networks.get('mainnet');
-      expect(state).toBeDefined();
-      expect(state!.connected).toBe(false);
-
-      vi.useRealTimers();
-    });
-
-    it('updates reconnect state and resubscribes network addresses on reconnect success', async () => {
-      vi.useFakeTimers();
-      const networks = getNetworks();
-      const addressToWallet = getAddressToWallet();
-      const resubscribeSpy = vi.fn();
-
-      const state: NetworkState = {
-        network: 'mainnet',
-        client: mockClient as any,
-        connected: true, // Will be found connected after connectNetwork succeeds
-        subscribedToHeaders: false,
-        subscribedAddresses: new Set<string>(),
-        lastBlockHeight: 0,
-        reconnectTimer: null,
-        reconnectAttempts: 0,
-      };
-      networks.set('mainnet', state);
-
-      scheduleReconnect('mainnet', networks, addressToWallet, mockCallbacks, () => true, resubscribeSpy);
-      await vi.advanceTimersByTimeAsync(5_000);
-
-      expect(resubscribeSpy).toHaveBeenCalledWith('mainnet');
-      expect(state.reconnectTimer).toBeNull();
-      expect(state.reconnectAttempts).toBe(0);
-
-      vi.useRealTimers();
-    });
-
-    it('contains reconnect restoration failures inside the timer callback', async () => {
-      vi.useFakeTimers();
-      const networks = getNetworks();
-      const addressToWallet = getAddressToWallet();
-      const state: NetworkState = {
-        network: 'mainnet',
-        client: mockClient as any,
-        connected: true,
-        subscribedToHeaders: false,
-        subscribedAddresses: new Set<string>(),
-        lastBlockHeight: 0,
-        reconnectTimer: null,
-        reconnectAttempts: 0,
-      };
-      networks.set('mainnet', state);
-      const resubscribeSpy = vi.fn().mockRejectedValue(new Error('checkpoint unavailable'));
-
-      try {
-        scheduleReconnect(
-          'mainnet',
-          networks,
-          addressToWallet,
-          mockCallbacks,
-          () => true,
-          resubscribeSpy,
-        );
-        await vi.advanceTimersByTimeAsync(5_000);
-        expect(resubscribeSpy).toHaveBeenCalledWith('mainnet');
-      } finally {
-        vi.useRealTimers();
-      }
-    });
-
-    it('re-arms scheduleReconnect when resubscribe fails after a successful reconnect', async () => {
-      vi.useFakeTimers();
-      const networks = getNetworks();
-      const addressToWallet = getAddressToWallet();
-      const state: NetworkState = {
-        network: 'mainnet',
-        client: mockClient as any,
-        connected: true,
-        subscribedToHeaders: false,
-        subscribedAddresses: new Set<string>(),
-        lastBlockHeight: 0,
-        reconnectTimer: null,
-        reconnectAttempts: 0,
-      };
-      networks.set('mainnet', state);
-      const resubscribeSpy = vi.fn().mockRejectedValueOnce(new Error('subscribe failed'));
-
-      try {
-        scheduleReconnect('mainnet', networks, addressToWallet, mockCallbacks, () => true, resubscribeSpy);
-        await vi.advanceTimersByTimeAsync(5_000);
-
-        expect(resubscribeSpy).toHaveBeenCalledWith('mainnet');
-        const afterFailure = networks.get('mainnet')!;
-        // The network must not be left silently unsubscribed: either a fresh
-        // reconnect timer is armed, or the subscription was retried.
-        const stuck = afterFailure.connected
-          && afterFailure.subscribedAddresses.size === 0
-          && afterFailure.reconnectTimer === null;
-        expect(stuck).toBe(false);
-        expect(afterFailure.reconnectTimer).not.toBeNull();
-        // reconnectAttempts is left incremented (not reset) by the failed
-        // resubscribe, which is what makes the re-armed backoff below grow
-        // instead of retrying at a flat RECONNECT_BASE_DELAY_MS forever.
-        expect(afterFailure.reconnectAttempts).toBe(1);
-
-        resubscribeSpy.mockResolvedValueOnce(undefined);
-        // A flat retry (the reset-before-subscribe bug) would fire the second
-        // attempt at RECONNECT_BASE_DELAY_MS after the first failure; prove
-        // the backoff actually doubled by checking the spy is still at one
-        // call right up to that boundary...
-        await vi.advanceTimersByTimeAsync(RECONNECT_BASE_DELAY_MS);
-        expect(resubscribeSpy).toHaveBeenCalledTimes(1);
-        // ...and only fires the second attempt one further base-delay tick
-        // later, at the doubled (2x) backoff.
-        await vi.advanceTimersByTimeAsync(RECONNECT_BASE_DELAY_MS);
-        expect(resubscribeSpy).toHaveBeenCalledTimes(2);
-        expect(networks.get('mainnet')!.reconnectAttempts).toBe(0);
-      } finally {
-        vi.useRealTimers();
-      }
-    });
-
-    it('does not re-arm reconnect when ownership is lost before the resubscribe failure is handled', async () => {
-      vi.useFakeTimers();
-      const networks = getNetworks();
-      const addressToWallet = getAddressToWallet();
-      const state: NetworkState = {
-        network: 'mainnet',
-        client: mockClient as any,
-        connected: true,
-        subscribedToHeaders: false,
-        subscribedAddresses: new Set<string>(),
-        lastBlockHeight: 0,
-        reconnectTimer: null,
-        reconnectAttempts: 0,
-      };
-      networks.set('mainnet', state);
-      let active = true;
-      const resubscribeSpy = vi.fn().mockImplementationOnce(async () => {
-        active = false;
-        throw new Error('subscribe failed');
-      });
-
-      try {
-        scheduleReconnect('mainnet', networks, addressToWallet, mockCallbacks, () => active, resubscribeSpy);
-        await vi.advanceTimersByTimeAsync(5_000);
-
-        expect(resubscribeSpy).toHaveBeenCalledWith('mainnet');
-        expect(networks.get('mainnet')!.reconnectTimer).toBeNull();
-      } finally {
-        vi.useRealTimers();
-      }
-    });
-
-    it('resubscribes through the manager reconnect callback after a reconnect succeeds', async () => {
-      vi.useFakeTimers();
-      const networks = getNetworks();
-      const addressToWallet = getAddressToWallet();
-      const onNetworkReady = vi.fn().mockResolvedValue(undefined);
-      const onSubscriptionStatuses = vi.fn().mockResolvedValue(undefined);
-      mockCallbacks.onNetworkReady = onNetworkReady;
-      mockCallbacks.onSubscriptionStatuses = onSubscriptionStatuses;
-
-      networks.set('mainnet', {
-        network: 'mainnet',
-        client: mockClient as any,
-        connected: true,
-        subscribedToHeaders: true,
-        subscribedAddresses: new Set<string>(),
-        lastBlockHeight: 0,
-        reconnectTimer: null,
-        reconnectAttempts: 0,
-      });
-      addressToWallet.set(getAddressSubscriptionKey('mainnet', 'addr-manager-reconnect'), { walletId: 'wallet-reconnect', network: 'mainnet' });
-      (manager as any).isRunningFlag = true;
-      (manager as any).subscriptionLock = { key: 'lock', token: 'token' };
-
-      try {
-        (manager as any).doScheduleReconnect('mainnet');
-        await vi.advanceTimersByTimeAsync(5_000);
-
-        expect(onNetworkReady).toHaveBeenCalledOnce();
-        expect(onNetworkReady).toHaveBeenCalledWith('mainnet');
-        expect(mockClient.subscribeAddressBatch).toHaveBeenCalledWith(['addr-manager-reconnect']);
-        expect(onSubscriptionStatuses).toHaveBeenCalledOnce();
-        expect(onSubscriptionStatuses).toHaveBeenCalledWith(
-          'mainnet',
-          new Map([['addr-manager-reconnect', 'status']]),
-          'reconnect',
-        );
-        expect(networks.get('mainnet')?.reconnectAttempts).toBe(0);
-      } finally {
-        delete mockCallbacks.onNetworkReady;
-        delete mockCallbacks.onSubscriptionStatuses;
-        vi.useRealTimers();
-      }
-    });
-
-    it('covers a status refresh skipped while disconnected with the reconnect resubscribe', async () => {
-      // Item 4 of the subscription-status-refresh plan: a refresh page that runs
-      // while a network is down advances its cursor without reading any status.
-      // The status that changed in that window must still reach the checkpoint
-      // comparison (which raises intent on a mismatch) when the network returns.
-      vi.useFakeTimers();
-      const networks = getNetworks();
-      const addressToWallet = getAddressToWallet();
-      const onSubscriptionStatuses = vi.fn().mockResolvedValue(undefined);
-      mockCallbacks.onSubscriptionStatuses = onSubscriptionStatuses;
-      networks.set('mainnet', {
-        network: 'mainnet',
-        client: mockClient as any,
-        connected: false,
-        subscribedToHeaders: false,
-        subscribedAddresses: new Set<string>(),
-        lastBlockHeight: 0,
-        reconnectTimer: null,
-        reconnectAttempts: 0,
-      });
-      addressToWallet.set(getAddressSubscriptionKey('mainnet', 'addr-gap'), {
-        walletId: 'wallet-gap', network: 'mainnet',
-      });
-      (manager as any).isRunningFlag = true;
-      (manager as any).subscriptionLock = { key: 'lock', token: 'token' };
-      vi.mocked(prisma.address.findMany).mockResolvedValueOnce([{
-        id: 'address-1', address: 'addr-gap', walletId: 'wallet-gap',
-        wallet: { network: 'mainnet' },
-      }] as any);
-
-      try {
-        await expect(manager.refreshSubscriptionStatusPage('mainnet', { limit: 1 }))
-          .resolves.toEqual({
-            scanned: 1, nextCursor: 'address-1', outcome: 'skipped_disconnected',
-          });
-        expect(mockClient.subscribeAddressBatch).not.toHaveBeenCalled();
-        expect(onSubscriptionStatuses).not.toHaveBeenCalled();
-
-        mockClient.subscribeAddressBatch.mockResolvedValueOnce(
-          new Map([['addr-gap', 'status-changed-while-down']]),
-        );
-        (manager as any).doScheduleReconnect('mainnet');
-        await vi.advanceTimersByTimeAsync(5_000);
-
-        expect(mockClient.subscribeAddressBatch).toHaveBeenCalledWith(['addr-gap']);
-        expect(onSubscriptionStatuses).toHaveBeenCalledExactlyOnceWith(
-          'mainnet',
-          new Map([['addr-gap', 'status-changed-while-down']]),
-          'reconnect',
-        );
-      } finally {
-        delete mockCallbacks.onSubscriptionStatuses;
-        vi.useRealTimers();
-      }
-    });
-
-    it('discards a late reconnect after exact ownership is lost', async () => {
-      vi.useFakeTimers();
-      const networks = getNetworks();
-      let finishConnect!: () => void;
-      mockClient.connect.mockReturnValueOnce(new Promise<void>((resolve) => {
-        finishConnect = resolve;
-      }));
-      networks.set('mainnet', {
-        network: 'mainnet',
-        client: mockClient as any,
-        connected: false,
-        subscribedToHeaders: false,
-        subscribedAddresses: new Set<string>(),
-        lastBlockHeight: 0,
-        reconnectTimer: null,
-        reconnectAttempts: 0,
-      });
-      (manager as any).isRunningFlag = true;
-      (manager as any).subscriptionLock = { key: 'lock', token: 'token' };
-
-      (manager as any).doScheduleReconnect('mainnet');
-      vi.advanceTimersByTime(5_000);
-      await vi.waitFor(() => {
-        expect(mockClient.connect).toHaveBeenCalledOnce();
-      });
-      await (manager as any).stopRunningManager();
-      finishConnect();
-      await vi.waitFor(() => {
-        expect(mockClient.disconnect).toHaveBeenCalled();
-      });
-
-      expect(mockClient.subscribeHeaders).not.toHaveBeenCalled();
-      expect(mockClient.subscribeAddressBatch).not.toHaveBeenCalled();
-      expect(networks.size).toBe(0);
-      vi.useRealTimers();
-    });
-
-    it('stops reconnect resubscription when ownership is lost during readiness', async () => {
-      vi.useFakeTimers();
-      const networks = getNetworks();
-      let finishReady!: () => void;
-      mockCallbacks.onNetworkReady = vi.fn(() => new Promise<void>((resolve) => {
-        finishReady = resolve;
-      }));
-      networks.set('mainnet', {
-        network: 'mainnet',
-        client: mockClient as any,
-        connected: true,
-        subscribedToHeaders: true,
-        subscribedAddresses: new Set<string>(),
-        lastBlockHeight: 0,
-        reconnectTimer: null,
-        reconnectAttempts: 0,
-      });
-      getAddressToWallet().set(
-        getAddressSubscriptionKey('mainnet', 'addr-reconnect'),
-        { walletId: 'wallet-1', network: 'mainnet' },
-      );
-      (manager as any).isRunningFlag = true;
-      (manager as any).subscriptionLock = { key: 'lock', token: 'token' };
-
-      (manager as any).doScheduleReconnect('mainnet');
-      vi.advanceTimersByTime(5_000);
-      await vi.waitFor(() => {
-        expect(mockCallbacks.onNetworkReady).toHaveBeenCalledOnce();
-      });
-      await (manager as any).stopRunningManager();
-      finishReady();
-      await Promise.resolve();
-      await Promise.resolve();
-
-      expect(mockClient.subscribeAddressBatch).not.toHaveBeenCalled();
-      delete mockCallbacks.onNetworkReady;
-      vi.useRealTimers();
-    });
+    registerHeaderSubscriptionContracts();
+    registerReconnectionContracts();
 
     it('subscribes connected network batches during subscribeAllAddresses pagination', async () => {
       const networks = getNetworks();

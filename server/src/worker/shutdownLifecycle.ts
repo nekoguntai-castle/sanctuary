@@ -4,6 +4,17 @@ import { createLogger } from '../utils/logger';
 export const WORKER_SHUTDOWN_TIMEOUT_MS = 30_000;
 const log = createLogger('WORKER');
 
+export async function runWorkerCleanup(
+  failureMessage: string,
+  cleanup: () => Promise<void>,
+): Promise<void> {
+  try {
+    await cleanup();
+  } catch (error) {
+    log.error(failureMessage, { error: getErrorMessage(error) });
+  }
+}
+
 /** Start the worker-wide deadline without keeping an otherwise drained process alive. */
 export function startWorkerShutdownDeadline(onTimeout: () => void): NodeJS.Timeout {
   const deadline = setTimeout(() => {

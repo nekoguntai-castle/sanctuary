@@ -79,6 +79,10 @@ export async function applyElectrumConfigChange(
   deps.reconnectSubscriptions(network);
 }
 
+// Tracks apply failures on handlers created by createElectrumConfigChangeHandler
+// so createElectrumConfigResync does not advance `applied` when a live apply fails.
+const handlerFailureCounts = new WeakMap<(change: unknown) => Promise<void>, number>();
+
 /**
  * A serialized handler for config-change events: changes apply in arrival
  * order and never interleave; a malformed payload is dropped before the chain,
@@ -90,7 +94,7 @@ export function createElectrumConfigChangeHandler(
   logger: Logger,
 ): (change: unknown) => Promise<void> {
   let chain: Promise<void> = Promise.resolve();
-  return (change: unknown) => {
+  const handler = (change: unknown): Promise<void> => {
     if (!isElectrumConfigChange(change)) {
       logger.warn('Ignoring malformed Electrum config change', {
         scope: (change as { scope?: unknown } | null | undefined)?.scope,
@@ -101,6 +105,7 @@ export function createElectrumConfigChangeHandler(
     chain = chain
       .then(() => applyElectrumConfigChange(change, deps))
       .catch((error: unknown) => {
+        handlerFailureCounts.set(handler, (handlerFailureCounts.get(handler) ?? 0) + 1);
         logger.error('Failed to apply Electrum config change', {
           scope,
           network,
@@ -109,6 +114,7 @@ export function createElectrumConfigChangeHandler(
       });
     return chain;
   };
+  return handler;
 }
 
 /**
@@ -134,32 +140,82 @@ export async function readElectrumConfigFingerprint(): Promise<string | null> {
   }
 }
 
+export interface ElectrumConfigResync {
+  prime: () => Promise<void>;
+  resync: () => Promise<void>;
+  handleLiveChange: (change: unknown) => Promise<void>;
+  recordApplied: () => Promise<void>;
+}
+
 /**
  * Resync for a process that may have missed a config change (see the event
  * bus `onResync`). Reapplying is a full teardown of node clients and pools, so
  * it runs only when the stored config differs from the one this process last
  * applied; a Redis blip with no config edit costs one read. `prime()` records
- * the config in effect when the process subscribes.
+ * the config in effect when the process subscribes, and `handleLiveChange()` /
+ * `recordApplied()` keep `applied` in sync whenever live events apply.
  */
 export function createElectrumConfigResync(
   handleChange: (change: ElectrumConfigChange) => Promise<void>,
   logger: Logger,
-): { prime: () => Promise<void>; resync: () => Promise<void> } {
+): ElectrumConfigResync {
   let applied: string | null = null;
+  let appliedVersion = 0;
+  let inFlight: Promise<void> = Promise.resolve();
+
+  const trackedHandler = handleChange as (change: unknown) => Promise<void>;
+
+  const track = (work: Promise<void>): Promise<void> => {
+    const settled = work.catch(() => undefined);
+    inFlight = inFlight.then(() => settled);
+    return work;
+  };
+
   return {
     prime: async () => {
-      applied = await readElectrumConfigFingerprint();
-    },
-    resync: async () => {
-      const current = await readElectrumConfigFingerprint();
-      if (current !== null && current === applied) {
-        logger.debug('Electrum config unchanged since last applied; nothing to resync');
-        return;
+      const version = appliedVersion;
+      const fingerprint = await readElectrumConfigFingerprint();
+      if (appliedVersion === version) {
+        applied = fingerprint;
       }
-      logger.info('Electrum config may have changed while events were missed; reapplying');
-      await handleChange({ scope: 'node-config', network: null });
-      await handleChange({ scope: 'electrum-servers', network: null });
-      applied = current;
+    },
+    recordApplied: () => {
+      const run = inFlight.then(async () => {
+        appliedVersion += 1;
+        applied = await readElectrumConfigFingerprint();
+      });
+      return track(run);
+    },
+    handleLiveChange: (change: unknown) => {
+      if (!isElectrumConfigChange(change)) {
+        return trackedHandler(change);
+      }
+      const failuresBefore = handlerFailureCounts.get(trackedHandler) ?? 0;
+      const run = Promise.resolve(handleChange(change)).then(async () => {
+        if ((handlerFailureCounts.get(trackedHandler) ?? 0) === failuresBefore) {
+          appliedVersion += 1;
+          applied = await readElectrumConfigFingerprint();
+        }
+      });
+      return track(run);
+    },
+    resync: () => {
+      const run = inFlight.then(async () => {
+        const current = await readElectrumConfigFingerprint();
+        if (current !== null && current === applied) {
+          logger.debug('Electrum config unchanged since last applied; nothing to resync');
+          return;
+        }
+        logger.info('Electrum config may have changed while events were missed; reapplying');
+        const failuresBefore = handlerFailureCounts.get(trackedHandler) ?? 0;
+        await handleChange({ scope: 'node-config', network: null });
+        await handleChange({ scope: 'electrum-servers', network: null });
+        if ((handlerFailureCounts.get(trackedHandler) ?? 0) === failuresBefore) {
+          appliedVersion += 1;
+          applied = current;
+        }
+      });
+      return track(run);
     },
   };
 }

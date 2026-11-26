@@ -72,6 +72,8 @@ const { mockProviderSettingsState } = vi.hoisted(() => ({
 vi.mock('../../../src/services/price/providerSettings', () => ({
   // null = persisted config unreadable; the service keeps its providers.
   readPersistedPriceProviderConfig: vi.fn(async () => null),
+  readPriceCacheDurationMs: vi.fn(async () => null),
+  writePriceCacheDurationMs: vi.fn(async (ms: number) => ms),
   readPriceProviderConfig: vi.fn(async () => ({
     version: 1,
     enabled: mockProviderSettingsState.enabled,

@@ -30,10 +30,20 @@ import { buildPolicyAddressComparison } from './policyAddressCanonical';
 import { getActivePoliciesForUsage, usageWindowChecks, walletHasEnforcedUsageWindows } from './usageWindows';
 
 const log = createLogger('VAULT_POLICY:SVC_ENGINE');
+export const MAX_WARNED_POLICY_IDS = 1_000;
 // Legacy unknownAddressesOnly-only rows are warned about once per process, not per evaluation.
 const warnedLegacyApprovalPolicyIds = new Set<string>();
 // Likewise once per process for stored addresses that no longer decode.
 const warnedUndecodableAddressPolicyIds = new Set<string>();
+
+export function rememberWarnedPolicyId(seen: Set<string>, policyId: string): void {
+  if (seen.has(policyId)) return;
+  if (seen.size >= MAX_WARNED_POLICY_IDS) {
+    const [oldest] = seen;
+    seen.delete(oldest);
+  }
+  seen.add(policyId);
+}
 
 type EvaluationInput = PolicyEvaluationInput & { preview?: boolean };
 type TriggeredPolicy = PolicyEvaluationResult['triggered'][number];
@@ -240,7 +250,7 @@ const applyApprovalRequiredPolicy = (
     trigger.unknownAddressesOnly === true && !trigger.always && trigger.amountAbove === undefined
     && !warnedLegacyApprovalPolicyIds.has(policy.id)
   ) {
-    warnedLegacyApprovalPolicyIds.add(policy.id);
+    rememberWarnedPolicyId(warnedLegacyApprovalPolicyIds, policy.id);
     log.warn('legacy approval_required policy with unknownAddressesOnly only is not enforced; edit the policy', {
       policyId: policy.id,
     });
@@ -827,7 +837,7 @@ async function evaluateAddressControl(
     network
   );
   if (comparison.undecodableStored.length > 0 && !warnedUndecodableAddressPolicyIds.has(policy.id)) {
-    warnedUndecodableAddressPolicyIds.add(policy.id);
+    rememberWarnedPolicyId(warnedUndecodableAddressPolicyIds, policy.id);
     log.warn('address_control policy has stored addresses that do not decode for the wallet network', {
       policyId: policy.id,
       count: comparison.undecodableStored.length,

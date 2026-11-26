@@ -25,7 +25,9 @@
  * ```
  */
 
+import { createHmac, randomBytes } from 'node:crypto';
 import Redis from 'ioredis';
+import type { ConnectionOptions } from 'bullmq';
 import { getConfig } from '../config';
 import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
@@ -48,6 +50,7 @@ let isRedisEnabled = false;
 // Last time the persistent main-client error listener logged (0 = none this outage)
 let lastClientErrorLoggedAt = 0;
 const CLIENT_ERROR_LOG_INTERVAL_MS = 30_000;
+const REDIS_READY_TIMEOUT_MS = 10_000;
 
 function logClientError(err: Error): void {
   const now = Date.now();
@@ -58,6 +61,91 @@ function logClientError(err: Error): void {
     lastClientErrorLoggedAt = now;
     log.debug('Redis client error (throttled)', { error: getErrorMessage(err) });
   }
+}
+
+function waitForReady(client: Redis, timeoutMs: number): Promise<void> {
+  if (client.status === 'ready') {
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve, reject) => {
+    const onReady = () => {
+      clearTimeout(timeout);
+      client.off('error', onInitError);
+      resolve();
+    };
+    const onInitError = (err: Error) => {
+      clearTimeout(timeout);
+      client.off('ready', onReady);
+      reject(err);
+    };
+    const timeout = setTimeout(() => {
+      client.off('ready', onReady);
+      client.off('error', onInitError);
+      reject(new Error('Redis connection timeout'));
+    }, timeoutMs);
+    timeout.unref?.();
+
+    client.once('ready', onReady);
+    client.on('error', onInitError);
+  });
+}
+
+function disconnectSafely(client: Redis | null): void {
+  if (!client) return;
+  if (client.listenerCount('error') === 0) {
+    client.on('error', logClientError);
+  }
+  client.disconnect();
+}
+
+/**
+ * Extract BullMQ connection options from a live ioredis client, preserving
+ * ACL username and TLS settings alongside host, port, password, and db.
+ */
+export function getBullMqConnectionOptions(
+  redis: Pick<Redis, 'options'>,
+): ConnectionOptions {
+  return {
+    host: redis.options.host,
+    port: redis.options.port,
+    ...(redis.options.username !== undefined ? { username: redis.options.username } : {}),
+    password: redis.options.password,
+    db: redis.options.db,
+    ...(redis.options.tls !== undefined ? { tls: redis.options.tls } : {}),
+  };
+}
+
+// Callback and native TLS context identities are process-local, as are the cached queues.
+const connectionKeySecret = randomBytes(32);
+const tlsReferenceIds = new WeakMap<object, number>();
+let nextTlsReferenceId = 0;
+
+function tlsReferenceId(value: object): number {
+  let id = tlsReferenceIds.get(value);
+  if (id === undefined) {
+    id = ++nextTlsReferenceId;
+    tlsReferenceIds.set(value, id);
+  }
+  return id;
+}
+
+function connectionKeyValue(value: unknown): unknown {
+  if (typeof value === 'function') return ['reference', tlsReferenceId(value)];
+  if (value === null || typeof value !== 'object') return value;
+  if (value instanceof Uint8Array) return ['bytes', Buffer.from(value).toString('base64')];
+  if (Array.isArray(value)) return ['array', value.map(connectionKeyValue)];
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return ['reference', tlsReferenceId(value)];
+  const record = value as Record<string, unknown>;
+  return ['object', Object.keys(record).sort().filter(key => record[key] !== undefined)
+    .map(key => [key, connectionKeyValue(record[key])])];
+}
+
+/** Compare the forwarded options, including credentials and TLS, without retaining them in queue keys. */
+export function getBullMqConnectionKey(connection: ConnectionOptions): string {
+  return createHmac('sha256', connectionKeySecret)
+    .update(JSON.stringify(connectionKeyValue(connection)))
+    .digest('hex');
 }
 
 // =============================================================================
@@ -83,6 +171,9 @@ export async function initializeRedis(): Promise<void> {
     throw new Error('Redis is required but REDIS_URL is not set');
   }
 
+  let publisher: Redis | null = null;
+  let subscriber: Redis | null = null;
+
   try {
     log.info('Initializing Redis connections', {
       url: config.redis.url.replace(/\/\/.*@/, '//<credentials>@'),
@@ -107,26 +198,7 @@ export async function initializeRedis(): Promise<void> {
     });
 
     // Wait for connection to be ready (not just connected)
-    await new Promise<void>((resolve, reject) => {
-      const onReady = () => {
-        clearTimeout(timeout);
-        redisClient!.off('error', onInitError);
-        resolve();
-      };
-      const onInitError = (err: Error) => {
-        clearTimeout(timeout);
-        redisClient!.off('ready', onReady);
-        reject(err);
-      };
-      const timeout = setTimeout(() => {
-        redisClient!.off('ready', onReady);
-        redisClient!.off('error', onInitError);
-        reject(new Error('Redis connection timeout'));
-      }, 10000);
-
-      redisClient!.once('ready', onReady);
-      redisClient!.on('error', onInitError);
-    });
+    await waitForReady(redisClient, REDIS_READY_TIMEOUT_MS);
 
     // Persistent listener: keeps reconnect failures in structured, throttled logs
     redisClient.on('ready', () => {
@@ -138,27 +210,27 @@ export async function initializeRedis(): Promise<void> {
     distributedCache = new RedisCache(redisClient);
 
     // Create distributed event bus (needs separate connections for pub/sub)
-    const publisher = new Redis(config.redis.url, {
+    publisher = new Redis(config.redis.url, {
       maxRetriesPerRequest: 3,
       retryStrategy(times) {
         return Math.min(times * 100, 3000);
       },
     });
 
-    const subscriber = new Redis(config.redis.url, {
+    subscriber = new Redis(config.redis.url, {
       maxRetriesPerRequest: 3,
       retryStrategy(times) {
         return Math.min(times * 100, 3000);
       },
     });
+
+    await Promise.all([
+      waitForReady(publisher, REDIS_READY_TIMEOUT_MS),
+      waitForReady(subscriber, REDIS_READY_TIMEOUT_MS),
+    ]);
 
     publisher.on('error', logClientError);
     subscriber.on('error', logClientError);
-
-    await Promise.all([
-      new Promise<void>((resolve) => publisher.once('ready', resolve)),
-      new Promise<void>((resolve) => subscriber.once('ready', resolve)),
-    ]);
 
     distributedEventBus = new RedisEventBus(publisher, subscriber);
 
@@ -175,10 +247,14 @@ export async function initializeRedis(): Promise<void> {
     // Clean up partial connections
     // disconnect(), not quit(): retries are unbounded, and a QUIT queued while
     // reconnecting would leave the client retrying forever.
-    if (redisClient) {
-      redisClient.disconnect();
-      redisClient = null;
-    }
+    disconnectSafely(publisher);
+    publisher = null;
+    disconnectSafely(subscriber);
+    subscriber = null;
+    disconnectSafely(redisClient);
+    redisClient = null;
+    distributedCache = null;
+    distributedEventBus = null;
     isRedisEnabled = false;
     isInitialized = false;
     throw error;
@@ -250,24 +326,36 @@ export async function shutdownRedis(): Promise<void> {
 
   log.info('Shutting down Redis infrastructure');
 
+  const eventBusToClose = distributedEventBus;
+  const clientToClose = redisClient;
+
   try {
     // Shutdown event bus first (has pub/sub connections)
-    if (distributedEventBus && 'shutdown' in distributedEventBus) {
-      await (distributedEventBus as RedisEventBus).shutdown();
+    if (eventBusToClose && 'shutdown' in eventBusToClose) {
+      await (eventBusToClose as RedisEventBus).shutdown();
     }
 
     // Shutdown main client
-    if (redisClient) {
-      await redisClient.quit();
-      redisClient = null;
+    if (clientToClose && redisClient === clientToClose) {
+      await clientToClose.quit();
     }
-
-    isRedisEnabled = false;
-    isInitialized = false;
 
     log.info('Redis infrastructure shutdown complete');
   } catch (error) {
     log.error('Error during Redis shutdown', { error: getErrorMessage(error) });
+    if (clientToClose && redisClient === clientToClose) {
+      disconnectSafely(clientToClose);
+    }
+  } finally {
+    if (redisClient === clientToClose) {
+      redisClient = null;
+    }
+    if (distributedEventBus === eventBusToClose) {
+      distributedEventBus = null;
+    }
+    distributedCache = null;
+    isRedisEnabled = false;
+    isInitialized = false;
   }
 }
 

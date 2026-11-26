@@ -342,4 +342,36 @@ describe('Admin Version Routes', () => {
     expect(response.status).toBe(500);
     expect(response.body.code).toBe('INTERNAL_ERROR');
   });
+
+  it('P3-6: coalesces concurrent cold version checks into one GitHub release fetch via singleFlight', async () => {
+    let resolveFetch!: (value: unknown) => void;
+    const { app, fetchMock } = await setupVersionRoute({
+      fetchImpl: () => new Promise((resolve) => {
+        resolveFetch = resolve;
+      }),
+    });
+
+    const firstReq = request(app).get('/api/v1/admin/version').then((res) => res);
+    const secondReq = request(app).get('/api/v1/admin/version').then((res) => res);
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    resolveFetch({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        tag_name: 'v2.0.0',
+        html_url: 'https://github.com/nekoguntai-castle/sanctuary/releases/tag/v2.0.0',
+        name: 'v2.0.0',
+        published_at: '2026-11-25T00:00:00Z',
+        body: 'Release notes',
+      }),
+    });
+
+    const [firstRes, secondRes] = await Promise.all([firstReq, secondReq]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(firstRes.status).toBe(200);
+    expect(secondRes.status).toBe(200);
+    expect(firstRes.body.latestVersion).toBe('2.0.0');
+    expect(secondRes.body.latestVersion).toBe('2.0.0');
+  });
 });

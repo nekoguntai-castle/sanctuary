@@ -15,10 +15,15 @@ import { PACKAGE_VERSION } from '../../config/packageInfo';
 
 const log = createLogger('UTIL:OTEL');
 
-// Check if tracing is enabled before importing heavy OTEL packages
-const isTracingEnabled = process.env.OTEL_TRACING_ENABLED === 'true';
+interface OtelSdkHandle {
+  shutdown(): Promise<void>;
+}
+
+let activeSdk: OtelSdkHandle | null = null;
 
 export async function initializeOpenTelemetry(): Promise<void> {
+  // Check dynamically so values loaded by config/loadEnv.ts are always observed.
+  const isTracingEnabled = process.env.OTEL_TRACING_ENABLED === 'true';
   if (!isTracingEnabled) {
     log.debug('OpenTelemetry tracing disabled (OTEL_TRACING_ENABLED != true)');
     return;
@@ -82,27 +87,30 @@ export async function initializeOpenTelemetry(): Promise<void> {
 
     // Start the SDK
     sdk.start();
+    activeSdk = sdk;
 
     log.info('OpenTelemetry tracing initialized', {
       serviceName,
       endpoint,
       environment,
     });
-
-    // Graceful shutdown
-    const shutdown = async () => {
-      try {
-        await sdk.shutdown();
-        log.info('OpenTelemetry SDK shut down successfully');
-      } catch (error) {
-        log.error('Error shutting down OpenTelemetry SDK', { error: getErrorMessage(error) });
-      }
-    };
-
-    process.on('SIGTERM', shutdown);
-    process.on('SIGINT', shutdown);
   } catch (error) {
     log.error('Failed to initialize OpenTelemetry', { error: getErrorMessage(error) });
     // Don't throw - allow the application to continue without tracing
+  }
+}
+
+export async function shutdownOpenTelemetry(): Promise<void> {
+  const sdk = activeSdk;
+  activeSdk = null;
+  if (!sdk) {
+    return;
+  }
+
+  try {
+    await sdk.shutdown();
+    log.info('OpenTelemetry SDK shut down successfully');
+  } catch (error) {
+    log.error('Error shutting down OpenTelemetry SDK', { error: getErrorMessage(error) });
   }
 }

@@ -81,6 +81,7 @@ function syncDeadLetterEnvelope(): DeadLetterJobEnvelope {
 
 describe("workerSyncQueue", () => {
   beforeEach(async () => {
+    await closeWorkerSyncQueue();
     vi.clearAllMocks();
     mocks.mockQueueAdd.mockReset();
     mocks.mockQueueGetJob.mockReset();
@@ -101,7 +102,6 @@ describe("workerSyncQueue", () => {
       options: { host: "localhost", port: 6379, db: 0 },
     });
     mocks.mockIsRedisConnected.mockReturnValue(true);
-    await closeWorkerSyncQueue();
   });
 
   it("encodes explicit sync job IDs before adding a single wallet job", async () => {
@@ -881,5 +881,51 @@ describe("workerSyncQueue", () => {
       enqueueDeadLetterJob(syncDeadLetterEnvelope(), ""),
     ).resolves.toBe(false);
     expect(mocks.mockQueueAdd).not.toHaveBeenCalled();
+  });
+
+  it("reuses equivalent TLS credentials and replaces the sync queue when certificate material rotates", async () => {
+    const { Queue } = await import("bullmq");
+    const options = { host: "redis-a", port: 6380, password: "pw", tls: { ca: Buffer.from("first-ca") } };
+    mocks.mockGetRedisClient.mockReturnValue({ options });
+    await enqueueWalletSync("wallet-1");
+    mocks.mockGetRedisClient.mockReturnValue({ options: { ...options, tls: { ca: Buffer.from("first-ca") } } });
+    await enqueueWalletSync("wallet-2");
+    expect(Queue).toHaveBeenCalledTimes(1);
+
+    mocks.mockGetRedisClient.mockReturnValue({ options: { ...options, tls: { ca: Buffer.from("next-ca") } } });
+    await enqueueWalletSync("wallet-3");
+    expect(Queue).toHaveBeenCalledTimes(2);
+    expect(mocks.mockQueueClose).toHaveBeenCalledOnce();
+  });
+
+  it("P2-1: forwards username/tls to BullMQ and closes stale syncQueue when connection changes", async () => {
+    const { Queue } = await import("bullmq");
+    const tls = { rejectUnauthorized: true };
+    mocks.mockGetRedisClient.mockReturnValue({
+      options: { host: "redis-a", port: 6380, username: "acl-a", password: "pw", db: 1, tls },
+    });
+
+    await enqueueWalletSync("wallet-1");
+    expect(Queue).toHaveBeenLastCalledWith(
+      "sync",
+      expect.objectContaining({
+        connection: expect.objectContaining({
+          host: "redis-a",
+          port: 6380,
+          username: "acl-a",
+          password: "pw",
+          db: 1,
+          tls,
+        }),
+      }),
+    );
+
+    // Switch Redis connection -> previous Queue must be closed
+    mocks.mockGetRedisClient.mockReturnValue({
+      options: { host: "redis-b", port: 6380, username: "acl-b", password: "pw", db: 1, tls },
+    });
+    await enqueueWalletSync("wallet-2");
+
+    expect(mocks.mockQueueClose).toHaveBeenCalledTimes(1);
   });
 });

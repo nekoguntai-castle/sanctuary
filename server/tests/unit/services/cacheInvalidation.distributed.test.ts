@@ -202,6 +202,28 @@ describe('cache invalidation event-bus ownership', () => {
     expect(distributedBus.published).toHaveLength(0); // never re-published
   });
 
+  it('clears every cache and restarts wallet log sequences on a remote restore', async () => {
+    const cache = await import('../../../src/services/cache');
+    const { walletLogBuffer } = await import('../../../src/services/walletLogBuffer');
+    initializeCacheInvalidation();
+    for (const id of ['wallet-a', 'wallet-b']) {
+      walletLogBuffer.add(id, {
+        id, level: 'info', message: 'sync started', module: 'sync',
+        timestamp: new Date().toISOString(), sequence: walletLogBuffer.nextSequence(id),
+      });
+    }
+
+    await distributedBus.deliverRemote('cache:invalidated', { scope: 'all' });
+
+    expect(cache.walletCache.clear).toHaveBeenCalledOnce();
+    expect(cache.priceCache.clear).toHaveBeenCalledOnce();
+    expect(cache.feeCache.clear).toHaveBeenCalledOnce();
+    expect(walletLogBuffer.getStats()).toEqual({ walletCount: 0, totalEntries: 0 });
+    expect(walletLogBuffer.nextSequence('wallet-a')).toBe(1);
+    expect(walletLogBuffer.nextSequence('wallet-b')).toBe(1);
+    expect(distributedBus.published).toHaveLength(0);
+  });
+
   it('applies remote price and fee invalidations and ignores malformed ones', async () => {
     const cache = await import('../../../src/services/cache');
     initializeCacheInvalidation();

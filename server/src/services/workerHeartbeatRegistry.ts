@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import Redis from "ioredis";
 import { z } from "zod";
 import { getConfig } from "../config";
+import { getWorkerReplicaId } from "../config/operationalEnv";
 import {
   WALLET_SYNC_MUTATION_FENCE_FLOOR,
   WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR,
@@ -304,7 +305,7 @@ return 1
  * enough for the fleet reader to force coverage and capability claims degraded.
  */
 function internalReplicaIdentity(): { id: string; stable: boolean } {
-  const configured = process.env.WORKER_REPLICA_ID?.trim();
+  const configured = getWorkerReplicaId();
   const identity = configured || randomUUID();
   return {
     id: createHash("sha256").update(identity).digest("hex").slice(0, 32),

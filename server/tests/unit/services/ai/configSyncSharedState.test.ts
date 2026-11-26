@@ -22,6 +22,10 @@ const redis = vi.hoisted(() => {
         store.set(key, value);
         return "OK";
       }),
+      del: vi.fn(async (key: string) => {
+        store.delete(key);
+        return 1;
+      }),
     },
   };
 });
@@ -221,5 +225,140 @@ describe("LLM egress proxy config sync shared state", () => {
     expect(posts).toHaveLength(1);
     const body = JSON.parse(String(posts[0][1].body));
     expect(body).toMatchObject({ enabled: false, apiKey: "" });
+  });
+
+  describe("P1-8 boot-scoped shared marker & single retry on unconfigured proxy response", () => {
+    function withBootId(status: number, body: unknown, bootId: string) {
+      return {
+        ok: status >= 200 && status < 300,
+        status,
+        headers: new Headers({ "x-sanctuary-proxy-boot-id": bootId }),
+        json: vi.fn().mockResolvedValue(body),
+        clone: () => ({ json: vi.fn().mockResolvedValue(body) }),
+      } as any;
+    }
+
+    it.each([
+      { status: 503, body: { reason: "provider_not_configured" }, boot: "boot-2" },
+      { status: 200, body: { available: true }, boot: "boot-3" },
+    ])("clears the marker when the sole replay returns $status on $boot", async ({ status, body, boot }) => {
+      useRedis(true);
+      mocks.systemSettingFindMany.mockResolvedValue(configFor("model-x"));
+      const { fetchLlmEgressProxy } = await import("../../../../src/services/ai/config");
+      mocks.fetch
+        .mockResolvedValueOnce(withBootId(503, { reason: "provider_not_configured" }, "boot-1"))
+        .mockResolvedValueOnce(withBootId(200, { success: true }, "boot-2"))
+        .mockResolvedValueOnce(withBootId(status, body, boot));
+
+      const response = await fetchLlmEgressProxy("http://proxy/console/plan");
+
+      expect(response.status).toBe(status);
+      expect(mocks.fetch).toHaveBeenCalledTimes(3);
+      expect(redis.store.has("ai:llm-egress-proxy:config-hash")).toBe(false);
+    });
+
+    it("returns the original response when the config push fails", async () => {
+      useRedis(true);
+      mocks.systemSettingFindMany.mockResolvedValue(configFor("model-x"));
+      const { fetchLlmEgressProxy } = await import("../../../../src/services/ai/config");
+      const unavailable = withBootId(503, { reason: "provider_not_configured" }, "boot-1");
+      mocks.fetch.mockResolvedValueOnce(unavailable).mockRejectedValueOnce(new Error("proxy offline"));
+
+      await expect(fetchLlmEgressProxy("http://proxy/console/plan")).resolves.toBe(unavailable);
+      expect(mocks.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("returns a relative config endpoint response even when marker deletion fails", async () => {
+      useRedis(true);
+      const { fetchLlmEgressProxy } = await import("../../../../src/services/ai/config");
+      const unavailable = withBootId(400, { error: "No AI endpoint configured" }, "boot-1");
+      mocks.fetch.mockResolvedValueOnce(unavailable);
+      redis.client.del.mockRejectedValueOnce(new Error("redis offline"));
+
+      await expect(fetchLlmEgressProxy("/config")).resolves.toBe(unavailable);
+      expect(mocks.fetch).toHaveBeenCalledTimes(1);
+      expect(redis.client.del).toHaveBeenCalledWith("ai:llm-egress-proxy:config-hash");
+    });
+
+    it("stores bootId with hash in Redis and deletes the shared marker on boot-id change", async () => {
+      useRedis(true);
+      mocks.systemSettingFindMany.mockResolvedValue(configFor("model-x"));
+      const { ensureLlmProxyConfigured, fetchLlmEgressProxy } = await import(
+        "../../../../src/services/ai/config"
+      );
+
+      mocks.fetch.mockResolvedValueOnce(withBootId(200, { success: true }, "boot-1"));
+      await ensureLlmProxyConfigured();
+
+      const storedMarker = redis.store.get("ai:llm-egress-proxy:config-hash");
+      expect(storedMarker).toBeDefined();
+      expect(storedMarker).toContain("boot-1");
+
+      // Observing a new boot id invalidates the shared Redis marker for sibling replicas too.
+      mocks.fetch.mockResolvedValueOnce(withBootId(200, { available: true }, "boot-2"));
+      await fetchLlmEgressProxy("http://llm-egress-proxy:3100/health");
+
+      expect(redis.client.del).toHaveBeenCalledWith("ai:llm-egress-proxy:config-hash");
+      expect(redis.store.has("ai:llm-egress-proxy:config-hash")).toBe(false);
+    });
+
+    it("re-pushes config and replays once when outbound call receives an unconfigured 503 or 400 response", async () => {
+      useRedis(true);
+      mocks.systemSettingFindMany.mockResolvedValue(configFor("model-x"));
+      const { ensureLlmProxyConfigured, fetchLlmEgressProxy } = await import(
+        "../../../../src/services/ai/config"
+      );
+
+      // Initial sync to boot-1
+      mocks.fetch.mockResolvedValueOnce(withBootId(200, { success: true }, "boot-1"));
+      await ensureLlmProxyConfigured();
+      expect(configPosts()).toHaveLength(1);
+
+      // Proxy restarts into boot-2 and answers 503 provider_not_configured on first call
+      mocks.fetch
+        .mockResolvedValueOnce(
+          withBootId(503, { error: "AI is not enabled", reason: "provider_not_configured" }, "boot-2"),
+        )
+        .mockResolvedValueOnce(withBootId(200, { success: true }, "boot-2"))
+        .mockResolvedValueOnce(withBootId(200, { answer: "replayed" }, "boot-2"));
+
+      const response = await fetchLlmEgressProxy("http://llm-egress-proxy:3100/console/plan", {
+        method: "POST",
+        body: JSON.stringify({ prompt: "hello" }),
+      });
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ answer: "replayed" });
+      expect(configPosts()).toHaveLength(2);
+      expect(redis.client.del).toHaveBeenCalledWith("ai:llm-egress-proxy:config-hash");
+      expect(redis.store.get("ai:llm-egress-proxy:config-hash")).toContain("boot-2");
+    });
+
+    it("re-pushes and replays once on 400 'No AI endpoint configured' and respects skipConfigRetry", async () => {
+      useRedis(true);
+      mocks.systemSettingFindMany.mockResolvedValue(configFor("model-x"));
+      const { fetchLlmEgressProxy } = await import("../../../../src/services/ai/config");
+
+      mocks.fetch
+        .mockResolvedValueOnce(withBootId(400, { error: "No AI endpoint configured" }, "boot-3"))
+        .mockResolvedValueOnce(withBootId(200, { success: true }, "boot-3"))
+        .mockResolvedValueOnce(withBootId(200, { models: ["model-x"] }, "boot-3"));
+
+      const response = await fetchLlmEgressProxy("http://llm-egress-proxy:3100/list-models");
+      expect(response.status).toBe(200);
+      expect(configPosts()).toHaveLength(1);
+
+      // When skipConfigRetry is true, do not re-push or replay.
+      mocks.fetch.mockResolvedValueOnce(
+        withBootId(400, { error: "No AI endpoint configured" }, "boot-4"),
+      );
+      const skipped = await (fetchLlmEgressProxy as any)(
+        "http://llm-egress-proxy:3100/list-models",
+        undefined,
+        { skipConfigRetry: true },
+      );
+      expect(skipped.status).toBe(400);
+      expect(configPosts()).toHaveLength(1);
+    });
   });
 });

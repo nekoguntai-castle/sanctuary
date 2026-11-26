@@ -1,6 +1,7 @@
 /** Privacy-safe, bounded aggregates for exhausted notification jobs. */
 import type { Job } from 'bullmq';
 import Redis from 'ioredis';
+import { getConfig } from '../../config';
 import { z } from 'zod';
 import {
   NOTIFICATION_FAILURE_CLASSES,
@@ -431,7 +432,7 @@ function isolatedNotificationDeadLetterClient(): Redis {
 }
 
 function notificationDiagnosticsRedisUrl(): string {
-  const url = process.env.REDIS_URL;
+  const url = getConfig().redis.url;
   if (!url) throw new Error('notification_dlq_aggregate_unavailable');
   return url;
 }

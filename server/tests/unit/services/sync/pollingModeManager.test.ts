@@ -12,7 +12,7 @@ const {
       confirmationUpdateIntervalMs: 30_000,
     },
   }),
-  mockGetWorkerHealthStatus: vi.fn<() => { healthy: boolean }>(),
+  mockGetWorkerHealthStatus: vi.fn<() => { healthy: boolean; failures?: number }>(),
   mockLogger: {
     debug: vi.fn(),
     info: vi.fn(),
@@ -218,7 +218,7 @@ describe('pollingModeManager', () => {
     });
 
     it('starts polling when worker goes down and mode is worker-delegated', () => {
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false });
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false, failures: 3 });
 
       const refs = makeRefs();
       const state = makeSyncState({ pollingMode: 'worker-delegated' });
@@ -227,6 +227,26 @@ describe('pollingModeManager', () => {
 
       expect(refs.syncInterval).not.toBeNull();
       expect(state.pollingMode).toBe('in-process');
+    });
+
+    it('P2-6: does not take over polling until consecutive failures reach threshold 3', () => {
+      const refs = makeRefs();
+      const state = makeSyncState({ pollingMode: 'worker-delegated' });
+
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false, failures: 1 });
+      evaluatePollingMode(refs, state, vi.fn(), vi.fn());
+      expect(state.pollingMode).toBe('worker-delegated');
+      expect(refs.syncInterval).toBeNull();
+
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false, failures: 2 });
+      evaluatePollingMode(refs, state, vi.fn(), vi.fn());
+      expect(state.pollingMode).toBe('worker-delegated');
+      expect(refs.syncInterval).toBeNull();
+
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false, failures: 3 });
+      evaluatePollingMode(refs, state, vi.fn(), vi.fn());
+      expect(state.pollingMode).toBe('in-process');
+      expect(refs.syncInterval).not.toBeNull();
     });
 
     it('does nothing when worker is healthy and mode is already worker-delegated', () => {

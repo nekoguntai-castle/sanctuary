@@ -44,6 +44,12 @@ vi.mock("../../../../../src/services/bitcoin/electrumPool", () => ({
   })),
 }));
 
+vi.mock("../../../../../src/services/bitcoin/electrumPool/poolRegistry", () => ({
+  getExistingElectrumPool: vi.fn(() => ({
+    isProxyEnabled: isProxyEnabledMock,
+  })),
+}));
+
 vi.mock("../../../../../src/services/bitcoin/utils/blockHeight", () => ({
   getBlockHeight: getBlockHeightMock,
 }));

@@ -14,6 +14,7 @@ import {
 import { ProviderRegistry } from '../../providers';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
+import { singleFlight } from '../../utils/async';
 import { isWalletTransactionNotificationEnabled } from './notificationEligibility';
 import {
   createPushProviderRegistry,
@@ -81,6 +82,7 @@ function buildTransactionPushMessage(
 class PushService {
   private registry: ProviderRegistry<IPushProvider>;
   private initialized = false;
+  private initializationRequests = new Map<string, Promise<void>>();
 
   constructor() {
     this.registry = createPushProviderRegistry();
@@ -92,9 +94,11 @@ class PushService {
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    await initializePushProviders(this.registry);
-    this.initialized = true;
-    log.info('Push service initialized with provider registry');
+    await singleFlight(this.initializationRequests, 'initialize', async () => {
+      await initializePushProviders(this.registry);
+      this.initialized = true;
+      log.info('Push service initialized with provider registry');
+    });
   }
 
   /**
@@ -412,6 +416,7 @@ class PushService {
   async shutdown(): Promise<void> {
     await this.registry.shutdown();
     this.initialized = false;
+    this.initializationRequests.clear();
     log.info('Push service shut down');
   }
 }

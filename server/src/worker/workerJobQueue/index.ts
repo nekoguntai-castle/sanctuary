@@ -21,6 +21,7 @@ import {
   type JobsOptions,
 } from "bullmq";
 import { getRedisClient, isRedisConnected } from "../../infrastructure";
+import { getBullMqConnectionOptions } from "../../infrastructure/redis";
 import { createLogger } from "../../utils/logger";
 import { getErrorMessage } from "../../utils/errors";
 import { toBullMqJobId, withBullMqSafeJobId } from "../../jobs/bullMqJobIds";
@@ -234,12 +235,7 @@ export class WorkerJobQueue {
     }
 
     // Create BullMQ connection options
-    this.connection = {
-      host: redis.options.host,
-      port: redis.options.port,
-      password: redis.options.password,
-      db: redis.options.db,
-    };
+    this.connection = getBullMqConnectionOptions(redis);
     this.heartbeatStore = new RecurringHeartbeatStore(
       redis,
       this.config.prefix!,

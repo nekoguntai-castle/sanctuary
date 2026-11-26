@@ -5,6 +5,7 @@ import {
   mockClient,
   mockConfigChangeUnsubscribe,
   mockDistributedEventBus,
+  mockElectrumClientCtor,
   mockResyncUnsubscribe,
   mockLog,
 } from './electrumManagerTestHarness';
@@ -55,7 +56,7 @@ export function registerElectrumManagerConfigChangeContracts() {
       try {
         await startAsSubscriptionOwner();
         const connectsBefore = mockClient.connect.mock.calls.length;
-        const resolvesBefore = vi.mocked(getElectrumClientForNetwork).mock.calls.length;
+        const resolvesBefore = mockElectrumClientCtor.mock.calls.length;
         await configChangeHandler()({ scope: 'node-config', network: null });
 
         expect(resetNodeClient).toHaveBeenCalledTimes(1);
@@ -67,7 +68,7 @@ export function registerElectrumManagerConfigChangeContracts() {
         await vi.advanceTimersByTimeAsync(RECONNECT_BASE_DELAY_MS);
 
         expect(mockClient.connect).toHaveBeenCalledTimes(connectsBefore + 1);
-        expect(getElectrumClientForNetwork).toHaveBeenCalledTimes(resolvesBefore + 1);
+        expect(mockElectrumClientCtor).toHaveBeenCalledTimes(resolvesBefore + 1);
         expect(manager.isConnected()).toBe(true);
       } finally {
         vi.useRealTimers();
@@ -145,9 +146,8 @@ export function registerElectrumManagerConfigChangeContracts() {
       vi.useFakeTimers();
       try {
         const clients = { mainnet: new MockElectrumClient(), testnet4: new MockElectrumClient() };
-        vi.mocked(getElectrumClientForNetwork).mockImplementation(
-          (network) => clients[network as keyof typeof clients] as unknown as any,
-        );
+        const queue = [clients.mainnet, clients.testnet4, clients.testnet4];
+        mockElectrumClientCtor.mockImplementation(() => queue.shift() ?? clients.mainnet);
         await startAsSubscriptionOwner(['mainnet', 'testnet4']);
         const testnet4Connects = clients.testnet4.connect.mock.calls.length;
 
@@ -207,6 +207,20 @@ export function registerElectrumManagerConfigChangeContracts() {
       } finally {
         vi.mocked(acquireLock).mockReset();
       }
+    });
+
+    it('P1-2: creates a dedicated ElectrumClient per network instead of sharing getElectrumClientForNetwork and disconnects it on stop', async () => {
+      const dedicatedClient = new MockElectrumClient();
+      mockElectrumClientCtor.mockImplementationOnce(() => dedicatedClient);
+
+      await startAsSubscriptionOwner(['mainnet']);
+
+      expect(mockElectrumClientCtor).toHaveBeenCalledTimes(1);
+      expect(dedicatedClient.setNetwork).toHaveBeenCalledWith('mainnet');
+      expect(getElectrumClientForNetwork).not.toHaveBeenCalled();
+
+      await manager.stop();
+      expect(dedicatedClient.disconnect).toHaveBeenCalledTimes(1);
     });
   });
 }

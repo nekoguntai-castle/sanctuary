@@ -26,7 +26,10 @@ const {
   },
   redisState: {
     autoReady: true,
+    initiallyReady: false,
     failMainWithError: null as Error | null,
+    failPubSubIndex: null as number | null,
+    hangPubSubIndex: null as number | null,
   },
   redisInstances: [] as MockRedis[],
   redisCacheInstance: {
@@ -47,7 +50,7 @@ const {
 }));
 
 class MockRedis extends EventEmitter {
-  status = 'connecting';
+  status = redisState.initiallyReady ? 'ready' : 'connecting';
   url: string;
   options: any;
   quit = vi.fn().mockResolvedValue('OK');
@@ -65,6 +68,17 @@ class MockRedis extends EventEmitter {
       process.nextTick(() => {
         this.emit('error', redisState.failMainWithError);
       });
+      return;
+    }
+
+    if (redisState.failPubSubIndex === redisInstances.length) {
+      process.nextTick(() => {
+        this.emit('error', new Error('pubsub connection failed'));
+      });
+      return;
+    }
+
+    if (redisState.hangPubSubIndex === redisInstances.length) {
       return;
     }
 
@@ -126,7 +140,10 @@ describe('infrastructure/redis', () => {
     vi.clearAllMocks();
     redisInstances.length = 0;
     redisState.autoReady = true;
+    redisState.initiallyReady = false;
     redisState.failMainWithError = null;
+    redisState.failPubSubIndex = null;
+    redisState.hangPubSubIndex = null;
     (mockRedisEventBusInstance as any).shutdown = vi.fn().mockResolvedValue(undefined);
 
     mockGetConfig.mockReturnValue({
@@ -140,6 +157,15 @@ describe('infrastructure/redis', () => {
   afterEach(async () => {
     const redisInfra = await loadRedisInfra();
     await redisInfra.shutdownRedis();
+  });
+
+  it('accepts clients already ready without waiting for another ready event', async () => {
+    redisState.initiallyReady = true;
+    redisState.autoReady = false;
+    const redisInfra = await loadRedisInfra();
+    await redisInfra.initializeRedis();
+    expect(redisInfra.isRedisConnected()).toBe(true);
+    expect(redisInstances).toHaveLength(3);
   });
 
   it('returns memory/local fallbacks before initialization', async () => {
@@ -349,6 +375,43 @@ describe('infrastructure/redis', () => {
     expect(redisInfra.isRedisConnected()).toBe(false);
   });
 
+  it('does not disconnect an already-closed client when a slower shutdown fails', async () => {
+    const redisInfra = await loadRedisInfra();
+    await redisInfra.initializeRedis();
+    let rejectFirst!: (error: Error) => void;
+    mockRedisEventBusInstance.shutdown.mockImplementationOnce(() => new Promise<void>((_, reject) => {
+      rejectFirst = reject;
+    }));
+
+    const first = redisInfra.shutdownRedis();
+    await redisInfra.shutdownRedis();
+    rejectFirst(new Error('subscription already closed'));
+    await first;
+
+    expect(redisInstances[0].quit).toHaveBeenCalledOnce();
+    expect(redisInstances[0].disconnect).not.toHaveBeenCalled();
+  });
+
+  it('compares TLS credentials by contents and callback or native context by identity', async () => {
+    const { getBullMqConnectionKey: key } = await loadRedisInfra();
+    const verifyPeer = () => undefined;
+    const secureContext = (await import('node:tls')).createSecureContext();
+    const tls = { checkServerIdentity: verifyPeer, secureContext, ca: [Buffer.from('test-ca')] };
+    const original = key({ password: 'test-password', tls });
+    const equivalent = { ca: [Buffer.from('test-ca')], secureContext, checkServerIdentity: verifyPeer };
+    expect(key({ tls: equivalent, password: 'test-password' })).toBe(original);
+    expect(key({ password: 'test-password', tls: { ...tls, checkServerIdentity: () => undefined } })).not.toBe(original);
+    expect(key({ password: 'test-password', tls: { ...tls, ca: [Buffer.from('other-ca')] } })).not.toBe(original);
+    expect(key({ password: 'test-password', tls: { ...tls, secureContext: undefined } })).not.toBe(original);
+    expect(key({ password: 'new-password', tls })).not.toBe(original);
+    expect(original).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('distinguishes an implicit Redis endpoint from an explicitly configured one', async () => {
+    const { getBullMqConnectionKey } = await loadRedisInfra();
+    expect(getBullMqConnectionKey({})).not.toBe(getBullMqConnectionKey({ host: 'redis-2', port: 6380 }));
+  });
+
   it('checkRedisHealth returns unhealthy when not initialized', async () => {
     const redisInfra = await loadRedisInfra();
     const health = await redisInfra.checkRedisHealth();
@@ -387,5 +450,57 @@ describe('infrastructure/redis', () => {
       status: 'unhealthy',
       error: 'ping failed',
     });
+  });
+
+  it('P2-1: getBullMqConnectionOptions forwards host, port, username, password, db, and tls', async () => {
+    const redisInfra = await loadRedisInfra();
+    const opts = (redisInfra as any).getBullMqConnectionOptions({
+      options: {
+        host: 'redis.internal',
+        port: 6380,
+        username: 'acl-user',
+        password: 'secret',
+        db: 3,
+        tls: { rejectUnauthorized: true },
+      },
+    });
+
+    expect(opts).toEqual({
+      host: 'redis.internal',
+      port: 6380,
+      username: 'acl-user',
+      password: 'secret',
+      db: 3,
+      tls: { rejectUnauthorized: true },
+    });
+  });
+
+  it('P2-2: disconnects main, publisher, and subscriber when pub/sub readiness fails or times out', async () => {
+    redisState.failPubSubIndex = 2; // publisher emits error
+    const redisInfra = await loadRedisInfra();
+
+    await expect(redisInfra.initializeRedis()).rejects.toThrow('pubsub connection failed');
+    expect(redisInstances).toHaveLength(3);
+    expect(redisInstances[0].disconnect).toHaveBeenCalledTimes(1);
+    expect(redisInstances[1].disconnect).toHaveBeenCalledTimes(1);
+    expect(redisInstances[2].disconnect).toHaveBeenCalledTimes(1);
+    expect(redisInfra.isRedisConnected()).toBe(false);
+    expect(redisInfra.getRedisClient()).toBeNull();
+    expect(redisInfra.getDistributedCache()).toBe(memoryCache as any);
+    expect(redisInfra.getDistributedEventBus()).toBe(localEventBus as any);
+  });
+
+  it('P2-2: resets all Redis latches and disconnects main client even if shutdown throws', async () => {
+    const redisInfra = await loadRedisInfra();
+    await redisInfra.initializeRedis();
+    mockRedisEventBusInstance.shutdown.mockRejectedValueOnce(new Error('pubsub close error'));
+
+    await redisInfra.shutdownRedis();
+
+    expect(redisInstances[0].disconnect).toHaveBeenCalledTimes(1);
+    expect(redisInfra.isRedisConnected()).toBe(false);
+    expect(redisInfra.getRedisClient()).toBeNull();
+    expect(redisInfra.getDistributedCache()).toBe(memoryCache as any);
+    expect(redisInfra.getDistributedEventBus()).toBe(localEventBus as any);
   });
 });

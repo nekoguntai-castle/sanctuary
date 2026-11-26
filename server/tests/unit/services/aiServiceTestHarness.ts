@@ -6,7 +6,11 @@ const mocks = vi.hoisted(() => ({
   decrypt: vi.fn((value: string) => value),
   // Shared Redis client for the proxy config marker; null = no Redis.
   redisConnected: true,
-  redisClient: null as null | { get: (key: string) => Promise<string | null>; set: (key: string, value: string, ...args: never[]) => Promise<unknown> },
+  redisClient: null as null | {
+    get: (key: string) => Promise<string | null>;
+    set: (key: string, value: string, ...args: never[]) => Promise<unknown>;
+    del?: (key: string) => Promise<unknown>;
+  },
 }));
 
 vi.mock("../../../src/repositories", () => ({

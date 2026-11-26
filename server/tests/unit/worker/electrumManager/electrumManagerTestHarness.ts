@@ -67,7 +67,13 @@ vi.mock('../../../../src/repositories', async () => {
 });
 
 // Mock the electrum client
+const electrumClientCtorMock = vi.hoisted(() => vi.fn());
+export const mockElectrumClientCtor = electrumClientCtorMock;
+
 vi.mock('../../../../src/services/bitcoin/electrum', () => ({
+  ElectrumClient: function MockElectrumClientCtor(...args: unknown[]) {
+    return electrumClientCtorMock(...args);
+  },
   getElectrumClientForNetwork: vi.fn(),
   closeAllElectrumClients: vi.fn(),
 }));
@@ -103,9 +109,10 @@ vi.mock('../../../../src/infrastructure', () => ({
 
 import { getElectrumClientForNetwork } from '../../../../src/services/bitcoin/electrum';
 import { ElectrumSubscriptionManager } from '../../../../src/worker/electrumManager';
-import type { ElectrumManagerCallbacks } from '../../../../src/worker/electrumManager/types';
+import type { AddressWalletInfo, BitcoinNetwork, ElectrumManagerCallbacks, NetworkState } from '../../../../src/worker/electrumManager/types';
 
 export class MockElectrumClient extends EventEmitter {
+  setNetwork = vi.fn();
   connect = vi.fn().mockResolvedValue(undefined);
   getServerVersion = vi.fn().mockResolvedValue({ server: 'test', protocol: '1.4' });
   ping = vi.fn().mockResolvedValue(null);
@@ -119,6 +126,10 @@ export class MockElectrumClient extends EventEmitter {
 }
 
 export let manager: ElectrumSubscriptionManager;
+export const createTimeoutHandle = () => ({}) as NodeJS.Timeout;
+export const getNetworks = () => (manager as any).networks as Map<BitcoinNetwork, NetworkState>;
+export const getAddressToWallet = () => (manager as any).addressToWallet as Map<string, AddressWalletInfo>;
+
 export let mockClient: MockElectrumClient;
 export const mockCallbacks: ElectrumManagerCallbacks = {
   onHeaderObservation: vi.fn().mockResolvedValue(null),
@@ -129,6 +140,7 @@ export function registerElectrumManagerSetup() {
   beforeEach(() => {
     vi.clearAllMocks();
     mockClient = new MockElectrumClient();
+    electrumClientCtorMock.mockImplementation(() => mockClient);
     vi.mocked(getElectrumClientForNetwork).mockReturnValue(mockClient as unknown as any);
     manager = new ElectrumSubscriptionManager(mockCallbacks);
   });

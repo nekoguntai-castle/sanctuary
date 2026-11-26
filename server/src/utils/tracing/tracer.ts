@@ -54,24 +54,33 @@ const log = createLogger('UTIL:TRACING');
 // Configuration
 // =============================================================================
 
-const DEFAULT_CONFIG: TracingConfig = {
-  enabled: process.env.OTEL_TRACING_ENABLED === 'true',
-  serviceName: process.env.OTEL_SERVICE_NAME || 'sanctuary-api',
-  serviceVersion: PACKAGE_VERSION,
-  environment: process.env.NODE_ENV || 'development',
-  exporterEndpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
-  exporterProtocol: (process.env.OTEL_EXPORTER_OTLP_PROTOCOL as 'http' | 'grpc') || 'http',
-  samplingRatio: parseFloat(process.env.OTEL_SAMPLING_RATIO || '1.0'),
-  consoleExporter: process.env.OTEL_CONSOLE_EXPORTER === 'true',
-};
+function readEnvTracingConfig(): TracingConfig {
+  return {
+    enabled: process.env.OTEL_TRACING_ENABLED === 'true',
+    serviceName: process.env.OTEL_SERVICE_NAME || 'sanctuary-api',
+    serviceVersion: PACKAGE_VERSION,
+    environment: process.env.NODE_ENV || 'development',
+    exporterEndpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
+    exporterProtocol: (process.env.OTEL_EXPORTER_OTLP_PROTOCOL as 'http' | 'grpc') || 'http',
+    samplingRatio: parseFloat(process.env.OTEL_SAMPLING_RATIO || '1.0'),
+    consoleExporter: process.env.OTEL_CONSOLE_EXPORTER === 'true',
+  };
+}
 
-let tracingConfig = DEFAULT_CONFIG;
+let tracingConfig: TracingConfig | null = null;
+
+function getTracingConfig(): TracingConfig {
+  if (!tracingConfig) {
+    tracingConfig = readEnvTracingConfig();
+  }
+  return tracingConfig;
+}
 
 /**
  * Configure tracing
  */
 export function configureTracing(config: Partial<TracingConfig>): void {
-  tracingConfig = { ...tracingConfig, ...config };
+  tracingConfig = { ...getTracingConfig(), ...config };
   log.info('Tracing configured', {
     enabled: tracingConfig.enabled,
     serviceName: tracingConfig.serviceName,
@@ -238,7 +247,7 @@ class SimpleTracerProvider implements TracerProvider {
   }
 
   isEnabled(): boolean {
-    return tracingConfig.enabled;
+    return getTracingConfig().enabled;
   }
 
   async shutdown(): Promise<void> {
@@ -279,13 +288,11 @@ export function getTracer(name: string, version?: string): Tracer {
 // Convenience Functions
 // =============================================================================
 
-const defaultTracer = getTracer('sanctuary');
-
 /**
  * Start a new span
  */
 export function startSpan(name: string, options?: SpanOptions): Span {
-  return defaultTracer.startSpan(name, options);
+  return getTracer('sanctuary').startSpan(name, options);
 }
 
 /**

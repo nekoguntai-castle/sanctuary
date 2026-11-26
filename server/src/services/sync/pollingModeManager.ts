@@ -14,6 +14,9 @@ import type { SyncState, PollingMode } from './types';
 
 const log = createLogger('SYNC:POLL');
 
+/** Consecutive failed worker health checks before the API takes over polling. */
+export const WORKER_TAKEOVER_FAILURE_THRESHOLD = 3;
+
 /**
  * Mutable references to interval handles, owned by the caller (SyncService).
  * The polling manager reads and writes these so the class instance stays in sync
@@ -44,7 +47,9 @@ export function startPollingIntervals(
   const syncConfig = getConfig().sync;
 
   refs.syncInterval = setInterval(onCheckStale, syncConfig.intervalMs);
+  refs.syncInterval.unref?.();
   refs.confirmationInterval = setInterval(onUpdateConfirmations, syncConfig.confirmationUpdateIntervalMs);
+  refs.confirmationInterval.unref?.();
 
   const previousMode = state.pollingMode;
   state.pollingMode = 'in-process';
@@ -98,14 +103,18 @@ export function evaluatePollingMode(
 ): void {
   if (!state.isRunning) return;
 
-  const workerHealthy = getWorkerHealthStatus().healthy;
+  const workerHealth = getWorkerHealthStatus();
   const currentMode: PollingMode = state.pollingMode;
 
-  if (workerHealthy && currentMode === 'in-process') {
+  if (workerHealth.healthy && currentMode === 'in-process') {
     // Worker recovered — hand off polling
     stopPollingIntervals(refs, state);
-  } else if (!workerHealthy && currentMode === 'worker-delegated') {
-    // Worker went down — take over polling
+  } else if (
+    !workerHealth.healthy
+    && currentMode === 'worker-delegated'
+    && workerHealth.failures >= WORKER_TAKEOVER_FAILURE_THRESHOLD
+  ) {
+    // Worker went down across consecutive checks — take over polling
     startPollingIntervals(refs, state, onCheckStale, onUpdateConfirmations);
   }
 }

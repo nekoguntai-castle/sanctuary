@@ -25,6 +25,9 @@ const TRANSIENT_BLOCK_HEIGHT_ERROR_PARTS = [
 // Each network has its own block height (e.g., mainnet ~880k, testnet ~2.9M)
 const cachedBlockHeights = new Map<Network, { height: number; time: number }>();
 
+// Maximum age of a cached block height accepted as an offline fallback.
+export const MAX_STALE_FALLBACK_AGE_MS = 10 * 60 * 1000;
+
 /**
  * Get the cached block height for a specific network
  * Returns 0 if not yet cached for this network
@@ -50,6 +53,10 @@ export function setCachedBlockHeight(
   if (!current || height > current.height) {
     cachedBlockHeights.set(network, { height, time: Date.now() });
     log.debug(`Cached block height for ${network} updated to ${height}`);
+  } else if (height === current.height) {
+    // Keep timestamp fresh when the same chain tip is re-observed so a long
+    // inter-block interval does not falsely expire the fallback cache.
+    current.time = Date.now();
   }
 }
 
@@ -65,7 +72,11 @@ export function setAuthoritativeBlockHeight(
   if (!Number.isSafeInteger(height) || height < 0) {
     throw new Error("Authoritative block height must be a non-negative safe integer");
   }
+  const previous = cachedBlockHeights.get(network);
   cachedBlockHeights.set(network, { height, time: Date.now() });
+  if (previous && height < previous.height) {
+    invalidateBlockTimestampCache(network, height);
+  }
   log.debug(`Authoritative block height for ${network} set to ${height}`);
 }
 
@@ -145,9 +156,13 @@ function shouldRetryBlockHeight(error: unknown): boolean {
 }
 
 function getCachedOrThrow(network: Network, error: unknown): number {
-  const cached = getCachedBlockHeight(network);
-  if (cached > 0) {
-    return cached;
+  const cached = cachedBlockHeights.get(network);
+  if (
+    cached
+    && cached.height > 0
+    && Date.now() - cached.time <= MAX_STALE_FALLBACK_AGE_MS
+  ) {
+    return cached.height;
   }
   throw error;
 }
@@ -193,6 +208,14 @@ export class LRUCache<K, V> {
     this.cache.set(key, value);
   }
 
+  delete(key: K): boolean {
+    return this.cache.delete(key);
+  }
+
+  keys(): IterableIterator<K> {
+    return this.cache.keys();
+  }
+
   clear(): void {
     this.cache.clear();
   }
@@ -204,6 +227,24 @@ export class LRUCache<K, V> {
 
 // Cache for block timestamps to avoid repeated lookups (max 1000 blocks)
 const blockTimestampCache = new LRUCache<string, Date>(1000);
+
+/**
+ * Invalidate cached block timestamps at or above `fromHeight` for `network`
+ * (e.g., after a chain reorganization orphans blocks).
+ */
+export function invalidateBlockTimestampCache(
+  network: Network,
+  fromHeight: number,
+): void {
+  const prefix = `${network}:`;
+  for (const key of [...blockTimestampCache.keys()]) {
+    if (!key.startsWith(prefix)) continue;
+    const height = Number(key.slice(prefix.length));
+    if (Number.isFinite(height) && height >= fromHeight) {
+      blockTimestampCache.delete(key);
+    }
+  }
+}
 
 /**
  * Get block timestamp from block height

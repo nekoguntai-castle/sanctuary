@@ -39,10 +39,12 @@ const mockRegistry = {
 
 const mockHasConfiguredProviders = vi.fn();
 const mockGetProviderForPlatform = vi.fn();
+const mockInitializePushProviders = vi.fn();
 
 vi.mock('../../../../src/services/push/providers', () => ({
   createPushProviderRegistry: vi.fn(() => mockRegistry),
-  initializePushProviders: vi.fn(),
+  initializePushProviders: (...args: unknown[]) =>
+    mockInitializePushProviders(...args),
   getProviderForPlatform: (...args: unknown[]) =>
     mockGetProviderForPlatform(...args),
   hasConfiguredProviders: (...args: unknown[]) =>
@@ -936,6 +938,25 @@ describe('Push Service', () => {
 
       expect(mockRegistry.shutdown).toHaveBeenCalled();
       expect(service.getProviders()).toEqual([]);
+    });
+
+    it('P3-7: single-flights concurrent initialize calls so initializePushProviders runs once', async () => {
+      const service = getPushService();
+      await service.shutdown();
+      mockInitializePushProviders.mockClear();
+
+      let releaseInit!: () => void;
+      mockInitializePushProviders.mockImplementationOnce(
+        () => new Promise<void>((resolve) => { releaseInit = resolve; }),
+      );
+
+      const first = service.initialize();
+      const second = service.initialize();
+      expect(mockInitializePushProviders).toHaveBeenCalledTimes(1);
+
+      releaseInit();
+      await Promise.all([first, second]);
+      expect(mockInitializePushProviders).toHaveBeenCalledTimes(1);
     });
   });
 });

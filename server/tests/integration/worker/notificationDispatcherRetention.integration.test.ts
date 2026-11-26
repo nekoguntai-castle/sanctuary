@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Job, Queue, Worker, type ConnectionOptions } from 'bullmq';
 import Redis from 'ioredis';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest';
 import { toBullMqJobId } from '../../../src/jobs/bullMqJobIds';
 import { describeWithRedis } from '../setup/redis';
 
@@ -15,13 +15,22 @@ describeWithRedis('webhook notification retained-job recovery', () => {
   let worker: Worker | undefined;
   let job: Job | undefined;
 
+  beforeAll(() => {
+    vi.doMock('../../../src/infrastructure/redis', async (importOriginal) => ({
+      ...await importOriginal<typeof import('../../../src/infrastructure/redis')>(),
+      getRedisClient: () => redis,
+      isRedisConnected: () => true,
+    }));
+  });
+
+  afterAll(() => vi.doUnmock('../../../src/infrastructure/redis'));
+
   afterEach(async () => {
     await worker?.close();
     await job?.remove().catch(() => undefined);
     await queue?.close();
     await dispatcherShutdown?.();
     await redis?.quit();
-    vi.resetModules();
   });
 
   it.each(['completed', 'failed'] as const)(
@@ -29,10 +38,6 @@ describeWithRedis('webhook notification retained-job recovery', () => {
     async (terminalState) => {
       redis = new Redis(process.env.REDIS_URL!);
       const connection = toBullConnection(redis);
-      vi.doMock('../../../src/infrastructure/redis', () => ({
-        getRedisClient: () => redis,
-        isRedisConnected: () => true,
-      }));
       const dispatcher = await import('../../../src/infrastructure/notificationDispatcher');
       dispatcherShutdown = dispatcher.shutdownNotificationDispatcher;
 

@@ -7,7 +7,7 @@
 
 import { createLogger } from "../logger";
 import { getErrorMessage } from "../errors";
-import { DOCKER_PROXY_URL } from "./common";
+import { getDockerProxyUrl } from "./common";
 import type {
   ContainerInfo,
   ContainerInspect,
@@ -133,7 +133,7 @@ function currentTorImage(): string {
 /** Null when the image is present locally, otherwise the reason it cannot be used. */
 async function missingTorImage(image: string): Promise<string | null> {
   const response = await fetch(
-    `${DOCKER_PROXY_URL}/images/${encodeURIComponent(image)}/json`,
+    `${getDockerProxyUrl()}/images/${encodeURIComponent(image)}/json`,
     {
       method: "GET",
       headers: { "Content-Type": "application/json" },
@@ -154,7 +154,7 @@ async function missingTorImage(image: string): Promise<string | null> {
  */
 async function findTorContainer(): Promise<ContainerInfo | null> {
   const ownership = currentTorIdentity();
-  const response = await fetch(`${DOCKER_PROXY_URL}/containers/json?all=true`, {
+  const response = await fetch(`${getDockerProxyUrl()}/containers/json?all=true`, {
     method: "GET",
     headers: { "Content-Type": "application/json" },
     signal: AbortSignal.timeout(DOCKER_ACTION_TIMEOUT_MS),
@@ -183,7 +183,7 @@ async function inspectContainer(
   selector: string,
 ): Promise<ContainerInspect | null> {
   const response = await fetch(
-    `${DOCKER_PROXY_URL}/containers/${encodeURIComponent(selector)}/json`,
+    `${getDockerProxyUrl()}/containers/${encodeURIComponent(selector)}/json`,
     {
       method: "GET",
       headers: { "Content-Type": "application/json" },
@@ -269,7 +269,7 @@ async function verifyCreateResponse(
 async function startExactContainer(containerId: string): Promise<Response> {
   if (!FULL_CONTAINER_ID.test(containerId))
     throw new Error("Tor container ID is not immutable");
-  return fetch(`${DOCKER_PROXY_URL}/containers/${containerId}/start`, {
+  return fetch(`${getDockerProxyUrl()}/containers/${containerId}/start`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     signal: AbortSignal.timeout(DOCKER_ACTION_TIMEOUT_MS),
@@ -436,7 +436,7 @@ export async function createTorContainer(): Promise<ContainerActionResult> {
     let createFailure = "";
     try {
       createResponse = await fetch(
-        `${DOCKER_PROXY_URL}/containers/create?name=${encodeURIComponent(ownership.containerName)}`,
+        `${getDockerProxyUrl()}/containers/create?name=${encodeURIComponent(ownership.containerName)}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -573,7 +573,7 @@ export async function stopTor(): Promise<ContainerActionResult> {
     }
     const result = await reconcileStateMutation(
       () =>
-        fetch(`${DOCKER_PROXY_URL}/containers/${status.containerId}/stop?t=10`, {
+        fetch(`${getDockerProxyUrl()}/containers/${status.containerId}/stop?t=10`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           signal: AbortSignal.timeout(DOCKER_ACTION_TIMEOUT_MS),

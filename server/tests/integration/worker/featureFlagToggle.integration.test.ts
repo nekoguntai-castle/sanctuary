@@ -212,6 +212,7 @@ describe('feature flag admin + worker integration', () => {
 
     vi.doMock('../../../src/utils/tracing/otel', () => ({
       initializeOpenTelemetry: vi.fn(async () => undefined),
+      shutdownOpenTelemetry: vi.fn(async () => undefined),
     }));
 
     vi.doMock('../../../src/config', () => ({
@@ -225,6 +226,10 @@ describe('feature flag admin + worker integration', () => {
           auditLogRetentionDays: 30,
           priceDataRetentionDays: 30,
           feeEstimateRetentionDays: 7,
+        },
+        worker: {
+          concurrency: 5,
+          healthPort: 3002,
         },
         features: {
           treasuryAutopilot: false,
@@ -289,6 +294,7 @@ describe('feature flag admin + worker integration', () => {
       isRedisConnected: vi.fn(() => true),
       shutdownDistributedLock: vi.fn(),
       getDistributedEventBus: () => eventBus,
+      shutdownNotificationDispatcher: vi.fn(async () => undefined),
     }));
 
     vi.doMock('../../../src/services/featureFlagService', () => ({

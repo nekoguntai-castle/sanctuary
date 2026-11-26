@@ -9,6 +9,7 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
+import { getBackupDir } from '../../../config/operationalEnv';
 import { BACKUP_FORMAT_VERSION } from '../../backupService/constants';
 import { getErrorMessage } from '../../../utils/errors';
 import { registerCollector } from './registry';
@@ -17,8 +18,7 @@ const BACKUP_FILE_PREFIX = 'sanctuary-backup-';
 const BACKUP_FILE_SUFFIX = '.json';
 
 registerCollector('backups', async () => {
-  /* v8 ignore next -- BACKUP_DIR env override is container-deployment specific */
-  const backupDir = process.env.BACKUP_DIR || '/data/backups';
+  const backupDir = getBackupDir();
   const result: Record<string, unknown> = {
     formatVersion: BACKUP_FORMAT_VERSION,
     backupDir,

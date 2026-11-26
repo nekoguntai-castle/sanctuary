@@ -11,8 +11,7 @@
  *   console.log(config.server.port);
  */
 
-import dotenv from 'dotenv';
-import path from 'path';
+import './loadEnv';
 import type { CombinedConfig, LogLevel, NetworkType, ElectrumProtocol } from './types';
 import { getNodeNetworkDefaults } from '@sanctuary/shared/constants/nodeConfig';
 import { loadFeatureFlags } from './features';
@@ -29,19 +28,16 @@ import {
   parseIntegerEnv,
   parseStringEnv,
 } from './envSections';
-import { createLogger } from '../utils/logger';
+import * as loggerModule from '../utils/logger';
 import { warnDeprecatedStaleSyncEnvironment } from './deprecatedSyncEnvironment';
 import { buildHardwareWalletConfig } from './hardwareWalletAttestation';
 import { loadWebsocketConfig } from './websocketLimits';
 import { loadElectrumPoolEnvConfig } from './electrumEnv';
 
-// Load environment variables
-dotenv.config({ path: path.join(__dirname, '../../.env') });
-
 // Singleton config instance
 let configInstance: CombinedConfig | null = null;
 const LEGACY_DEFAULT_ENCRYPTION_SALT = 'sanctuary-node-config';
-const log = createLogger('CONFIG');
+const log = loggerModule.createLogger('CONFIG');
 
 /**
  * Get the application configuration
@@ -120,6 +116,13 @@ function loadConfig(): CombinedConfig {
 
   // Validate configuration
   validateConfig(config);
+
+  if (
+    Object.prototype.hasOwnProperty.call(loggerModule, 'syncLogLevelFromConfig')
+    && typeof loggerModule.syncLogLevelFromConfig === 'function'
+  ) {
+    loggerModule.syncLogLevelFromConfig(config.logging.level);
+  }
 
   return config;
 }

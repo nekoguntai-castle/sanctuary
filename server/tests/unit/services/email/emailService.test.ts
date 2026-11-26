@@ -454,5 +454,42 @@ describe('Email Service', () => {
       expect(mockNodemailer.createTransport).toHaveBeenCalledTimes(2);
       expect(mockTransporter.close).toHaveBeenCalledTimes(1);
     });
+
+    it('P3-7: closes the previous transporter before replacing it when SMTP config changes', async () => {
+      let smtpHost = 'smtp1.example.com';
+      mockSystemSettingRepository.getValue.mockImplementation((key: string) => {
+        const values: Record<string, string> = {
+          'smtp.host': smtpHost,
+          'smtp.fromAddress': 'noreply@example.com',
+          'smtp.fromName': 'Test',
+        };
+        return Promise.resolve(values[key] || '');
+      });
+      mockSystemSettingRepository.getNumber.mockResolvedValue(587);
+      mockSystemSettingRepository.getBoolean.mockResolvedValue(false);
+
+      const firstTransporter = {
+        sendMail: vi.fn().mockResolvedValue({ messageId: 'msg-1' }),
+        verify: vi.fn(),
+        close: vi.fn(),
+      };
+      const secondTransporter = {
+        sendMail: vi.fn().mockResolvedValue({ messageId: 'msg-2' }),
+        verify: vi.fn(),
+        close: vi.fn(),
+      };
+      mockNodemailer.createTransport
+        .mockReturnValueOnce(firstTransporter as any)
+        .mockReturnValueOnce(secondTransporter as any);
+
+      await sendEmail({ to: 'a@example.com', subject: 'S1', text: 'T1', html: '<p>T1</p>' });
+      expect(firstTransporter.close).not.toHaveBeenCalled();
+
+      smtpHost = 'smtp2.example.com';
+      await sendEmail({ to: 'b@example.com', subject: 'S2', text: 'T2', html: '<p>T2</p>' });
+
+      expect(firstTransporter.close).toHaveBeenCalledTimes(1);
+      expect(secondTransporter.close).not.toHaveBeenCalled();
+    });
   });
 });

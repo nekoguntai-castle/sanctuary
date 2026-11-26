@@ -5,13 +5,15 @@
  * project name discovery, and container listing.
  */
 
+import { getConfig } from '../../config';
 import { createLogger } from '../logger';
 import type { ContainerInfo } from './types';
 
 const log = createLogger('UTIL:DOCKER');
 
-// Docker proxy URL (set via environment variable)
-export const DOCKER_PROXY_URL = process.env.DOCKER_PROXY_URL || 'http://docker-proxy:2375';
+export function getDockerProxyUrl(): string {
+  return getConfig().docker.proxyUrl;
+}
 
 const DEFAULT_PROJECT_NAME = 'sanctuary';
 const COMPOSE_PROJECT_LABEL = 'com.docker.compose.project';
@@ -23,7 +25,7 @@ const PROJECT_DISCOVERY_SERVICES = new Set(['backend', 'frontend']);
  */
 export async function isDockerProxyAvailable(): Promise<boolean> {
   try {
-    const response = await fetch(`${DOCKER_PROXY_URL}/containers/json?limit=1`, {
+    const response = await fetch(`${getDockerProxyUrl()}/containers/json?limit=1`, {
       method: 'GET',
       signal: AbortSignal.timeout(3000),
     });
@@ -37,7 +39,7 @@ export async function isDockerProxyAvailable(): Promise<boolean> {
  * List all containers from Docker proxy
  */
 export async function listAllContainers(): Promise<ContainerInfo[]> {
-  const response = await fetch(`${DOCKER_PROXY_URL}/containers/json?all=true`, {
+  const response = await fetch(`${getDockerProxyUrl()}/containers/json?all=true`, {
     method: 'GET',
     headers: { 'Content-Type': 'application/json' },
   });

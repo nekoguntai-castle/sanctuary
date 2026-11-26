@@ -5,7 +5,6 @@
  * and delegates to focused helper modules for each concern.
  */
 
-import { closeAllElectrumClients } from '../../services/bitcoin/electrum';
 import {
   isBitcoinNetwork,
   resolvePersistedBitcoinNetwork,
@@ -87,7 +86,7 @@ export class ElectrumSubscriptionManager {
       const resync = createElectrumConfigResync(this.handleConfigChange, log);
       void resync.prime();
       const unsubscribers = [
-        bus.on(ELECTRUM_CONFIG_CHANGED_EVENT, (change) => this.handleConfigChange(change)),
+        bus.on(ELECTRUM_CONFIG_CHANGED_EVENT, (change) => resync.handleLiveChange(change)),
         // A change missed while Redis was unreachable would leave the owned
         // subscriptions on the old config.
         bus.onResync(resync.resync),
@@ -567,16 +566,14 @@ export class ElectrumSubscriptionManager {
     this.subscriptionLockRefresh = null;
     await releaseSubscriptionLock(lock, lockRefresh);
 
-    // Clear reconnection timers
+    // Clear reconnection timers and disconnect every dedicated subscription client
     for (const state of this.networks.values()) {
       if (state.reconnectTimer) {
         clearTimeout(state.reconnectTimer);
         state.reconnectTimer = null;
       }
+      teardownNetworkState(state);
     }
-
-    // Close all Electrum connections
-    closeAllElectrumClients();
 
     // Clear state
     this.networks.clear();

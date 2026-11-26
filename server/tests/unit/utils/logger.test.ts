@@ -10,7 +10,7 @@ vi.unmock('../../../src/utils/logger');
 vi.unmock('../../../src/utils/requestContext');
 vi.unmock('../../../src/utils/redact');
 
-import { createLogger, setLogLevel, getConfiguredLogLevel, LogLevel, extractError, createTimer } from '../../../src/utils/logger';
+import { createLogger, setLogLevel, syncLogLevelFromConfig, getConfiguredLogLevel, LogLevel, extractError, createTimer } from '../../../src/utils/logger';
 import { requestContext } from '../../../src/utils/requestContext';
 
 // Capture console.log output for testing
@@ -87,6 +87,16 @@ describe('Logger', () => {
 
       expect(capturedLogs.length).toBe(1);
       expect(capturedLogs[0]).toContain('ERROR');
+    });
+
+    it('should silently sync log level from config without logging and ignore unknown strings', () => {
+      syncLogLevelFromConfig('warn');
+      expect(getConfiguredLogLevel()).toBe('warn');
+      expect(capturedLogs).toHaveLength(0);
+
+      syncLogLevelFromConfig('not-a-level');
+      expect(getConfiguredLogLevel()).toBe('warn');
+      expect(capturedLogs).toHaveLength(0);
     });
   });
 

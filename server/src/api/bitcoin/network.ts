@@ -10,6 +10,7 @@ import { BITCOIN_NETWORKS, BITCOIN_NON_REGTEST_NETWORKS } from '@sanctuary/share
 import { authenticate } from '../../middleware/auth';
 import { getElectrumClient } from '../../services/bitcoin/electrum';
 import * as mempool from '../../services/bitcoin/mempool';
+import { getCachedMempoolStatus } from '../../services/bitcoin/mempoolStatusCache';
 import { getBitcoinNetworkStatus } from '../../services/bitcoin/networkStatusService';
 import { getSilentPaymentReadiness } from '../../services/silentPayments/readiness';
 import { createLogger } from '../../utils/logger';
@@ -33,16 +34,6 @@ const MEMPOOL_NETWORK_VALUES = 'mainnet, testnet3, testnet4, or signet';
 
 const router = Router();
 const log = createLogger('BITCOIN_NETWORK:ROUTE');
-
-// Simple cache for mempool data to avoid hammering external APIs
-type MempoolCacheEntry = {
-  data: Awaited<ReturnType<typeof mempool.getBlocksAndMempool>>;
-  timestamp: number;
-};
-
-const mempoolCache = new Map<z.infer<typeof MempoolNetworkSchema>, MempoolCacheEntry>();
-const MEMPOOL_CACHE_TTL = 15000; // 15 seconds
-const MEMPOOL_STALE_TTL = 300000; // 5 minutes for stale fallback
 
 function parseNetworkQuery<T extends z.ZodType>(
   schema: T,
@@ -112,28 +103,14 @@ router.get('/mempool', asyncHandler(async (req: Request, res: Response) => {
     req.query.network,
     MEMPOOL_NETWORK_VALUES,
   );
-  const now = Date.now();
-  const cached = mempoolCache.get(network);
-
-  // Return fresh cache if available
-  if (cached && (now - cached.timestamp) < MEMPOOL_CACHE_TTL) {
-    return res.json(cached.data);
-  }
 
   try {
-    const data = await mempool.getBlocksAndMempool(network, {
+    const result = await getCachedMempoolStatus(network, {
       signal: getRequestAbortSignal(req),
     });
-    mempoolCache.set(network, { data, timestamp: now });
-    res.json(data);
+    res.json(result.data);
   } catch (error) {
-    log.error('Get mempool error', { error: String(error), network });
-
-    // Return stale cache if available (better than 500)
-    if (cached && (now - cached.timestamp) < MEMPOOL_STALE_TTL) {
-      log.warn('Returning stale mempool cache due to fetch failure', { network });
-      return res.json({ ...cached.data, stale: true });
-    }
+    log.error('Get mempool error', { error: getErrorMessage(error), network });
 
     res.status(500).json({
       error: 'Internal Server Error',

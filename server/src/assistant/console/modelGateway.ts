@@ -1,3 +1,4 @@
+import { getConsoleGatewayTimeoutMs } from "../../config/operationalEnv";
 import { ServiceUnavailableError } from "../../errors/ApiError";
 import {
   fetchLlmEgressProxy,
@@ -11,7 +12,6 @@ import type { ConsoleScope, ConsoleToolCall } from "./protocol";
 
 const log = createLogger("ASSISTANT:CONSOLE_GATEWAY");
 const LLM_EGRESS_PROXY_URL = getLlmEgressProxyUrl();
-const CONSOLE_GATEWAY_TIMEOUT_DEFAULT_MS = 125_000;
 const CONSOLE_GATEWAY_TIMEOUT_MS = getConsoleGatewayTimeoutMs();
 
 export interface ConsoleGatewayToolDescription {
@@ -67,16 +67,6 @@ type ConsoleProviderSetupReason =
 interface ConsoleProxyFailure {
   message: string | null;
   reason: ConsoleProviderSetupReason | null;
-}
-
-function getConsoleGatewayTimeoutMs(): number {
-  const parsed = Number.parseInt(
-    process.env.CONSOLE_GATEWAY_TIMEOUT_MS || "",
-    10,
-  );
-  return Number.isFinite(parsed) && parsed > 0
-    ? parsed
-    : CONSOLE_GATEWAY_TIMEOUT_DEFAULT_MS;
 }
 
 function consoleSetupError(

@@ -272,6 +272,8 @@ const v2ToV1Transformers: Record<string, EventTransformer> = {
   },
 };
 
+export const MAX_CLIENT_VERSIONS = 10_000;
+
 /**
  * Event Version Manager
  *
@@ -279,6 +281,11 @@ const v2ToV1Transformers: Record<string, EventTransformer> = {
  */
 export class EventVersionManager {
   private clientVersions = new Map<string, EventVersion>();
+  private readonly maxClients: number;
+
+  constructor(maxClients: number = MAX_CLIENT_VERSIONS) {
+    this.maxClients = Math.max(1, maxClients);
+  }
 
   /**
    * Register a client's preferred version
@@ -287,6 +294,11 @@ export class EventVersionManager {
     if (!SUPPORTED_VERSIONS.includes(version)) {
       log.warn(`Client ${clientId} requested unsupported version ${version}, defaulting to ${CURRENT_VERSION}`);
       version = CURRENT_VERSION;
+    }
+    if (!this.clientVersions.has(clientId) && this.clientVersions.size >= this.maxClients) {
+      // Reaching capacity guarantees a first entry because maxClients is at least one.
+      const oldestClientId = this.clientVersions.keys().next().value!;
+      this.clientVersions.delete(oldestClientId);
     }
     this.clientVersions.set(clientId, version);
     log.debug(`Client ${clientId} set to version ${version}`);

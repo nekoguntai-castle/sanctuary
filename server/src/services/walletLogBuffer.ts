@@ -73,6 +73,15 @@ class WalletLogBuffer {
   }
 
   /**
+   * Clear log entries for all wallets
+   */
+  clearAll(): void {
+    this.buffers.clear();
+    this.lastActivity.clear();
+    this.sequences.clear();
+  }
+
+  /**
    * Get the number of entries stored for a wallet
    */
   getCount(walletId: string): number {

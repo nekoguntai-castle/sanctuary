@@ -21,7 +21,9 @@ const log = createLogger('MW:HTTP');
  * Enable request body logging for debugging (disabled by default)
  * Set LOG_REQUEST_BODY=true to enable (bodies are redacted automatically)
  */
-const LOG_REQUEST_BODY = process.env.LOG_REQUEST_BODY === 'true';
+function isRequestBodyLoggingEnabled(): boolean {
+  return process.env.LOG_REQUEST_BODY === 'true';
+}
 
 /**
  * Paths to exclude from detailed logging (health checks, etc.)
@@ -90,7 +92,7 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
 
       // Optionally log request body for debugging (always redacted)
       if (
-        LOG_REQUEST_BODY
+        isRequestBodyLoggingEnabled()
         && permitsBodyLogging(req.path)
         && req.body
         && Object.keys(req.body).length > 0

@@ -8,6 +8,7 @@
 import { Router } from 'express';
 import { asyncHandler } from '../../errors/errorHandler';
 import { PACKAGE_VERSION } from '../../config/packageInfo';
+import { singleFlight } from '../../utils/async';
 import { createLogger } from '../../utils/logger';
 
 const router = Router();
@@ -43,6 +44,7 @@ interface GitHubRelease {
 let releaseCache: ReleaseCache | null = null;
 let lastReleaseCheckAt = 0;
 const RELEASE_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+const releaseCheckRequests = new Map<string, Promise<void>>();
 // Defense in depth: never offer RC/nonstandard tags even if the upstream
 // "latest" endpoint returns an unexpected payload.
 const STABLE_RELEASE_TAG = /^v?\d+\.\d+\.\d+$/;
@@ -84,6 +86,29 @@ function compareVersions(a: string, b: string): number {
   return 0;
 }
 
+async function refreshLatestRelease(now: number): Promise<void> {
+  lastReleaseCheckAt = now;
+  try {
+    const response = await fetch(RELEASE_API_URL, {
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'Sanctuary-App',
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    if (!response.ok) {
+      throw new Error(`GitHub release API returned HTTP ${response.status}`);
+    }
+
+    const release = parseRelease(await response.json());
+    if (!release) throw new Error('GitHub release API returned malformed payload');
+    releaseCache = release;
+  } catch (fetchError) {
+    log.warn('Failed to fetch latest release from GitHub', { error: String(fetchError) });
+  }
+}
+
 /**
  * GET /api/v1/admin/version
  * Get current version and check for updates
@@ -95,27 +120,12 @@ router.get('/', asyncHandler(async (_req, res) => {
   // Cache failed checks as well as successful ones so anonymous GitHub API
   // failures cannot trigger one upstream request per UI poll. A failed refresh
   // intentionally keeps serving the last valid release metadata until retry.
-  if (lastReleaseCheckAt === 0 || (now - lastReleaseCheckAt) > RELEASE_CACHE_TTL) {
-    lastReleaseCheckAt = now;
-    try {
-      const response = await fetch(RELEASE_API_URL, {
-        headers: {
-          'Accept': 'application/json',
-          'User-Agent': 'Sanctuary-App',
-        },
-        signal: AbortSignal.timeout(10_000),
-      });
-
-      if (!response.ok) {
-        throw new Error(`GitHub release API returned HTTP ${response.status}`);
-      }
-
-      const release = parseRelease(await response.json());
-      if (!release) throw new Error('GitHub release API returned malformed payload');
-      releaseCache = release;
-    } catch (fetchError) {
-      log.warn('Failed to fetch latest release from GitHub', { error: String(fetchError) });
-    }
+  if (
+    releaseCheckRequests.has('latest')
+    || lastReleaseCheckAt === 0
+    || (now - lastReleaseCheckAt) > RELEASE_CACHE_TTL
+  ) {
+    await singleFlight(releaseCheckRequests, 'latest', () => refreshLatestRelease(now));
   }
 
   const latestVersion = releaseCache?.latestVersion || currentVersion;

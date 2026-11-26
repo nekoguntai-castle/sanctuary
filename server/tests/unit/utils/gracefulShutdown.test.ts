@@ -165,4 +165,17 @@ describe('graceful shutdown orchestration', () => {
     handlers.SIGINT?.();
     await vi.waitFor(() => expect(dependencies.exitNow).toHaveBeenCalledWith(0));
   });
+
+  it('P2-12: awaits shutdownOpenTelemetry after database disconnect and before exitNow', async () => {
+    const { dependencies, events } = createHarness();
+    (dependencies as any).shutdownOpenTelemetry = vi.fn(async () => {
+      events.push('otel-stopped');
+    });
+
+    await createGracefulShutdownHandler(dependencies)('SIGTERM');
+
+    expect(events).toContain('otel-stopped');
+    expect(events.indexOf('database-disconnected')).toBeLessThan(events.indexOf('otel-stopped'));
+    expect(events.indexOf('otel-stopped')).toBeLessThan(events.indexOf('exit:0'));
+  });
 });

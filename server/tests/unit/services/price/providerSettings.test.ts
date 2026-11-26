@@ -13,6 +13,7 @@ const { mockSystemSettings } = vi.hoisted(() => ({
 
 vi.mock("../../../../src/repositories/systemSettingRepository", () => ({
   SystemSettingKeys: {
+    PRICE_CACHE_DURATION_MS: "price.cacheDurationMs",
     PRICE_PROVIDER_CONFIG: "price.providers.config",
   },
   getValue: mockSystemSettings.getValue,
@@ -29,6 +30,8 @@ vi.mock("../../../../src/utils/logger", () => ({
 }));
 
 import {
+  readPriceCacheDurationMs,
+  writePriceCacheDurationMs,
   readPersistedPriceProviderConfig,
   readPriceProviderConfig,
   setPriceProviderEnabled,
@@ -40,6 +43,25 @@ describe("price provider settings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSystemSettings.value = null;
+  });
+
+  describe("price cache duration", () => {
+    it.each([[250, 1000], [1600, 2000]])("persists %i milliseconds as %i", async (duration, expected) => {
+      await expect(writePriceCacheDurationMs(duration)).resolves.toBe(expected);
+      expect(mockSystemSettings.setJson).toHaveBeenCalledWith(SystemSettingKeys.PRICE_CACHE_DURATION_MS, expected);
+      await expect(readPriceCacheDurationMs()).resolves.toBe(expected);
+      expect(mockSystemSettings.getValue).toHaveBeenCalledWith(SystemSettingKeys.PRICE_CACHE_DURATION_MS);
+    });
+
+    it.each([null, "0", "invalid"])("returns no duration for stored value %j", async (value) => {
+      mockSystemSettings.value = value;
+      await expect(readPriceCacheDurationMs()).resolves.toBeNull();
+    });
+
+    it("returns no duration when the setting is unavailable", async () => {
+      mockSystemSettings.getValue.mockRejectedValueOnce(new Error("db unavailable"));
+      await expect(readPriceCacheDurationMs()).resolves.toBeNull();
+    });
   });
 
   it("bootstraps defaults when the DB setting is missing and no legacy env exists", async () => {

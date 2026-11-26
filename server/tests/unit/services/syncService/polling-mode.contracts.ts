@@ -1,7 +1,9 @@
 import { expect, it, vi } from "vitest";
 import {
   mockGetWorkerHealthStatus,
+  mockPrismaClient,
   mockSubscriptionsEnabled,
+  mockWithLock,
   type SyncServiceTestContext,
 } from "./syncServiceTestHarness";
 
@@ -246,6 +248,32 @@ export function registerSyncServicePollingModeTests(
         from: "in-process",
         to: "worker-delegated",
       });
+    });
+
+    it("P2-6: gates in-process fallback sweeps with a distributed api:sync-fallback lease", async () => {
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false, failures: 3 });
+      await context.syncService.start();
+
+      // When another API replica holds the lease, neither sweep runs DB queries
+      mockWithLock.mockResolvedValueOnce({ success: false, reason: "locked" } as any);
+      mockPrismaClient.wallet.findMany.mockClear();
+      await context.syncService["checkAndQueueStaleSyncs"]();
+      expect(mockWithLock).toHaveBeenCalledWith(
+        "api:sync-fallback",
+        expect.any(Number),
+        expect.any(Function),
+      );
+      expect(mockPrismaClient.wallet.findMany).not.toHaveBeenCalled();
+
+      mockWithLock.mockResolvedValueOnce({ success: false, reason: "locked" } as any);
+      mockPrismaClient.transaction.findMany.mockClear();
+      await context.syncService["updateAllConfirmations"]();
+      expect(mockWithLock).toHaveBeenLastCalledWith(
+        "api:sync-fallback",
+        expect.any(Number),
+        expect.any(Function),
+      );
+      expect(mockPrismaClient.transaction.findMany).not.toHaveBeenCalled();
     });
   });
 }

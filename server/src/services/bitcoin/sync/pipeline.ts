@@ -7,7 +7,7 @@
 import { walletRepository, addressRepository } from "../../../repositories";
 import { getNodeClient, type NodeClientInterface } from "../nodeClient";
 import { normalizeLegacyBitcoinNetwork } from "../networks";
-import { getElectrumPool } from "../electrumPool";
+import { getExistingElectrumPool } from "../electrumPool/poolRegistry";
 import { createLogger } from "../../../utils/logger";
 import { getErrorMessage } from "../../../utils/errors";
 import { walletLog } from "../../../websocket/notifications";
@@ -84,7 +84,8 @@ export async function executeSyncPipeline(
 
   const network = normalizeLegacyBitcoinNetwork(wallet.network, "mainnet") as BitcoinNetwork;
 
-  const viaTor = getElectrumPool().isProxyEnabled();
+  const existingPoolBeforeClient = getExistingElectrumPool(network);
+  let viaTor = existingPoolBeforeClient?.isProxyEnabled() ?? false;
 
   walletLog(
     walletId,
@@ -106,6 +107,9 @@ export async function executeSyncPipeline(
     client = requestOptions
       ? await getNodeClient(network, requestOptions)
       : await getNodeClient(network);
+    if (!existingPoolBeforeClient) {
+      viaTor = getExistingElectrumPool(network)?.isProxyEnabled() ?? false;
+    }
     currentBlockHeight = requestOptions
       ? await getBlockHeight(network, requestOptions)
       : await getBlockHeight(network);

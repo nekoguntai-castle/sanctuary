@@ -1,8 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockGetPoolStats, collectorMap } = vi.hoisted(() => ({
+const { mockGetPoolStats, mockGetExistingElectrumPool, collectorMap } = vi.hoisted(() => ({
   mockGetPoolStats: vi.fn(),
+  mockGetExistingElectrumPool: vi.fn(),
   collectorMap: new Map<string, (ctx: any) => Promise<Record<string, unknown>>>(),
+}));
+
+vi.mock('../../../../src/services/bitcoin/electrumPool/poolRegistry', () => ({
+  getExistingElectrumPool: () => mockGetExistingElectrumPool(),
 }));
 
 vi.mock('../../../../src/services/bitcoin/electrumPool', () => ({
@@ -33,6 +38,10 @@ function makeContext(): CollectorContext {
 
 describe('electrumPool collector', () => {
   beforeEach(() => {
+    mockGetExistingElectrumPool.mockReset();
+    mockGetExistingElectrumPool.mockReturnValue({
+      getPoolStats: () => mockGetPoolStats(),
+    });
     mockGetPoolStats.mockReturnValue({
       totalConnections: 3,
       activeConnections: 1,
@@ -61,6 +70,12 @@ describe('electrumPool collector', () => {
     expect(result.totalConnections).toBe(3);
     expect(result.activeConnections).toBe(1);
     expect(result.serverCount).toBe(2);
+  });
+
+  it('P1-1: returns initialized: false when no pool has been instantiated', async () => {
+    mockGetExistingElectrumPool.mockReturnValueOnce(null);
+    const result = await getCollector()(makeContext());
+    expect(result).toMatchObject({ initialized: false });
   });
 
   it('returns error when pool is unavailable', async () => {

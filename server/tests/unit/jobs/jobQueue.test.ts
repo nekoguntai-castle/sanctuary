@@ -635,4 +635,36 @@ describe("JobQueueService", () => {
     await expect(queue.shutdown()).resolves.toBeUndefined();
     expect(queue.isAvailable()).toBe(false);
   });
+
+  it("P2-1: forwards username and tls to BullMQ connection options", async () => {
+    const tls = { rejectUnauthorized: true };
+    mockGetRedisClient.mockReturnValue({
+      options: {
+        host: "127.0.0.1",
+        port: 6380,
+        username: "job-user",
+        password: "secret",
+        db: 2,
+        tls,
+      },
+    });
+    mockIsRedisConnected.mockReturnValue(true);
+    const queue = await loadJobQueueService();
+    await queue.initialize();
+
+    expect(queueInstances[0].opts.connection).toEqual(
+      expect.objectContaining({
+        username: "job-user",
+        tls,
+      }),
+    );
+  });
+
+  it("P3-4: retired worker-owned jobQueue singleton fails loudly on uninitialized add/schedule", async () => {
+    const { jobQueue } = await import("../../../src/jobs/jobQueue");
+
+    await expect(jobQueue.add("legacy-job", { ok: true })).rejects.toThrow(/worker/i);
+    await expect(jobQueue.addBulk([{ name: "legacy-job", data: {} }])).rejects.toThrow("Cannot add bulk jobs:");
+    await expect(jobQueue.schedule("legacy-cron", {}, { cron: "0 * * * *" })).rejects.toThrow(/worker/i);
+  });
 });

@@ -10,6 +10,8 @@
  */
 
 import { ProviderRegistry } from "../../providers";
+import { getDistributedEventBus } from "../../infrastructure";
+import { SystemSettingKeys } from "../../repositories/systemSettingRepository";
 import { createLogger } from "../../utils/logger";
 import { getErrorMessage } from "../../utils/errors";
 import { singleFlight } from "../../utils/async";
@@ -26,8 +28,10 @@ import {
 } from "./providers";
 import {
   readPersistedPriceProviderConfig,
+  readPriceCacheDurationMs,
   readPriceProviderConfig,
   setPriceProviderEnabled as persistPriceProviderEnabled,
+  writePriceCacheDurationMs,
 } from "./providerSettings";
 import type {
   IPriceProvider,
@@ -105,9 +109,27 @@ class PriceService {
     Promise<Record<string, number>>
   >();
   private priceHistoryRequests = new Map<string, Promise<PriceHistoryPoint[]>>();
+  private unsubscribeConfigChange: (() => void) | null = null;
 
   constructor() {
     this.registry = createPriceProviderRegistry();
+  }
+
+  private applyCacheDurationMs(durationMs: number | null): void {
+    if (durationMs !== null && Number.isFinite(durationMs) && durationMs > 0) {
+      this.cacheDurationSec = Math.max(1, Math.round(durationMs / 1000));
+    }
+  }
+
+  private registerConfigChangeListener(): void {
+    if (this.unsubscribeConfigChange) return;
+    const bus = getDistributedEventBus();
+    if (typeof bus.onRemote !== "function") return;
+    this.unsubscribeConfigChange = bus.onRemote("system:config.changed", (event) => {
+      if (event.key !== SystemSettingKeys.PRICE_CACHE_DURATION_MS) return;
+      const parsed = Number(event.newValue);
+      this.applyCacheDurationMs(Number.isFinite(parsed) ? parsed : null);
+    });
   }
 
   /**
@@ -125,7 +147,10 @@ class PriceService {
   private async initializeProviders(): Promise<void> {
     const generation = this.lifecycleGeneration;
     const registry = this.registry;
-    const config = await readPriceProviderConfig();
+    const [config, persistedDurationMs] = await Promise.all([
+      readPriceProviderConfig(),
+      readPriceCacheDurationMs(),
+    ]);
     await initializePriceProviders(registry, config.enabled);
     if (generation !== this.lifecycleGeneration) {
       // A reload replaced this registry, or shutdown closed it, while it was
@@ -133,9 +158,11 @@ class PriceService {
       await registry.shutdown();
       return;
     }
+    this.applyCacheDurationMs(persistedDurationMs);
     this.enabledProviderNames = config.enabled;
     this.initialized = true;
     this.providerConfigCheckedAt = Date.now();
+    this.registerConfigChangeListener();
     log.info("Price service initialized with provider registry");
   }
 
@@ -164,11 +191,15 @@ class PriceService {
 
   private async refreshProvidersFromPersistedConfig(): Promise<void> {
     const generation = this.lifecycleGeneration;
-    const config = await readPersistedPriceProviderConfig();
+    const [config, persistedDurationMs] = await Promise.all([
+      readPersistedPriceProviderConfig(),
+      readPriceCacheDurationMs(),
+    ]);
     this.providerConfigCheckedAt = Date.now();
     // A reload in this process (e.g. an admin toggle) landed during the read:
     // its config is newer than what was just read, so keep it.
     if (generation !== this.lifecycleGeneration) return;
+    this.applyCacheDurationMs(persistedDurationMs);
     if (!config || sameProviderSet(config.enabled, this.enabledProviderNames)) return;
     log.info("Price provider config changed in another process; reloading", {
       providers: config.enabled,
@@ -674,45 +705,60 @@ class PriceService {
   }
 
   /**
-   * Clear cache
+   * Clear cache locally and broadcast distributed invalidation so sibling
+   * replicas and the worker drop their in-memory price entries too.
    */
   async clearCache(): Promise<void> {
     await priceCache.clear();
+    getDistributedEventBus().emit("cache:invalidated", { scope: "price" });
   }
 
   /**
-   * Set cache duration (in seconds for System 2 cache)
+   * Set cache duration (in seconds for System 2 cache) and persist across replicas.
    *
    * Note: Duration is in milliseconds for API compatibility but stored in seconds.
    */
-  setCacheDuration(ms: number): void {
-    this.cacheDurationSec = Math.max(1, Math.round(ms / 1000));
+  async setCacheDuration(ms: number): Promise<void> {
+    const previousMs = this.cacheDurationSec * 1000;
+    const nextSec = Math.max(1, Math.round(ms / 1000));
+    const normalizedMs = nextSec * 1000;
+    this.cacheDurationSec = nextSec;
+    try {
+      await writePriceCacheDurationMs(normalizedMs);
+    } catch (error) {
+      log.warn("Failed to persist price cache duration setting", {
+        error: getErrorMessage(error),
+      });
+    }
+    getDistributedEventBus().emit("system:config.changed", {
+      key: SystemSettingKeys.PRICE_CACHE_DURATION_MS,
+      previousValue: String(previousMs),
+      newValue: String(normalizedMs),
+      changedBy: "price-service",
+    });
   }
 
   /**
    * Get supported currencies across all providers
    */
-  getSupportedCurrencies(): string[] {
-    if (!this.initialized) {
-      return this.getConfiguredCurrencies();
-    }
+  async getSupportedCurrencies(): Promise<string[]> {
+    await this.ensureInitialized();
     return getAllSupportedCurrencies(this.registry);
   }
 
   /**
    * Get list of available providers
    */
-  getProviders(): string[] {
-    if (!this.initialized) {
-      return [...this.enabledProviderNames];
-    }
+  async getProviders(): Promise<string[]> {
+    await this.ensureInitialized();
     return this.registry.getAll().map((p) => p.name);
   }
 
   /**
    * List known price providers with current enablement.
    */
-  getProviderDiagnostics(): PriceProviderInfo[] {
+  async getProviderDiagnostics(): Promise<PriceProviderInfo[]> {
+    await this.ensureInitialized();
     return getKnownPriceProviderInfosForEnabled(this.enabledProviderNames);
   }
 
@@ -723,6 +769,7 @@ class PriceService {
     providerName: string,
     currency: string = "USD",
   ): Promise<PriceProviderTestResult> {
+    await this.ensureInitialized();
     const provider = createKnownPriceProvider(providerName, {
       registerCircuitBreaker: false,
     });
@@ -771,9 +818,11 @@ class PriceService {
   async testAllProviders(
     currency: string = "USD",
   ): Promise<PriceProviderTestResult[]> {
+    await this.ensureInitialized();
     const results: PriceProviderTestResult[] = [];
+    const diagnostics = await this.getProviderDiagnostics();
 
-    for (const provider of this.getProviderDiagnostics()) {
+    for (const provider of diagnostics) {
       results.push(await this.testProvider(provider.name, currency));
     }
 
@@ -808,6 +857,10 @@ class PriceService {
    */
   async shutdown(): Promise<void> {
     this.lifecycleGeneration += 1;
+    if (this.unsubscribeConfigChange) {
+      this.unsubscribeConfigChange();
+      this.unsubscribeConfigChange = null;
+    }
     await this.registry.shutdown();
     this.initialized = false;
     this.clearInFlightRequests();
@@ -854,23 +907,8 @@ class PriceService {
     return sorted[middle];
   }
 
-  private getConfiguredCurrencies(): string[] {
-    const currencies = new Set<string>();
-    const providers = this.getProviderDiagnostics().filter(
-      (provider) => provider.enabled,
-    );
-
-    for (const provider of providers) {
-      for (const currency of provider.supportedCurrencies) {
-        currencies.add(currency);
-      }
-    }
-
-    return Array.from(currencies).sort();
-  }
-
   private isProviderEnabled(providerName: string): boolean {
-    return this.getProviderDiagnostics().some(
+    return getKnownPriceProviderInfosForEnabled(this.enabledProviderNames).some(
       (provider) => provider.name === providerName && provider.enabled,
     );
   }

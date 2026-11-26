@@ -8,6 +8,7 @@
 import { getDistributedEventBus } from '../infrastructure';
 import { eventBus } from '../events/eventBus';
 import { walletCache, feeCache, priceCache } from './cache';
+import { walletLogBuffer } from './walletLogBuffer';
 import { createLogger } from '../utils/logger';
 import type { SystemEvents } from '../events/types';
 
@@ -36,7 +37,7 @@ async function invalidateWalletCaches(walletId: string): Promise<void> {
 
 type CacheInvalidation = SystemEvents['cache:invalidated'];
 
-const CACHE_SCOPES: ReadonlySet<unknown> = new Set<CacheInvalidation['scope']>(['wallet', 'price', 'fees']);
+const CACHE_SCOPES: ReadonlySet<unknown> = new Set<CacheInvalidation['scope']>(['wallet', 'price', 'fees', 'all']);
 
 /** Pub/sub payloads cross a process boundary; apply only a known shape. */
 function isCacheInvalidation(value: unknown): value is CacheInvalidation {
@@ -51,6 +52,13 @@ async function applyInvalidation(change: CacheInvalidation): Promise<void> {
     await invalidateWalletCaches(change.walletId!);
   } else if (change.scope === 'price') {
     await priceCache.clear();
+  } else if (change.scope === 'all') {
+    await Promise.all([
+      walletCache.clear(),
+      priceCache.clear(),
+      feeCache.clear(),
+    ]);
+    walletLogBuffer.clearAll();
   } else {
     await feeCache.clear();
   }

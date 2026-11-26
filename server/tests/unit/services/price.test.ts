@@ -81,10 +81,19 @@ vi.mock('../../../src/services/cache', () => {
   };
 });
 
-const { mockProviderSettingsState } = vi.hoisted(() => ({
+const { mockProviderSettingsState, mockDistributedBus } = vi.hoisted(() => ({
   mockProviderSettingsState: {
     enabled: ["mempool", "coingecko", "kraken", "coinbase"] as string[],
+    cacheDurationMs: null as number | null,
   },
+  mockDistributedBus: {
+    emit: vi.fn(),
+    onRemote: vi.fn(() => vi.fn()),
+  },
+}));
+
+vi.mock('../../../src/infrastructure', () => ({
+  getDistributedEventBus: () => mockDistributedBus,
 }));
 
 vi.mock('../../../src/services/price/providerSettings', () => ({
@@ -100,6 +109,11 @@ vi.mock('../../../src/services/price/providerSettings', () => ({
     updatedAt: '2026-04-29T00:00:00.000Z',
     updatedBy: null,
   })),
+  readPriceCacheDurationMs: vi.fn(async () => mockProviderSettingsState.cacheDurationMs),
+  writePriceCacheDurationMs: vi.fn(async (durationMs: number) => {
+    mockProviderSettingsState.cacheDurationMs = durationMs;
+    return durationMs;
+  }),
   setPriceProviderEnabled: vi.fn(
     async (providerName: string, enabled: boolean, updatedBy?: string) => {
       const providers = new Set(mockProviderSettingsState.enabled);
@@ -132,6 +146,8 @@ describe('Price Service', () => {
   beforeEach(async () => {
     // Clear shared mock cache store
     mockCacheStore.clear();
+    mockProviderSettingsState.enabled = ["mempool", "coingecko", "kraken", "coinbase"];
+    mockProviderSettingsState.cacheDurationMs = null;
     // Create fresh instance for each test
     priceService = new PriceService();
     await priceService.clearCache();
@@ -302,7 +318,7 @@ describe('Price Service', () => {
       releaseConfig();
       await initializing;
 
-      expect(fresh.getProviders()).toEqual(['mempool']);
+      expect(await fresh.getProviders()).toEqual(['mempool']);
     });
 
     it('should not mark the service initialized when shutdown lands during initialization', async () => {
@@ -324,7 +340,7 @@ describe('Price Service', () => {
       releaseConfig();
       await initializing;
 
-      expect(fresh.getProviders()).toEqual(['mempool', 'coingecko', 'kraken', 'coinbase']);
+      expect((fresh as unknown as { initialized: boolean }).initialized).toBe(false);
       expect((fresh as unknown as { registry: { getAll(): unknown[] } }).registry.getAll()).toHaveLength(0);
     });
 
@@ -592,27 +608,36 @@ describe('Price Service', () => {
       expect(stats.size).toBeGreaterThan(0);
     });
 
-    it('should clear cache', async () => {
+    it('should clear cache and broadcast distributed price invalidation (P2-9)', async () => {
       mockedAxios.get.mockResolvedValue({
         data: { bitcoin: { usd: 50000 } },
       });
 
       await priceService.getPrice('USD', true);
+      mockDistributedBus.emit.mockClear();
       await priceService.clearCache();
 
       const stats = priceService.getCacheStats();
       expect(stats.size).toBe(0);
+      expect(mockDistributedBus.emit).toHaveBeenCalledWith('cache:invalidated', { scope: 'price' });
     });
 
-    it('should allow setting cache duration', () => {
-      priceService.setCacheDuration(30000);
-      // No assertion needed - just verify it doesn't throw
+    it('should persist cache duration and broadcast config change (P2-9)', async () => {
+      await priceService.setCacheDuration(30000);
+      expect(mockProviderSettingsState.cacheDurationMs).toBe(30000);
+      expect(mockDistributedBus.emit).toHaveBeenCalledWith(
+        'system:config.changed',
+        expect.objectContaining({
+          key: 'price.cacheDurationMs',
+          newValue: '30000',
+        }),
+      );
     });
   });
 
   describe('getSupportedCurrencies', () => {
-    it('should return list of supported currencies', () => {
-      const currencies = priceService.getSupportedCurrencies();
+    it('should return list of supported currencies after ensuring initialization (P2-9)', async () => {
+      const currencies = await priceService.getSupportedCurrencies();
 
       expect(currencies).toContain('USD');
       expect(currencies).toContain('EUR');
@@ -620,8 +645,8 @@ describe('Price Service', () => {
       expect(Array.isArray(currencies)).toBe(true);
     });
 
-    it('should return consistent list', () => {
-      const currencies = priceService.getSupportedCurrencies();
+    it('should return consistent list', async () => {
+      const currencies = await priceService.getSupportedCurrencies();
 
       // Should return consistent list of major currencies
       expect(currencies).toContain('USD');
@@ -632,14 +657,22 @@ describe('Price Service', () => {
   });
 
   describe('getProviders', () => {
-    it('should return list of available providers', () => {
-      const providers = priceService.getProviders();
+    it('should return list of available providers initialized from persisted config (P2-9)', async () => {
+      mockProviderSettingsState.enabled = ['mempool', 'binance'];
+      const providers = await priceService.getProviders();
 
-      expect(providers).toContain('mempool');
-      expect(providers).toContain('coingecko');
-      expect(providers).toContain('kraken');
-      expect(providers).toContain('coinbase');
-      expect(providers).not.toContain('binance');
+      expect(providers).toEqual(['mempool', 'binance']);
+    });
+
+    it('should initialize persisted config on cold getProviderDiagnostics and testProvider calls (P2-9)', async () => {
+      mockProviderSettingsState.enabled = ['mempool'];
+      const diagnostics = await priceService.getProviderDiagnostics();
+      expect(diagnostics.find((p) => p.name === 'mempool')?.enabled).toBe(true);
+      expect(diagnostics.find((p) => p.name === 'kraken')?.enabled).toBe(false);
+
+      mockedAxios.get.mockResolvedValueOnce({ data: { USD: 50000 } });
+      const testResult = await priceService.testProvider('mempool', 'USD');
+      expect(testResult.enabled).toBe(true);
     });
   });
 
@@ -649,11 +682,11 @@ describe('Price Service', () => {
 
       await priceService.setProviderEnabled('binance', true, 'admin-1');
 
-      expect(priceService.getProviders()).toContain('binance');
+      expect(await priceService.getProviders()).toContain('binance');
 
       await priceService.setProviderEnabled('binance', false, 'admin-1');
 
-      expect(priceService.getProviders()).not.toContain('binance');
+      expect(await priceService.getProviders()).not.toContain('binance');
     });
   });
 
@@ -668,16 +701,16 @@ describe('Price Service', () => {
       mockedAxios.get.mockResolvedValue({ data: { USD: 50000 } });
       const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
       await priceService.getPrice('USD', false);
-      expect(priceService.getProviders()).toContain('kraken');
+      expect(await priceService.getProviders()).toContain('kraken');
 
       // Another process disables kraken and persists it.
       mockProviderSettingsState.enabled = ['mempool', 'coingecko', 'coinbase'];
       await priceService.getPrice('USD', false);
-      expect(priceService.getProviders()).toContain('kraken'); // within refresh interval
+      expect(await priceService.getProviders()).toContain('kraken'); // within refresh interval
 
       now.mockReturnValue(1_000_000 + 31_000);
       await priceService.getPrice('USD', false);
-      expect(priceService.getProviders()).not.toContain('kraken');
+      expect(await priceService.getProviders()).not.toContain('kraken');
     });
 
     it('does not revert a local reload that lands during the refresh read', async () => {
@@ -702,21 +735,21 @@ describe('Price Service', () => {
       releaseRead();
       await reading;
 
-      expect(priceService.getProviders()).toEqual(['mempool']);
+      expect(await priceService.getProviders()).toEqual(['mempool']);
     });
 
     it('keeps the current providers when a refresh reload fails', async () => {
       mockedAxios.get.mockResolvedValue({ data: { USD: 50000 } });
       const now = vi.spyOn(Date, 'now').mockReturnValue(3_000_000);
       await priceService.getPrice('USD', false);
-      const before = priceService.getProviders();
+      const before = await priceService.getProviders();
 
       mockProviderSettingsState.enabled = ['mempool'];
       vi.spyOn(priceService, 'reloadProviders').mockRejectedValueOnce(new Error('init failed'));
       now.mockReturnValue(3_000_000 + 31_000);
 
       await expect(priceService.getPrice('USD', false)).resolves.toBeDefined();
-      expect(priceService.getProviders()).toEqual(before);
+      expect(await priceService.getProviders()).toEqual(before);
     });
 
     it('keeps the current providers when the persisted config cannot be read', async () => {
@@ -730,7 +763,7 @@ describe('Price Service', () => {
       now.mockReturnValue(2_000_000 + 31_000);
       await priceService.getPrice('USD', false);
 
-      expect(priceService.getProviders()).toEqual(['mempool', 'coingecko']);
+      expect(await priceService.getProviders()).toEqual(['mempool', 'coingecko']);
     });
   });
 

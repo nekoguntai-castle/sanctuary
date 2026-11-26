@@ -18,9 +18,7 @@ import { walletLogBuffer } from '../../../src/services/walletLogBuffer';
 describe('walletLogBuffer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (walletLogBuffer as any).buffers.clear();
-    (walletLogBuffer as any).lastActivity.clear();
-    (walletLogBuffer as any).sequences.clear();
+    walletLogBuffer.clearAll();
   });
 
   afterEach(() => {

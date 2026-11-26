@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+const mockWarn = vi.hoisted(() => vi.fn());
 const mockJobGetState = vi.fn().mockResolvedValue("waiting");
 const mockJobRemove = vi.fn().mockResolvedValue(undefined);
 const mockQueueGetJob = vi.fn();
@@ -21,17 +22,22 @@ vi.mock("bullmq", () => ({
   }),
 }));
 
-vi.mock("../../../src/infrastructure/redis", () => ({
-  getRedisClient: vi.fn(() => ({
-    options: { host: "localhost", port: 6379 },
-  })),
-  isRedisConnected: vi.fn(() => true),
-}));
+vi.mock("../../../src/infrastructure/redis", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../src/infrastructure/redis")>();
+  return {
+    getBullMqConnectionOptions: actual.getBullMqConnectionOptions,
+    getBullMqConnectionKey: actual.getBullMqConnectionKey,
+    getRedisClient: vi.fn(() => ({
+      options: { host: "localhost", port: 6379 },
+    })),
+    isRedisConnected: vi.fn(() => true),
+  };
+});
 
 vi.mock("../../../src/utils/logger", () => ({
   createLogger: () => ({
     info: vi.fn(),
-    warn: vi.fn(),
+    warn: mockWarn,
     debug: vi.fn(),
     error: vi.fn(),
   }),
@@ -519,5 +525,59 @@ describe("notificationDispatcher", () => {
     mockQueueClose.mockClear();
     await shutdownNotificationDispatcher();
     expect(mockQueueClose).not.toHaveBeenCalled();
+  });
+
+  it("P2-1: forwards username/tls, checks isRedisConnected after init, and closes stale queue on connection change", async () => {
+    const { Queue } = await import("bullmq");
+    const tls = { rejectUnauthorized: true };
+    vi.mocked(getRedisClient).mockReturnValue({
+      options: { host: "redis-1", port: 6380, username: "notify-user", password: "pw", db: 2, tls },
+    } as any);
+
+    await queueTransactionNotification({
+      walletId: "w1",
+      txid: "tx-acl",
+      type: "received",
+      amount: "100",
+    });
+
+    expect(Queue).toHaveBeenLastCalledWith(
+      "notifications",
+      expect.objectContaining({
+        connection: expect.objectContaining({
+          host: "redis-1",
+          port: 6380,
+          username: "notify-user",
+          password: "pw",
+          db: 2,
+          tls,
+        }),
+      }),
+    );
+
+    // If Redis disconnects after queue creation, dispatcher reports unavailable
+    vi.mocked(isRedisConnected).mockReturnValueOnce(false);
+    const offline = await queueTransactionNotification({
+      walletId: "w1",
+      txid: "tx-offline",
+      type: "received",
+      amount: "100",
+    });
+    expect(offline.failureClass).toBe("redis_unavailable");
+
+    // A close failure on the old connection must not prevent new queue writes.
+    mockQueueClose.mockRejectedValueOnce(new Error("stale connection"));
+    vi.mocked(getRedisClient).mockReturnValue({
+      options: { host: "redis-1", port: 6380, username: "notify-user", password: "rotated", db: 2, tls },
+    } as any);
+    const replacement = await queueTransactionNotification({
+      walletId: "w1",
+      txid: "tx-new-conn",
+      type: "received",
+      amount: "100",
+    });
+    expect(mockQueueClose).toHaveBeenCalledTimes(1);
+    expect(replacement.outcome).toBe("resolved");
+    expect(mockWarn).toHaveBeenCalledWith("Failed to close replaced notification dispatch queue", { error: "stale connection" });
   });
 });

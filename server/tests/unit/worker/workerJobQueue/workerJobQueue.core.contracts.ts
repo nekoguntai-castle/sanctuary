@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   WorkerJobQueue,
   createdWorkers,
+  mockRedis,
   type WorkerJobHandler,
   type WorkerJobQueueAccessor,
 } from "./workerJobQueueTestHarness";
@@ -40,6 +41,38 @@ export const registerWorkerJobQueueCoreContracts = (
 
       // Should have initialized successfully (no errors)
       expect(queue.isHealthy()).toBe(true);
+    });
+
+    it("P2-1: forwards username and tls to BullMQ connection options", async () => {
+      const originalOptions = mockRedis.options;
+      const tls = { rejectUnauthorized: true };
+      mockRedis.options = {
+        host: "redis.tls",
+        port: 6380,
+        username: "worker-acl",
+        password: "pw",
+        db: 4,
+        tls,
+      } as any;
+      try {
+        const tlsQueue = new WorkerJobQueue({
+          concurrency: 1,
+          queues: ["sync"],
+        });
+        await tlsQueue.initialize();
+        expect(createdWorkers[0].options?.connection).toEqual(
+          expect.objectContaining({
+            host: "redis.tls",
+            port: 6380,
+            username: "worker-acl",
+            password: "pw",
+            db: 4,
+            tls,
+          }),
+        );
+      } finally {
+        mockRedis.options = originalOptions;
+      }
     });
 
     it("applies a queue-specific concurrency without amplifying every queue", async () => {

@@ -186,7 +186,9 @@ class FeatureFlagService {
       const cache = getDistributedCache();
       const cached = await cache.get<FeatureRuntimeSnapshot>(CACHE_KEY);
       if (cached && key in cached.flags) {
-        await this.installSnapshotStrict(cached);
+        if (this.initialized) {
+          await this.installSnapshotStrict(cached);
+        }
         return cached.flags[key];
       }
     } catch (error) {

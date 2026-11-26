@@ -71,8 +71,6 @@ import { syncIntentAdmission } from '../../services/sync/syncIntentAdmission';
 
 const log = createLogger('JOB:SYNC');
 
-// Keep lock alive beyond expected sync duration to avoid concurrent sync overlap.
-const SYNC_LOCK_TTL_MS = getSyncLockTtlMs();
 // Tolerate ordinary host-clock drift, but replace a marker farther in the
 // future so corrupt data cannot extend the bounded contention window forever.
 const SYNC_LOCK_CONTENTION_CLOCK_SKEW_MS = 30_000;
@@ -313,6 +311,8 @@ const unavailableRuntimeDependencies: SyncJobsRuntimeDependencies = {
 export function createSyncWalletJob(
   runtimeDependencies: SyncJobsRuntimeDependencies,
 ): WorkerJobHandler<SyncWalletJobData, SyncWalletJobResult> {
+  // Keep lock alive beyond expected sync duration to avoid concurrent sync overlap.
+  const lockTtlMs = getSyncLockTtlMs();
   return {
   name: SYNC_WALLET_JOB_NAME,
   queue: SYNC_QUEUE_NAME,
@@ -320,7 +320,7 @@ export function createSyncWalletJob(
   validateData: isSyncWalletJobLockData,
   lockOptions: {
     lockKey: getSyncLockKey,
-    lockTtlMs: SYNC_LOCK_TTL_MS,
+    lockTtlMs,
     beforeLockAttempt: async (job) => {
       const result = completeRetiredStaleJob(job);
       return result ? { complete: true, result } : undefined;
@@ -390,7 +390,7 @@ export function createSyncWalletJob(
         startTime,
         {
           isFinalAttempt,
-          lockTtlMs: SYNC_LOCK_TTL_MS,
+          lockTtlMs,
           publishAttemptTransition: publishWorkerAttemptTransition,
           retryState: workerRetryState,
           enrollWalletSubscriptions: runtimeDependencies.enrollWalletSubscriptions,

@@ -8,6 +8,7 @@ import {
 import { InvalidInputError } from "../../errors/ApiError";
 import { createLogger } from "../../utils/logger";
 import { getErrorMessage } from "../../utils/errors";
+import { safeJsonParse } from "../../utils/safeJson";
 import {
   DEFAULT_ENABLED_PRICE_PROVIDER_NAMES,
   hasLegacyPriceProviderEnv,
@@ -183,4 +184,30 @@ export async function setPriceProviderEnabled(
     nextEnabled.has(name),
   );
   return writePriceProviderConfig(orderedEnabled, updatedBy);
+}
+
+const PositiveDurationMsSchema = z.number().finite().positive();
+
+export async function readPriceCacheDurationMs(): Promise<number | null> {
+  try {
+    const rawValue = await getValue(SystemSettingKeys.PRICE_CACHE_DURATION_MS);
+    if (rawValue === null) return null;
+    return safeJsonParse(
+      rawValue,
+      PositiveDurationMsSchema,
+      null,
+      SystemSettingKeys.PRICE_CACHE_DURATION_MS,
+    );
+  } catch (error) {
+    log.warn("Failed to read price cache duration setting", {
+      error: getErrorMessage(error),
+    });
+    return null;
+  }
+}
+
+export async function writePriceCacheDurationMs(durationMs: number): Promise<number> {
+  const normalizedMs = Math.max(1000, Math.round(durationMs / 1000) * 1000);
+  await setJson(SystemSettingKeys.PRICE_CACHE_DURATION_MS, normalizedMs);
+  return normalizedMs;
 }

@@ -39,10 +39,10 @@ import {
   Worker,
   Job,
   QueueEvents,
-  type ConnectionOptions,
   type JobsOptions,
 } from "bullmq";
 import { getRedisClient, isRedisConnected } from "../infrastructure";
+import { getBullMqConnectionOptions } from "../infrastructure/redis";
 import { createLogger } from "../utils/logger";
 import { getErrorMessage } from "../utils/errors";
 import { withSpan } from "../utils/tracing";
@@ -94,9 +94,22 @@ class JobQueueService {
   private config: Required<JobQueueConfig>;
   private initialized = false;
   private processingJobs = 0;
+  private readonly workerOwned: boolean;
 
-  constructor(config: JobQueueConfig = {}) {
+  constructor(
+    config: JobQueueConfig = {},
+    options: { workerOwned?: boolean } = {},
+  ) {
     this.config = { ...DEFAULT_CONFIG, ...config };
+    this.workerOwned = options.workerOwned === true;
+  }
+
+  private assertQueueWritable(operation: string, name?: string): void {
+    if (!this.queue && this.workerOwned) {
+      throw new Error(
+        `Cannot ${operation}${name ? ` (${name})` : ""}: JobQueueService singleton is retired because background jobs are owned by the worker process`,
+      );
+    }
   }
 
   /**
@@ -112,12 +125,7 @@ class JobQueueService {
 
     try {
       // Create connection options (BullMQ needs its own connection)
-      const connection: ConnectionOptions = {
-        host: redisClient.options.host,
-        port: redisClient.options.port,
-        password: redisClient.options.password,
-        db: redisClient.options.db,
-      };
+      const connection = getBullMqConnectionOptions(redisClient);
 
       // Create queue
       this.queue = new Queue("main", {
@@ -232,6 +240,7 @@ class JobQueueService {
     data: T,
     options?: JobsOptions,
   ): Promise<Job<T> | null> {
+    this.assertQueueWritable("add job", name);
     if (!this.queue) {
       log.warn("Queue not available, job not added", { name });
       return null;
@@ -257,6 +266,7 @@ class JobQueueService {
   async addBulk<T>(
     jobs: Array<{ name: string; data: T; options?: JobsOptions }>,
   ): Promise<Job<T>[]> {
+    this.assertQueueWritable("add bulk jobs");
     if (!this.queue) {
       log.warn("Queue not available, jobs not added");
       return [];
@@ -286,6 +296,7 @@ class JobQueueService {
     data: T,
     scheduleOptions: ScheduleOptions,
   ): Promise<Job<T> | null> {
+    this.assertQueueWritable("schedule job", name);
     if (!this.queue) {
       log.warn("Queue not available, job not scheduled", { name });
       return null;
@@ -543,7 +554,9 @@ class JobQueueService {
   }
 }
 
-// Singleton instance
-export const jobQueue = new JobQueueService();
+// Retired API-process singleton: background jobs are owned by the dedicated
+// worker process (WorkerJobQueue). Accidental uninitialized enqueue/schedule
+// calls fail loudly instead of silently returning null.
+export const jobQueue = new JobQueueService({}, { workerOwned: true });
 
 export default jobQueue;

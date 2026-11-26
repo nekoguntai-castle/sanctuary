@@ -3,7 +3,7 @@ import { vi } from 'vitest';
 // Define mock objects that will be shared
 export const createdWorkers: Array<{
   processFn?: (job: any) => Promise<any>;
-  options?: { autorun?: boolean; concurrency?: number };
+  options?: { autorun?: boolean; concurrency?: number; connection?: Record<string, unknown> };
   run: ReturnType<typeof vi.fn>;
 }> = [];
 const hoistedMocks = vi.hoisted(() => ({

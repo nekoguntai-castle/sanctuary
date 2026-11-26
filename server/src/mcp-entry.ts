@@ -1,3 +1,8 @@
+import './config/loadEnv';
+import { initializeOpenTelemetry, shutdownOpenTelemetry } from './utils/tracing/otel';
+
+const otelPromise = initializeOpenTelemetry();
+
 import { createServer, type Server } from 'node:http';
 import config from './config';
 import {
@@ -14,6 +19,12 @@ import {
 } from './models/prisma';
 import { metricsService } from './observability';
 import { rateLimitService } from './services/rateLimiting';
+import { shutdownElectrumPool } from './services/bitcoin/electrumPool';
+import {
+  startRemoteElectrumConfigChanges,
+  stopRemoteElectrumConfigChanges,
+} from './services/bitcoin/remoteElectrumConfigChanges';
+import { validateEncryptionKey } from './utils/encryption';
 import { createLogger } from './utils/logger';
 import { getErrorMessage } from './utils/errors';
 import { exitNow } from './utils/processExit';
@@ -33,10 +44,14 @@ async function startMcpServer(): Promise<void> {
     exitNow(0);
   }
 
+  await validateEncryptionKey();
+  await otelPromise;
+
   await connectWithRetry();
   await startDatabaseHealthCheck();
   await initializeRedis();
   initializeDistributedLock('redis-required');
+  startRemoteElectrumConfigChanges();
   rateLimitService.initialize();
   metricsService.initialize();
 
@@ -81,11 +96,18 @@ async function shutdown(signal: string, exitCode: 0 | 1 = 0): Promise<void> {
   });
 
   rateLimitService.shutdown();
+  stopRemoteElectrumConfigChanges();
+  try {
+    await shutdownElectrumPool();
+  } catch (error) {
+    log.error('Error shutting down Electrum pool', { error: getErrorMessage(error) });
+  }
   shutdownDistributedLock();
   await shutdownRedis();
   // The final disconnect must follow any health query or reconnect already in flight.
   await databaseHealthStop;
   await disconnect();
+  await shutdownOpenTelemetry();
 
   clearTimeout(forceExit);
   log.info('MCP server stopped');

@@ -84,9 +84,10 @@ async function getTransporter(): Promise<Transporter | null> {
     return transporter;
   }
 
-  // Create new transporter
+  // Create new transporter and close the previous one before replacing it
   try {
-    transporter = nodemailer.createTransport({
+    const previousTransporter = transporter;
+    const nextTransporter = nodemailer.createTransport({
       host: config.host,
       port: config.port,
       secure: config.secure,
@@ -98,6 +99,11 @@ async function getTransporter(): Promise<Transporter | null> {
         : undefined,
     });
 
+    if (previousTransporter && typeof previousTransporter.close === 'function') {
+      previousTransporter.close();
+    }
+
+    transporter = nextTransporter;
     cachedConfig = config;
     log.info('SMTP transporter created', { host: config.host, port: config.port });
     return transporter;

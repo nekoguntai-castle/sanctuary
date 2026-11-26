@@ -313,4 +313,67 @@ export function registerElectrumConnectionRequestContracts(): void {
     expect(error).toBeInstanceOf(Error);
     expect(error.message).toContain('Socket error: socket exploded');
   });
+
+  it('P2-5: sets subscribedHeaders only after subscribeHeaders succeeds and clears subscription state on close/end/disconnect', async () => {
+    const socket = new FakeSocket();
+    netConnectMock.mockImplementationOnce(() => {
+      queueMicrotask(() => socket.emit('connect'));
+      return socket;
+    });
+
+    const client = new ElectrumClient({
+      host: 'localhost',
+      port: 50001,
+      protocol: 'tcp',
+      requestTimeoutMs: 40,
+      batchRequestTimeoutMs: 40,
+    });
+
+    await client.connect();
+
+    // Failed subscribeHeaders must not leave subscribedHeaders = true
+    socket.write.mockImplementationOnce((message: string) => {
+      const { id } = JSON.parse(message.trim());
+      socket.emit('data', Buffer.from(
+        JSON.stringify({ jsonrpc: '2.0', id, error: { message: 'sub failed' } }) + '\n',
+      ));
+    });
+    await expect(client.subscribeHeaders()).rejects.toThrow('sub failed');
+    expect(client.isSubscribedToHeaders()).toBe(false);
+
+    // Succeed subscribeHeaders and populate scriptHashToAddress
+    socket.write.mockImplementationOnce((message: string) => {
+      const { id } = JSON.parse(message.trim());
+      socket.emit('data', Buffer.from(
+        JSON.stringify({ jsonrpc: '2.0', id, result: { height: 100, hex: '00'.repeat(80) } }) + '\n',
+      ));
+    });
+    await client.subscribeHeaders();
+    (client as any).scriptHashToAddress.set('a'.repeat(64), 'bc1qtest');
+    expect(client.isSubscribedToHeaders()).toBe(true);
+    expect(client.getSubscribedAddresses()).toEqual(['bc1qtest']);
+
+    // Unexpected socket close must reset subscribedHeaders and clear scriptHashToAddress
+    socket.emit('close');
+    expect(client.isSubscribedToHeaders()).toBe(false);
+    expect(client.getSubscribedAddresses()).toEqual([]);
+
+    // Also verify disconnect clears subscribedHeaders
+    const socket2 = new FakeSocket();
+    netConnectMock.mockImplementationOnce(() => {
+      queueMicrotask(() => socket2.emit('connect'));
+      return socket2;
+    });
+    await client.connect();
+    socket2.write.mockImplementationOnce((message: string) => {
+      const { id } = JSON.parse(message.trim());
+      socket2.emit('data', Buffer.from(
+        JSON.stringify({ jsonrpc: '2.0', id, result: { height: 101, hex: '00'.repeat(80) } }) + '\n',
+      ));
+    });
+    await client.subscribeHeaders();
+    expect(client.isSubscribedToHeaders()).toBe(true);
+    client.disconnect();
+    expect(client.isSubscribedToHeaders()).toBe(false);
+  });
 }

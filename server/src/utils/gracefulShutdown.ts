@@ -22,6 +22,7 @@ export interface GracefulShutdownDependencies {
   shutdownRedisDependencies: () => Promise<void>;
   shutdownRedis: () => Promise<void>;
   disconnect: () => Promise<void>;
+  shutdownOpenTelemetry?: () => Promise<void>;
   exitNow: (code: ExitCode) => void;
   timeoutMs?: number;
 }
@@ -87,6 +88,9 @@ export function createGracefulShutdownHandler(
     await dependencies.shutdownRedisDependencies();
     await dependencies.shutdownRedis();
     await disconnectDatabase(databaseHealthStop, dependencies.disconnect, dependencies.log);
+    if (dependencies.shutdownOpenTelemetry) {
+      await dependencies.shutdownOpenTelemetry();
+    }
 
     clearTimeout(forceExitTimeout);
     dependencies.log.info('Server shutdown complete');

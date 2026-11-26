@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   manager,
   mockClient,
+  mockElectrumClientCtor,
 } from './electrumManagerTestHarness';
 import { walletRepository, addressRepository } from '../../../../src/repositories';
 import { getAddressSubscriptionKey } from '../../../../src/worker/electrumManager/types';
@@ -194,7 +195,8 @@ export function registerElectrumManagerWalletSubscriptionContracts() {
 
       await expect(manager.subscribeCheckpointAddresses('testnet3', ['addr1']))
         .resolves.toEqual(new Map([['addr1', 'status']]));
-      expect(getElectrumClientForNetwork).toHaveBeenCalledWith('testnet3');
+      expect(mockElectrumClientCtor).toHaveBeenCalledOnce();
+      expect(mockClient.setNetwork).toHaveBeenCalledWith('testnet3');
       expect(mockClient.connect).toHaveBeenCalledOnce();
       expect(mockClient.subscribeAddressBatch).toHaveBeenCalledWith(['addr1']);
     });
@@ -213,7 +215,7 @@ export function registerElectrumManagerWalletSubscriptionContracts() {
       finishConnect();
 
       await expect(Promise.all([first, second])).resolves.toEqual([undefined, undefined]);
-      expect(getElectrumClientForNetwork).toHaveBeenCalledOnce();
+      expect(mockElectrumClientCtor).toHaveBeenCalledOnce();
     });
 
     it('does not re-enter network readiness while subscribing a checkpoint batch', async () => {
@@ -368,7 +370,8 @@ export function registerElectrumManagerWalletSubscriptionContracts() {
       vi.mocked(addressRepository.findAddressStrings).mockResolvedValueOnce(['addr-signet']);
       await manager.subscribeWalletAddresses('wallet1');
 
-      expect(getElectrumClientForNetwork).toHaveBeenCalledWith('signet');
+      expect(mockElectrumClientCtor).toHaveBeenCalledWith();
+      expect(mockClient.setNetwork).toHaveBeenCalledWith('signet');
       expect(mockClient.connect).toHaveBeenCalledOnce();
       expect(mockClient.subscribeAddressBatch).toHaveBeenCalledWith(['addr-signet']);
     });

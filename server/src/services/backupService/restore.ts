@@ -40,6 +40,16 @@ import { serializeRecord } from './serialization';
 import { featureFlagRepository } from '../../repositories/featureFlagRepository';
 import { featureFlagService } from '../featureFlagService';
 import type { FeatureRuntimeState } from '../../repositories/featureFlagRepository';
+import { forceSyncConfig } from '../ai/config';
+import { walletCache, priceCache, feeCache } from '../cache';
+import { walletLogBuffer } from '../walletLogBuffer';
+import { getPriceService } from '../price';
+import { getDistributedEventBus } from '../../infrastructure';
+import { resetNodeClient } from '../bitcoin/nodeClient';
+import { reloadElectrumServers } from '../bitcoin/electrumPool';
+import { publishElectrumConfigChange } from '../bitcoin/electrumConfigChanges';
+import { clearTransporterCache } from '../email/emailService';
+import { disconnectWebSocketUser } from '../websocketAuthorizationInvalidation';
 import {
   OPERATIONAL_SYSTEM_SETTING_PREFIX,
   WALLET_SYNC_ACTIVATION_KEY,
@@ -201,12 +211,14 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
   }
 
   let restoredRuntimeState: FeatureRuntimeState;
+  let preRestoreUserIds: string[] = [];
   try {
     restoredRuntimeState = await prisma.$transaction(async (tx) => {
       // Preserve irreversible wallet-sync floors against a cutover that races
       // restore's initial operational-setting snapshot.
       await acquireWalletSyncRetirementLock(tx);
       const currentSessionVersions = await getCurrentSessionVersions(tx);
+      preRestoreUserIds = Array.from(currentSessionVersions.keys());
       const currentFeatureGeneration = await featureFlagRepository.readGeneration(tx);
       const currentOperationalSettings = await readOperationalSettings(tx);
       const currentOperationalKeys = new Set(
@@ -288,6 +300,8 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
       error: getErrorMessage(error),
     };
   }
+
+  await invalidateRuntimeStateAfterRestore(preRestoreUserIds);
 
   const featureRuntimeError = await featureFlagService.reconcileAfterRestore(restoredRuntimeState).then(
     () => null,
@@ -430,4 +444,55 @@ async function getCurrentSessionVersions(
     },
   });
   return new Map(users.map(user => [user.id, user.sessionVersion]));
+}
+
+async function runBestEffortRestoreCleanup(
+  step: string,
+  action: () => Promise<unknown> | unknown,
+): Promise<boolean> {
+  try {
+    await action();
+    return true;
+  } catch (error) {
+    log.warn(`[BACKUP] Post-restore ${step} failed`, { error: getErrorMessage(error) });
+    return false;
+  }
+}
+
+async function invalidateCachesAfterRestore(): Promise<void> {
+  await runBestEffortRestoreCleanup('wallet cache clear', () => walletCache.clear());
+  await runBestEffortRestoreCleanup('price cache clear', () => priceCache.clear());
+  await runBestEffortRestoreCleanup('fee cache clear', () => feeCache.clear());
+  await runBestEffortRestoreCleanup('wallet log buffer clear', () => walletLogBuffer.clearAll());
+  await runBestEffortRestoreCleanup('price service cache clear', () => getPriceService().clearCache());
+  await runBestEffortRestoreCleanup('cross-replica cache invalidation broadcast', () => {
+    getDistributedEventBus().emit('cache:invalidated', { scope: 'all' });
+  });
+}
+
+async function invalidateElectrumAfterRestore(): Promise<void> {
+  await runBestEffortRestoreCleanup('node client reset', () => resetNodeClient());
+  await runBestEffortRestoreCleanup('Electrum server reload', () => reloadElectrumServers());
+  await runBestEffortRestoreCleanup('node-config change broadcast', () =>
+    publishElectrumConfigChange({ scope: 'node-config', network: null }),
+  );
+  await runBestEffortRestoreCleanup('electrum-servers change broadcast', () =>
+    publishElectrumConfigChange({ scope: 'electrum-servers', network: null }),
+  );
+}
+
+async function disconnectPreRestoreWebSocketUsers(userIds: readonly string[]): Promise<void> {
+  for (const userId of userIds) {
+    await runBestEffortRestoreCleanup(`WebSocket disconnect for user ${userId}`, () =>
+      disconnectWebSocketUser(userId),
+    );
+  }
+}
+
+async function invalidateRuntimeStateAfterRestore(preRestoreUserIds: readonly string[]): Promise<void> {
+  await runBestEffortRestoreCleanup('AI proxy config force-sync', () => forceSyncConfig());
+  await invalidateCachesAfterRestore();
+  await invalidateElectrumAfterRestore();
+  await runBestEffortRestoreCleanup('SMTP transporter cache clear', () => clearTransporterCache());
+  await disconnectPreRestoreWebSocketUsers(preRestoreUserIds);
 }

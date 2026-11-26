@@ -12,7 +12,9 @@ import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { getConfig } from '../../config';
 import { getWorkerHealthStatus } from '../workerHealth';
+import { withLock } from '../../infrastructure';
 import { syncPollingModeTransitions } from '../../observability/metrics';
+import { WORKER_TAKEOVER_FAILURE_THRESHOLD } from './pollingModeManager';
 import type { SyncExecutionOwner, SyncPriority } from '@sanctuary/shared/constants/sync';
 import type { SyncState, SyncResult, SyncHealthMetrics, PollingMode } from './types';
 import { classifyWalletSyncFailure } from './failureClassification';
@@ -25,8 +27,7 @@ import {
 
 const log = createLogger('SYNC:SVC');
 
-/** Consecutive failed worker health checks before the API takes over polling. */
-const WORKER_TAKEOVER_FAILURE_THRESHOLD = 3;
+const API_SYNC_FALLBACK_LOCK_KEY = 'api:sync-fallback';
 
 class SyncService {
   private static instance: SyncService;
@@ -254,10 +255,12 @@ class SyncService {
     this.syncInterval = setInterval(() => {
       this.checkAndQueueStaleSyncs();
     }, syncConfig.intervalMs);
+    this.syncInterval.unref?.();
 
     this.confirmationInterval = setInterval(() => {
       this.updateAllConfirmations();
     }, syncConfig.confirmationUpdateIntervalMs);
+    this.confirmationInterval.unref?.();
 
     const previousMode = this.state.pollingMode;
     this.state.pollingMode = 'in-process';
@@ -357,23 +360,28 @@ class SyncService {
     if (!this.state.isRunning) return;
 
     try {
-      // First, check for stuck syncs - wallets marked as syncing in DB but not in memory
-      // This can happen if sync times out or crashes without proper cleanup
-      const stuckWallets = await walletRepository.findStuckSyncing();
+      const leaseTtlMs = getConfig().sync.intervalMs;
+      const lease = await withLock(API_SYNC_FALLBACK_LOCK_KEY, leaseTtlMs, async () => {
+        // First, check for stuck syncs - wallets marked as syncing in DB but not in memory
+        // This can happen if sync times out or crashes without proper cleanup
+        const stuckWallets = await walletRepository.findStuckSyncing();
 
-      // Reset any wallet that's marked as syncing but isn't actually syncing
-      let unstuckCount = 0;
-      for (const wallet of stuckWallets) {
-        if (await clearStuckSyncIfAuthorized(wallet)) {
-          log.warn(`[SYNC] Auto-unstuck wallet ${wallet.name || wallet.id} (was stuck with syncInProgress=true)`);
-          unstuckCount++;
+        // Reset any wallet that's marked as syncing but isn't actually syncing
+        let unstuckCount = 0;
+        for (const wallet of stuckWallets) {
+          if (await clearStuckSyncIfAuthorized(wallet)) {
+            log.warn(`[SYNC] Auto-unstuck wallet ${wallet.name || wallet.id} (was stuck with syncInProgress=true)`);
+            unstuckCount++;
+          }
         }
-      }
 
-      if (unstuckCount > 0) {
-        log.info(`[SYNC] Auto-unstuck ${unstuckCount} wallets that had stale syncInProgress flags`);
+        if (unstuckCount > 0) {
+          log.info(`[SYNC] Auto-unstuck ${unstuckCount} wallets that had stale syncInProgress flags`);
+        }
+      });
+      if (!lease.success) {
+        log.debug('[SYNC] Skipping in-process stale-sync fallback sweep; another API replica holds the lease');
       }
-
     } catch (error) {
       log.error('[SYNC] Failed to check for stale syncs', { error: getErrorMessage(error) });
     }
@@ -392,22 +400,28 @@ class SyncService {
     if (!this.state.isRunning) return;
 
     try {
-      const result = await refresh();
-      for (const failure of result.failures) {
-        log.error(`[SYNC] Failed to update confirmations for wallet ${failure.walletId}`, {
-          error: getErrorMessage(failure.error),
-        });
-      }
-      for (const failure of result.publicationFailures) {
-        log.error(`[SYNC] Failed to publish confirmation update for wallet ${failure.walletId}`, {
-          error: getErrorMessage(failure.error),
-          txid: failure.txid,
-        });
-      }
+      const leaseTtlMs = getConfig().sync.confirmationUpdateIntervalMs;
+      const lease = await withLock(API_SYNC_FALLBACK_LOCK_KEY, leaseTtlMs, async () => {
+        const result = await refresh();
+        for (const failure of result.failures) {
+          log.error(`[SYNC] Failed to update confirmations for wallet ${failure.walletId}`, {
+            error: getErrorMessage(failure.error),
+          });
+        }
+        for (const failure of result.publicationFailures) {
+          log.error(`[SYNC] Failed to publish confirmation update for wallet ${failure.walletId}`, {
+            error: getErrorMessage(failure.error),
+            txid: failure.txid,
+          });
+        }
 
-      const totalUpdated = result.fieldUpdates + result.confirmationUpdateCount;
-      if (totalUpdated > 0) {
-        log.info(`[SYNC] Updated ${totalUpdated} transaction confirmations`);
+        const totalUpdated = result.fieldUpdates + result.confirmationUpdateCount;
+        if (totalUpdated > 0) {
+          log.info(`[SYNC] Updated ${totalUpdated} transaction confirmations`);
+        }
+      });
+      if (!lease.success) {
+        log.debug('[SYNC] Skipping in-process confirmation fallback sweep; another API replica holds the lease');
       }
     } catch (error) {
       log.error('[SYNC] Failed to update confirmations', { error: getErrorMessage(error) });

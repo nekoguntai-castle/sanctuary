@@ -14,6 +14,7 @@ const DEFAULT_PARTICIPANTS = ['api', 'notification-worker'] as const;
 
 let participantServer: Server | null = null;
 let controller: ControlledCaptureService | null = null;
+let controllerRedis: unknown = null;
 
 function parseGeneration(): number {
   const value = Number(process.env.SUPPORT_CAPTURE_MEMBERSHIP_GENERATION ?? '1');
@@ -45,14 +46,19 @@ export function getCaptureSocketDirectory(): string {
 }
 
 export function getControlledCaptureService(): ControlledCaptureService | null {
-  if (controller) return controller;
   const redis = getRedisClient();
-  if (!redis) return null;
+  if (!redis) {
+    controller = null;
+    controllerRedis = null;
+    return null;
+  }
+  if (controller && controllerRedis === redis) return controller;
   controller = new ControlledCaptureService({
     redis,
     socketDirectory: getCaptureSocketDirectory(),
     membershipProvider: getCaptureMembership,
   });
+  controllerRedis = redis;
   return controller;
 }
 

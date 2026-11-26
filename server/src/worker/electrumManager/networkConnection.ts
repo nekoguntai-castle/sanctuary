@@ -5,7 +5,7 @@
  * and setting up event handlers for a specific network.
  */
 
-import { getElectrumClientForNetwork } from '../../services/bitcoin/electrum';
+import { ElectrumClient } from '../../services/bitcoin/electrum';
 import { hashBlockHeader, previousBlockHashFromHeader } from '../../services/bitcoin/networkIdentity';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
@@ -36,7 +36,7 @@ function isActiveClientState(state: NetworkState): boolean {
 
 function detachEventHandlers(state: NetworkState): void {
   for (const event of ['newBlock', 'addressActivity', 'subscriptionResponse', 'close', 'error']) {
-    state.client.removeAllListeners(event);
+    state.client.removeAllListeners?.(event);
   }
 }
 
@@ -52,7 +52,7 @@ export function teardownNetworkState(state: NetworkState): void {
   pendingLiveHeaders.delete(state);
   detachEventHandlers(state);
   activeClientStates.delete(state.client);
-  state.client.disconnect();
+  state.client.disconnect?.();
 }
 
 function queueLatestLiveHeader(
@@ -117,10 +117,13 @@ export async function connectNetwork(
     }
   }
 
+  let client: ElectrumClient | null = null;
+  let stateInstalled = false;
   try {
     log.info(`Connecting to Electrum for ${network}...`);
 
-    const client = getElectrumClientForNetwork(network);
+    client = new ElectrumClient();
+    client.setNetwork(network);
     await client.connect();
     if (!isRunning()) {
       client.disconnect();
@@ -158,6 +161,7 @@ export async function connectNetwork(
     };
 
     networks.set(network, state);
+    stateInstalled = true;
 
     // Install listeners before subscribing so a notification racing the
     // subscription response cannot fall into an unobserved window.
@@ -168,12 +172,15 @@ export async function connectNetwork(
     await subscribeHeaders(state, callbacks, isRunning);
     if (!isRunning()) {
       if (networks.get(network) === state) networks.delete(network);
-      client.disconnect();
+      teardownNetworkState(state);
       return;
     }
 
     log.info(`Electrum ${network} connected and subscribed`);
   } catch (error) {
+    if (client && !stateInstalled) {
+      client.disconnect();
+    }
     log.error(`Failed to connect to Electrum ${network}`, {
       error: getErrorMessage(error),
     });

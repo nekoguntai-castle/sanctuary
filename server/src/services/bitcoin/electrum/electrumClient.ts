@@ -89,8 +89,8 @@ class ElectrumClient extends EventEmitter {
   private network: BitcoinNetwork; // Bitcoin network
 
   // Timeouts (adjusted for Tor when proxy is enabled)
-  private requestTimeoutMs: number;
-  private batchRequestTimeoutMs: number;
+  private requestTimeoutMs = 0;
+  private batchRequestTimeoutMs = 0;
   private readonly maxBatchResponseBytes = ELECTRUM_MAX_BATCH_RESPONSE_BYTES;
 
   /**
@@ -106,11 +106,17 @@ class ElectrumClient extends EventEmitter {
     const defaults = getDefaultTimeouts();
 
     // Calculate timeouts - increase for Tor connections
-    const isProxyEnabled = explicitConfig?.proxy?.enabled ?? false;
+    this.applyTimeouts(explicitConfig?.proxy?.enabled ?? false, defaults);
+  }
+
+  private applyTimeouts(
+    isProxyEnabled: boolean,
+    defaults: ReturnType<typeof getDefaultTimeouts>,
+  ): void {
     const multiplier = isProxyEnabled ? defaults.torTimeoutMultiplier : 1;
 
-    this.requestTimeoutMs = (explicitConfig?.requestTimeoutMs ?? defaults.requestTimeoutMs) * multiplier;
-    this.batchRequestTimeoutMs = (explicitConfig?.batchRequestTimeoutMs ?? defaults.batchRequestTimeoutMs) * multiplier;
+    this.requestTimeoutMs = (this.explicitConfig?.requestTimeoutMs ?? defaults.requestTimeoutMs) * multiplier;
+    this.batchRequestTimeoutMs = (this.explicitConfig?.batchRequestTimeoutMs ?? defaults.batchRequestTimeoutMs) * multiplier;
 
     if (isProxyEnabled) {
       log.debug(`ElectrumClient configured with Tor timeouts: request=${this.requestTimeoutMs}ms, batch=${this.batchRequestTimeoutMs}ms`);
@@ -166,6 +172,7 @@ class ElectrumClient extends EventEmitter {
         .then((connectionConfig) => {
           if (settled) return; // disconnect() already cancelled this attempt
           const defaults = getDefaultTimeouts();
+          this.applyTimeouts(Boolean(connectionConfig.proxy?.enabled), defaults);
           const connectionTimeoutMs = this.explicitConfig?.connectionTimeoutMs ?? defaults.connectionTimeoutMs;
           // Only mark this phase settled once openConnection has actually
           // taken over (it reassigns this.pendingConnectAbort synchronously
@@ -340,9 +347,11 @@ class ElectrumClient extends EventEmitter {
     log.debug('Connection closed');
     const notifyClose = this.connected;
     this.connected = false;
+    this.subscribedHeaders = false;
     this.socket = null;
     this.frameDecoder.reset();
     this.serverVersion = null;
+    this.scriptHashToAddress.clear();
     rejectAllPendingRequests(this.pendingRequests, new Error('Connection closed unexpectedly'));
     if (notifyClose) this.emit('close');
   }
@@ -352,9 +361,11 @@ class ElectrumClient extends EventEmitter {
     log.debug('Connection ended');
     const notifyClose = this.connected;
     this.connected = false;
+    this.subscribedHeaders = false;
     this.socket = null;
     this.frameDecoder.reset();
     this.serverVersion = null;
+    this.scriptHashToAddress.clear();
     rejectAllPendingRequests(this.pendingRequests, new Error('Connection ended'));
     if (notifyClose) this.emit('close');
   }
@@ -370,6 +381,8 @@ class ElectrumClient extends EventEmitter {
     }
 
     rejectAllPendingRequests(this.pendingRequests, new Error('Connection closed'));
+    this.subscribedHeaders = false;
+    this.scriptHashToAddress.clear();
 
     if (this.socket) {
       const socket = this.socket;
@@ -378,7 +391,6 @@ class ElectrumClient extends EventEmitter {
       this.socket = null;
       this.frameDecoder.reset();
       socket.destroy();
-      this.scriptHashToAddress.clear();
     }
   }
 
@@ -447,8 +459,10 @@ class ElectrumClient extends EventEmitter {
     const socket = this.socket;
     const notifyClose = this.connected;
     this.connected = false;
+    this.subscribedHeaders = false;
     this.socket = null;
     this.serverVersion = null;
+    this.scriptHashToAddress.clear();
     this.frameDecoder.reset();
     rejectAllPendingRequests(this.pendingRequests, error);
     socket?.destroy();
@@ -715,10 +729,11 @@ class ElectrumClient extends EventEmitter {
   }
 
   async subscribeHeaders(): Promise<{ height: number; hex: string }> {
-    this.subscribedHeaders = true;
-    return publicApi.subscribeHeaders(
+    const result = await publicApi.subscribeHeaders(
       (method, params) => this.request(method, params)
     );
+    this.subscribedHeaders = true;
+    return result;
   }
 
   isSubscribedToHeaders(): boolean {

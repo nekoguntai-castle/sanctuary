@@ -33,7 +33,7 @@ export function startRemoteElectrumConfigChanges(): void {
   const resync = createElectrumConfigResync(handleChange, log);
   void resync.prime();
   unsubscribers = [
-    bus.onRemote(ELECTRUM_CONFIG_CHANGED_EVENT, handleChange),
+    bus.onRemote(ELECTRUM_CONFIG_CHANGED_EVENT, resync.handleLiveChange),
     bus.onResync(resync.resync),
   ];
 }

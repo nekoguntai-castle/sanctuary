@@ -149,18 +149,18 @@ export function resetPriceMocks() {
   vi.clearAllMocks();
   mockResolveCurrentAccessTokenPayload.mockImplementation(async (payload) => payload);
   rateLimitHits.length = 0;
-  mockPriceService.getSupportedCurrencies.mockReturnValue([
+  mockPriceService.getSupportedCurrencies.mockResolvedValue([
     "USD",
     "EUR",
     "GBP",
     "JPY",
   ]);
-  mockPriceService.getProviders.mockReturnValue([
+  mockPriceService.getProviders.mockResolvedValue([
     "coinbase",
     "binance",
     "kraken",
   ]);
-  mockPriceService.getProviderDiagnostics.mockReturnValue([
+  mockPriceService.getProviderDiagnostics.mockResolvedValue([
     {
       name: "coinbase",
       priority: 70,

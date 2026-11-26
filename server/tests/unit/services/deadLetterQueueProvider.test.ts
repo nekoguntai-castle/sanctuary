@@ -10,6 +10,10 @@ vi.mock('../../../src/infrastructure', () => ({
   isRedisConnected: mocks.isRedisConnected,
 }));
 
+vi.mock('../../../src/config', () => ({
+  getConfig: () => ({ redis: { url: '' } }),
+}));
+
 vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),

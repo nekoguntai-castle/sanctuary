@@ -280,6 +280,18 @@ export const logger = createLogger('APP');
  * setLogLevel('debug'); // Enable debug logging
  * setLogLevel(LogLevel.WARN); // Only show warnings and errors
  */
+/**
+ * Silently apply the configured log level during config bootstrap.
+ * Kept free of logger calls so static sync-mutation boundary checks can
+ * call getConfig() without introducing a commit-sensitive logging edge.
+ */
+export const syncLogLevelFromConfig = (level: string): void => {
+  const parsedLevel = LOG_LEVEL_MAP[level.toLowerCase()];
+  if (parsedLevel !== undefined) {
+    currentLogLevel = parsedLevel;
+  }
+};
+
 export const setLogLevel = (level: LogLevel | string): void => {
   if (typeof level === 'string') {
     const parsedLevel = LOG_LEVEL_MAP[level.toLowerCase()];

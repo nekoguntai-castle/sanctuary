@@ -1,5 +1,9 @@
-import { Queue, type ConnectionOptions } from "bullmq";
+import { Queue } from "bullmq";
 import { getRedisClient, isRedisConnected } from "../infrastructure";
+import {
+  getBullMqConnectionKey,
+  getBullMqConnectionOptions,
+} from "../infrastructure/redis";
 import { createLogger } from "../utils/logger";
 import { getErrorMessage } from "../utils/errors";
 import { mapWithConcurrency } from "../utils/async";
@@ -69,17 +73,6 @@ function toBullPriority(priority: SyncPriority): number {
   return SYNC_PRIORITY_BULLMQ_PRIORITY[priority];
 }
 
-function buildConnectionKey(connection: ConnectionOptions): string {
-  // ConnectionOptions is a union; extract fields safely via type guard
-  const opts = connection as Record<string, unknown>;
-  return [
-    (opts.host as string) ?? "",
-    (opts.port as string) ?? "",
-    (opts.db as string) ?? "",
-    opts.password ? "auth" : "no-auth",
-  ].join(":");
-}
-
 function getOrCreateSyncQueue(): Queue<SyncWalletJobData> | null {
   if (!isRedisConnected()) {
     return null;
@@ -90,23 +83,27 @@ function getOrCreateSyncQueue(): Queue<SyncWalletJobData> | null {
     return null;
   }
 
-  const connection: ConnectionOptions = {
-    host: redis.options.host,
-    port: redis.options.port,
-    password: redis.options.password,
-    db: redis.options.db,
-  };
-  const connectionKey = buildConnectionKey(connection);
+  const connection = getBullMqConnectionOptions(redis);
+  const connectionKey = getBullMqConnectionKey(connection);
 
   if (syncQueue && syncQueueConnectionKey === connectionKey) {
     return syncQueue;
   }
 
+  const previousQueue = syncQueue;
   syncQueue = new Queue<SyncWalletJobData>(SYNC_QUEUE_NAME, {
     connection,
     prefix: WORKER_QUEUE_PREFIX,
   });
   syncQueueConnectionKey = connectionKey;
+
+  if (previousQueue) {
+    void previousQueue.close().catch((error) => {
+      log.warn("Failed to close replaced worker sync queue", {
+        error: getErrorMessage(error),
+      });
+    });
+  }
 
   return syncQueue;
 }

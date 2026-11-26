@@ -181,7 +181,7 @@ export const cleanupFeeEstimatesJob: JobDefinition<CleanupJobData, number> = {
 
 async function persistPriceSnapshots(signal?: AbortSignal): Promise<number> {
   const priceService = getPriceService();
-  const currencies = priceService.getSupportedCurrencies();
+  const currencies = await priceService.getSupportedCurrencies();
   const prices = await priceService.getPrices(currencies);
   let pricesWritten = 0;
 

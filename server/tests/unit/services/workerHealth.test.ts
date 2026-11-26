@@ -302,6 +302,44 @@ describe('workerHealth monitor', () => {
     expect(mockLogger.info).toHaveBeenCalledWith('Worker health monitor already running');
   });
 
+  it('shares startup between simultaneous callers and installs one interval', async () => {
+    let resolveCheck!: (value: unknown) => void;
+    const initialCheck = new Promise(resolve => { resolveCheck = resolve; });
+    const response = { ok: true, status: 200, json: vi.fn().mockResolvedValue({ status: 'healthy' }) };
+    mockFetch.mockReturnValueOnce(initialCheck).mockResolvedValue(response);
+    const mod = await import('../../../src/services/workerHealth');
+
+    const first = mod.startWorkerHealthMonitor();
+    const second = mod.startWorkerHealthMonitor();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    resolveCheck(response);
+    await Promise.all([first, second]);
+    await vi.advanceTimersByTimeAsync(10000);
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(1);
+    expect(mod.getWorkerHealthStatus().healthy).toBe(true);
+  });
+
+  it('preserves a restarted monitor when the previous startup finishes late', async () => {
+    let resolveStale!: (value: unknown) => void;
+    const stale = new Promise(resolve => { resolveStale = resolve; });
+    const healthy = { ok: true, status: 200, json: vi.fn().mockResolvedValue({ status: 'healthy' }) };
+    mockFetch.mockReturnValueOnce(stale).mockResolvedValue(healthy);
+    const mod = await import('../../../src/services/workerHealth');
+
+    const first = mod.startWorkerHealthMonitor();
+    const stopping = mod.stopWorkerHealthMonitor();
+    await mod.startWorkerHealthMonitor();
+    resolveStale({ ok: false, status: 503, json: vi.fn().mockResolvedValue({ status: 'degraded' }) });
+    await Promise.all([first, stopping]);
+
+    expect(mod.getWorkerHealthStatus()).toMatchObject({ running: true, healthy: true, failures: 0 });
+    expect(vi.getTimerCount()).toBe(1);
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+  });
+
   it('waits for active check on stop even if in-flight check rejects', async () => {
     let rejectInFlight!: (error: unknown) => void;
     const inFlight = new Promise((_, reject) => {
@@ -377,5 +415,52 @@ describe('workerHealth monitor', () => {
     await expect(mod.startWorkerHealthMonitor()).rejects.toThrow(
       'Worker health check failed at startup: unknown error'
     );
+  });
+
+  it('P2-6: stopWorkerHealthMonitor resets state and ignores late in-flight check mutations', async () => {
+    let resolveLate!: (value: unknown) => void;
+    const inFlight = new Promise((resolve) => {
+      resolveLate = resolve;
+    });
+
+    mockGetConfig.mockReturnValue({
+      worker: {
+        healthUrl: 'http://worker:3002/health',
+        healthTimeoutMs: 3000,
+        healthCheckIntervalMs: 10,
+      },
+    });
+
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({ status: 'healthy' }),
+      })
+      .mockReturnValueOnce(inFlight as Promise<any>);
+
+    const mod = await import('../../../src/services/workerHealth');
+    await mod.startWorkerHealthMonitor();
+    await vi.advanceTimersByTimeAsync(12);
+
+    const stopPromise = mod.stopWorkerHealthMonitor();
+    resolveLate({
+      ok: true,
+      status: 200,
+      json: vi.fn().mockResolvedValue({ status: 'healthy' }),
+    });
+    await stopPromise;
+
+    expect(mod.getWorkerHealthStatus()).toEqual({
+      healthy: false,
+      running: false,
+      status: 'unknown',
+      failures: 0,
+      lastCheckedAt: null,
+      lastHealthyAt: null,
+      responseTimeMs: null,
+      error: undefined,
+      worker: undefined,
+    });
   });
 });

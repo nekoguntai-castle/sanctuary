@@ -2,6 +2,7 @@ import type { Job } from 'bullmq';
 import { createHash, randomUUID } from 'node:crypto';
 import type { JobDefinition } from '../types';
 import { auditService, AuditCategory } from '../../services/auditService';
+import { getBackupDir } from '../../config/operationalEnv';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import type { BackupService } from '../../services/backupService/backupService';
@@ -215,7 +216,7 @@ export const scheduledBackupJob: JobDefinition<ScheduledBackupData, string> = {
   handler: async (job: Job<ScheduledBackupData>, execution) => {
     execution?.throwIfAborted();
     const fs = await import('fs/promises');
-    const backupDir = process.env.BACKUP_DIR || '/data/backups';
+    const backupDir = getBackupDir();
     const retentionCount = job.data.retentionCount ?? 7;
 
     log.info('Running scheduled backup', { backupDir, retentionCount });

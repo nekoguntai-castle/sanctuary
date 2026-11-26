@@ -11,9 +11,10 @@ import {
   resetElectrumMocks,
 } from "../../../../mocks/electrum";
 
-const { isProxyEnabledMock, getBlockHeightMock } = vi.hoisted(() => ({
+const { isProxyEnabledMock, getBlockHeightMock, getExistingElectrumPoolMock } = vi.hoisted(() => ({
   isProxyEnabledMock: vi.fn().mockReturnValue(false),
   getBlockHeightMock: vi.fn().mockResolvedValue(800000),
+  getExistingElectrumPoolMock: vi.fn(),
 }));
 
 // Mock Prisma
@@ -31,6 +32,10 @@ vi.mock("../../../../../src/services/bitcoin/electrumPool", () => ({
   getElectrumPool: vi.fn(() => ({
     isProxyEnabled: isProxyEnabledMock,
   })),
+}));
+
+vi.mock("../../../../../src/services/bitcoin/electrumPool/poolRegistry", () => ({
+  getExistingElectrumPool: getExistingElectrumPoolMock,
 }));
 
 vi.mock("../../../../../src/services/bitcoin/utils/blockHeight", () => ({
@@ -71,6 +76,10 @@ describe("Sync Pipeline", () => {
     resetElectrumMocks();
     isProxyEnabledMock.mockReset();
     isProxyEnabledMock.mockReturnValue(false);
+    getExistingElectrumPoolMock.mockReset();
+    getExistingElectrumPoolMock.mockReturnValue({
+      isProxyEnabled: isProxyEnabledMock,
+    });
     getBlockHeightMock.mockReset();
     getBlockHeightMock.mockResolvedValue(800000);
   });
@@ -617,6 +626,23 @@ describe("Sync Pipeline", () => {
         "info",
         "SYNC",
         "Starting wallet sync via Tor...",
+      );
+    });
+
+    it("P1-1: reads existing network pool without instantiating a legacy pool before getNodeClient", async () => {
+      getExistingElectrumPoolMock
+        .mockReturnValueOnce(null)
+        .mockReturnValueOnce({ isProxyEnabled: () => true });
+
+      await executeSyncPipeline(walletId, []);
+
+      expect(getExistingElectrumPoolMock).toHaveBeenCalledWith("testnet3");
+      expect(walletLog).toHaveBeenCalledWith(
+        walletId,
+        "info",
+        "SYNC",
+        expect.stringContaining("Sync completed"),
+        expect.objectContaining({ viaTor: true }),
       );
     });
 

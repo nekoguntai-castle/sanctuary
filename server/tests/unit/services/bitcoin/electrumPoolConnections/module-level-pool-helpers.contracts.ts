@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import './electrumPoolConnectionsTestHarness';
+import { registerFeaturePoolRegistryTests } from './feature-pool-registry.contracts';
 import {
   ElectrumPool,
   getElectrumPool,
   getElectrumPoolAsync,
   getElectrumPoolForNetwork,
   getElectrumPoolForNetworkAndFeatures,
-  getSubscriptionConnectionForFeatures,
   getPoolConfig,
   getElectrumServers,
   initializeElectrumPool,
@@ -552,6 +552,25 @@ export function registerElectrumPoolModuleHelperTests(): void {
       expect(getPoolConfig()).toBeNull();
     });
 
+    it('keeps the replacement pool when an earlier reset finishes last', async () => {
+      const original = await getElectrumPoolForNetwork('signet');
+      let finishShutdown!: () => void;
+      const shutdown = vi.spyOn(original, 'shutdown').mockImplementationOnce(
+        () => new Promise<void>(resolve => { finishShutdown = resolve; }),
+      ).mockResolvedValue(undefined);
+      try {
+        const slowReset = resetElectrumPoolForNetwork('signet');
+        await resetElectrumPoolForNetwork('signet');
+        const replacement = await getElectrumPoolForNetwork('signet');
+        finishShutdown();
+        await slowReset;
+        expect(replacement).not.toBe(original);
+        expect(await getElectrumPoolForNetwork('signet')).toBe(replacement);
+      } finally {
+        shutdown.mockRestore();
+      }
+    });
+
     it('keeps a replaced network pool entry during shutdown cleanup', async () => {
       await getElectrumPoolForNetwork('signet');
       const replacementPool = new ElectrumPool({
@@ -601,292 +620,7 @@ export function registerElectrumPoolModuleHelperTests(): void {
       shutdownSpy.mockRestore();
     });
 
-    it('logs and removes feature-scoped pools even when shutdown rejects', async () => {
-      const freshCapabilityCheck = new Date();
-      (prisma as any).nodeConfig.findFirst.mockResolvedValueOnce({
-        type: 'electrum',
-        poolEnabled: true,
-        poolMinConnections: 1,
-        poolMaxConnections: 2,
-        poolLoadBalancing: 'round_robin',
-        proxyEnabled: false,
-        proxyHost: null,
-        proxyPort: null,
-        servers: [
-          {
-            id: 'sp-1',
-            label: 'Frigate',
-            host: 'frigate.example.com',
-            port: 50002,
-            useSsl: true,
-            priority: 0,
-            enabled: true,
-            network: 'mainnet',
-            serverUsage: 'silent_payments',
-            supportsVerbose: true,
-            supportsSilentPaymentsV0: true,
-            silentPaymentVersions: [0],
-            lastCapabilityCheck: freshCapabilityCheck,
-            lastCapabilityError: null,
-          },
-        ],
-      });
-      const featurePool = await getElectrumPoolForNetworkAndFeatures(
-        'mainnet',
-        ['silent_payments_v0'],
-      );
-      const shutdownSpy = vi.spyOn(featurePool, 'shutdown')
-        .mockRejectedValueOnce(new Error('feature shutdown failed'));
-
-      await expect(resetElectrumPoolForNetwork('mainnet')).resolves.toBeUndefined();
-
-      expect(shutdownSpy).toHaveBeenCalledTimes(1);
-      shutdownSpy.mockRestore();
-    });
-
-    it('keeps a replaced feature-scoped pool entry during shutdown cleanup', async () => {
-      const freshCapabilityCheck = new Date();
-      (prisma as any).nodeConfig.findFirst.mockResolvedValueOnce({
-        type: 'electrum',
-        poolEnabled: true,
-        poolMinConnections: 1,
-        poolMaxConnections: 2,
-        poolLoadBalancing: 'round_robin',
-        proxyEnabled: false,
-        proxyHost: null,
-        proxyPort: null,
-        servers: [
-          {
-            id: 'sp-replaced',
-            label: 'Frigate Replaced',
-            host: 'frigate-replaced.example.com',
-            port: 50002,
-            useSsl: true,
-            priority: 0,
-            enabled: true,
-            network: 'mainnet',
-            serverUsage: 'silent_payments',
-            supportsVerbose: true,
-            supportsSilentPaymentsV0: true,
-            silentPaymentVersions: [0],
-            lastCapabilityCheck: freshCapabilityCheck,
-            lastCapabilityError: null,
-          },
-        ],
-      });
-      await getElectrumPoolForNetworkAndFeatures(
-        'mainnet',
-        ['silent_payments_v0'],
-      );
-      const replacementPool = new ElectrumPool({
-        enabled: true,
-        minConnections: 1,
-        maxConnections: 1,
-      });
-      const originalGet = Map.prototype.get;
-      const getSpy = vi.spyOn(Map.prototype, 'get')
-        .mockImplementation(function(this: Map<any, any>, key: any) {
-          if (typeof key === 'string' && key.includes('silent_payments_v0')) {
-            return replacementPool as any;
-          }
-          return originalGet.call(this, key);
-        });
-
-      try {
-        await resetElectrumPoolForNetwork('mainnet');
-      } finally {
-        getSpy.mockRestore();
-        await resetElectrumPoolForNetwork('mainnet');
-      }
-    });
-
-    it('returns subscription connections from feature-scoped pools', async () => {
-      const fakeClient = { isConnected: vi.fn().mockReturnValue(true) } as any;
-      const subscriptionSpy = vi.spyOn(ElectrumPool.prototype, 'getSubscriptionConnection')
-        .mockResolvedValueOnce(fakeClient);
-
-      await expect(getSubscriptionConnectionForFeatures(
-        'mainnet',
-        ['base_electrum'],
-      )).resolves.toBe(fakeClient);
-
-      expect(subscriptionSpy).toHaveBeenCalledTimes(1);
-      subscriptionSpy.mockRestore();
-    });
-
-    it('routes empty feature requirements to the general network pool', async () => {
-      const networkPool = await getElectrumPoolForNetwork('testnet3');
-
-      await expect(getElectrumPoolForNetworkAndFeatures(
-        'testnet3',
-        [],
-      )).resolves.toBe(networkPool);
-    });
-
-    it('reuses existing feature-scoped pools for repeated requests', async () => {
-      const freshCapabilityCheck = new Date();
-      (prisma as any).nodeConfig.findFirst.mockResolvedValueOnce({
-        type: 'electrum',
-        poolEnabled: true,
-        poolMinConnections: 1,
-        poolMaxConnections: 2,
-        poolLoadBalancing: 'round_robin',
-        proxyEnabled: false,
-        proxyHost: null,
-        proxyPort: null,
-        servers: [
-          {
-            id: 'sp-existing',
-            label: 'Frigate Existing',
-            host: 'frigate-existing.example.com',
-            port: 50002,
-            useSsl: true,
-            priority: 0,
-            enabled: true,
-            network: 'mainnet',
-            serverUsage: 'silent_payments',
-            supportsVerbose: true,
-            supportsSilentPaymentsV0: true,
-            silentPaymentVersions: [0],
-            lastCapabilityCheck: freshCapabilityCheck,
-            lastCapabilityError: null,
-          },
-        ],
-      });
-
-      const first = await getElectrumPoolForNetworkAndFeatures(
-        'mainnet',
-        ['silent_payments_v0'],
-      );
-      const second = await getElectrumPoolForNetworkAndFeatures(
-        'mainnet',
-        ['silent_payments_v0'],
-      );
-
-      expect(second).toBe(first);
-    });
-
-    it('reuses in-flight feature-scoped pool initialization for concurrent callers', async () => {
-      let resolveConfig: (value: unknown) => void = () => undefined;
-      const delayedConfig = new Promise((resolve) => {
-        resolveConfig = resolve;
-      });
-      (prisma as any).nodeConfig.findFirst.mockReturnValueOnce(delayedConfig);
-
-      const first = getElectrumPoolForNetworkAndFeatures(
-        'mainnet',
-        ['silent_payments_v0'],
-      );
-      const second = getElectrumPoolForNetworkAndFeatures(
-        'mainnet',
-        ['silent_payments_v0'],
-      );
-      resolveConfig({
-        type: 'electrum',
-        poolEnabled: true,
-        poolMinConnections: 1,
-        poolMaxConnections: 1,
-        poolLoadBalancing: 'round_robin',
-        proxyEnabled: false,
-        proxyHost: null,
-        proxyPort: null,
-        servers: [],
-      });
-
-      const [firstPool, secondPool] = await Promise.all([first, second]);
-
-      expect(secondPool).toBe(firstPool);
-    });
-
-    it('returns a feature pool that appears during the inner initialization guard', async () => {
-      const fallbackPool = new ElectrumPool({
-        enabled: true,
-        minConnections: 1,
-        maxConnections: 1,
-      });
-      const originalGet = Map.prototype.get;
-      let featureKeyLookupCount = 0;
-      const getSpy = vi.spyOn(Map.prototype, 'get')
-        .mockImplementation(function(this: Map<any, any>, key: any) {
-          if (typeof key === 'string' && key.includes('silent_payments_v0')) {
-            featureKeyLookupCount += 1;
-            if (featureKeyLookupCount === 3) {
-              return fallbackPool as any;
-            }
-          }
-          return originalGet.call(this, key);
-        });
-
-      try {
-        const loaded = await getElectrumPoolForNetworkAndFeatures(
-          'mainnet',
-          ['silent_payments_v0'],
-        );
-
-        expect(loaded).toBe(fallbackPool);
-      } finally {
-        getSpy.mockRestore();
-      }
-    });
-
-    it('evicts oldest feature-scoped pools when the feature registry exceeds its limit', async () => {
-      (prisma as any).nodeConfig.findFirst.mockResolvedValue({
-        type: 'electrum',
-        poolEnabled: true,
-        poolMinConnections: 1,
-        poolMaxConnections: 1,
-        poolLoadBalancing: 'round_robin',
-        proxyEnabled: false,
-        proxyHost: null,
-        proxyPort: null,
-        servers: [],
-      });
-      const shutdownSpy = vi.spyOn(ElectrumPool.prototype, 'shutdown')
-        .mockResolvedValue(undefined);
-
-      try {
-        for (let staleAfterMs = 1; staleAfterMs <= 17; staleAfterMs += 1) {
-          await getElectrumPoolForNetworkAndFeatures(
-            'mainnet',
-            ['silent_payments_v0'],
-            { capabilityStaleAfterMs: staleAfterMs },
-          );
-        }
-
-        expect(shutdownSpy).toHaveBeenCalled();
-      } finally {
-        shutdownSpy.mockRestore();
-      }
-    });
-
-    it('drops in-flight feature pool init keys during network reset', async () => {
-      let resolveConfig: (value: unknown) => void = () => undefined;
-      const delayedConfig = new Promise((resolve) => {
-        resolveConfig = resolve;
-      });
-      (prisma as any).nodeConfig.findFirst.mockReturnValueOnce(delayedConfig);
-
-      const pendingPool = getElectrumPoolForNetworkAndFeatures(
-        'mainnet',
-        ['silent_payments_v0'],
-      );
-
-      await resetElectrumPoolForNetwork('mainnet');
-      resolveConfig({
-        type: 'electrum',
-        poolEnabled: true,
-        poolMinConnections: 1,
-        poolMaxConnections: 1,
-        poolLoadBalancing: 'round_robin',
-        proxyEnabled: false,
-        proxyHost: null,
-        proxyPort: null,
-        servers: [],
-      });
-      const pool = await pendingPool;
-
-      expect(pool).toBeInstanceOf(ElectrumPool);
-    });
+    registerFeaturePoolRegistryTests();
 
     it('loads servers and proxy settings from database during async bootstrap', async () => {
       (prisma as any).nodeConfig.findFirst.mockResolvedValueOnce({
@@ -943,6 +677,110 @@ export function registerElectrumPoolModuleHelperTests(): void {
 
       expect(initialized).toBeDefined();
       expect(initSpy).toHaveBeenCalled();
+    });
+
+    it('P1-1: getExistingElectrumPool does not instantiate a pool and mainnet init replaces uninitialized singleton', async () => {
+      const registry = await import('../../../../../src/services/bitcoin/electrumPool/poolRegistry');
+      expect((registry as any).getExistingElectrumPool('mainnet')).toBeNull();
+      expect(getPoolConfig()).toBeNull();
+
+      // Simulate legacy sync getElectrumPool() called before mainnet network pool init
+      const uninitializedLegacy = getElectrumPool();
+      const legacyShutdownSpy = vi.spyOn(uninitializedLegacy, 'shutdown').mockResolvedValue(undefined);
+
+      const realMainnet = await getElectrumPoolForNetwork('mainnet');
+      expect(realMainnet).not.toBe(uninitializedLegacy);
+      expect(getElectrumPool()).toBe(realMainnet);
+      expect((registry as any).getExistingElectrumPool('mainnet')).toBe(realMainnet);
+      expect(legacyShutdownSpy).toHaveBeenCalledTimes(1);
+      legacyShutdownSpy.mockRestore();
+    });
+
+    it('P1-1: getElectrumPoolAsync does not cache uninitialized pool on initialize failure', async () => {
+      const initSpy = vi.spyOn(ElectrumPool.prototype, 'initialize')
+        .mockRejectedValueOnce(new Error('transient init failure'));
+      const shutdownSpy = vi.spyOn(ElectrumPool.prototype, 'shutdown')
+        .mockResolvedValue(undefined);
+
+      await expect(getElectrumPoolAsync()).rejects.toThrow('transient init failure');
+      expect(getPoolConfig()).toBeNull();
+      expect(shutdownSpy).toHaveBeenCalledTimes(1);
+
+      initSpy.mockRestore();
+      shutdownSpy.mockRestore();
+
+      const recovered = await getElectrumPoolAsync();
+      expect(recovered).toBeInstanceOf(ElectrumPool);
+    });
+
+    it('discards an in-flight global initializer when mainnet resets', async () => {
+      let finishConfig!: (value: null) => void;
+      (prisma as any).nodeConfig.findFirst.mockReturnValueOnce(
+        new Promise(resolve => { finishConfig = resolve; }),
+      );
+      const shutdown = vi.spyOn(ElectrumPool.prototype, 'shutdown').mockResolvedValue(undefined);
+      try {
+        const pending = getElectrumPoolAsync();
+        await resetElectrumPoolForNetwork('mainnet');
+        finishConfig(null);
+        await expect(pending).rejects.toThrow(/invalidated/);
+        expect(shutdown).toHaveBeenCalledOnce();
+        await expect(getElectrumPoolAsync()).resolves.toBeInstanceOf(ElectrumPool);
+      } finally {
+        shutdown.mockRestore();
+      }
+    });
+
+    it('P1-3: fences in-flight network pool init against resetElectrumPoolForNetwork and shutdownElectrumPool', async () => {
+      let resolveConfig!: (value: unknown) => void;
+      (prisma as any).nodeConfig.findFirst.mockReturnValueOnce(
+        new Promise((resolve) => { resolveConfig = resolve; }),
+      );
+      const shutdownSpy = vi.spyOn(ElectrumPool.prototype, 'shutdown').mockResolvedValue(undefined);
+
+      const pending = getElectrumPoolForNetwork('testnet3');
+      await resetElectrumPoolForNetwork('testnet3');
+
+      resolveConfig({
+        type: 'electrum',
+        poolEnabled: true,
+        poolMinConnections: 1,
+        poolMaxConnections: 1,
+        poolLoadBalancing: 'round_robin',
+        proxyEnabled: false,
+        proxyHost: null,
+        proxyPort: null,
+        servers: [],
+      });
+
+      await expect(pending).rejects.toThrow(/invalidated/i);
+      expect(shutdownSpy).toHaveBeenCalledTimes(1);
+
+      const registry = await import('../../../../../src/services/bitcoin/electrumPool/poolRegistry');
+      expect((registry as any).getExistingElectrumPool('testnet3')).toBeNull();
+
+      // Also verify shutdownElectrumPool fences an in-flight init
+      let resolveGlobalConfig!: (value: unknown) => void;
+      (prisma as any).nodeConfig.findFirst.mockReturnValueOnce(
+        new Promise((resolve) => { resolveGlobalConfig = resolve; }),
+      );
+      const pendingGlobal = getElectrumPoolForNetwork('signet');
+      await shutdownElectrumPool();
+      resolveGlobalConfig({
+        type: 'electrum',
+        poolEnabled: true,
+        poolMinConnections: 1,
+        poolMaxConnections: 1,
+        poolLoadBalancing: 'round_robin',
+        proxyEnabled: false,
+        proxyHost: null,
+        proxyPort: null,
+        servers: [],
+      });
+
+      await expect(pendingGlobal).rejects.toThrow(/invalidated/i);
+      expect((registry as any).getExistingElectrumPool('signet')).toBeNull();
+      shutdownSpy.mockRestore();
     });
   });
 }

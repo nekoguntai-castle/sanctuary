@@ -1,4 +1,5 @@
 import { getConfig } from '../config';
+import { getGrafanaPassword } from '../config/operationalEnv';
 import {
   isMonitoringServiceId,
   type MonitoringServiceId,
@@ -148,7 +149,7 @@ async function probeGrafanaAnonymousAccess(): Promise<boolean | null> {
 
 export async function getGrafanaConfig(): Promise<GrafanaConfigResponse> {
   const anonymousAccess = await probeGrafanaAnonymousAccess();
-  const grafanaPassword = process.env.GRAFANA_PASSWORD || null;
+  const grafanaPassword = getGrafanaPassword();
 
   return {
     username: 'admin',

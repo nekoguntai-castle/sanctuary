@@ -30,20 +30,16 @@ import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import type { IRateLimiter, IRateLimitService, RateLimitPolicy, RateLimitResult } from './types';
 import { RedisRateLimiter } from './redisRateLimiter';
-import { MemoryRateLimiter } from './memoryRateLimiter';
 import { RATE_LIMIT_POLICIES } from './policies';
 
 const log = createLogger('RATE_LIMIT:SVC');
 
 class RateLimitService implements IRateLimitService {
   private redisLimiter: RedisRateLimiter | null = null;
-  private memoryLimiter: MemoryRateLimiter;
   private policies: Map<string, RateLimitPolicy> = new Map();
   private initialized = false;
 
   constructor() {
-    this.memoryLimiter = new MemoryRateLimiter();
-
     // Register default policies
     for (const policy of Object.values(RATE_LIMIT_POLICIES)) {
       this.policies.set(policy.name, policy);
@@ -224,7 +220,8 @@ class RateLimitService implements IRateLimitService {
    * Shutdown the service
    */
   shutdown(): void {
-    this.memoryLimiter.shutdown();
+    this.initialized = false;
+    this.redisLimiter = null;
     log.info('Rate limit service shutdown');
   }
 }

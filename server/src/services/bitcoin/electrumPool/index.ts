@@ -31,6 +31,7 @@ export type {
 // Singleton/registry functions
 export {
   getElectrumPool,
+  getExistingElectrumPool,
   getElectrumPoolAsync,
   getElectrumPoolForNetwork,
   getElectrumPoolForNetworkAndFeatures,

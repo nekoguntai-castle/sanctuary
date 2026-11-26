@@ -93,6 +93,22 @@ describe('support capture runtime wiring', () => {
     expect(mocks.controllerConstructor).toHaveBeenCalledOnce();
   });
 
+  it('P3-7: recreates the controller when getRedisClient returns a different Redis client identity', async () => {
+    const runtime = await loadRuntime();
+    const firstRedis = { eval: vi.fn() };
+    const secondRedis = { eval: vi.fn() };
+    mocks.getRedisClient.mockReturnValue(firstRedis);
+
+    const first = runtime.getControlledCaptureService();
+    expect(runtime.getControlledCaptureService()).toBe(first);
+    expect(mocks.controllerConstructor).toHaveBeenCalledTimes(1);
+
+    mocks.getRedisClient.mockReturnValue(secondRedis);
+    const second = runtime.getControlledCaptureService();
+    expect(second).not.toBe(first);
+    expect(mocks.controllerConstructor).toHaveBeenCalledTimes(2);
+  });
+
   it('starts one participant and closes it exactly once', async () => {
     const close = vi.fn((callback: (error?: Error) => void) => callback());
     mocks.startServer.mockResolvedValue({ close });

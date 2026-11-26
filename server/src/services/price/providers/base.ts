@@ -7,7 +7,11 @@
 import axios, { AxiosError } from 'axios';
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
-import { createCircuitBreaker, CircuitBreaker } from '../../circuitBreaker';
+import {
+  createCircuitBreaker,
+  CircuitBreaker,
+  circuitBreakerRegistry,
+} from '../../circuitBreaker';
 import type { IPriceProvider, PriceData } from '../types';
 
 /** Cooldown after a first HTTP 429 that carries no usable Retry-After. */
@@ -56,6 +60,7 @@ export abstract class BasePriceProvider implements IPriceProvider {
   protected readonly log;
   protected readonly circuit: CircuitBreaker<PriceData>;
   protected readonly timeoutMs: number;
+  private readonly registeredBreakerName: string | null;
 
   /** Requests are skipped until this epoch ms after an HTTP 429 */
   private rateLimitedUntil = 0;
@@ -74,9 +79,11 @@ export abstract class BasePriceProvider implements IPriceProvider {
       recoveryTimeout: config.circuitBreaker?.recoveryTimeout ?? 30000, // Faster recovery
     };
 
-    this.circuit = config.registerCircuitBreaker === false
-      ? new CircuitBreaker<PriceData>(circuitConfig)
-      : createCircuitBreaker<PriceData>(circuitConfig);
+    const registerBreaker = config.registerCircuitBreaker !== false;
+    this.registeredBreakerName = registerBreaker ? circuitConfig.name : null;
+    this.circuit = registerBreaker
+      ? createCircuitBreaker<PriceData>(circuitConfig)
+      : new CircuitBreaker<PriceData>(circuitConfig);
   }
 
   /**
@@ -225,6 +232,12 @@ export abstract class BasePriceProvider implements IPriceProvider {
    * Lifecycle hook - called when unregistered
    */
   async onUnregister(): Promise<void> {
+    if (
+      this.registeredBreakerName
+      && circuitBreakerRegistry.get(this.registeredBreakerName) === (this.circuit as unknown)
+    ) {
+      circuitBreakerRegistry.unregister(this.registeredBreakerName);
+    }
     this.log.debug('Provider unregistered');
   }
 

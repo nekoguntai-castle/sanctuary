@@ -181,7 +181,7 @@ export interface SystemEvents {
   };
   /** A process invalidated its in-memory caches; other processes do the same. */
   'cache:invalidated': {
-    scope: 'wallet' | 'price' | 'fees';
+    scope: 'wallet' | 'price' | 'fees' | 'all';
     walletId?: string;
   };
 }

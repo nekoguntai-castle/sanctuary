@@ -285,4 +285,41 @@ describe('executeCanonicalIncrementalSync confirmation publication', () => {
       txids: ['tx-1'],
     });
   });
+
+  it('P1-4: does not call enrollWalletSubscriptions when execution signal is aborted before enrollment', async () => {
+    const abortController = new AbortController();
+    const enrollWalletSubscriptions = vi.fn().mockResolvedValue(undefined);
+    mocks.populate.mockImplementationOnce(async () => {
+      abortController.abort(new Error('worker shutdown'));
+      return { updated: 0, confirmationUpdates: [] };
+    });
+
+    const job = canonicalJob() as Job<SyncWalletJobData>;
+    const execution = {
+      ...acquiredExecution(),
+      signal: abortController.signal,
+      throwIfAborted: () => abortController.signal.throwIfAborted(),
+    };
+    mocks.releaseForRetry.mockResolvedValueOnce({
+      status: 'applied',
+      state: canonicalIntentState({ lastSyncStatus: 'retrying' }),
+    });
+
+    await expect(executeCanonicalIncrementalSync(
+      job,
+      job.data as Parameters<typeof executeCanonicalIncrementalSync>[1],
+      execution,
+      'mainnet',
+      Date.now(),
+      {
+        isFinalAttempt: () => false,
+        lockTtlMs: 60_000,
+        publishAttemptTransition: mocks.publish,
+        retryState: () => ({ nextRetryAt: new Date(Date.now() + 5_000) }),
+        enrollWalletSubscriptions,
+      },
+    )).rejects.toThrow();
+
+    expect(enrollWalletSubscriptions).not.toHaveBeenCalled();
+  });
 });

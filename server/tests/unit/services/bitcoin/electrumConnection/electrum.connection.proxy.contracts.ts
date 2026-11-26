@@ -178,4 +178,30 @@ export function registerElectrumConnectionProxyContracts(): void {
     expect(socksOptions.proxy.userId).toBeUndefined();
     expect(socksOptions.proxy.password).toBeUndefined();
   });
+
+  it('P2-5: applies torTimeoutMultiplier when proxy is resolved from DB config without explicitConfig', async () => {
+    const proxiedSocket = new FakeSocket();
+    nodeConfigFindFirstMock.mockResolvedValueOnce({
+      type: 'electrum',
+      host: 'db-host',
+      port: 50001,
+      useSsl: false,
+      mainnetSingletonHost: 'mainnet-tor-host',
+      mainnetSingletonPort: 50001,
+      mainnetSingletonSsl: false,
+      proxyEnabled: true,
+      proxyHost: '127.0.0.1',
+      proxyPort: 9050,
+      proxyUsername: null,
+      proxyPassword: null,
+    });
+    socksCreateConnectionMock.mockResolvedValueOnce({ socket: proxiedSocket });
+
+    // Test harness defaults: requestTimeoutMs=40, batchRequestTimeoutMs=60, torTimeoutMultiplier=3
+    const client = new ElectrumClient();
+    await client.connect();
+
+    expect((client as any).requestTimeoutMs).toBe(120);
+    expect((client as any).batchRequestTimeoutMs).toBe(180);
+  });
 }

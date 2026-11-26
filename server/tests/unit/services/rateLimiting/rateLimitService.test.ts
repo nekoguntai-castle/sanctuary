@@ -260,13 +260,24 @@ describe('rateLimitService', () => {
     expect(service.getPolicyNames()).toContain('custom:test');
   });
 
-  it('shuts down underlying memory limiter', async () => {
-    const service = await loadService();
-    const memoryShutdown = vi.fn();
-    (service as any).memoryLimiter.shutdown = memoryShutdown;
+  it('P3-5: does not start an unused MemoryRateLimiter timer and resets state on shutdown so initialize can run again', async () => {
+    const setIntervalSpy = vi.spyOn(global, 'setInterval');
+    try {
+      const service = await loadService();
+      expect(setIntervalSpy).not.toHaveBeenCalled();
 
-    service.shutdown();
+      service.initialize();
+      expect(mockRedisLimiterCtor).toHaveBeenCalledTimes(1);
 
-    expect(memoryShutdown).toHaveBeenCalledTimes(1);
+      service.shutdown();
+      await expect(service.consume('api:default', 'user-1')).rejects.toThrow(
+        'Redis rate limiter unavailable',
+      );
+
+      service.initialize();
+      expect(mockRedisLimiterCtor).toHaveBeenCalledTimes(2);
+    } finally {
+      setIntervalSpy.mockRestore();
+    }
   });
 });

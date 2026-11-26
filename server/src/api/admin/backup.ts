@@ -16,6 +16,7 @@ import { authenticate, requireAuthenticatedUser, requireAdmin } from '../../midd
 import { rateLimitByUser } from '../../middleware/rateLimit';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ErrorCodes } from '../../errors/ApiError';
+import { getEncryptionKeyMaterial } from '../../config/operationalEnv';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { backupService, SanctuaryBackup } from '../../services/backupService';
@@ -65,8 +66,7 @@ router.post('/encryption-keys', authenticate, requireAdmin, rateLimitByUser('aut
     });
   }
 
-  const encryptionKey = process.env.ENCRYPTION_KEY || '';
-  const encryptionSalt = process.env.ENCRYPTION_SALT || '';
+  const { encryptionKey, encryptionSalt } = getEncryptionKeyMaterial();
 
   // Audit this access since it's sensitive
   await auditService.logFromRequest(req, AuditAction.ENCRYPTION_KEYS_VIEW, AuditCategory.ADMIN, {

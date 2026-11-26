@@ -82,7 +82,7 @@ describe('initializeOpenTelemetry', () => {
     }
   });
 
-  it('initializes sdk and executes graceful shutdown handler', async () => {
+  it('initializes sdk and shuts down via exported shutdownOpenTelemetry without registering signal listeners', async () => {
     process.env.OTEL_TRACING_ENABLED = 'true';
     process.env.OTEL_EXPORTER_OTLP_ENDPOINT = 'http://otel:4318';
     process.env.OTEL_SERVICE_NAME = 'svc-test';
@@ -90,11 +90,7 @@ describe('initializeOpenTelemetry', () => {
     delete process.env.npm_package_version;
 
     const originalRequire = Module.prototype.require;
-    const handlers: Record<string, () => Promise<void>> = {};
-    const processOnSpy = vi.spyOn(process, 'on').mockImplementation(((event: string, handler: () => Promise<void>) => {
-      handlers[event] = handler;
-      return process;
-    }) as any);
+    const processOnSpy = vi.spyOn(process, 'on').mockImplementation((() => process) as any);
 
     const sdkStart = vi.fn();
     const sdkShutdown = vi.fn(async () => undefined);
@@ -141,10 +137,11 @@ describe('initializeOpenTelemetry', () => {
     });
 
     try {
-      const { initializeOpenTelemetry } = await loadOtel();
-      await initializeOpenTelemetry();
+      const otel = await loadOtel();
+      await otel.initializeOpenTelemetry();
 
       expect(sdkStart).toHaveBeenCalledTimes(1);
+      expect(processOnSpy).not.toHaveBeenCalled();
       // npm_package_version is unset (as in the containers), so the version
       // must come from the server package.json rather than a placeholder.
       expect(resourceAttributes).toMatchObject({
@@ -157,7 +154,8 @@ describe('initializeOpenTelemetry', () => {
       expect(ignoreIncomingRequestHook?.({ url: '/api/wallets' })).toBe(false);
       expect(ignoreIncomingRequestHook?.({})).toBe(false);
 
-      await handlers.SIGTERM?.();
+      await (otel as any).shutdownOpenTelemetry();
+      await (otel as any).shutdownOpenTelemetry();
 
       expect(sdkShutdown).toHaveBeenCalledTimes(1);
       expect(mockLogger.info).toHaveBeenCalledWith('OpenTelemetry SDK shut down successfully');
@@ -165,6 +163,18 @@ describe('initializeOpenTelemetry', () => {
       requireSpy.mockRestore();
       processOnSpy.mockRestore();
     }
+  });
+
+  it('P2-11: evaluates OTEL_TRACING_ENABLED dynamically when initializeOpenTelemetry is called', async () => {
+    delete process.env.OTEL_TRACING_ENABLED;
+    const otel = await loadOtel();
+
+    process.env.OTEL_TRACING_ENABLED = 'true';
+    await otel.initializeOpenTelemetry();
+
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'OTEL_TRACING_ENABLED=true but OTEL_EXPORTER_OTLP_ENDPOINT not set'
+    );
   });
 
   // Regression: @opentelemetry/resources 2.x removed the `Resource` class, so
@@ -263,9 +273,9 @@ describe('initializeOpenTelemetry', () => {
     });
 
     try {
-      const { initializeOpenTelemetry } = await loadOtel();
-      await initializeOpenTelemetry();
-      await handlers.SIGINT?.();
+      const otel = await loadOtel();
+      await otel.initializeOpenTelemetry();
+      await (otel as any).shutdownOpenTelemetry();
 
       expect(sdkStart).toHaveBeenCalledTimes(1);
       expect(sdkShutdown).toHaveBeenCalledTimes(1);

@@ -9,11 +9,15 @@
 
 import {
   Queue,
-  type ConnectionOptions,
   type Job,
   type JobsOptions,
 } from "bullmq";
-import { getRedisClient, isRedisConnected } from "./redis";
+import {
+  getBullMqConnectionKey,
+  getBullMqConnectionOptions,
+  getRedisClient,
+  isRedisConnected,
+} from "./redis";
 import { createLogger } from "../utils/logger";
 import { getErrorMessage } from "../utils/errors";
 import { toBullMqJobId } from "../jobs/bullMqJobIds";
@@ -32,24 +36,24 @@ const QUEUE_NAME = "notifications";
 const QUEUE_PREFIX = "sanctuary:worker";
 
 let notificationQueue: Queue | null = null;
+let notificationQueueConnectionKey: string | null = null;
 
 /**
  * Get or lazily create the BullMQ notifications queue.
  * Returns null if Redis is unavailable.
  */
 function getQueue(): Queue | null {
-  if (notificationQueue) return notificationQueue;
-
   const redis = getRedisClient();
   if (!redis || !isRedisConnected()) return null;
 
-  const connection: ConnectionOptions = {
-    host: redis.options.host,
-    port: redis.options.port,
-    password: redis.options.password,
-    db: redis.options.db,
-  };
+  const connection = getBullMqConnectionOptions(redis);
+  const connectionKey = getBullMqConnectionKey(connection);
 
+  if (notificationQueue && notificationQueueConnectionKey === connectionKey) {
+    return notificationQueue;
+  }
+
+  const previousQueue = notificationQueue;
   notificationQueue = new Queue(QUEUE_NAME, {
     connection,
     prefix: QUEUE_PREFIX,
@@ -59,6 +63,15 @@ function getQueue(): Queue | null {
       ...DEFAULT_NOTIFICATION_RETENTION_JOB_OPTIONS,
     },
   });
+  notificationQueueConnectionKey = connectionKey;
+
+  if (previousQueue) {
+    void previousQueue.close().catch((error) => {
+      log.warn("Failed to close replaced notification dispatch queue", {
+        error: getErrorMessage(error),
+      });
+    });
+  }
 
   log.info("Notification dispatch queue created");
   return notificationQueue;
@@ -355,4 +368,5 @@ export async function shutdownNotificationDispatcher(): Promise<void> {
     await notificationQueue.close();
     notificationQueue = null;
   }
+  notificationQueueConnectionKey = null;
 }

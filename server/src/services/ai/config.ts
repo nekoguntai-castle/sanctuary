@@ -8,6 +8,7 @@
  * SECURITY: Requires LLM_EGRESS_PROXY_SECRET for authentication
  */
 
+import { z } from "zod";
 import { systemSettingRepository } from "../../repositories";
 import { createLogger } from "../../utils/logger";
 import { getErrorMessage } from "../../utils/errors";
@@ -42,18 +43,27 @@ const CONFIG_RESYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
 // One llm-egress-proxy serves every process (API replicas and the worker), and
 // it holds only the last config it was sent. This process's `configSyncState`
-// cannot see pushes from other processes, so the hash the proxy last received
-// is also recorded in Redis and a push is skipped only when both agree.
+// cannot see pushes from other processes, so the boot-scoped hash the proxy
+// last received is recorded in Redis and a push is skipped only when both agree.
 const SHARED_PROXY_CONFIG_HASH_KEY = "ai:llm-egress-proxy:config-hash";
 const SHARED_PROXY_CONFIG_HASH_TTL_SEC = 24 * 60 * 60;
 
+const SharedProxyConfigMarkerSchema = z.object({
+  bootId: z.string().nullable(),
+  hash: z.string(),
+});
+
+type SharedProxyConfigMarker = z.infer<typeof SharedProxyConfigMarkerSchema>;
+
 /** `undefined` = no shared store (single process); `null` = unknown/missing. */
-async function readSharedProxyConfigHash(): Promise<string | null | undefined> {
+async function readSharedProxyConfigMarker(): Promise<SharedProxyConfigMarker | null | undefined> {
   const redis = getRedisClient();
   if (!redis) return undefined;
   if (!isRedisConnected()) return null; // unknown: push rather than skip
   try {
-    return await redis.get(SHARED_PROXY_CONFIG_HASH_KEY);
+    const raw = await redis.get(SHARED_PROXY_CONFIG_HASH_KEY);
+    if (!raw) return null;
+    return safeJsonParse(raw, SharedProxyConfigMarkerSchema, null, SHARED_PROXY_CONFIG_HASH_KEY);
   } catch (error) {
     log.warn("Could not read shared LLM egress proxy config marker", {
       error: getErrorMessage(error),
@@ -62,13 +72,30 @@ async function readSharedProxyConfigHash(): Promise<string | null | undefined> {
   }
 }
 
-async function recordSharedProxyConfigHash(hash: string): Promise<void> {
+async function recordSharedProxyConfigMarker(bootId: string | null, hash: string): Promise<void> {
   const redis = getRedisClient();
   if (!redis || !isRedisConnected()) return;
   try {
-    await redis.set(SHARED_PROXY_CONFIG_HASH_KEY, hash, "EX", SHARED_PROXY_CONFIG_HASH_TTL_SEC);
+    await redis.set(
+      SHARED_PROXY_CONFIG_HASH_KEY,
+      JSON.stringify({ bootId, hash }),
+      "EX",
+      SHARED_PROXY_CONFIG_HASH_TTL_SEC,
+    );
   } catch (error) {
     log.warn("Could not record shared LLM egress proxy config marker", {
+      error: getErrorMessage(error),
+    });
+  }
+}
+
+async function clearSharedProxyConfigMarker(): Promise<void> {
+  const redis = getRedisClient();
+  if (!redis || !isRedisConnected() || typeof redis.del !== "function") return;
+  try {
+    await redis.del(SHARED_PROXY_CONFIG_HASH_KEY);
+  } catch (error) {
+    log.warn("Could not clear shared LLM egress proxy config marker", {
       error: getErrorMessage(error),
     });
   }
@@ -90,15 +117,18 @@ let lastProxyBootId: string | null = null;
  * A new id means the proxy lost its in-memory config, so the cached successful
  * sync is forgotten and the next ensureLlmProxyConfigured pushes again. This
  * covers the routes that answer 200 or 400 while unconfigured.
+ * Returns true when a boot-id transition was observed.
  */
-function observeProxyBootId(response: Response): void {
+function observeProxyBootId(response: Response): boolean {
   const bootId = response.headers?.get(PROXY_BOOT_ID_HEADER);
-  if (!bootId) return;
-  if (lastProxyBootId !== null && lastProxyBootId !== bootId) {
+  if (!bootId) return false;
+  const restarted = lastProxyBootId !== null && lastProxyBootId !== bootId;
+  if (restarted) {
     log.info("LLM egress proxy restarted; its config will be pushed again");
     configSyncState.syncSuccess = false;
   }
   lastProxyBootId = bootId;
+  return restarted;
 }
 
 /**
@@ -314,31 +344,82 @@ export async function getAIConfig(): Promise<AIConfig> {
   }
 }
 
-/** The proxy's 503 replies when it has no provider config (e.g. after a restart). */
+/** The proxy's 503/400 replies when it has no provider config (e.g. after a restart). */
 async function isProxyUnconfiguredResponse(response: Response): Promise<boolean> {
-  if (response.status !== 503) return false;
+  if (response.status !== 503 && response.status !== 400) return false;
   const probe = typeof response.clone === "function" ? response.clone() : response;
   const body: unknown = await probe.json().catch(() => null);
   if (!body || typeof body !== "object") return false;
   const { reason, error } = body as { reason?: unknown; error?: unknown };
+  if (response.status === 400) {
+    return error === "No AI endpoint configured";
+  }
   return reason === "provider_not_configured" || error === "AI is not enabled";
+}
+
+function isProxyConfigEndpoint(input: string): boolean {
+  try {
+    return new URL(input).pathname.endsWith("/config");
+  } catch {
+    return input.endsWith("/config");
+  }
+}
+
+export interface FetchLlmEgressProxyOptions {
+  skipConfigRetry?: boolean;
 }
 
 /**
  * fetch() for calls to the LLM egress proxy. The proxy keeps its provider
  * config in memory and boots disabled, so after a restart it answers "not
  * configured" until the server pushes the config again. That reply forgets the
- * cached successful sync, so the next ensureLlmProxyConfigured re-pushes at
- * once instead of trusting the cache for up to CONFIG_RESYNC_INTERVAL_MS.
- * Other 503s (the upstream provider is down) leave the cache alone.
+ * cached successful sync, clears the shared Redis marker, and—for outbound
+ * calls other than /config when AI is configured—forces one config re-push and
+ * replays the request once. Other 503s (the upstream provider is down) leave
+ * the cache alone.
  */
-export async function fetchLlmEgressProxy(input: string, init?: RequestInit): Promise<Response> {
+export async function fetchLlmEgressProxy(
+  input: string,
+  init?: RequestInit,
+  options?: FetchLlmEgressProxyOptions,
+): Promise<Response> {
   const response = await fetch(input, init);
-  observeProxyBootId(response);
-  if (await isProxyUnconfiguredResponse(response)) {
-    configSyncState.syncSuccess = false;
+  const bootIdChanged = observeProxyBootId(response);
+  const unconfigured = await isProxyUnconfiguredResponse(response);
+
+  if (bootIdChanged || unconfigured) {
+    if (unconfigured) {
+      configSyncState.syncSuccess = false;
+    }
+    await clearSharedProxyConfigMarker();
   }
+
+  if (unconfigured && !options?.skipConfigRetry && !isProxyConfigEndpoint(input)) {
+    const aiConfig = await getAIConfig();
+    if (aiConfig.enabled && aiConfig.endpoint && aiConfig.model) {
+      const syncResult = await syncConfigToLlmEgressProxyResult(aiConfig, true);
+      if (syncResult.success) {
+        const retryResponse = await fetch(input, init);
+        const retryBootChanged = observeProxyBootId(retryResponse);
+        const retryUnconfigured = await isProxyUnconfiguredResponse(retryResponse);
+        if (retryBootChanged || retryUnconfigured) {
+          if (retryUnconfigured) {
+            configSyncState.syncSuccess = false;
+          }
+          await clearSharedProxyConfigMarker();
+        }
+        return retryResponse;
+      }
+    }
+  }
+
   return response;
+}
+
+async function sharedMarkerAllowsCachedSync(currentHash: string): Promise<boolean> {
+  const marker = await readSharedProxyConfigMarker();
+  return marker === undefined ||
+    (marker !== null && marker.hash === currentHash && marker.bootId === lastProxyBootId);
 }
 
 /**
@@ -361,8 +442,7 @@ export async function syncConfigToLlmEgressProxyResult(
     configSyncState.syncSuccess &&
     timeSinceLastSync < CONFIG_RESYNC_INTERVAL_MS
   ) {
-    const sharedHash = await readSharedProxyConfigHash();
-    if (sharedHash === undefined || sharedHash === currentHash) {
+    if (await sharedMarkerAllowsCachedSync(currentHash)) {
       return { success: true };
     }
   }
@@ -390,7 +470,10 @@ export async function syncConfigToLlmEgressProxyResult(
     });
 
     // Before the state below is written, so a push to a new boot counts.
-    observeProxyBootId(response);
+    const bootIdChanged = observeProxyBootId(response);
+    if (bootIdChanged) {
+      await clearSharedProxyConfigMarker();
+    }
     const syncResult = response.ok
       ? { success: true }
       : await buildFailedConfigSyncResult(response);
@@ -408,7 +491,7 @@ export async function syncConfigToLlmEgressProxyResult(
         reason: syncResult.reason,
       });
     } else {
-      await recordSharedProxyConfigHash(currentHash);
+      await recordSharedProxyConfigMarker(lastProxyBootId, currentHash);
       log.info("AI config synced to LLM egress proxy");
     }
 

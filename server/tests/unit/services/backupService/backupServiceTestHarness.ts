@@ -20,8 +20,42 @@ const featureRuntimeMocks = vi.hoisted(() => ({
   reconcileAfterRestore: vi.fn().mockResolvedValue(undefined),
 }));
 
+const postRestoreMocks = vi.hoisted(() => ({
+  forceSyncConfig: vi.fn().mockResolvedValue(true),
+  walletCacheClear: vi.fn().mockResolvedValue(undefined),
+  priceCacheClear: vi.fn().mockResolvedValue(undefined),
+  feeCacheClear: vi.fn().mockResolvedValue(undefined),
+  walletLogBufferClearAll: vi.fn(),
+  priceServiceClearCache: vi.fn().mockResolvedValue(undefined),
+  distributedEventBusEmit: vi.fn(),
+  resetNodeClient: vi.fn().mockResolvedValue(undefined),
+  reloadElectrumServers: vi.fn().mockResolvedValue(undefined),
+  publishElectrumConfigChange: vi.fn().mockResolvedValue(undefined),
+  clearTransporterCache: vi.fn(),
+  disconnectWebSocketUser: vi.fn().mockResolvedValue(undefined),
+}));
+
 export function getMockFeatureRuntimeReconcile() {
   return featureRuntimeMocks.reconcileAfterRestore;
+}
+
+export function getPostRestoreMocks() {
+  return postRestoreMocks;
+}
+
+export function resetPostRestoreMocks(): void {
+  postRestoreMocks.forceSyncConfig.mockReset().mockResolvedValue(true);
+  postRestoreMocks.walletCacheClear.mockReset().mockResolvedValue(undefined);
+  postRestoreMocks.priceCacheClear.mockReset().mockResolvedValue(undefined);
+  postRestoreMocks.feeCacheClear.mockReset().mockResolvedValue(undefined);
+  postRestoreMocks.walletLogBufferClearAll.mockReset();
+  postRestoreMocks.priceServiceClearCache.mockReset().mockResolvedValue(undefined);
+  postRestoreMocks.distributedEventBusEmit.mockReset();
+  postRestoreMocks.resetNodeClient.mockReset().mockResolvedValue(undefined);
+  postRestoreMocks.reloadElectrumServers.mockReset().mockResolvedValue(undefined);
+  postRestoreMocks.publishElectrumConfigChange.mockReset().mockResolvedValue(undefined);
+  postRestoreMocks.clearTransporterCache.mockReset();
+  postRestoreMocks.disconnectWebSocketUser.mockReset().mockResolvedValue(undefined);
 }
 
 const createBackupModelMock = () => ({
@@ -100,4 +134,46 @@ vi.mock('../../../../src/services/featureFlagService', () => ({
 vi.mock('../../../../src/utils/encryption', () => ({
   isEncrypted: vi.fn().mockReturnValue(false),
   decrypt: vi.fn().mockImplementation((v) => v),
+}));
+
+vi.mock('../../../../src/services/ai/config', () => ({
+  forceSyncConfig: postRestoreMocks.forceSyncConfig,
+}));
+
+vi.mock('../../../../src/services/cache', () => ({
+  walletCache: { clear: postRestoreMocks.walletCacheClear },
+  priceCache: { clear: postRestoreMocks.priceCacheClear },
+  feeCache: { clear: postRestoreMocks.feeCacheClear },
+}));
+
+vi.mock('../../../../src/services/walletLogBuffer', () => ({
+  walletLogBuffer: { clearAll: postRestoreMocks.walletLogBufferClearAll },
+}));
+
+vi.mock('../../../../src/services/price', () => ({
+  getPriceService: () => ({ clearCache: postRestoreMocks.priceServiceClearCache }),
+}));
+
+vi.mock('../../../../src/infrastructure', () => ({
+  getDistributedEventBus: () => ({ emit: postRestoreMocks.distributedEventBusEmit }),
+}));
+
+vi.mock('../../../../src/services/bitcoin/nodeClient', () => ({
+  resetNodeClient: postRestoreMocks.resetNodeClient,
+}));
+
+vi.mock('../../../../src/services/bitcoin/electrumPool', () => ({
+  reloadElectrumServers: postRestoreMocks.reloadElectrumServers,
+}));
+
+vi.mock('../../../../src/services/bitcoin/electrumConfigChanges', () => ({
+  publishElectrumConfigChange: postRestoreMocks.publishElectrumConfigChange,
+}));
+
+vi.mock('../../../../src/services/email/emailService', () => ({
+  clearTransporterCache: postRestoreMocks.clearTransporterCache,
+}));
+
+vi.mock('../../../../src/services/websocketAuthorizationInvalidation', () => ({
+  disconnectWebSocketUser: postRestoreMocks.disconnectWebSocketUser,
 }));

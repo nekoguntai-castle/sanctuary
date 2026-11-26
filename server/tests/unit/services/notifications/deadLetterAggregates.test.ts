@@ -12,6 +12,7 @@ import {
   writeNotificationDeadLetterAggregate,
 } from '../../../../src/services/notifications/deadLetterAggregates';
 import { MAX_COLLECTOR_BYTES } from '../../../../src/services/supportPackage/privacy';
+import * as configModule from '../../../../src/config';
 
 function fakeReaderClient(options: {
   hashes?: Array<Record<string, string>>;
@@ -470,13 +471,18 @@ describe('notification dead-letter aggregates', () => {
     });
   });
 
-  it('constructs an isolated lazy reader client without retry backlog', () => {
-    vi.stubEnv('REDIS_URL', 'redis://localhost:6379');
+  it('constructs an isolated lazy reader client without retry backlog using getConfig().redis.url', () => {
+    vi.stubEnv('REDIS_URL', '');
+    vi.spyOn(configModule, 'getConfig').mockReturnValue({
+      ...configModule.getConfig(),
+      redis: { url: 'redis://config-host:6379', enabled: true },
+    });
     for (const client of [
       createNotificationDeadLetterReaderClient(),
       createNotificationDeadLetterWriterClient(),
     ]) {
       expect(client.status).toBe('wait');
+      expect(client.options.host).toBe('config-host');
       expect(client.options.enableOfflineQueue).toBe(false);
       expect(client.options.maxRetriesPerRequest).toBe(0);
       expect(client.options.retryStrategy?.(1)).toBeNull();
@@ -486,7 +492,10 @@ describe('notification dead-letter aggregates', () => {
   });
 
   it('refuses to create diagnostics clients without an explicit Redis URL', () => {
-    vi.stubEnv('REDIS_URL', '');
+    vi.spyOn(configModule, 'getConfig').mockReturnValue({
+      ...configModule.getConfig(),
+      redis: { url: '', enabled: false },
+    });
     expect(() => createNotificationDeadLetterReaderClient()).toThrow(
       'notification_dlq_aggregate_unavailable',
     );

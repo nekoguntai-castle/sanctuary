@@ -3,6 +3,7 @@ import {
   manager,
   mockClient,
   mockCallbacks,
+  mockElectrumClientCtor,
 } from './electrumManagerTestHarness';
 import prisma from '../../../../src/models/prisma';
 import {
@@ -21,6 +22,7 @@ export function registerElectrumManagerStartContracts() {
 
       await manager.start();
 
+      expect(mockElectrumClientCtor).not.toHaveBeenCalled();
       expect(getElectrumClientForNetwork).not.toHaveBeenCalled();
       expect(manager.getHealthMetrics().isRunning).toBe(false);
       expect(manager.getHealthMetrics().ownershipRetryActive).toBe(true);
@@ -214,12 +216,12 @@ export function registerElectrumManagerStartContracts() {
 
       await manager.start();
 
-      expect(getElectrumClientForNetwork).toHaveBeenCalledTimes(5);
-      expect(getElectrumClientForNetwork).toHaveBeenNthCalledWith(1, 'mainnet');
-      expect(getElectrumClientForNetwork).toHaveBeenNthCalledWith(2, 'testnet3');
-      expect(getElectrumClientForNetwork).toHaveBeenNthCalledWith(3, 'testnet4');
-      expect(getElectrumClientForNetwork).toHaveBeenNthCalledWith(4, 'signet');
-      expect(getElectrumClientForNetwork).toHaveBeenNthCalledWith(5, 'regtest');
+      expect(mockElectrumClientCtor).toHaveBeenCalledTimes(5);
+      expect(mockClient.setNetwork).toHaveBeenNthCalledWith(1, 'mainnet');
+      expect(mockClient.setNetwork).toHaveBeenNthCalledWith(2, 'testnet3');
+      expect(mockClient.setNetwork).toHaveBeenNthCalledWith(3, 'testnet4');
+      expect(mockClient.setNetwork).toHaveBeenNthCalledWith(4, 'signet');
+      expect(mockClient.setNetwork).toHaveBeenNthCalledWith(5, 'regtest');
       expect(manager.getManagedNetworks()).toEqual([
         'mainnet', 'testnet3', 'testnet4', 'signet', 'regtest',
       ]);
@@ -350,7 +352,7 @@ export function registerElectrumManagerStartContracts() {
       await manager.start();
       await manager.start();
 
-      expect(getElectrumClientForNetwork).toHaveBeenCalledTimes(1);
+      expect(mockElectrumClientCtor).toHaveBeenCalledTimes(1);
     });
   });
 }

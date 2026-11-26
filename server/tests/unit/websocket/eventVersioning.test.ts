@@ -496,4 +496,19 @@ describe('EventVersioning', () => {
       expect(SUPPORTED_VERSIONS).toHaveLength(2);
     });
   });
+
+  describe('P3-7 bounded clientVersions map', () => {
+    it('evicts the oldest client entry when exceeding the configured maxClients cap', () => {
+      const bounded = new EventVersionManager(3);
+      bounded.setClientVersion('client-1', 'v1');
+      bounded.setClientVersion('client-2', 'v1');
+      bounded.setClientVersion('client-3', 'v1');
+      bounded.setClientVersion('client-4', 'v1');
+
+      expect(bounded.getStats().total).toBe(3);
+      expect(bounded.getClientVersion('client-1')).toBe(CURRENT_VERSION);
+      expect(bounded.getClientVersion('client-2')).toBe('v1');
+      expect(bounded.getClientVersion('client-4')).toBe('v1');
+    });
+  });
 });

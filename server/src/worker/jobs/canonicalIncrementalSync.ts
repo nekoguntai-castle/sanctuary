@@ -321,6 +321,7 @@ export async function executeCanonicalIncrementalSync(
           attemptTelemetry,
           phaseProgress,
         );
+        signal.throwIfAborted();
         phaseProgress?.begin('subscription_enrollment');
         await dependencies.enrollWalletSubscriptions(
           data.walletId,

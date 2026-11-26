@@ -5,7 +5,13 @@
  * Supports per-network connection modes (singleton vs pool).
  */
 
-import { ElectrumClient, getElectrumClientForNetwork, resetElectrumClient } from './electrum';
+import {
+  ElectrumClient,
+  closeAllElectrumClients,
+  closeElectrumClientForNetwork,
+  getElectrumClientForNetwork,
+} from './electrum';
+import { publishElectrumConfigChange } from './electrumConfigChanges';
 import {
   resetElectrumPool,
   getElectrumPoolForNetwork,
@@ -195,9 +201,11 @@ export async function saveNodeConfig(config: NodeConfig): Promise<void> {
     useSsl: config.protocol === 'ssl',
   });
 
-  // Reset the active client when config changes
+  // Reset all cached network clients, singleton Electrum clients, and pools,
+  // then retain the newly saved active config and notify peer processes.
+  await resetNodeClient();
   activeConfig = config;
-  activeClient = null;
+  await publishElectrumConfigChange({ scope: 'node-config', network: null });
 
   log.info(`Saved node config: Electrum at ${config.host}:${config.port}`);
 }
@@ -404,6 +412,7 @@ async function resetOneNetwork(network: NetworkType): Promise<void> {
     client.disconnect();
     networkClients.delete(network);
   }
+  closeElectrumClientForNetwork(network);
   poolFallbackRetryAt.delete(network);
   await resetElectrumPoolForNetwork(network);
 
@@ -443,7 +452,7 @@ function resetAllNodeClients(): Promise<void> {
     activeClient = null;
     activeConfig = null;
     poolFallbackRetryAt.clear();
-    resetElectrumClient();
+    closeAllElectrumClients();
     await resetElectrumPool();
     invalidateNetworkStatusCache();
 

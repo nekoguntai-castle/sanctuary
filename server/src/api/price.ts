@@ -122,7 +122,7 @@ router.get(
       );
     }
 
-    const supported = new Set(priceService.getSupportedCurrencies());
+    const supported = new Set(await priceService.getSupportedCurrencies());
     const unsupported = currencyList.filter((c) => !supported.has(c));
     if (unsupported.length > 0) {
       throw new InvalidInputError(
@@ -202,25 +202,31 @@ router.post(
  * GET /api/v1/price/currencies
  * Get list of supported currencies
  */
-router.get("/currencies", (_req: Request, res: Response) => {
-  const currencies = priceService.getSupportedCurrencies();
-  res.json({
-    currencies,
-    count: currencies.length,
-  });
-});
+router.get(
+  "/currencies",
+  asyncHandler(async (_req: Request, res: Response) => {
+    const currencies = await priceService.getSupportedCurrencies();
+    res.json({
+      currencies,
+      count: currencies.length,
+    });
+  }),
+);
 
 /**
  * GET /api/v1/price/providers
  * Get list of available price providers
  */
-router.get("/providers", (_req: Request, res: Response) => {
-  const providers = priceService.getProviders();
-  res.json({
-    providers,
-    count: providers.length,
-  });
-});
+router.get(
+  "/providers",
+  asyncHandler(async (_req: Request, res: Response) => {
+    const providers = await priceService.getProviders();
+    res.json({
+      providers,
+      count: providers.length,
+    });
+  }),
+);
 
 /**
  * GET /api/v1/price/providers/status
@@ -232,13 +238,13 @@ router.get(
   authenticate,
   priceAdminPolicyLimiter,
   requireAdmin,
-  (_req: Request, res: Response) => {
-    const providers = priceService.getProviderDiagnostics();
+  asyncHandler(async (_req: Request, res: Response) => {
+    const providers = await priceService.getProviderDiagnostics();
     res.json({
       providers,
       count: providers.length,
     });
-  },
+  }),
 );
 
 /**
@@ -386,20 +392,20 @@ router.post(
       code: ErrorCodes.INVALID_INPUT,
     },
   ),
-  (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response) => {
     const { duration } = req.body;
 
     log.info("Cache duration updated by admin", {
       userId: requireAuthenticatedUser(req).userId,
       duration,
     });
-    priceService.setCacheDuration(duration);
+    await priceService.setCacheDuration(duration);
 
     res.json({
       message: "Cache duration updated",
       duration,
     });
-  },
+  }),
 );
 
 /**

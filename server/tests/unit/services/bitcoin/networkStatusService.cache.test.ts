@@ -44,6 +44,8 @@ vi.mock('../../../../src/services/bitcoin/electrum', () => ({
   ElectrumClient: vi.fn(),
   getElectrumClientForNetwork: vi.fn(),
   resetElectrumClient: vi.fn(),
+  closeElectrumClientForNetwork: vi.fn(),
+  closeAllElectrumClients: vi.fn(),
 }));
 vi.mock('../../../../src/services/bitcoin/electrum/connectionConfigResolver', () => ({
   dbConnectionConfig: (nodeConfig: { host: string; port: number }) => ({

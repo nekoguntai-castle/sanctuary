@@ -13,6 +13,9 @@ const mocks = vi.hoisted(() => ({
   initializeElectrumPool: vi.fn(),
   getElectrumClientForNetwork: vi.fn(),
   resetElectrumClient: vi.fn(),
+  closeAllElectrumClients: vi.fn(),
+  closeElectrumClientForNetwork: vi.fn(),
+  publishElectrumConfigChange: vi.fn().mockResolvedValue(undefined),
   electrumClientCtor: vi.fn(),
   verifyNodeClientNetwork: vi.fn().mockResolvedValue(undefined),
 }));
@@ -58,6 +61,12 @@ vi.mock("../../../../src/services/bitcoin/electrum", () => ({
   },
   getElectrumClientForNetwork: mocks.getElectrumClientForNetwork,
   resetElectrumClient: mocks.resetElectrumClient,
+  closeAllElectrumClients: mocks.closeAllElectrumClients,
+  closeElectrumClientForNetwork: mocks.closeElectrumClientForNetwork,
+}));
+
+vi.mock("../../../../src/services/bitcoin/electrumConfigChanges", () => ({
+  publishElectrumConfigChange: mocks.publishElectrumConfigChange,
 }));
 
 vi.mock("../../../../src/services/bitcoin/networkIdentity", () => ({

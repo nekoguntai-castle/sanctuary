@@ -5,9 +5,12 @@
  * Handles Bitcoin wallet management, transactions, and user authentication.
  */
 
+// Load server/.env FIRST before any other module evaluates process.env
+import './config/loadEnv';
+
 // Initialize OpenTelemetry tracing FIRST (before other imports)
 // This must be at the very top to ensure auto-instrumentation works
-import { initializeOpenTelemetry } from './utils/tracing/otel';
+import { initializeOpenTelemetry, shutdownOpenTelemetry } from './utils/tracing/otel';
 
 // Initialize OTEL synchronously at module load if enabled
 // (actual async initialization happens in startServer)
@@ -51,10 +54,15 @@ import {
   initializeDistributedLock,
   initializeRedis,
   shutdownDistributedLock,
+  shutdownNotificationDispatcher,
   shutdownRedis,
   isRedisConnected,
 } from './infrastructure';
+import { closeAllElectrumClients } from './services/bitcoin/electrum';
 import { shutdownElectrumPool } from './services/bitcoin/electrumPool';
+import { closeWorkerSyncQueue } from './services/workerSyncQueue';
+import { getPriceService } from './services/price';
+import { getPushService } from './services/push/pushService';
 import { cache } from './services/cache/cacheService';
 import { warmCaches } from './services/cache/cacheWarmer';
 import { walletLogBuffer } from './services/walletLogBuffer';
@@ -368,9 +376,16 @@ const handleShutdown = createGracefulShutdownHandler({
     walletLogBuffer.stop();
     deadLetterQueue.stop();
   },
-  shutdownElectrumPool,
+  shutdownElectrumPool: async () => {
+    await shutdownElectrumPool();
+    closeAllElectrumClients();
+  },
   shutdownJobQueue: () => jobQueue.shutdown(),
   shutdownRedisDependencies: async () => {
+    await closeWorkerSyncQueue();
+    await shutdownNotificationDispatcher();
+    await getPriceService().shutdown();
+    await getPushService().shutdown();
     shutdownDistributedLock();
     shutdownCacheInvalidation();
     stopRemoteElectrumConfigChanges();
@@ -381,6 +396,7 @@ const handleShutdown = createGracefulShutdownHandler({
   },
   shutdownRedis,
   disconnect,
+  shutdownOpenTelemetry,
   exitNow,
 });
 

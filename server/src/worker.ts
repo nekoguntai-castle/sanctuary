@@ -16,8 +16,11 @@
  * - Graceful shutdown handling
  */
 
+// Load server/.env FIRST before any other module evaluates process.env
+import './config/loadEnv';
+
 // Initialize OpenTelemetry tracing FIRST
-import { initializeOpenTelemetry } from './utils/tracing/otel';
+import { initializeOpenTelemetry, shutdownOpenTelemetry } from './utils/tracing/otel';
 const otelPromise = initializeOpenTelemetry();
 
 import os from 'node:os';
@@ -88,6 +91,10 @@ import {
 } from './worker/walletSyncRecoveryRuntime';
 import { resolvePersistedBitcoinNetwork } from './services/bitcoin/networks';
 import { addressToScriptHash } from './services/bitcoin/electrum/methods';
+import { shutdownElectrumPool } from './services/bitcoin/electrumPool';
+import { closeWorkerSyncQueue } from './services/workerSyncQueue';
+import { getPriceService } from './services/price';
+import { getPushService } from './services/push/pushService';
 import {
   createProductionSubscriptionCheckpointRuntime,
   type SubscriptionCheckpointRuntime,
@@ -99,6 +106,7 @@ import {
 import { completeWalletSubscriptionEnrollment } from './worker/walletSubscriptionEnrollment';
 import {
   drainSubscriptionStatusTails,
+  runWorkerCleanup,
   startWorkerShutdownDeadline,
 } from './worker/shutdownLifecycle';
 
@@ -282,6 +290,7 @@ async function enrollWalletSubscriptions(
   walletNetwork: string,
   signal: AbortSignal,
 ): Promise<void> {
+  signal.throwIfAborted();
   const network = resolvePersistedBitcoinNetwork(walletNetwork);
   const runtime = activeSubscriptionCheckpointRuntime();
   await completeWalletSubscriptionEnrollment({ walletId, network, signal }, {
@@ -416,7 +425,7 @@ async function startWorker(): Promise<void> {
 
   // Initialize job queue
   log.info('Initializing job queue...');
-  const workerConcurrency = parseInt(process.env.WORKER_CONCURRENCY || '5', 10);
+  const workerConcurrency = config.worker.concurrency;
 
   jobQueue = new WorkerJobQueue({
     concurrency: workerConcurrency,
@@ -484,6 +493,7 @@ async function startWorker(): Promise<void> {
   );
   await electrumManager.start();
   await networkHeaderReconciliationRuntime.recoverDue();
+  workerStartedAt = Date.now();
   // The activation gate must observe this boot. Consumers remain stopped
   // until recurring schedules converge and retired stale work is purged.
   diagnosticHeartbeat = new WorkerHeartbeatWriter(
@@ -496,11 +506,10 @@ async function startWorker(): Promise<void> {
   startSubscriptionCheckpointTimer();
   startSubscriptionStatusRefreshTimer();
   jobQueue.startConsumers();
-
-  workerStartedAt = Date.now();
+  await diagnosticHeartbeat.write();
 
   // Start health server only after required schedules are present.
-  const healthPort = parseInt(process.env.WORKER_HEALTH_PORT || '3002', 10);
+  const healthPort = config.worker.healthPort;
   const workerHostname = os.hostname();
   healthServer = startHealthServer({
     port: healthPort,
@@ -588,6 +597,7 @@ async function startWorker(): Promise<void> {
       log.debug('Metrics update failed (best-effort)', { error: getErrorMessage(error) });
     }
   }, 15_000);
+  metricsTimer.unref?.();
 
   startScheduleReconciliationTimer();
 
@@ -621,6 +631,7 @@ function startReconciliationTimer(): void {
       });
     }
   }, RECONCILIATION_INTERVAL_MS);
+  reconciliationTimer.unref?.();
 
   log.info('Subscription reconciliation timer started', {
     interval: `${RECONCILIATION_INTERVAL_MS / 60000}m`,
@@ -792,6 +803,7 @@ function startScheduleReconciliationTimer(): void {
         periodicScheduleReconciliation = null;
       });
   }, RECURRING_SCHEDULE_RECONCILIATION_INTERVAL_MS);
+  scheduleReconciliationTimer.unref?.();
 }
 
 // =============================================================================
@@ -864,11 +876,7 @@ async function shutdown(signal: string, exitCode: 0 | 1 = 0): Promise<void> {
   }
 
   // Stop health server first
-  try {
-    await stopCaptureParticipant();
-  } catch (err) {
-    log.error('Error closing support capture participant', { error: getErrorMessage(err) });
-  }
+  await runWorkerCleanup('Error closing support capture participant', stopCaptureParticipant);
 
   if (healthServer) {
     try {
@@ -887,6 +895,19 @@ async function shutdown(signal: string, exitCode: 0 | 1 = 0): Promise<void> {
     walletSyncRecoveryRuntime = null;
   }
 
+  // Wait for any in-flight periodic schedule reconciliation before closing queues.
+  await periodicScheduleReconciliation?.catch(() => undefined);
+
+  // Drain job queue before tearing down Electrum subscriptions and checkpoint
+  // runtimes so in-flight sync jobs never see nulled runtime dependencies.
+  if (jobQueue) {
+    try {
+      await jobQueue.shutdown();
+    } catch (err) {
+      log.error('Error shutting down job queue', { error: getErrorMessage(err) });
+    }
+  }
+
   // Stop Electrum subscriptions
   if (electrumManager) {
     try {
@@ -898,21 +919,17 @@ async function shutdown(signal: string, exitCode: 0 | 1 = 0): Promise<void> {
   }
   subscriptionCheckpointRuntime = null;
 
-  // Drain job queue
-  if (jobQueue) {
-    try {
-      await jobQueue.shutdown();
-    } catch (err) {
-      log.error('Error shutting down job queue', { error: getErrorMessage(err) });
-    }
-  }
+  // Close worker sync queue and Electrum connection pools before Redis closes
+  await runWorkerCleanup('Error closing worker sync queue', closeWorkerSyncQueue);
+
+  await runWorkerCleanup('Error shutting down Electrum pool', shutdownElectrumPool);
 
   // Shutdown notification dispatcher queue
-  try {
-    await shutdownNotificationDispatcher();
-  } catch (err) {
-    log.error('Error shutting down notification dispatcher', { error: getErrorMessage(err) });
-  }
+  await runWorkerCleanup('Error shutting down notification dispatcher', shutdownNotificationDispatcher);
+
+  // Shutdown price and push service provider registries
+  await runWorkerCleanup('Error shutting down price service', () => getPriceService().shutdown());
+  await runWorkerCleanup('Error shutting down push service', () => getPushService().shutdown());
 
   // Stop publishing WebSocket events before the shared Redis client closes
   if (stopUiEventBridge) {
@@ -955,6 +972,8 @@ async function shutdown(signal: string, exitCode: 0 | 1 = 0): Promise<void> {
   } catch (err) {
     log.error('Error disconnecting database', { error: getErrorMessage(err) });
   }
+
+  await shutdownOpenTelemetry();
 
   clearTimeout(shutdownDeadline);
   log.info('Worker shutdown complete');

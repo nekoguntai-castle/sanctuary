@@ -16,6 +16,7 @@ vi.mock('../../../../src/infrastructure', () => ({ getDistributedEventBus: vi.fn
 vi.mock('../../../../src/utils/logger', () => ({ createLogger: () => mocks.log }));
 
 import {
+  createElectrumConfigChangeHandler,
   createElectrumConfigResync,
   readElectrumConfigFingerprint,
 } from '../../../../src/services/bitcoin/electrumConfigChanges';
@@ -81,6 +82,49 @@ describe('Electrum config resync', () => {
     expect(handleChange).not.toHaveBeenCalled();
   });
 
+  it('preserves a newer locally applied fingerprint when an earlier prime finishes late', async () => {
+    let finishPrime!: (value: ReturnType<typeof config>) => void;
+    mocks.findDefaultWithServers.mockReturnValueOnce(new Promise(resolve => { finishPrime = resolve; }));
+    mocks.findDefaultWithServers.mockResolvedValue(config({ proxyEnabled: true }));
+    const handle = vi.fn();
+    const tracker = createElectrumConfigResync(handle, mocks.log as any);
+
+    const prime = tracker.prime();
+    await tracker.recordApplied();
+    finishPrime(config());
+    await prime;
+    await tracker.resync();
+    expect(handle).not.toHaveBeenCalled();
+  });
+
+  it('retries failed live and resync applies until the persisted config has been installed', async () => {
+    const resetNodeClient = vi.fn().mockRejectedValueOnce(new Error('busy')).mockRejectedValueOnce(new Error('offline'));
+    const deps = { resetNodeClient, reloadElectrumServers: vi.fn(), reconnectSubscriptions: vi.fn() };
+    const tracker = createElectrumConfigResync(createElectrumConfigChangeHandler(deps, mocks.log as any), mocks.log as any);
+    mocks.findDefaultWithServers.mockResolvedValue(config());
+    await tracker.prime();
+    mocks.findDefaultWithServers.mockResolvedValue(config({ proxyEnabled: true }));
+
+    await tracker.handleLiveChange({ scope: 'node-config', network: null });
+    await tracker.resync();
+    await tracker.resync();
+    await tracker.resync();
+
+    expect(deps.resetNodeClient).toHaveBeenCalledTimes(3);
+    expect(deps.reconnectSubscriptions).toHaveBeenCalledOnce();
+    expect(deps.reloadElectrumServers).toHaveBeenCalledTimes(2);
+  });
+
+  it('recovers its queue after an apply rejects', async () => {
+    const handle = vi.fn().mockRejectedValueOnce(new Error('busy')).mockResolvedValue(undefined);
+    const tracker = createElectrumConfigResync(handle, mocks.log as any);
+    mocks.findDefaultWithServers.mockResolvedValue(config());
+
+    await expect(tracker.handleLiveChange({ scope: 'node-config', network: null })).rejects.toThrow('busy');
+    await tracker.resync();
+    expect(handle).toHaveBeenCalledTimes(3);
+  });
+
   it('reapplies everything once when the config changed, then settles', async () => {
     mocks.findDefaultWithServers.mockResolvedValue(config());
     const handleChange = vi.fn(async () => undefined);
@@ -106,5 +150,31 @@ describe('Electrum config resync', () => {
     await resync.resync();
 
     expect(handleChange).toHaveBeenCalledTimes(2);
+  });
+
+  it('P1-5: updates applied fingerprint on live change so A->B->A revert is detected and benign reconnect does not teardown', async () => {
+    const configA = config({ proxyEnabled: false });
+    const configB = config({ proxyEnabled: true });
+    const handleChange = vi.fn(async () => undefined);
+    const resync = createElectrumConfigResync(handleChange, mocks.log as any) as any;
+
+    // Prime at A
+    mocks.findDefaultWithServers.mockResolvedValueOnce(configA);
+    await resync.prime();
+
+    // Live event transitions A -> B
+    mocks.findDefaultWithServers.mockResolvedValueOnce(configB);
+    await resync.handleLiveChange({ scope: 'node-config', network: null });
+    expect(handleChange).toHaveBeenCalledTimes(1);
+
+    // Benign Redis blip while still at B: must NOT tear down
+    mocks.findDefaultWithServers.mockResolvedValueOnce(configB);
+    await resync.resync();
+    expect(handleChange).toHaveBeenCalledTimes(1);
+
+    // Missed revert B -> A during disconnect: resync MUST detect mismatch and reapply A
+    mocks.findDefaultWithServers.mockResolvedValueOnce(configA);
+    await resync.resync();
+    expect(handleChange).toHaveBeenCalledTimes(3);
   });
 });

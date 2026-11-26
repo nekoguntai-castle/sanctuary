@@ -113,6 +113,7 @@ export const createWorkerTestHarness = async (
       otelInit.resolve();
       return undefined;
     }),
+    shutdownOpenTelemetry: vi.fn(async () => undefined),
   }));
 
   vi.doMock('../../../src/config', () => ({
@@ -128,6 +129,8 @@ export const createWorkerTestHarness = async (
         feeEstimateRetentionDays: 7,
       },
       worker: {
+        concurrency: 5,
+        healthPort: 3002,
         diagnosticsSecret: 'integration-worker-diagnostics-secret',
         diagnosticsTimeoutMs: 3000,
         diagnosticsMaxBodyBytes: 1024,

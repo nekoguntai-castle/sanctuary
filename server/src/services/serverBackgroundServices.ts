@@ -5,6 +5,7 @@
  * retries, and shutdown behavior stay testable.
  */
 
+import { isWorkerHealthMonitorEnabled } from '../config/operationalEnv';
 import { notificationService } from '../websocket/notifications';
 import { registerService } from './serviceRegistry';
 import { initializeRevocationService, shutdownRevocationService } from './tokenRevocation';
@@ -57,7 +58,7 @@ export function registerServerBackgroundServices(): void {
   // Test environments (E2E, integration harnesses) run the server alone,
   // so `WORKER_HEALTH_MONITOR_ENABLED=false` lets them skip the critical
   // worker dependency without turning down the whole startup manager.
-  if (process.env.WORKER_HEALTH_MONITOR_ENABLED !== 'false') {
+  if (isWorkerHealthMonitorEnabled()) {
     registerService({
       name: 'worker-heartbeat',
       start: () => startWorkerHealthMonitor(),

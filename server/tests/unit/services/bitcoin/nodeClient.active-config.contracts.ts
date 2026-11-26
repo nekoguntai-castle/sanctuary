@@ -268,4 +268,32 @@ export function registerNodeClientActiveConfigTests(
     expect(client).toBe(mainnetSingleton);
     expect(mainnetSingleton.connect).not.toHaveBeenCalled();
   });
+
+  it("P2-4: resetNodeClient closes per-network and all Electrum clients, and saveNodeConfig resets networkClients and publishes change", async () => {
+    await resetNodeClient("testnet3");
+    expect(mocks.closeElectrumClientForNetwork).toHaveBeenCalledWith("testnet3");
+
+    mocks.closeAllElectrumClients.mockClear();
+    await resetNodeClient();
+    expect(mocks.closeAllElectrumClients).toHaveBeenCalledTimes(1);
+
+    // Populate networkClients cache for mainnet, then saveNodeConfig
+    await getNodeClient("mainnet");
+    mocks.closeAllElectrumClients.mockClear();
+    mocks.resetElectrumPool.mockClear();
+    mocks.publishElectrumConfigChange.mockClear();
+
+    await saveNodeConfig({
+      host: "reloaded.example.com",
+      port: 50002,
+      protocol: "ssl",
+    });
+
+    expect(mocks.closeAllElectrumClients).toHaveBeenCalledTimes(1);
+    expect(mocks.resetElectrumPool).toHaveBeenCalledTimes(1);
+    expect(mocks.publishElectrumConfigChange).toHaveBeenCalledWith({
+      scope: "node-config",
+      network: null,
+    });
+  });
 }
