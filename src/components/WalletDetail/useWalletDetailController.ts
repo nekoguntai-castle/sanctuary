@@ -168,9 +168,9 @@ export const useWalletDetailController = () => {
     if (!id || !consoleTransactionFilter) return;
     if (consoleTransactionFilter.walletId !== id) return;
 
-    const filterKey = JSON.stringify(consoleTransactionFilter);
-    if (appliedConsoleFilterRef.current === filterKey) return;
-    appliedConsoleFilterRef.current = filterKey;
+    const filterNavigationKey = location.key ?? JSON.stringify(consoleTransactionFilter);
+    if (appliedConsoleFilterRef.current === filterNavigationKey) return;
+    appliedConsoleFilterRef.current = filterNavigationKey;
 
     clearAllFilters();
     setAiQueryFilter(consoleFilterAsAiQuery(consoleTransactionFilter));
@@ -190,6 +190,7 @@ export const useWalletDetailController = () => {
     clearAllFilters,
     consoleTransactionFilter,
     id,
+    location.key,
     setAiQueryFilter,
     setCustomDateRange,
     setTypeFilter,

@@ -23,16 +23,15 @@ interface QRSigningModalProps {
   onSignedPsbt: (signedPsbt: string) => Promise<void> | void;
 }
 
-export const QRSigningModal: React.FC<QRSigningModalProps> = ({
-  isOpen,
+type QRSigningModalContentProps = Omit<QRSigningModalProps, 'isOpen'>;
+
+const QRSigningModalContent: React.FC<QRSigningModalContentProps> = ({
   onClose,
   psbtBase64,
   deviceLabel,
   onSignedPsbt,
 }) => {
   const controller = useQRSigningModalController({ onClose, onSignedPsbt });
-
-  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -81,6 +80,15 @@ export const QRSigningModal: React.FC<QRSigningModalProps> = ({
       </div>
     </div>
   );
+};
+
+export const QRSigningModal: React.FC<QRSigningModalProps> = ({
+  isOpen,
+  ...props
+}) => {
+  if (!isOpen) return null;
+
+  return <QRSigningModalContent {...props} />;
 };
 
 export default QRSigningModal;

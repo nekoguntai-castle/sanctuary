@@ -797,6 +797,48 @@ describe('useHardwareWallet', () => {
 
       expect(result.current.isConnected).toBe(false);
     });
+
+    it('releases the active connection lease on unmount', async () => {
+      mockConnect.mockResolvedValue(mockDevice);
+      mockGetDevices.mockResolvedValue([mockDevice]);
+      const { result, unmount } = await renderHardwareWallet();
+
+      await act(async () => {
+        await result.current.connect('ledger');
+      });
+      expect(issuedLeases).toHaveLength(1);
+      mockReleaseConnection.mockClear();
+
+      unmount();
+
+      await waitFor(() => {
+        expect(mockReleaseConnection).toHaveBeenCalledWith(issuedLeases[0]);
+      });
+    });
+
+    it('releases a lease resolved after unmount during an in-flight connect', async () => {
+      let resolveConnect!: (value: MockDevice) => void;
+      mockConnect.mockImplementation(
+        () => new Promise<MockDevice>((resolve) => { resolveConnect = resolve; }),
+      );
+      const { result, unmount } = await renderHardwareWallet();
+
+      let connectPromise!: Promise<void>;
+      act(() => {
+        connectPromise = result.current.connect('ledger');
+      });
+      await waitFor(() => {
+        expect(mockConnect).toHaveBeenCalled();
+      });
+
+      unmount();
+      await act(async () => {
+        resolveConnect(mockDevice);
+        await connectPromise;
+      });
+
+      expect(mockReleaseConnection).toHaveBeenCalledWith(issuedLeases[0]);
+    });
     });
   }
 

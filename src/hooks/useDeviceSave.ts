@@ -17,7 +17,6 @@ import {
 } from '../api/devices';
 import { useLatestRequest } from './useLatestRequest';
 import type { FetchToken } from './requestOwnership';
-import { useSidebar } from '../contexts/SidebarContext';
 import { createLogger } from '../utils/logger';
 import { useInvalidateDevices } from './queries/useInvalidateDevices';
 
@@ -62,7 +61,6 @@ export interface UseDeviceSaveState {
  */
 export function useDeviceSave(options: { onSuccess?: (deviceId: string) => void } = {}): UseDeviceSaveState {
   const navigate = useNavigate();
-  const { refreshSidebar } = useSidebar();
   const invalidateDevices = useInvalidateDevices();
   const onSuccess = options.onSuccess;
 
@@ -124,7 +122,6 @@ export function useDeviceSave(options: { onSuccess?: (deviceId: string) => void 
       if (result.status === 'created') {
         log.info('Device created successfully', { deviceId: result.device.id });
         invalidateDevices();
-        refreshSidebar();
         // Accepted writes refresh application data even after their UI retires.
         if (operations.isCurrent(token)) {
           if (onSuccess) onSuccess(result.device.id);
@@ -136,7 +133,6 @@ export function useDeviceSave(options: { onSuccess?: (deviceId: string) => void 
           added: result.result.added,
         });
         invalidateDevices();
-        refreshSidebar();
         if (operations.isCurrent(token)) {
           if (onSuccess) onSuccess(result.result.device.id);
           else navigate(`/devices/${result.result.device.id}`);
@@ -158,7 +154,7 @@ export function useDeviceSave(options: { onSuccess?: (deviceId: string) => void 
     } finally {
       finishOperation(token);
     }
-  }, [beginOperation, finishOperation, invalidateDevices, navigate, onSuccess, operations, refreshSidebar]);
+  }, [beginOperation, finishOperation, invalidateDevices, navigate, onSuccess, operations]);
 
   const mergeDevice = useCallback(async (request: CreateDeviceRequest) => {
     const token = beginOperation('merge');
@@ -174,7 +170,6 @@ export function useDeviceSave(options: { onSuccess?: (deviceId: string) => void 
       });
 
       invalidateDevices();
-      refreshSidebar();
       if (operations.isCurrent(token)) {
         if (onSuccess) onSuccess(result.device.id);
         else navigate(`/devices/${result.device.id}`);
@@ -186,7 +181,7 @@ export function useDeviceSave(options: { onSuccess?: (deviceId: string) => void 
     } finally {
       finishOperation(token);
     }
-  }, [beginOperation, finishOperation, invalidateDevices, navigate, onSuccess, operations, refreshSidebar]);
+  }, [beginOperation, finishOperation, invalidateDevices, navigate, onSuccess, operations]);
 
   return {
     saving,

@@ -21,9 +21,6 @@ vi.mock('../../src/contexts/NotificationContext', () => ({
 vi.mock('../../src/contexts/AppNotificationContext', () => ({
   AppNotificationProvider: ({ children }: { children: React.ReactNode }) => <div data-testid="app-notification-provider">{children}</div>,
 }));
-vi.mock('../../src/contexts/SidebarContext', () => ({
-  SidebarProvider: ({ children }: { children: React.ReactNode }) => <div data-testid="sidebar-provider">{children}</div>,
-}));
 
 describe('AppProviders', () => {
   it('renders children inside all providers', () => {
@@ -39,11 +36,10 @@ describe('AppProviders', () => {
     expect(screen.getByTestId('currency-provider')).toBeInTheDocument();
     expect(screen.getByTestId('notification-provider')).toBeInTheDocument();
     expect(screen.getByTestId('app-notification-provider')).toBeInTheDocument();
-    expect(screen.getByTestId('sidebar-provider')).toBeInTheDocument();
     expect(screen.getByTestId('child')).toHaveTextContent('Hello');
   });
 
-  it('nests providers in the correct order (query > user > active-network > currency > notification > app-notification > sidebar)', () => {
+  it('nests providers in the correct order (query > user > active-network > currency > notification > app-notification)', () => {
     render(
       <AppProviders>
         <span data-testid="child">Content</span>
@@ -56,7 +52,6 @@ describe('AppProviders', () => {
     const currencyProvider = screen.getByTestId('currency-provider');
     const notificationProvider = screen.getByTestId('notification-provider');
     const appNotificationProvider = screen.getByTestId('app-notification-provider');
-    const sidebarProvider = screen.getByTestId('sidebar-provider');
     const child = screen.getByTestId('child');
 
     // Each provider should contain the next one in the nesting order
@@ -65,7 +60,6 @@ describe('AppProviders', () => {
     expect(activeNetworkProvider).toContainElement(currencyProvider);
     expect(currencyProvider).toContainElement(notificationProvider);
     expect(notificationProvider).toContainElement(appNotificationProvider);
-    expect(appNotificationProvider).toContainElement(sidebarProvider);
-    expect(sidebarProvider).toContainElement(child);
+    expect(appNotificationProvider).toContainElement(child);
   });
 });

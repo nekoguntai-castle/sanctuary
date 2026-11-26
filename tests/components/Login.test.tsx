@@ -302,12 +302,14 @@ describe('Login Component', () => {
     });
 
     const { Login } = await import('../../src/components/Login');
+    document.documentElement.classList.remove('dark');
     await renderLogin(Login);
 
-    expect(document.documentElement.classList.contains('dark')).toBe(true);
+    // Login no longer mutates document.documentElement.classList directly (owned by useUserTheme)
+    expect(document.documentElement.classList.contains('dark')).toBe(false);
   });
 
-  it('updates theme when system color-scheme change event fires', async () => {
+  it('tracks system color-scheme changes without mutating documentElement classList directly', async () => {
     let changeHandler!: (e: MediaQueryListEvent) => void;
 
     Object.defineProperty(window, 'matchMedia', {
@@ -329,13 +331,14 @@ describe('Login Component', () => {
     });
 
     const { Login } = await import('../../src/components/Login');
+    document.documentElement.classList.remove('dark');
     await renderLogin(Login);
 
     expect(document.documentElement.classList.contains('dark')).toBe(false);
     await act(async () => {
       changeHandler({ matches: true } as MediaQueryListEvent);
     });
-    expect(document.documentElement.classList.contains('dark')).toBe(true);
+    expect(document.documentElement.classList.contains('dark')).toBe(false);
 
     await act(async () => {
       changeHandler({ matches: false } as MediaQueryListEvent);

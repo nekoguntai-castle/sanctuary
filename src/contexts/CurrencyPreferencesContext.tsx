@@ -88,6 +88,7 @@ export const CurrencyPreferencesProvider: React.FC<{
   const [availableProviders, setAvailableProviders] = useState<string[]>([
     'auto',
   ]);
+  const [providersLoaded, setProvidersLoaded] = useState(false);
 
   const showFiat = user?.preferences?.showFiat ?? localShowFiat;
   const fiatCurrency =
@@ -96,12 +97,7 @@ export const CurrencyPreferencesProvider: React.FC<{
   const priceProvider =
     (user?.preferences?.priceProvider as string) ?? localPriceProvider;
 
-  const priceProviderRef = useRef(priceProvider);
   const pendingBootstrapPreferencesRef = useRef<Partial<UserPreferences>>({});
-
-  useEffect(() => {
-    priceProviderRef.current = priceProvider;
-  }, [priceProvider]);
 
   const queueBootstrapPreference = useCallback(
     (patch: Partial<UserPreferences>) => {
@@ -162,15 +158,6 @@ export const CurrencyPreferencesProvider: React.FC<{
     [user, updatePreferences, queueBootstrapPreference],
   );
 
-  // "Latest ref" for setPriceProvider so applyAvailableProviders can have an
-  // empty deps array — without this the providers-load effect re-fires every
-  // time the user-loading transition rebuilds the setter chain, bouncing
-  // availableProviders to a new array reference and defeating the context
-  // split. Initialized with the real setter (no uncovered noop) and kept
-  // current on every render.
-  const setPriceProviderRef = useRef(setPriceProvider);
-  setPriceProviderRef.current = setPriceProvider;
-
   const toggleShowFiat = useCallback(() => {
     if (user) updatePreferences({ showFiat: !showFiat });
     else {
@@ -206,15 +193,18 @@ export const CurrencyPreferencesProvider: React.FC<{
       }
       return nextProviders;
     });
-
-    const currentProvider = priceProviderRef.current;
-    if (
-      currentProvider !== 'auto' &&
-      !nextProviders.includes(currentProvider)
-    ) {
-      setPriceProviderRef.current('auto');
-    }
+    setProvidersLoaded(true);
   }, []);
+
+  // Reconcile the selected provider once enabled providers are loaded and whenever
+  // the user/preferences or available provider list changes (e.g. /auth/me resolves
+  // after mount with a provider that has since been disabled).
+  useEffect(() => {
+    if (!providersLoaded) return;
+    if (priceProvider !== 'auto' && !availableProviders.includes(priceProvider)) {
+      setPriceProvider('auto');
+    }
+  }, [user?.id, priceProvider, availableProviders, providersLoaded, setPriceProvider]);
 
   const providerRequests = useLatestRequest();
   const reloadAvailableProviders = useCallback(async () => {

@@ -16,6 +16,11 @@ const controllerState = vi.hoisted(() => ({
   statusIsPlaceholderData: false,
   aiOwnershipKeys: [] as string[],
   routeId: 'wallet-1' as string | undefined,
+  location: { key: 'default', state: null } as { key?: string; state: unknown },
+  clearAllFilters: vi.fn(),
+  setAiQueryFilter: vi.fn(),
+  setTypeFilter: vi.fn(),
+  setCustomDateRange: vi.fn(),
   user: { id: 'user-1', isAdmin: false } as { id: string; isAdmin: boolean } | null,
   fetchData: vi.fn(),
   invalidateWalletLabels: vi.fn(),
@@ -31,7 +36,7 @@ vi.mock('react-router-dom', async () => {
     ...actual,
     useParams: () => ({ id: controllerState.routeId }),
     useNavigate: () => controllerState.navigate,
-    useLocation: () => ({ state: null }),
+    useLocation: () => controllerState.location,
   };
 });
 
@@ -159,12 +164,12 @@ vi.mock('../../../src/components/WalletDetail/hooks/useTransactionFilters', () =
     };
     return ({
     filters: {},
-    setTypeFilter: vi.fn(),
+    setTypeFilter: controllerState.setTypeFilter,
     setConfirmationFilter: vi.fn(),
     setDatePreset: vi.fn(),
-    setCustomDateRange: vi.fn(),
+    setCustomDateRange: controllerState.setCustomDateRange,
     setLabelFilter: vi.fn(),
-    clearAllFilters: vi.fn(),
+    clearAllFilters: controllerState.clearAllFilters,
     hasActiveFilters: false,
     filteredTransactions: [],
     });
@@ -176,7 +181,7 @@ vi.mock('../../../src/components/WalletDetail/hooks/useAITransactionFilter', () 
     controllerState.aiOwnershipKeys.push(ownershipKey);
     return {
       aiQueryFilter: null,
-      setAiQueryFilter: vi.fn(),
+      setAiQueryFilter: controllerState.setAiQueryFilter,
       filteredTransactions: [],
       aiAggregationResult: null,
     };
@@ -279,6 +284,11 @@ describe('useWalletDetailController network preference alignment', () => {
     controllerState.bitcoinStatusNetworks = [];
     controllerState.aiOwnershipKeys = [];
     controllerState.routeId = 'wallet-1';
+    controllerState.location = { key: 'default', state: null };
+    controllerState.clearAllFilters.mockClear();
+    controllerState.setAiQueryFilter.mockClear();
+    controllerState.setTypeFilter.mockClear();
+    controllerState.setCustomDateRange.mockClear();
     controllerState.user = { id: 'user-1', isAdmin: false };
     controllerState.fetchData.mockClear();
     controllerState.invalidateWalletLabels.mockClear();
@@ -477,6 +487,36 @@ describe('useWalletDetailController network preference alignment', () => {
         confirmationThreshold: undefined,
         deepConfirmationThreshold: undefined,
       });
+    });
+
+    it('re-applies an identical consoleTransactionFilter when location.key changes', () => {
+      const filter = {
+        walletId: 'wallet-1',
+        type: 'sent',
+        label: null,
+        minAmount: null,
+        maxAmount: null,
+        dateFrom: '2026-01-01',
+        dateTo: null,
+        sortBy: null,
+        sortOrder: null,
+        limit: null,
+      };
+      controllerState.location = { key: 'nav-1', state: { consoleTransactionFilter: filter } };
+
+      const view = renderHook(() => useWalletDetailController());
+      expect(controllerState.clearAllFilters).toHaveBeenCalledTimes(1);
+      expect(controllerState.setAiQueryFilter).toHaveBeenCalledTimes(1);
+
+      // Re-render with same navigation key does not re-apply
+      view.rerender();
+      expect(controllerState.clearAllFilters).toHaveBeenCalledTimes(1);
+
+      // Navigating again with the same filter JSON but a new location.key re-applies
+      controllerState.location = { key: 'nav-2', state: { consoleTransactionFilter: { ...filter } } };
+      view.rerender();
+      expect(controllerState.clearAllFilters).toHaveBeenCalledTimes(2);
+      expect(controllerState.setAiQueryFilter).toHaveBeenCalledTimes(2);
     });
   });
 

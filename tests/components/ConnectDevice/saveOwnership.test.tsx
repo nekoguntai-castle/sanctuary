@@ -6,8 +6,8 @@ import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { ConnectDevice } from '../../../src/components/ConnectDevice/ConnectDevice';
 import * as devicesApi from '../../../src/api/devices';
-const { refreshSidebar, resetQr, resetUsb, logError } = vi.hoisted(() => ({
-  refreshSidebar: vi.fn(), resetQr: vi.fn(), resetUsb: vi.fn(), logError: vi.fn(),
+const { invalidateDevices, resetQr, resetUsb, logError } = vi.hoisted(() => ({
+  invalidateDevices: vi.fn(), resetQr: vi.fn(), resetUsb: vi.fn(), logError: vi.fn(),
 }));
 vi.mock('../../../src/api/devices', () => ({
   getDeviceModels: vi.fn(), createDeviceWithConflictHandling: vi.fn(), mergeDeviceAccounts: vi.fn(),
@@ -17,7 +17,7 @@ vi.mock('../../../src/services/deviceParsers', () => ({
     purpose: 'single_sig', scriptType: 'native_segwit', derivationPath: "m/84'/0'/0'", xpub: 'xpub-imported-account',
   }] }),
 }));
-vi.mock('../../../src/contexts/SidebarContext', () => ({ useSidebar: () => ({ refreshSidebar }) }));
+vi.mock('../../../src/hooks/queries/useInvalidateDevices', () => ({ useInvalidateDevices: () => invalidateDevices }));
 vi.mock('../../../src/hooks/qr/useQrScanner', () => ({ useQrScanner: () => ({ reset: resetQr }) }));
 vi.mock('../../../src/hooks/useDeviceConnection', () => ({ useDeviceConnection: () => ({ reset: resetUsb }) }));
 vi.mock('../../../src/utils/logger', () => ({ createLogger: () => ({ info: vi.fn(), error: logError }) }));
@@ -82,7 +82,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(devicesApi.createDeviceWithConflictHandling).mockReset().mockResolvedValue(created);
   vi.mocked(devicesApi.mergeDeviceAccounts).mockReset().mockResolvedValue(merged);
-  refreshSidebar.mockReset();
+  invalidateDevices.mockReset();
   vi.mocked(devicesApi.getDeviceModels).mockResolvedValue(['Coldcard MK4', 'Second Coldcard'].map((name, index) => ({
     id: 'model-' + index, slug: 'coldcard-mk4', name, manufacturer: 'Coinkite', connectivity: ['sd_card', 'qr_code'], airGapped: true, secureElement: true, openSource: true, supportsBitcoinOnly: true, integrationTested: true,
   })) as never);
@@ -101,7 +101,7 @@ it.each(['save', 'merge'] as const)('suppresses departed %s errors', async kind 
   await act(async () => { pending.reject(new Error('obsolete failure')); });
   expect(router.state.location.pathname).toBe('/elsewhere');
   expect(logError).not.toHaveBeenCalled();
-  expect(refreshSidebar).not.toHaveBeenCalled();
+  expect(invalidateDevices).not.toHaveBeenCalled();
 });
 
 it.each(['success', 'error'] as const)('Cancel retires pending merge %s while the form stays mounted', async outcome => {
@@ -116,7 +116,7 @@ it.each(['success', 'error'] as const)('Cancel retires pending merge %s while th
   expect(router.state.location.pathname).toBe('/devices/connect');
   expect(screen.getByRole('button', { name: /Save Device/i })).not.toBeDisabled();
   expect(logError).not.toHaveBeenCalled();
-  if (outcome === 'success') expect(refreshSidebar).toHaveBeenCalledTimes(1);
+  if (outcome === 'success') expect(invalidateDevices).toHaveBeenCalledTimes(1);
 });
 
 it.each(['created', 'conflict', 'error'] as const)('model reset retires pending %s result', async outcome => {
@@ -129,7 +129,7 @@ it.each(['created', 'conflict', 'error'] as const)('model reset retires pending 
   expect(router.state.location.pathname).toBe('/devices/connect');
   expect(screen.queryByText(/Device Already Exists/)).not.toBeInTheDocument();
   expect(logError).not.toHaveBeenCalled();
-  if (outcome === 'created') expect(refreshSidebar).toHaveBeenCalledTimes(1);
+  if (outcome === 'created') expect(invalidateDevices).toHaveBeenCalledTimes(1);
 });
 
 it.each(['success', 'error'] as const)('old merge %s cannot clear a new save after Cancel', async outcome => {
@@ -154,14 +154,14 @@ it.each([false, true])('current save works with StrictMode=%s', async strict => 
   const { user, router } = renderFlow(strict);
   await importAndSave(user);
   await waitFor(() => expect(router.state.location.pathname).toBe('/devices'));
-  expect(refreshSidebar).toHaveBeenCalledTimes(1);
+  expect(invalidateDevices).toHaveBeenCalledTimes(1);
 });
 
-it('does not navigate when sidebar refresh synchronously unmounts the owner', async () => {
+it('does not navigate when device invalidation synchronously unmounts the owner', async () => {
   const { user, router, unmount } = renderFlow();
-  refreshSidebar.mockImplementationOnce(unmount);
+  invalidateDevices.mockImplementationOnce(unmount);
   await importAndSave(user);
-  expect(refreshSidebar).toHaveBeenCalledTimes(1);
+  expect(invalidateDevices).toHaveBeenCalledTimes(1);
   expect(router.state.location.pathname).toBe('/devices/connect');
 });
 
@@ -182,7 +182,7 @@ it.each(['created', 'merged', 'manual-merge'] as const)('does not redirect after
     if (outcome === 'manual-merge') pendingMerge.resolve(merged);
     else pendingSave.resolve(outcome === 'created' ? created : { status: 'merged', result: merged });
   });
-  expect(refreshSidebar).toHaveBeenCalledTimes(1);
+  expect(invalidateDevices).toHaveBeenCalledTimes(1);
   expect(router.state.location.pathname).toBe('/elsewhere');
 });
 

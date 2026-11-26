@@ -650,5 +650,53 @@ describe('QRSigningModal', () => {
 
       await waitFor(() => expect(onSignedPsbt).toHaveBeenCalledTimes(2));
     });
+
+    it('ignores file upload while another signed PSBT submission is in flight', async () => {
+      const user = userEvent.setup();
+      let resolveSubmit!: () => void;
+      const onSignedPsbt = vi.fn().mockImplementationOnce(
+        () => new Promise<void>((resolve) => { resolveSubmit = resolve; }),
+      );
+      renderModal(vi.fn(), onSignedPsbt);
+
+      await user.click(screen.getByText("I've Signed It"));
+      await user.click(screen.getByRole('button', { name: /emit scan/i }));
+      expect(onSignedPsbt).toHaveBeenCalledTimes(1);
+
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+      fireEvent.change(input, {
+        target: { files: [new File(['cHNidA=='], 'second.txt', { type: 'text/plain' })] },
+      });
+
+      await act(async () => {
+        resolveSubmit();
+        await Promise.resolve();
+      });
+
+      expect(onSignedPsbt).toHaveBeenCalledTimes(1);
+    });
+
+    it('unmounts controller state when isOpen toggles false so reopening starts fresh on display step', async () => {
+      const user = userEvent.setup();
+      const props = {
+        onClose: vi.fn(),
+        psbtBase64: 'cHNidA==',
+        deviceLabel: 'Passport',
+        onSignedPsbt: vi.fn(),
+      };
+      const { rerender } = render(<QRSigningModal isOpen={true} {...props} />);
+
+      await user.click(screen.getByText("I've Signed It"));
+      expect(screen.getByTestId('scanner')).toBeInTheDocument();
+
+      // Close modal via prop without clicking internal close button
+      rerender(<QRSigningModal isOpen={false} {...props} />);
+      expect(screen.queryByTestId('scanner')).not.toBeInTheDocument();
+
+      // Reopen: must be back on the display step
+      rerender(<QRSigningModal isOpen={true} {...props} />);
+      expect(screen.getByTestId('animated-qr')).toBeInTheDocument();
+      expect(screen.queryByTestId('scanner')).not.toBeInTheDocument();
+    });
   });
 });

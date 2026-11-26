@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
+import { onTerminalLogout } from '../api/refresh';
 import { Notification, generateNotificationId } from '../components/NotificationToast';
+import { useOptionalUserId } from './UserContext';
 
 interface NotificationContextType {
   notifications: Notification[];
@@ -11,7 +13,9 @@ interface NotificationContextType {
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const userId = useOptionalUserId();
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const previousUserIdRef = useRef<string | null>(userId);
   // Track timeouts for cleanup
   const timeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   // Track recently shown transaction notifications to prevent duplicates
@@ -19,16 +23,32 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   // Track dedupe cleanup timeouts separately
   const dedupeTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
-  // Cleanup all timeouts on unmount
-  useEffect(() => {
-    return () => {
-      timeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
-      timeoutsRef.current.clear();
-      dedupeTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
-      dedupeTimeoutsRef.current.clear();
-      recentTxidsRef.current.clear();
-    };
+  const clearTimersAndDedupe = useCallback(() => {
+    timeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
+    timeoutsRef.current.clear();
+    dedupeTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
+    dedupeTimeoutsRef.current.clear();
+    recentTxidsRef.current.clear();
   }, []);
+
+  const resetSessionState = useCallback(() => {
+    clearTimersAndDedupe();
+    setNotifications([]);
+  }, [clearTimersAndDedupe]);
+
+  // Clear toasts, timers, and txid dedupe cache when switching users or logging out
+  useEffect(() => {
+    if (previousUserIdRef.current !== userId) {
+      previousUserIdRef.current = userId;
+      resetSessionState();
+    }
+  }, [userId, resetSessionState]);
+
+  // Clear immediately on terminal logout (explicit, forced refresh failure, or cross-tab)
+  useEffect(() => onTerminalLogout(resetSessionState), [resetSessionState]);
+
+  // Cleanup all timeouts on unmount
+  useEffect(() => clearTimersAndDedupe, [clearTimersAndDedupe]);
 
   const removeNotification = useCallback((id: string) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));

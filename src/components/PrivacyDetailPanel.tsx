@@ -9,6 +9,7 @@ import React, { useState, useEffect, useId } from 'react';
 import { X, Shield, AlertTriangle, Info, ExternalLink } from 'lucide-react';
 import type { UtxoPrivacyInfo, PrivacyFactor } from '../api/transactions';
 import { usePriceFreeFormatter } from '../contexts/CurrencyContext';
+import { lockBodyScroll } from '../utils/bodyScrollLock';
 import { ShowMoreToggle } from './ui/ShowMoreToggle';
 import {
   normalizePrivacyGrade,
@@ -303,12 +304,7 @@ export function PrivacyDetailPanel({ utxo, privacyInfo, onClose }: PrivacyDetail
   }, []);
 
   // Prevent body scroll when panel is open
-  useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, []);
+  useEffect(() => lockBodyScroll(), []);
 
   return (
     <div

@@ -81,6 +81,26 @@ export const registerAppNotificationPersistenceExpirationContracts = () => {
       }
     });
 
+    it('handles localStorage read exceptions when loading notifications', async () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const getItemSpy = vi.spyOn(localStorage, 'getItem').mockImplementation(() => {
+        throw new Error('storage unavailable');
+      });
+
+      try {
+        const { result } = renderHook(() => useAppNotifications(), { wrapper });
+        expect(result.current.notifications).toHaveLength(0);
+        expect(
+          consoleErrorSpy.mock.calls.some(([message]) =>
+            String(message).includes('Failed to load notifications')
+          )
+        ).toBe(true);
+      } finally {
+        getItemSpy.mockRestore();
+        consoleErrorSpy.mockRestore();
+      }
+    });
+
     it('handles serialization errors when saving notifications', async () => {
       const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       const stringifySpy = vi.spyOn(JSON, 'stringify').mockImplementation(() => {
@@ -242,6 +262,98 @@ export const registerAppNotificationPersistenceExpirationContracts = () => {
 
       expect(result.current.notifications).toHaveLength(1);
       expect(result.current.notifications[0].title).toBe('Still Valid');
+    });
+  });
+
+  describe('cross-tab storage synchronization', () => {
+    it('reconciles persistent notifications from another tab when owner matches while keeping ephemeral ones', () => {
+      const { result } = renderHook(() => useAppNotifications(), { wrapper });
+
+      act(() => {
+        result.current.addNotification({
+          type: 'sync_in_progress',
+          scope: 'global',
+          title: 'Local Ephemeral',
+          persistent: false,
+        });
+      });
+
+      const remoteItem = {
+        id: 'remote-1',
+        type: 'backup_reminder',
+        scope: 'global',
+        severity: 'warning',
+        title: 'From Peer Tab',
+        dismissible: true,
+        persistent: true,
+        createdAt: new Date().toISOString(),
+      };
+
+      act(() => {
+        window.dispatchEvent(new StorageEvent('storage', {
+          key: 'sanctuary_app_notifications',
+          newValue: JSON.stringify({ v: 1, userId: 'user-1', items: [remoteItem] }),
+        }));
+      });
+
+      expect(result.current.notifications.map(n => n.title)).toEqual([
+        'Local Ephemeral',
+        'From Peer Tab',
+      ]);
+
+      // Ignore unrelated storage keys
+      act(() => {
+        window.dispatchEvent(new StorageEvent('storage', {
+          key: 'other_key',
+          newValue: null,
+        }));
+      });
+      expect(result.current.notifications).toHaveLength(2);
+
+      // Ignore another user's notifications
+      act(() => {
+        window.dispatchEvent(new StorageEvent('storage', {
+          key: 'sanctuary_app_notifications',
+          newValue: JSON.stringify({ v: 1, userId: 'user-other', items: [] }),
+        }));
+      });
+      expect(result.current.notifications).toHaveLength(2);
+
+      // Clear persistent notifications when key is removed (newValue === null)
+      act(() => {
+        window.dispatchEvent(new StorageEvent('storage', {
+          key: 'sanctuary_app_notifications',
+          newValue: null,
+        }));
+      });
+      expect(result.current.notifications.map(n => n.title)).toEqual(['Local Ephemeral']);
+    });
+
+    it('updates only the targeted notification when multiple notifications exist', () => {
+      const { result } = renderHook(() => useAppNotifications(), { wrapper });
+      let firstId = '';
+
+      act(() => {
+        firstId = result.current.addNotification({
+          type: 'sync_in_progress',
+          scope: 'global',
+          title: 'First',
+        });
+        result.current.addNotification({
+          type: 'backup_reminder',
+          scope: 'global',
+          title: 'Second',
+        });
+      });
+
+      act(() => {
+        result.current.updateNotification(firstId, { title: 'Updated First' });
+      });
+
+      expect(result.current.notifications.map(n => n.title)).toEqual([
+        'Updated First',
+        'Second',
+      ]);
     });
   });
 };

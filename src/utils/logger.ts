@@ -230,8 +230,8 @@ export const isLevelEnabled = (level: LogLevel): boolean => {
   return level >= currentLogLevel;
 };
 
-// Expose to window for runtime debugging in browser console
-if (typeof window !== 'undefined') {
+// Expose to window for runtime debugging in browser console (development only)
+if (typeof window !== 'undefined' && isDevelopment()) {
   (window as any).__setLogLevel = setLogLevel;
   (window as any).__getLogLevel = getLogLevel;
   (window as any).__LogLevel = LogLevel;

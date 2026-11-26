@@ -641,4 +641,102 @@ describe('TransferOwnershipModal', () => {
       }
     });
   });
+
+  describe('submission guards and unmount safety', () => {
+    it('prevents duplicate transfer initiation on rapid double submit', async () => {
+      const pending = createDeferred<unknown>();
+      vi.mocked(transfersApi.initiateTransfer).mockReturnValueOnce(pending.promise as never);
+      const onTransferInitiated = vi.fn();
+
+      const { result } = renderHook(() =>
+        useTransferOwnershipModal({
+          resourceType: 'wallet',
+          resourceId: 'wallet-123',
+          onTransferInitiated,
+        }),
+      );
+
+      await act(async () => {
+        await result.current.handleSearch('alice');
+      });
+      act(() => {
+        result.current.handleSelectUser({ id: 'user-1', username: 'alice' });
+      });
+
+      const fakeEvent = { preventDefault: vi.fn() } as unknown as FormEvent;
+      act(() => {
+        void result.current.handleSubmit(fakeEvent);
+        void result.current.handleSubmit(fakeEvent);
+      });
+
+      expect(transfersApi.initiateTransfer).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        pending.resolve({});
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(onTransferInitiated).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not invoke onTransferInitiated or state setters after unmount during submit', async () => {
+      const pendingResolve = createDeferred<unknown>();
+      vi.mocked(transfersApi.initiateTransfer).mockReturnValueOnce(pendingResolve.promise as never);
+      const onTransferInitiated = vi.fn();
+
+      const { result, unmount } = renderHook(() =>
+        useTransferOwnershipModal({
+          resourceType: 'wallet',
+          resourceId: 'wallet-123',
+          onTransferInitiated,
+        }),
+      );
+
+      await act(async () => {
+        await result.current.handleSearch('alice');
+      });
+      act(() => {
+        result.current.handleSelectUser({ id: 'user-1', username: 'alice' });
+      });
+
+      act(() => {
+        void result.current.handleSubmit({ preventDefault: vi.fn() } as unknown as FormEvent);
+      });
+      unmount();
+
+      await act(async () => {
+        pendingResolve.resolve({});
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(onTransferInitiated).not.toHaveBeenCalled();
+
+      // Also verify rejection after unmount does not throw or update state
+      const pendingReject = createDeferred<unknown>();
+      vi.mocked(transfersApi.initiateTransfer).mockReturnValueOnce(pendingReject.promise as never);
+      const second = renderHook(() =>
+        useTransferOwnershipModal({
+          resourceType: 'wallet',
+          resourceId: 'wallet-123',
+          onTransferInitiated,
+        }),
+      );
+      await act(async () => {
+        await second.result.current.handleSearch('alice');
+      });
+      act(() => {
+        second.result.current.handleSelectUser({ id: 'user-1', username: 'alice' });
+      });
+      act(() => {
+        void second.result.current.handleSubmit({ preventDefault: vi.fn() } as unknown as FormEvent);
+      });
+      second.unmount();
+      await act(async () => {
+        pendingReject.reject(new Error('late error'));
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(onTransferInitiated).not.toHaveBeenCalled();
+    });
+  });
 });

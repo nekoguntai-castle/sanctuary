@@ -10,12 +10,13 @@ function applyBodyTransition(): void {
   document.body.style.transition = 'background-color 0.5s ease, color 0.5s ease';
 }
 
-function applyFallbackTheme(): void {
-  document.documentElement.classList.add('dark');
-  themeRegistry.applyTheme('sanctuary', 'dark', 0);
+function applyFallbackTheme(isDark: boolean): void {
+  document.documentElement.classList.toggle('dark', isDark);
+  themeRegistry.applyTheme('sanctuary', isDark ? 'dark' : 'light', 0);
   themeRegistry.applyPattern('sanctuary-hero', 'sanctuary');
   themeRegistry.applyPatternOpacity(50);
   themeRegistry.applyFlyoutOpacity(92);
+  themeRegistry.applyNoiseOpacity(50);
   applyBodyTransition();
 }
 
@@ -47,6 +48,16 @@ export function useUserTheme(user: User | null): void {
       return;
     }
 
-    applyFallbackTheme();
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    applyFallbackTheme(mediaQuery.matches);
+
+    const handleChange = (event: MediaQueryListEvent) => {
+      applyFallbackTheme(event.matches);
+    };
+    mediaQuery.addEventListener('change', handleChange);
+
+    return () => {
+      mediaQuery.removeEventListener('change', handleChange);
+    };
   }, [user]);
 }

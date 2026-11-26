@@ -87,13 +87,26 @@ describe('logger branch coverage', () => {
     expect(loggerModule.isLevelEnabled(loggerModule.LogLevel.DEBUG)).toBe(true);
   });
 
-  it('falls back to warn in production when env level is missing', async () => {
+  it('falls back to warn in production when env level is missing and does not attach window debug globals', async () => {
     setLoggerEnvOverride({ DEV: false });
 
     const loggerModule = await importFreshLogger();
 
     expect(loggerModule.getLogLevel()).toBe('warn');
     expect(loggerModule.isLevelEnabled(loggerModule.LogLevel.INFO)).toBe(false);
+    expect((window as any).__setLogLevel).toBeUndefined();
+    expect((window as any).__getLogLevel).toBeUndefined();
+    expect((window as any).__LogLevel).toBeUndefined();
+  });
+
+  it('attaches window debug globals in development mode', async () => {
+    setLoggerEnvOverride({ DEV: true });
+
+    const loggerModule = await importFreshLogger();
+
+    expect((window as any).__setLogLevel).toBe(loggerModule.setLogLevel);
+    expect((window as any).__getLogLevel).toBe(loggerModule.getLogLevel);
+    expect((window as any).__LogLevel).toBe(loggerModule.LogLevel);
   });
 
   it('does not attach window helpers when window is unavailable', async () => {

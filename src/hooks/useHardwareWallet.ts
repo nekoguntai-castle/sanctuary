@@ -14,6 +14,18 @@ import type { HardwareWalletConnectionLease } from '../services/hardwareWallet/s
 
 const log = createLogger('useHardwareWallet');
 
+function releaseConnectionLeaseInBackground(
+  lease: HardwareWalletConnectionLease | null,
+): void {
+  if (!lease) return;
+  void (async () => {
+    const { hardwareWalletService } = await loadHardwareWalletRuntime();
+    await hardwareWalletService.releaseConnection(lease);
+  })().catch((err) => {
+    log.warn('Failed to disconnect hardware wallet service', { error: err });
+  });
+}
+
 export interface UseHardwareWalletReturn {
   // Device state
   device: HardwareWalletDevice | null;
@@ -162,18 +174,24 @@ export const useHardwareWallet = (): UseHardwareWalletReturn => {
     connectGenerationRef.current += 1;
     const lease = connectionLeaseRef.current;
     connectionLeaseRef.current = null;
-    if (lease) {
-      void (async () => {
-        const { hardwareWalletService } = await loadHardwareWalletRuntime();
-        await hardwareWalletService.releaseConnection(lease);
-      })().catch((err) => {
-        log.warn('Failed to disconnect hardware wallet service', { error: err });
-      });
-    }
+    releaseConnectionLeaseInBackground(lease);
     setDevice(null);
     setConnecting(false);
     setSigning(false);
     setError(null);
+  }, []);
+
+  /**
+   * Invalidate in-flight operations and release any active lease on unmount
+   */
+  useEffect(() => {
+    return () => {
+      connectGenerationRef.current += 1;
+      signGenerationRef.current += 1;
+      const lease = connectionLeaseRef.current;
+      connectionLeaseRef.current = null;
+      releaseConnectionLeaseInBackground(lease);
+    };
   }, []);
 
   /**

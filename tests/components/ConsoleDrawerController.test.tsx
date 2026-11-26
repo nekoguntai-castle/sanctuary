@@ -565,4 +565,124 @@ describe("useConsoleDrawerController in-flight turn results after a session swit
     expect(result.current.selectedSessionId).toBe("session-b");
     expect(contentsOf(result)).toEqual(sessionBTranscript);
   });
+
+  it("ignores stale loadConsoleState results when drawer closes or reloads", async () => {
+    const firstSessions = createDeferred<any>();
+    const secondSessions = createDeferred<any>();
+    vi.mocked(consoleApi.listConsoleSessions)
+      .mockReturnValueOnce(firstSessions.promise)
+      .mockReturnValueOnce(secondSessions.promise);
+
+    const { result, rerender } = renderHook(
+      ({ isOpen }) =>
+        useConsoleDrawerController({
+          isOpen,
+          wallets,
+          selectedNetwork: "mainnet",
+        }),
+      { initialProps: { isOpen: true } },
+    );
+
+    // Close and reopen before the first load resolves
+    rerender({ isOpen: false });
+    rerender({ isOpen: true });
+
+    await act(async () => {
+      secondSessions.resolve({ sessions: [{ ...session, id: "session-new" }] });
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.selectedSessionId).toBe("session-new");
+
+    // Stale first load resolves later — must not clobber newer sessions
+    await act(async () => {
+      firstSessions.resolve({ sessions: [{ ...session, id: "session-old" }] });
+      await Promise.resolve();
+    });
+    expect(result.current.selectedSessionId).toBe("session-new");
+
+    // Stale rejected load after closing must not set an error
+    const failingLoad = createDeferred<any>();
+    vi.mocked(consoleApi.listConsoleSessions).mockReturnValueOnce(failingLoad.promise);
+    rerender({ isOpen: false });
+    rerender({ isOpen: true });
+    rerender({ isOpen: false });
+    await act(async () => {
+      failingLoad.reject(new Error("stale load failure"));
+      await Promise.resolve();
+    });
+    expect(result.current.error).toBeNull();
+  });
+
+  it("invalidates an in-flight unsaved-session turn when startNewSession is clicked and does not clobber input on setup error", async () => {
+    const deferredSend = createDeferred<any>();
+    vi.mocked(consoleApi.runConsoleTurn).mockReturnValueOnce(deferredSend.promise);
+    vi.mocked(consoleApi.getConsoleSetupReason).mockReturnValueOnce("ai_disabled" as any);
+
+    const { result } = renderHook(() =>
+      useConsoleDrawerController({
+        isOpen: true,
+        wallets,
+        selectedNetwork: "mainnet",
+      }),
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.selectedSessionId).toBeNull();
+
+    act(() => {
+      result.current.setInput("first prompt");
+    });
+    let sendPromise: Promise<void> = Promise.resolve();
+    await act(async () => {
+      sendPromise = result.current.sendPrompt();
+    });
+
+    // User clicks "New Session" (null -> null) and starts typing a new prompt
+    act(() => {
+      result.current.startNewSession();
+      result.current.setInput("brand new draft");
+    });
+
+    await act(async () => {
+      deferredSend.reject(new Error("AI disabled"));
+      await sendPromise;
+    });
+
+    // Stale setup error must NOT overwrite the user's new draft input
+    expect(result.current.input).toBe("brand new draft");
+  });
+
+  it("ignores overlapping replayPrompt calls while a replay or send is already in flight", async () => {
+    const deferredReplay = createDeferred<any>();
+    vi.mocked(consoleApi.replayPromptHistory).mockReturnValueOnce(deferredReplay.promise);
+
+    const { result } = renderHook(() =>
+      useConsoleDrawerController({
+        isOpen: true,
+        wallets,
+        selectedNetwork: "mainnet",
+      }),
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let firstReplay: Promise<void> = Promise.resolve();
+    await act(async () => {
+      firstReplay = result.current.replayPrompt("prompt-1");
+    });
+    await act(async () => {
+      await result.current.replayPrompt("prompt-2");
+    });
+
+    expect(consoleApi.replayPromptHistory).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      deferredReplay.resolve({
+        session,
+        promptHistory,
+        turn,
+        toolTraces: [],
+      });
+      await firstReplay;
+    });
+  });
 });

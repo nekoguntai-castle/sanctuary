@@ -165,6 +165,70 @@ describe('useDeviceForm sequential imports never mix identity fields', () => {
     expect(hook.result.current.formData.fingerprint).toBe('bbbbbbbb');
   });
 
+  it('ignores stale FileReader onload and onerror after method switch, model switch, or unmount', async () => {
+    const readers: Array<{
+      onload: ((event: { target: { result: string } }) => void) | null;
+      onerror: (() => void) | null;
+      readAsText: () => void;
+    }> = [];
+    class DeferredFileReader {
+      onload: ((event: { target: { result: string } }) => void) | null = null;
+      onerror: (() => void) | null = null;
+      readAsText() {
+        readers.push(this);
+      }
+    }
+    vi.stubGlobal('FileReader', DeferredFileReader);
+    parseDeviceJsonMock.mockReturnValue({
+      xpub: 'xpub-stale',
+      fingerprint: 'deadbeef',
+      derivationPath: "m/84'/0'/0'",
+      format: 'ledger',
+    });
+
+    const hook = renderDeviceForm();
+
+    // Start upload #1, then switch method before onload fires
+    act(() => {
+      hook.result.current.handleFileUpload({
+        target: { files: [new File(['stale'], 'stale.json')] },
+      } as any);
+    });
+    expect(hook.result.current.fileScanning).toBe(true);
+    act(() => hook.result.current.handleSelectMethod('qr_code'));
+    expect(hook.result.current.fileScanning).toBe(false);
+
+    act(() => {
+      readers[0].onload?.({ target: { result: 'stale' } });
+    });
+    expect(hook.result.current.scanned).toBe(false);
+    expect(hook.result.current.formData.fingerprint).toBe('');
+
+    // Start upload #2, then switch model before onerror fires
+    act(() => {
+      hook.result.current.handleFileUpload({
+        target: { files: [new File(['err'], 'err.json')] },
+      } as any);
+    });
+    hook.rerender(baseDeps({
+      selectedModel: { id: 'model-2', slug: 'coldcard', name: 'Coldcard' } as any,
+    }));
+    act(() => {
+      readers[1].onerror?.();
+    });
+    expect(hook.result.current.warning).toBeNull();
+    expect(hook.result.current.fileScanning).toBe(false);
+
+    // Start upload #3, then unmount before onload fires
+    act(() => {
+      hook.result.current.handleFileUpload({
+        target: { files: [new File(['unmounted'], 'u.json')] },
+      } as any);
+    });
+    hook.unmount();
+    expect(() => readers[2].onload?.({ target: { result: 'unmounted' } })).not.toThrow();
+  });
+
   it('leaves xpub as an empty string, not undefined, for an accounts-only QR after a single-xpub import', async () => {
     const hook = renderDeviceForm();
     await importFile(hook, {

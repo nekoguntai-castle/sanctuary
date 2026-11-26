@@ -64,24 +64,13 @@ export function useLoginFlow() {
   const [isResendingVerification, setIsResendingVerification] = useState(false);
   const [resendFeedback, setResendFeedback] = useState<ResendFeedback | null>(null);
 
-  // Apply system color scheme preference on login screen
+  // Track system color scheme preference for Login visual props (DOM .dark class
+  // and :root theme variables are owned exclusively by useUserTheme).
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    setDarkMode(mediaQuery.matches);
 
-    const applySystemTheme = (isDark: boolean) => {
-      setDarkMode(isDark);
-      if (isDark) {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
-    };
-
-    // Apply initial preference
-    applySystemTheme(mediaQuery.matches);
-
-    // Listen for changes
-    const handler = (e: MediaQueryListEvent) => applySystemTheme(e.matches);
+    const handler = (e: MediaQueryListEvent) => setDarkMode(e.matches);
     mediaQuery.addEventListener('change', handler);
 
     return () => mediaQuery.removeEventListener('change', handler);

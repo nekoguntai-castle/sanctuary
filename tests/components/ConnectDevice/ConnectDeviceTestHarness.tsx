@@ -56,12 +56,6 @@ vi.mock('../../../src/services/hardwareWallet/environment', () => ({
   isSecureContext: connectDeviceMocks.isSecureContext,
 }));
 
-vi.mock('../../../src/contexts/SidebarContext', () => ({
-  useSidebar: () => ({
-    refreshSidebar: vi.fn(),
-  }),
-}));
-
 vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),

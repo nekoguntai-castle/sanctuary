@@ -44,6 +44,7 @@ vi.mock('../../src/themes', () => ({
     applyPattern: vi.fn(),
     applyPatternOpacity: vi.fn(),
     applyFlyoutOpacity: vi.fn(),
+    applyNoiseOpacity: vi.fn(),
   },
 }));
 

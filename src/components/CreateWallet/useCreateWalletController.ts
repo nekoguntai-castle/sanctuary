@@ -43,6 +43,7 @@ export function useCreateWalletController() {
   selectionPolicy.current = { walletType, scriptType, selectedNetwork };
   const [desiredQuorumM, setDesiredQuorumM] = useState(2);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const previousNetwork = useRef(selectedNetwork);
   const creation = useLatestRequest();
   const deviceRefresh = useLatestRequest();
@@ -51,6 +52,7 @@ export function useCreateWalletController() {
     // Retire synchronously, including network A -> B -> A transitions.
     scopeRef.current = { network: selectedNetwork };
     creation.invalidate();
+    submittingRef.current = false;
     setIsSubmitting(false);
   }
   const renderScope = scopeRef.current;
@@ -185,6 +187,7 @@ export function useCreateWalletController() {
     // Back abandons this review; accepted creation still updates the query cache.
     scopeRef.current = { network: selectedNetwork };
     creation.invalidate();
+    submittingRef.current = false;
     setIsSubmitting(false);
     if (step > 1) {
       setStep((step - 1) as CreateWalletStep);
@@ -207,11 +210,12 @@ export function useCreateWalletController() {
   }, [createWalletState, handleError, refreshStatus, step]);
 
   const handleCreate = useCallback(async () => {
-    if (!walletType || refreshStatus !== 'ready') return;
+    if (!walletType || refreshStatus !== 'ready' || submittingRef.current) return;
 
     if (scopeRef.current !== renderScope) return;
     const token = creation.begin();
     if (!creation.isCurrent(token)) return;
+    submittingRef.current = true;
     setIsSubmitting(true);
 
     try {
@@ -222,7 +226,10 @@ export function useCreateWalletController() {
       log.error('Failed to create wallet', { error });
       handleError(error, 'Failed to Create Wallet');
     } finally {
-      if (creation.isCurrent(token)) setIsSubmitting(false);
+      if (creation.isCurrent(token)) {
+        submittingRef.current = false;
+        setIsSubmitting(false);
+      }
     }
   }, [creation, createWalletMutation, createWalletState, handleError, navigate, refreshStatus, renderScope, walletType]);
 

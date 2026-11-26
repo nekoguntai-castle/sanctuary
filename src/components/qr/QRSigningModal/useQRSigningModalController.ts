@@ -146,6 +146,7 @@ export function useQRSigningModalController({ onClose, onSignedPsbt }: Controlle
   }, []);
 
   const handleFileUpload = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    if (inFlightRef.current) return;
     const file = event.target.files?.[0];
     if (!file) return;
 

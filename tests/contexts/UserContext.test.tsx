@@ -6,6 +6,7 @@ import { beforeEach,describe,expect,it,vi } from 'vitest';
 import {
 useAuth,
 useCurrentUser,
+useOptionalUserId,
 UserProvider,
 useTwoFactor,
 useUser,
@@ -74,6 +75,7 @@ vi.mock('../../src/themes', () => ({
     applyPattern: vi.fn(),
     applyPatternOpacity: vi.fn(),
     applyFlyoutOpacity: vi.fn(),
+    applyNoiseOpacity: vi.fn(),
   },
 }));
 
@@ -222,16 +224,53 @@ describe('UserContext', () => {
       });
     });
 
-    it('applies default dark theme when no user', async () => {
-      vi.mocked(authApi.getCurrentUser).mockRejectedValue(new ApiError('Unauthorized', 401));
-
-      render(<UserProvider><TestConsumer /></UserProvider>);
-
-      await waitFor(() => {
-        expect(screen.getByTestId('loading')).toHaveTextContent('false');
+    it('applies OS color-scheme fallback theme and noise opacity when no user, updating on change', async () => {
+      const { themeRegistry } = await import('../../src/themes');
+      let changeHandler: ((event: MediaQueryListEvent) => void) | null = null;
+      const originalMatchMedia = window.matchMedia;
+      Object.defineProperty(window, 'matchMedia', {
+        writable: true,
+        value: vi.fn().mockImplementation((query: string) => ({
+          matches: false,
+          media: query,
+          onchange: null,
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          addEventListener: vi.fn((event: string, cb: EventListenerOrEventListenerObject) => {
+            if (event === 'change' && typeof cb === 'function') {
+              changeHandler = cb as (e: MediaQueryListEvent) => void;
+            }
+          }),
+          removeEventListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+        })),
       });
 
-      expect(document.documentElement.classList.contains('dark')).toBe(true);
+      try {
+        vi.mocked(authApi.getCurrentUser).mockRejectedValue(new ApiError('Unauthorized', 401));
+
+        render(<UserProvider><TestConsumer /></UserProvider>);
+
+        await waitFor(() => {
+          expect(screen.getByTestId('loading')).toHaveTextContent('false');
+        });
+
+        expect(document.documentElement.classList.contains('dark')).toBe(false);
+        expect(themeRegistry.applyTheme).toHaveBeenCalledWith('sanctuary', 'light', 0);
+        expect(themeRegistry.applyNoiseOpacity).toHaveBeenCalledWith(50);
+
+        act(() => {
+          changeHandler?.({ matches: true } as MediaQueryListEvent);
+        });
+
+        expect(document.documentElement.classList.contains('dark')).toBe(true);
+        expect(themeRegistry.applyTheme).toHaveBeenCalledWith('sanctuary', 'dark', 0);
+      } finally {
+        Object.defineProperty(window, 'matchMedia', {
+          writable: true,
+          value: originalMatchMedia,
+        });
+      }
     });
     });
   }
@@ -791,6 +830,23 @@ describe('UserContext', () => {
 
       await waitFor(() => {
         expect(screen.getByTestId('user')).toHaveTextContent('testuser');
+      });
+    });
+
+    it('useOptionalUserId returns null outside provider and the signed-in user id inside provider', async () => {
+      const OptionalIdProbe = () => {
+        const id = useOptionalUserId();
+        return <span data-testid="optional-id">{id ?? 'none'}</span>;
+      };
+
+      const outside = render(<OptionalIdProbe />);
+      expect(screen.getByTestId('optional-id')).toHaveTextContent('none');
+      outside.unmount();
+
+      vi.mocked(authApi.getCurrentUser).mockResolvedValue(mockUser);
+      render(<UserProvider><OptionalIdProbe /></UserProvider>);
+      await waitFor(() => {
+        expect(screen.getByTestId('optional-id')).toHaveTextContent('user-1');
       });
     });
 

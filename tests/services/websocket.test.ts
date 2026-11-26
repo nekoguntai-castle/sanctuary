@@ -235,6 +235,29 @@ describe('WebSocketClient', () => {
       expect(() => client.subscribeBatch(['a', 'b'])).not.toThrow();
       expect(() => client.unsubscribeBatch(['a'])).not.toThrow();
     });
+
+    it('should reset exhausted reconnect backoff on disconnect so the next session gets fast reconnects', () => {
+      client.connect();
+      getLastWs().simulateClose(1006, 'Abnormal');
+
+      // Exhaust all 5 fast reconnect attempts
+      for (let i = 0; i < 5; i++) {
+        vi.advanceTimersByTime(60000);
+        getLastWs().simulateClose(1006, 'Abnormal');
+      }
+
+      // Logout/disconnect should reset backoff state
+      client.disconnect();
+
+      // Next session connects and suffers a transient drop before stability window
+      client.connect();
+      const sessionCountBeforeDrop = mockWsInstances.length;
+      getLastWs().simulateClose(1006, 'Abnormal');
+
+      // Should fast-reconnect within 2 seconds instead of waiting 5 minutes
+      vi.advanceTimersByTime(2000);
+      expect(mockWsInstances.length).toBe(sessionCountBeforeDrop + 1);
+    });
   });
 
   // ========================================
@@ -399,6 +422,68 @@ describe('WebSocketClient', () => {
       client.subscribeBatch([]);
       client.unsubscribeBatch(['not-subscribed']);
       expect(getLastWs().sentMessages.length).toBe(countBefore);
+    });
+
+    it('should ref-count overlapping subscribe/unsubscribe calls and only unsubscribe at zero', () => {
+      client.connect();
+      getLastWs().simulateOpen();
+      getLastWs().simulateMessage({ type: 'connected', data: {} });
+
+      // Two subscribers acquire 'blocks'
+      client.subscribe('blocks');
+      client.subscribe('blocks');
+      expect(getLastWs().sentMessages.map(m => JSON.parse(m))).toEqual([
+        { type: 'subscribe', data: { channel: 'blocks' } },
+      ]);
+
+      // First subscriber unmounts: ref count 2 -> 1, no wire unsubscribe
+      client.unsubscribe('blocks');
+      expect(getLastWs().sentMessages).toHaveLength(1);
+
+      // Reconnect must still resubscribe 'blocks'
+      getLastWs().simulateClose(1006, 'Drop');
+      vi.advanceTimersByTime(2000);
+      getLastWs().simulateOpen();
+      getLastWs().simulateMessage({ type: 'connected', data: {} });
+      expect(JSON.parse(getLastWs().sentMessages[0])).toEqual({
+        type: 'subscribe_batch',
+        data: { channels: ['blocks'] },
+      });
+
+      // Second subscriber unmounts: ref count 1 -> 0, wire unsubscribe sent
+      client.unsubscribe('blocks');
+      expect(JSON.parse(getLastWs().sentMessages[1])).toEqual({
+        type: 'unsubscribe',
+        data: { channel: 'blocks' },
+      });
+    });
+
+    it('should ref-count subscribeBatch and unsubscribeBatch across overlapping subscribers', () => {
+      client.connect();
+      getLastWs().simulateOpen();
+      getLastWs().simulateMessage({ type: 'connected', data: {} });
+
+      client.subscribeBatch(['blocks', 'wallet:1']);
+      client.subscribeBatch(['blocks', 'wallet:2', 'wallet:2']);
+
+      expect(getLastWs().sentMessages.map(m => JSON.parse(m))).toEqual([
+        { type: 'subscribe_batch', data: { channels: ['blocks', 'wallet:1'] } },
+        { type: 'subscribe_batch', data: { channels: ['wallet:2'] } },
+      ]);
+
+      // Decrement 'blocks' (2->1), 'wallet:1' (1->0), 'wallet:2' (2->1), and unknown 'missing'
+      client.unsubscribeBatch(['blocks', 'wallet:1', 'wallet:2', 'missing']);
+      expect(JSON.parse(getLastWs().sentMessages[2])).toEqual({
+        type: 'unsubscribe_batch',
+        data: { channels: ['wallet:1'] },
+      });
+
+      // Decrementing 'blocks' and 'wallet:2' again hits 0 and unsubscribes both
+      client.unsubscribeBatch(['blocks', 'wallet:2']);
+      expect(JSON.parse(getLastWs().sentMessages[3])).toEqual({
+        type: 'unsubscribe_batch',
+        data: { channels: ['blocks', 'wallet:2'] },
+      });
     });
   });
 

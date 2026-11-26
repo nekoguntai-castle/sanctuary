@@ -6,9 +6,8 @@ import { expect, it, vi } from 'vitest';
 import { useDeviceSave } from '../../src/hooks/useDeviceSave';
 import { deviceKeys } from '../../src/hooks/queries/deviceKeys';
 
-const { save, refresh } = vi.hoisted(() => ({ save: vi.fn(), refresh: vi.fn() }));
+const { save } = vi.hoisted(() => ({ save: vi.fn() }));
 vi.mock('../../src/api/devices', () => ({ createDeviceWithConflictHandling: save, mergeDeviceAccounts: vi.fn() }));
-vi.mock('../../src/contexts/SidebarContext', () => ({ useSidebar: () => ({ refreshSidebar: refresh }) }));
 
 it('refreshes active device list and detail observers after an accepted write', async () => {
   let version = 0;

@@ -5,7 +5,7 @@
  * Manages verified USB, QR, and file imports plus UR decoder refs.
  */
 
-import { useState, useRef, useCallback, type MutableRefObject } from "react";
+import { useState, useRef, useCallback, useEffect, type MutableRefObject } from "react";
 import { URRegistryDecoder } from "@keystonehq/bc-ur-registry";
 import { URDecoder as BytesURDecoder } from "@ngraveio/bc-ur";
 import { parseDerivationPath } from "@sanctuary/shared/utils/bitcoin";
@@ -297,6 +297,35 @@ const processPlainQr = (content: string, context: QrImportContext) => {
   context.setAddAccountLoading(false);
 };
 
+interface DeviceAccountAddition {
+  purpose: ParsedDeviceAccount["purpose"];
+  scriptType: ParsedDeviceAccount["scriptType"];
+  derivationPath: string;
+  xpub: string;
+  masterFingerprint: string;
+}
+
+const addAccountsSequentially = async (
+  deviceId: string,
+  accounts: DeviceAccountAddition[],
+  isCurrent: () => boolean,
+): Promise<number | null> => {
+  let addedCount = 0;
+  for (const account of accounts) {
+    if (!isCurrent()) return null;
+    try {
+      await addDeviceAccount(deviceId, account);
+      addedCount++;
+    } catch (err) {
+      log.warn("Failed to add account", {
+        path: account.derivationPath,
+        err,
+      });
+    }
+  }
+  return isCurrent() ? addedCount : null;
+};
+
 /**
  * Shared tail for the USB and parsed-account add flows: when nothing was
  * added, surface an error and leave the dialog open; otherwise refresh the
@@ -307,6 +336,7 @@ const concludeAccountAdditions = async (
   zeroAddedMessage: string,
   context: {
     deviceId: string;
+    isCurrent: () => boolean;
     onDeviceUpdated: (device: Device) => void;
     onClose: () => void;
     setAddAccountError: (error: string | null) => void;
@@ -318,6 +348,7 @@ const concludeAccountAdditions = async (
   }
 
   const updatedDevice = await getDevice(context.deviceId);
+  if (!context.isCurrent()) return false;
   context.onDeviceUpdated(updatedDevice);
   context.onClose();
   return true;
@@ -346,11 +377,30 @@ export function useAddAccountFlow({
   onDeviceUpdated,
 }: AddAccountFlowProps) {
   // Method selection
-  const [addAccountMethod, setAddAccountMethod] =
+  const [addAccountMethod, setAddAccountMethodState] =
     useState<AddAccountMethod>(null);
   const [addAccountLoading, setAddAccountLoading] = useState(false);
   const [addAccountError, setAddAccountError] = useState<string | null>(null);
   const [usbProgress, setUsbProgress] = useState<UsbProgress | null>(null);
+  const mountedRef = useRef(true);
+  const flowEpochRef = useRef(0);
+  const fileUploadGenerationRef = useRef(0);
+  const inFlightRef = useRef(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      flowEpochRef.current += 1;
+      fileUploadGenerationRef.current += 1;
+    };
+  }, []);
+
+  const setAddAccountMethod = useCallback((method: AddAccountMethod) => {
+    flowEpochRef.current += 1;
+    fileUploadGenerationRef.current += 1;
+    setAddAccountMethodState(method);
+  }, []);
 
   // QR scanning state
   const [qrMode, setQrMode] = useState<QrMode>("camera");
@@ -418,11 +468,16 @@ export function useAddAccountFlow({
       const file = e.target.files?.[0];
       if (!file) return;
 
+      const uploadGeneration = ++fileUploadGenerationRef.current;
+      const isCurrentUpload = () =>
+        mountedRef.current && fileUploadGenerationRef.current === uploadGeneration;
+
       setAddAccountLoading(true);
       setAddAccountError(null);
 
       const reader = new FileReader();
       reader.onload = (event) => {
+        if (!isCurrentUpload()) return;
         const content = event.target?.result as string;
         const parseResult = parseDeviceJson(content);
         const parsed = parseFileContent(parseResult);
@@ -440,6 +495,7 @@ export function useAddAccountFlow({
         }
       };
       reader.onerror = () => {
+        if (!isCurrentUpload()) return;
         setAddAccountError("Failed to read file.");
         setAddAccountLoading(false);
       };
@@ -505,6 +561,8 @@ export function useAddAccountFlow({
    * Reset import state
    */
   const resetImportState = useCallback(() => {
+    flowEpochRef.current += 1;
+    fileUploadGenerationRef.current += 1;
     setParsedAccounts([]);
     setSelectedParsedAccounts(new Set());
     setAccountConflict(null);
@@ -518,11 +576,16 @@ export function useAddAccountFlow({
 
   // Add accounts via USB connection
   const handleAddAccountsViaUsb = useCallback(async () => {
+    if (inFlightRef.current) return;
     const deviceType = getDeviceTypeFromDeviceModel(device);
     if (!deviceType) {
       setAddAccountError("USB connection not supported for this device type");
       return;
     }
+
+    inFlightRef.current = true;
+    const epoch = ++flowEpochRef.current;
+    const isCurrent = () => mountedRef.current && flowEpochRef.current === epoch;
 
     setAddAccountLoading(true);
     setAddAccountError(null);
@@ -543,14 +606,18 @@ export function useAddAccountFlow({
       );
       const connectedDevice = connection.device;
       releaseConnection = () => hardwareWalletService.releaseConnection(connection.lease);
+      if (!isCurrent()) return;
 
       // Fetch all xpubs
       const xpubBatch = await hardwareWalletService.getAllXpubsWithFailuresForLease(
         connection.lease,
         (current, total, name) => {
+          if (!isCurrent()) throw new Error("USB operation cancelled");
           setUsbProgress({ current, total, name });
         },
       );
+      if (!isCurrent()) return;
+
       const validatedBatch = validateXpubBatch(
         xpubBatch.results,
         connectedDevice?.fingerprint,
@@ -569,22 +636,18 @@ export function useAddAccountFlow({
         return;
       }
 
-      // Add each new account
-      let addedCount = 0;
-      for (const account of newAccounts) {
-        try {
-          await addDeviceAccount(deviceId, {
-            purpose: account.purpose,
-            scriptType: account.scriptType,
-            derivationPath: account.path,
-            xpub: account.xpub,
-            masterFingerprint: validatedBatch.fingerprint,
-          });
-          addedCount++;
-        } catch (err) {
-          log.warn("Failed to add account", { path: account.path, err });
-        }
-      }
+      const addedCount = await addAccountsSequentially(
+        deviceId,
+        newAccounts.map((account) => ({
+          purpose: account.purpose,
+          scriptType: account.scriptType,
+          derivationPath: account.path,
+          xpub: account.xpub,
+          masterFingerprint: validatedBatch.fingerprint,
+        })),
+        isCurrent,
+      );
+      if (addedCount === null) return;
 
       const warning = buildSkippedXpubWarning(xpubBatch.failures);
       const added = await concludeAccountAdditions(
@@ -592,7 +655,7 @@ export function useAddAccountFlow({
         warning
           ? `No accounts were added. ${warning}`
           : "No accounts were added. Check for duplicate paths and try again.",
-        { deviceId, onDeviceUpdated, onClose, setAddAccountError },
+        { deviceId, isCurrent, onDeviceUpdated, onClose, setAddAccountError },
       );
       if (!added) return;
 
@@ -601,13 +664,18 @@ export function useAddAccountFlow({
         totalFetched: allXpubs.length,
       });
     } catch (err) {
-      log.error("Failed to add accounts via USB", { err });
-      setAddAccountError(
-        err instanceof Error ? err.message : "Failed to connect to device",
-      );
+      if (isCurrent()) {
+        log.error("Failed to add accounts via USB", { err });
+        setAddAccountError(
+          err instanceof Error ? err.message : "Failed to connect to device",
+        );
+      }
     } finally {
-      setAddAccountLoading(false);
-      setUsbProgress(null);
+      inFlightRef.current = false;
+      if (isCurrent()) {
+        setAddAccountLoading(false);
+        setUsbProgress(null);
+      }
       try {
         await releaseConnection();
       } catch (error) {
@@ -621,8 +689,17 @@ export function useAddAccountFlow({
    * Add selected parsed accounts to the device
    */
   const handleAddParsedAccounts = useCallback(async () => {
-    if (parsedAccounts.length === 0 || selectedParsedAccounts.size === 0)
+    if (
+      inFlightRef.current ||
+      parsedAccounts.length === 0 ||
+      selectedParsedAccounts.size === 0
+    ) {
       return;
+    }
+
+    inFlightRef.current = true;
+    const epoch = ++flowEpochRef.current;
+    const isCurrent = () => mountedRef.current && flowEpochRef.current === epoch;
 
     setAddAccountLoading(true);
     setAddAccountError(null);
@@ -637,42 +714,42 @@ export function useAddAccountFlow({
         importFingerprint,
         device.fingerprint,
       );
-      let addedCount = 0;
-      for (const [index, account] of parsedAccounts.entries()) {
-        if (selectedParsedAccounts.has(index)) {
-          try {
-            await addDeviceAccount(deviceId, {
-              purpose: account.purpose,
-              scriptType: account.scriptType,
-              derivationPath: account.derivationPath,
-              xpub: account.xpub,
-              masterFingerprint: validatedImport.fingerprint,
-            });
-            addedCount++;
-          } catch (err) {
-            log.warn("Failed to add account", {
-              path: account.derivationPath,
-              err,
-            });
-          }
-        }
-      }
+      const accountsToAdd = parsedAccounts
+        .filter((_, index) => selectedParsedAccounts.has(index))
+        .map((account) => ({
+          purpose: account.purpose,
+          scriptType: account.scriptType,
+          derivationPath: account.derivationPath,
+          xpub: account.xpub,
+          masterFingerprint: validatedImport.fingerprint,
+        }));
+      const addedCount = await addAccountsSequentially(
+        deviceId,
+        accountsToAdd,
+        isCurrent,
+      );
+      if (addedCount === null) return;
 
       const added = await concludeAccountAdditions(
         addedCount,
         "No accounts were added. Check for duplicate paths and try again.",
-        { deviceId, onDeviceUpdated, onClose, setAddAccountError },
+        { deviceId, isCurrent, onDeviceUpdated, onClose, setAddAccountError },
       );
       if (!added) return;
 
       log.info("Added accounts from import", { addedCount });
     } catch (err) {
-      log.error("Failed to add accounts", { err });
-      setAddAccountError(
-        err instanceof Error ? err.message : "Failed to add accounts",
-      );
+      if (isCurrent()) {
+        log.error("Failed to add accounts", { err });
+        setAddAccountError(
+          err instanceof Error ? err.message : "Failed to add accounts",
+        );
+      }
     } finally {
-      setAddAccountLoading(false);
+      inFlightRef.current = false;
+      if (isCurrent()) {
+        setAddAccountLoading(false);
+      }
     }
   }, [
     deviceId,

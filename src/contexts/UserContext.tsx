@@ -16,6 +16,7 @@ import type {
 import { getUserPreferenceRecord } from './userModel';
 import { clearQueryCacheForLogout } from '../providers/queryCacheReset';
 import { websocketClient } from '../services/websocket';
+import { disconnectHardwareWalletIfLoaded } from '../services/hardwareWallet/loader';
 import { clearHardwareWalletAttestation } from '../services/hardwareWallet/operatorAttestation';
 import { resetAIStatusForSessionEnd } from '../hooks/useAIStatus';
 import { resetIntelligenceStatusForSessionEnd } from '../hooks/useIntelligenceStatus';
@@ -49,6 +50,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     invalidateAuthBootstrap();
     resetPreferenceTracking();
     clearHardwareWalletAttestation();
+    disconnectHardwareWalletIfLoaded();
     setUser(null);
     setIsLoading(false);
     setTwoFactorPending(null);

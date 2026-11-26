@@ -64,7 +64,7 @@ export class WebSocketClient {
   // All public mutator methods gate on this flag instead of readyState.
   private isServerReady: boolean = false;
 
-  private subscriptions: Set<string> = new Set();
+  private subscriptionCounts: Map<string, number> = new Map();
   private eventListeners: Map<WebSocketListenerType, Set<EventCallback>> = new Map();
   private connectionListeners: Set<(connected: boolean) => void> = new Set();
 
@@ -237,8 +237,9 @@ export class WebSocketClient {
       this.notifyConnectionListeners(false);
     }
     this.isConnecting = false;
+    this.resetReconnectState();
 
-    this.subscriptions.clear();
+    this.subscriptionCounts.clear();
     log.debug('Disconnected');
   }
 
@@ -404,20 +405,21 @@ export class WebSocketClient {
   }
 
   /**
-   * Subscribe to a channel
+   * Subscribe to a channel (ref-counted so overlapping hooks do not tear down
+   * shared channels like 'blocks' when one consumer unmounts).
    */
   subscribe(channel: string) {
-    if (this.subscriptions.has(channel)) {
+    const currentCount = this.subscriptionCounts.get(channel) ?? 0;
+    this.subscriptionCounts.set(channel, currentCount + 1);
+    if (currentCount > 0) {
       return;
     }
-
-    this.subscriptions.add(channel);
 
     // Gate on isServerReady (NOT readyState === OPEN). The 'connected'
     // welcome is the single authoritative signal that the server has
     // attached its message handler and finished cookie auth. Sending
     // between onopen and the welcome races the server (Phase 4 fix).
-    // While not ready, the channel is queued in this.subscriptions
+    // While not ready, the channel is queued in this.subscriptionCounts
     // and will be sent by resubscribe() when the welcome arrives.
     if (this.isServerReady) {
       this.send({
@@ -428,14 +430,20 @@ export class WebSocketClient {
   }
 
   /**
-   * Unsubscribe from a channel
+   * Unsubscribe from a channel (sends wire unsubscribe only when ref count hits 0).
    */
   unsubscribe(channel: string) {
-    if (!this.subscriptions.has(channel)) {
+    const currentCount = this.subscriptionCounts.get(channel);
+    if (!currentCount) {
       return;
     }
 
-    this.subscriptions.delete(channel);
+    if (currentCount > 1) {
+      this.subscriptionCounts.set(channel, currentCount - 1);
+      return;
+    }
+
+    this.subscriptionCounts.delete(channel);
 
     if (this.isServerReady) {
       this.send({
@@ -443,7 +451,7 @@ export class WebSocketClient {
         data: { channel },
       });
     }
-    // While not ready, removing from this.subscriptions is enough —
+    // While not ready, removing from this.subscriptionCounts is enough —
     // the next resubscribe() on welcome will not include this channel.
   }
 
@@ -452,12 +460,15 @@ export class WebSocketClient {
    * Reduces message count from O(N) to O(1)
    */
   subscribeBatch(channels: string[]) {
-    const newChannels = channels.filter(c => !this.subscriptions.has(c));
-    if (newChannels.length === 0) return;
-
-    for (const channel of newChannels) {
-      this.subscriptions.add(channel);
+    const newChannels: string[] = [];
+    for (const channel of channels) {
+      const currentCount = this.subscriptionCounts.get(channel) ?? 0;
+      this.subscriptionCounts.set(channel, currentCount + 1);
+      if (currentCount === 0) {
+        newChannels.push(channel);
+      }
     }
+    if (newChannels.length === 0) return;
 
     if (this.isServerReady) {
       this.send({
@@ -471,17 +482,25 @@ export class WebSocketClient {
    * Unsubscribe from multiple channels in a single message
    */
   unsubscribeBatch(channels: string[]) {
-    const existingChannels = channels.filter(c => this.subscriptions.has(c));
-    if (existingChannels.length === 0) return;
+    const removedChannels: string[] = [];
+    for (const channel of channels) {
+      const currentCount = this.subscriptionCounts.get(channel);
+      if (!currentCount) continue;
 
-    for (const channel of existingChannels) {
-      this.subscriptions.delete(channel);
+      if (currentCount > 1) {
+        this.subscriptionCounts.set(channel, currentCount - 1);
+        continue;
+      }
+
+      this.subscriptionCounts.delete(channel);
+      removedChannels.push(channel);
     }
+    if (removedChannels.length === 0) return;
 
     if (this.isServerReady) {
       this.send({
         type: 'unsubscribe_batch',
-        data: { channels: existingChannels },
+        data: { channels: removedChannels },
       });
     }
   }
@@ -490,12 +509,12 @@ export class WebSocketClient {
    * Resubscribe to all channels after reconnection (uses batch for efficiency)
    */
   private resubscribe() {
-    if (this.subscriptions.size === 0) return;
+    if (this.subscriptionCounts.size === 0) return;
 
     // Use batch subscribe for efficiency
     this.send({
       type: 'subscribe_batch',
-      data: { channels: Array.from(this.subscriptions) },
+      data: { channels: Array.from(this.subscriptionCounts.keys()) },
     });
   }
 

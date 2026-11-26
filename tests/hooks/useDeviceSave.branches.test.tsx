@@ -7,16 +7,11 @@ vi.mock('@tanstack/react-query', async importOriginal => ({
 }));
 
 const mockNavigate = vi.fn();
-const mockRefreshSidebar = vi.fn();
 const mockCreateDeviceWithConflictHandling = vi.fn();
 const mockMergeDeviceAccounts = vi.fn();
 
 vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
-}));
-
-vi.mock('../../src/contexts/SidebarContext', () => ({
-  useSidebar: () => ({ refreshSidebar: mockRefreshSidebar }),
 }));
 
 vi.mock('../../src/api/devices', () => ({
@@ -60,7 +55,6 @@ describe('useDeviceSave branch coverage', () => {
     expect(result.current.error).toBeNull();
     expect(result.current.conflictData).toBeNull();
     expect(mockNavigate).not.toHaveBeenCalled();
-    expect(mockRefreshSidebar).not.toHaveBeenCalled();
   });
 
   it('sets fallback merge error message for non-Error rejections', async () => {

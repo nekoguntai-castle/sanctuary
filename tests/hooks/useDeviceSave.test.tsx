@@ -21,14 +21,6 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
 }));
 
-// Mock SidebarContext
-const mockRefreshSidebar = vi.fn();
-vi.mock('../../src/contexts/SidebarContext', () => ({
-  useSidebar: () => ({
-    refreshSidebar: mockRefreshSidebar,
-  }),
-}));
-
 // Mock device API
 const mockCreateDeviceWithConflictHandling = vi.fn();
 const mockMergeDeviceAccounts = vi.fn();
@@ -180,7 +172,7 @@ describe('useDeviceSave', () => {
         await result.current.saveDevice(mockCreateRequest);
       });
 
-      expect(mockRefreshSidebar).toHaveBeenCalledTimes(1);
+      expect(mockInvalidateDevices).toHaveBeenCalled();
     });
 
     it('should clear previous error on new save', async () => {
@@ -245,7 +237,7 @@ describe('useDeviceSave', () => {
         await result.current.saveDevice(mockCreateRequest);
       });
 
-      expect(mockRefreshSidebar).toHaveBeenCalledTimes(1);
+      expect(mockInvalidateDevices).toHaveBeenCalled();
     });
   });
 
@@ -280,7 +272,7 @@ describe('useDeviceSave', () => {
       expect(mockNavigate).not.toHaveBeenCalled();
     });
 
-    it('should not refresh sidebar on conflict', async () => {
+    it('should not invalidate devices on conflict', async () => {
       mockCreateDeviceWithConflictHandling.mockResolvedValue({
         status: 'conflict',
         conflict: mockConflictResponse,
@@ -292,7 +284,7 @@ describe('useDeviceSave', () => {
         await result.current.saveDevice(mockCreateRequest);
       });
 
-      expect(mockRefreshSidebar).not.toHaveBeenCalled();
+      expect(mockInvalidateDevices).not.toHaveBeenCalled();
     });
   });
 
@@ -398,7 +390,7 @@ describe('useDeviceSave', () => {
       expect(mockNavigate).toHaveBeenCalledWith('/devices/merged-456');
     });
 
-    it('should refresh sidebar on success', async () => {
+    it('should invalidate devices on merge success', async () => {
       mockMergeDeviceAccounts.mockResolvedValue({
         device: { id: 'merged-456' },
         added: 2,
@@ -410,7 +402,7 @@ describe('useDeviceSave', () => {
         await result.current.mergeDevice(mockCreateRequest);
       });
 
-      expect(mockRefreshSidebar).toHaveBeenCalledTimes(1);
+      expect(mockInvalidateDevices).toHaveBeenCalled();
     });
 
     it('should set error on failure', async () => {

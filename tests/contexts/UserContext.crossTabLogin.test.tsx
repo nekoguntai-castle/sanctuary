@@ -43,9 +43,13 @@ vi.mock('../../src/providers/queryCacheReset', () => ({
 }));
 const mockResetAIStatus = vi.hoisted(() => vi.fn());
 const mockResetIntelligenceStatus = vi.hoisted(() => vi.fn());
+const mockDisconnectHardwareWalletIfLoaded = vi.hoisted(() => vi.fn());
 vi.mock('../../src/hooks/useAIStatus', () => ({ resetAIStatusForSessionEnd: mockResetAIStatus }));
 vi.mock('../../src/hooks/useIntelligenceStatus', () => ({
   resetIntelligenceStatusForSessionEnd: mockResetIntelligenceStatus,
+}));
+vi.mock('../../src/services/hardwareWallet/loader', () => ({
+  disconnectHardwareWalletIfLoaded: mockDisconnectHardwareWalletIfLoaded,
 }));
 vi.mock('../../src/themes', () => ({
   themeRegistry: {
@@ -53,6 +57,7 @@ vi.mock('../../src/themes', () => ({
     applyPattern: vi.fn(),
     applyPatternOpacity: vi.fn(),
     applyFlyoutOpacity: vi.fn(),
+    applyNoiseOpacity: vi.fn(),
   },
 }));
 
@@ -111,6 +116,7 @@ describe('UserProvider cross-tab login', () => {
     // The previous user's cached data and live subscriptions are dropped.
     expect(mockClearQueryCache).toHaveBeenCalledTimes(1);
     expect(mockSocketDisconnect).toHaveBeenCalledTimes(1);
+    expect(mockDisconnectHardwareWalletIfLoaded).toHaveBeenCalledTimes(1);
     // Capability status is per session too: the next user must not inherit it.
     expect(mockResetAIStatus).toHaveBeenCalledTimes(1);
     expect(mockResetIntelligenceStatus).toHaveBeenCalledTimes(1);
@@ -174,10 +180,20 @@ describe('UserProvider cross-tab login', () => {
     );
     await user.click(screen.getByTestId('login'));
 
-    // The peer's login wins on the server: the cookie now belongs to user B.
-    vi.mocked(authApi.getCurrentUser).mockResolvedValue(userB as never);
+    // The peer's login wins on the server: keep /auth/me pending to prove
+    // isLoading stays true (no <Login /> flash) while resyncSession runs.
+    let resolveResync!: (user: unknown) => void;
+    vi.mocked(authApi.getCurrentUser).mockImplementation(
+      () => new Promise((resolve) => { resolveResync = resolve; }) as never,
+    );
     await peer.login('user-2');
     await act(async () => { resolveLogin({ user: userA }); });
+
+    // Resync is still in flight: loading must remain true so <Login /> does not flash.
+    expect(screen.getByTestId('loading')).toHaveTextContent('true');
+    expect(screen.getByTestId('user')).toHaveTextContent('null');
+
+    await act(async () => { resolveResync(userB); });
 
     await waitFor(() => expect(screen.getByTestId('user')).toHaveTextContent('otheruser'));
     expect(screen.getByTestId('loading')).toHaveTextContent('false');

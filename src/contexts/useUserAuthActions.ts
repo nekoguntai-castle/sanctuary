@@ -65,8 +65,9 @@ export function useUserAuthActions({
   // another tab logged in meanwhile, both logins raced on the server and this
   // response does not prove whose session the shared cookie holds, so the
   // session is re-read instead of trusted.
-  const establishSession = useCallback((apiUser: Parameters<typeof toContextUser>[0], peerLoginSeqAtStart: number) => {
-    if (peerLoginSeqRef.current !== peerLoginSeqAtStart) {
+  const establishSession = useCallback((apiUser: Parameters<typeof toContextUser>[0], peerLoginSeqAtStart: number): boolean => {
+    const resynced = peerLoginSeqRef.current !== peerLoginSeqAtStart;
+    if (resynced) {
       resyncSession();
     } else {
       invalidateAuthBootstrap();
@@ -76,12 +77,14 @@ export function useUserAuthActions({
     }
     // Other tabs share the session cookie and must follow this login.
     announceLogin(apiUser.id);
+    return resynced;
   }, [invalidateAuthBootstrap, peerLoginSeqRef, resetPreferenceTracking, resyncSession, setUser]);
 
   const login = useCallback(async (username: string, password: string): Promise<LoginResult> => {
     setIsLoading(true);
     setError(null);
     setNotice(null);
+    let resyncing = false;
 
     try {
       const peerLoginSeqAtStart = peerLoginSeqRef.current;
@@ -91,14 +94,16 @@ export function useUserAuthActions({
         return { success: false, requires2FA: true, tempToken: response.tempToken };
       }
 
-      establishSession(response.user, peerLoginSeqAtStart);
+      resyncing = establishSession(response.user, peerLoginSeqAtStart);
       setNotice(null);
       return { success: true };
     } catch (err) {
       setError(apiErrorMessageOr(err, 'Login failed'));
       return { success: false, emailVerificationRequired: isEmailVerificationRequired(err) };
     } finally {
-      setIsLoading(false);
+      if (!resyncing) {
+        setIsLoading(false);
+      }
     }
   }, [establishSession, peerLoginSeqRef, setError, setIsLoading, setNotice, setTwoFactorPending]);
 
@@ -111,6 +116,7 @@ export function useUserAuthActions({
     setIsLoading(true);
     setError(null);
     setNotice(null);
+    let resyncing = false;
 
     try {
       const peerLoginSeqAtStart = peerLoginSeqRef.current;
@@ -118,7 +124,7 @@ export function useUserAuthActions({
         tempToken: twoFactorPending.tempToken,
         code,
       });
-      establishSession(response.user, peerLoginSeqAtStart);
+      resyncing = establishSession(response.user, peerLoginSeqAtStart);
       setTwoFactorPending(null);
       setNotice(null);
       return true;
@@ -126,7 +132,9 @@ export function useUserAuthActions({
       setError(apiErrorMessageOr(err, 'Invalid verification code'));
       return false;
     } finally {
-      setIsLoading(false);
+      if (!resyncing) {
+        setIsLoading(false);
+      }
     }
   }, [
     establishSession,
@@ -151,6 +159,7 @@ export function useUserAuthActions({
     setIsLoading(true);
     setError(null);
     setNotice(null);
+    let resyncing = false;
 
     try {
       const peerLoginSeqAtStart = peerLoginSeqRef.current;
@@ -168,7 +177,7 @@ export function useUserAuthActions({
         };
       }
 
-      establishSession(response.user, peerLoginSeqAtStart);
+      resyncing = establishSession(response.user, peerLoginSeqAtStart);
       setNotice(null);
       return { success: true };
     } catch (err) {
@@ -177,7 +186,9 @@ export function useUserAuthActions({
       setNotice(null);
       return { success: false, message };
     } finally {
-      setIsLoading(false);
+      if (!resyncing) {
+        setIsLoading(false);
+      }
     }
   }, [establishSession, invalidateAuthBootstrap, peerLoginSeqRef, resetPreferenceTracking, setError, setIsLoading, setNotice, setUser]);
 

@@ -10,7 +10,7 @@
  * Extracted from ConnectDevice.tsx for better separation of concerns.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { HardwareDeviceModel, CreateDeviceRequest, DeviceAccountInput } from '../../../api/devices';
 import { DeviceAccount, parseDeviceJson } from '../../../services/deviceParsers';
 import { QrScanResult } from '../../../hooks/qr/useQrScanner';
@@ -163,6 +163,13 @@ export function useDeviceForm(deps: UseDeviceFormDeps): UseDeviceFormReturn {
   const [qrExtractedFields, setQrExtractedFields] = useState<QrExtractedFields | null>(null);
   const [showQrDetails, setShowQrDetails] = useState(false);
   const [warning, setWarning] = useState<string | null>(null);
+  const fileUploadGenerationRef = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      fileUploadGenerationRef.current += 1;
+    };
+  }, []);
 
   const rejectImport = useCallback((message: string) => {
     setFormData(prev => ({
@@ -180,8 +187,10 @@ export function useDeviceForm(deps: UseDeviceFormDeps): UseDeviceFormReturn {
 
   // Reset state when model changes
   useEffect(() => {
+    fileUploadGenerationRef.current += 1;
     setMethod(null);
     setScanned(false);
+    setFileScanning(false);
     resetQr();
     resetUsb();
     resetSave();
@@ -262,11 +271,13 @@ export function useDeviceForm(deps: UseDeviceFormDeps): UseDeviceFormReturn {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const uploadGeneration = ++fileUploadGenerationRef.current;
     setFileScanning(true);
     setWarning(null);
 
     const reader = new FileReader();
     reader.onload = (event) => {
+      if (fileUploadGenerationRef.current !== uploadGeneration) return;
       const content = event.target?.result as string;
       const result = parseDeviceJson(content);
 
@@ -279,6 +290,7 @@ export function useDeviceForm(deps: UseDeviceFormDeps): UseDeviceFormReturn {
       setFileScanning(false);
     };
     reader.onerror = () => {
+      if (fileUploadGenerationRef.current !== uploadGeneration) return;
       setWarning('Failed to read file.');
       setFileScanning(false);
     };
@@ -305,8 +317,10 @@ export function useDeviceForm(deps: UseDeviceFormDeps): UseDeviceFormReturn {
 
   /** Handle method selection */
   const handleSelectMethod = useCallback((newMethod: ConnectionMethod) => {
+    fileUploadGenerationRef.current += 1;
     setMethod(newMethod);
     setScanned(false);
+    setFileScanning(false);
     setWarning(null);
     setQrExtractedFields(null);
     setFormData(resetImportedIdentity);

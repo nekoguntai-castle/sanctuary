@@ -58,7 +58,10 @@ export function useWalletAutopilotSettingsController(walletId: string) {
   const [featureUnavailable, setFeatureUnavailable] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [pushDevices, setPushDevices] = useState<PushDeviceAvailability>('none');
-  const prevSettingsRef = useRef<AutopilotSettingsType>(DEFAULT_SETTINGS);
+  const currentRequestIdRef = useRef(0);
+  const settingsRef = useRef<AutopilotSettingsType>(DEFAULT_SETTINGS);
+  const confirmedSettingsRef = useRef<AutopilotSettingsType>(DEFAULT_SETTINGS);
+  const successTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Whether the wallet's real settings are known: true only after a load for the
   // *current* walletId has resolved (success, or a definitive 404/403 meaning
   // there is nothing to load / no access). Starts false and is reset to false
@@ -68,8 +71,31 @@ export function useWalletAutopilotSettingsController(walletId: string) {
   const settingsLoadedRef = useRef(false);
 
   useEffect(() => {
+    return () => {
+      currentRequestIdRef.current += 1;
+      if (successTimeoutRef.current) {
+        clearTimeout(successTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     settingsLoadedRef.current = false;
+    currentRequestIdRef.current += 1;
+
+    setLoading(true);
+    setSaving(false);
+    setError(null);
+    setSuccess(false);
+    setFeatureUnavailable(false);
+    setStatus(null);
+    settingsRef.current = DEFAULT_SETTINGS;
+    confirmedSettingsRef.current = DEFAULT_SETTINGS;
+    if (successTimeoutRef.current) {
+      clearTimeout(successTimeoutRef.current);
+      successTimeoutRef.current = null;
+    }
 
     const fetchData = async () => {
       const pushDevicesPromise = loadPushDeviceAvailability();
@@ -77,7 +103,8 @@ export function useWalletAutopilotSettingsController(walletId: string) {
         const data = await walletsApi.getWalletAutopilotSettings(walletId);
         if (cancelled) return;
         setSettings(data);
-        prevSettingsRef.current = data;
+        settingsRef.current = data;
+        confirmedSettingsRef.current = data;
         settingsLoadedRef.current = true;
       } catch (err) {
         if (cancelled) return;
@@ -106,6 +133,7 @@ export function useWalletAutopilotSettingsController(walletId: string) {
 
     return () => {
       cancelled = true;
+      settingsLoadedRef.current = false;
     };
   }, [walletId]);
 
@@ -115,41 +143,57 @@ export function useWalletAutopilotSettingsController(walletId: string) {
       return;
     }
 
-    const prev = prevSettingsRef.current;
+    const requestId = ++currentRequestIdRef.current;
+    const isStale = () => currentRequestIdRef.current !== requestId;
+
+    settingsRef.current = newSettings;
     setSettings(newSettings);
     setSaving(true);
     setError(null);
 
     try {
       await walletsApi.updateWalletAutopilotSettings(walletId, newSettings);
-      prevSettingsRef.current = newSettings;
+      if (isStale()) return;
+      confirmedSettingsRef.current = newSettings;
       setSuccess(true);
-      setTimeout(() => setSuccess(false), 2000);
+      if (successTimeoutRef.current) {
+        clearTimeout(successTimeoutRef.current);
+      }
+      successTimeoutRef.current = setTimeout(() => setSuccess(false), 2000);
     } catch (err) {
-      setSettings(prev);
+      if (isStale()) return;
+      settingsRef.current = confirmedSettingsRef.current;
+      setSettings(confirmedSettingsRef.current);
       const message = err instanceof ApiError ? err.message : 'Failed to update settings';
       setError(message);
     } finally {
-      setSaving(false);
+      if (!isStale()) {
+        setSaving(false);
+      }
     }
   }, [walletId]);
 
   const handleToggle = useCallback((field: ToggleField) => {
-    const newSettings = { ...settings, [field]: !settings[field] };
-    saveSettings(newSettings);
-  }, [settings, saveSettings]);
+    const newSettings = {
+      ...settingsRef.current,
+      [field]: !settingsRef.current[field],
+    };
+    void saveSettings(newSettings);
+  }, [saveSettings]);
 
   const handleNumberChange = useCallback((field: keyof AutopilotSettingsType, value: string) => {
     const num = parseInt(value, 10);
     if (isNaN(num) || num < 0) return;
-    setSettings(prev => ({ ...prev, [field]: num }));
+    const nextSettings = { ...settingsRef.current, [field]: num };
+    settingsRef.current = nextSettings;
+    setSettings(nextSettings);
   }, []);
 
   const handleNumberBlur = useCallback((field: keyof AutopilotSettingsType) => {
-    if (settings[field] !== prevSettingsRef.current[field]) {
-      saveSettings(settings);
+    if (settingsRef.current[field] !== confirmedSettingsRef.current[field]) {
+      void saveSettings(settingsRef.current);
     }
-  }, [settings, saveSettings]);
+  }, [saveSettings]);
 
   const telegramReady = isTelegramReady(user);
 

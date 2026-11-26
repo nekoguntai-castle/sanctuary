@@ -17,28 +17,42 @@ interface VerifyState {
   message: string | null;
 }
 
+interface TokenVerifyResult extends VerifyState {
+  token: string;
+}
+
 export function useVerifyEmail(): VerifyState {
   const { search } = useLocation();
   const token = new URLSearchParams(search).get('token');
-  const [result, setResult] = useState<VerifyState | null>(null);
+  const [result, setResult] = useState<TokenVerifyResult | null>(null);
   // StrictMode runs effects twice; the token is single-use, so POST it once.
   const postedTokenRef = useRef<string | null>(null);
+  const activeTokenRef = useRef<string | null>(token);
+  activeTokenRef.current = token;
 
   useEffect(() => {
     if (!token || postedTokenRef.current === token) return;
     postedTokenRef.current = token;
 
     authApi.verifyEmail(token).then(
-      (response) => setResult({ status: 'success', message: response.message }),
-      (err: unknown) => setResult({
-        status: 'error',
-        message: apiErrorMessageOr(err, 'Email verification failed'),
-      }),
+      (response) => {
+        if (activeTokenRef.current !== token) return;
+        setResult({ token, status: 'success', message: response.message });
+      },
+      (err: unknown) => {
+        if (activeTokenRef.current !== token) return;
+        setResult({
+          token,
+          status: 'error',
+          message: apiErrorMessageOr(err, 'Email verification failed'),
+        });
+      },
     );
   }, [token]);
 
   if (!token) return { status: 'missing-token', message: null };
-  return result ?? { status: 'verifying', message: null };
+  if (!result || result.token !== token) return { status: 'verifying', message: null };
+  return { status: result.status, message: result.message };
 }
 
 export interface ResendFeedback {

@@ -51,9 +51,11 @@ const addConnectionErrorNotification = (
 const syncWalletDraftNotification = async (
   wallet: Wallet,
   { addNotification, removeNotificationsByType }: NotificationActions,
+  isCurrent: () => boolean,
 ) => {
   try {
     const drafts = await getDrafts(wallet.id);
+    if (!isCurrent()) return;
 
     if (drafts.length > 0) {
       addNotification({
@@ -74,6 +76,7 @@ const syncWalletDraftNotification = async (
 
     removeNotificationsByType('pending_drafts', wallet.id);
   } catch (error) {
+    if (!isCurrent()) return;
     logError(log, error, 'Failed to fetch drafts for wallet', {
       context: { walletId: wallet.id },
     });
@@ -83,9 +86,11 @@ const syncWalletDraftNotification = async (
 export const syncDraftNotifications = async (
   wallets: Wallet[],
   notificationActions: NotificationActions,
+  isCurrent: () => boolean = () => true,
 ) => {
   for (const wallet of wallets) {
-    await syncWalletDraftNotification(wallet, notificationActions);
+    if (!isCurrent()) return;
+    await syncWalletDraftNotification(wallet, notificationActions, isCurrent);
   }
 };
 
@@ -141,7 +146,12 @@ export function useLayoutNotifications({
   useEffect(() => {
     if (!userId || wallets.length === 0) return;
 
-    void syncDraftNotifications(wallets, notificationActions);
+    let active = true;
+    void syncDraftNotifications(wallets, notificationActions, () => active);
+
+    return () => {
+      active = false;
+    };
   }, [userId, wallets, notificationActions]);
 
   useEffect(() => {

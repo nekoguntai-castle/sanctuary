@@ -8,7 +8,14 @@
 import { act,renderHook } from '@testing-library/react';
 import { ReactNode } from 'react';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
+import { triggerLogout } from '../../src/api/refresh';
 import { NotificationProvider,useNotifications } from '../../src/contexts/NotificationContext';
+
+const mockUseOptionalUserId = vi.hoisted(() => vi.fn<() => string | null>(() => null));
+
+vi.mock('../../src/contexts/UserContext', () => ({
+  useOptionalUserId: () => mockUseOptionalUserId(),
+}));
 
 // Mock the generateNotificationId function
 vi.mock('../../src/components/NotificationToast', () => ({
@@ -18,6 +25,7 @@ vi.mock('../../src/components/NotificationToast', () => ({
 describe('NotificationContext', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    mockUseOptionalUserId.mockReturnValue(null);
   });
 
   afterEach(() => {
@@ -305,6 +313,75 @@ describe('NotificationContext', () => {
 
       expect(clearTimeoutSpy).toHaveBeenCalled();
       clearTimeoutSpy.mockRestore();
+    });
+  });
+
+  describe('Session boundary isolation', () => {
+    it('clears notifications, timers, and txid dedupe cache on terminal logout', () => {
+      mockUseOptionalUserId.mockReturnValue('user-a');
+      const clearTimeoutSpy = vi.spyOn(global, 'clearTimeout');
+      const { result } = renderHook(() => useNotifications(), { wrapper });
+
+      act(() => {
+        result.current.addNotification({
+          type: 'transaction',
+          title: 'User A tx',
+          duration: 10000,
+          data: { txid: 'shared-txid', confirmations: 0 },
+        });
+      });
+      expect(result.current.notifications).toHaveLength(1);
+
+      act(() => {
+        triggerLogout();
+      });
+
+      expect(result.current.notifications).toHaveLength(0);
+      expect(clearTimeoutSpy).toHaveBeenCalled();
+
+      // Same txid must not be suppressed after logout
+      act(() => {
+        result.current.addNotification({
+          type: 'transaction',
+          title: 'User B tx',
+          data: { txid: 'shared-txid', confirmations: 0 },
+        });
+      });
+      expect(result.current.notifications).toHaveLength(1);
+      expect(result.current.notifications[0].title).toBe('User B tx');
+      clearTimeoutSpy.mockRestore();
+    });
+
+    it('clears notifications, timers, and txid dedupe cache when the signed-in user changes', () => {
+      mockUseOptionalUserId.mockReturnValue('user-a');
+      const { result, rerender } = renderHook(() => useNotifications(), { wrapper });
+
+      act(() => {
+        result.current.addNotification({
+          type: 'transaction',
+          title: 'User A tx',
+          duration: 10000,
+          data: { txid: 'shared-txid', confirmations: 0 },
+        });
+      });
+      expect(result.current.notifications).toHaveLength(1);
+
+      // Switch directly to user-b (e.g., cross-tab login)
+      mockUseOptionalUserId.mockReturnValue('user-b');
+      rerender();
+
+      expect(result.current.notifications).toHaveLength(0);
+
+      // User B receives notification for the same txid immediately
+      act(() => {
+        result.current.addNotification({
+          type: 'transaction',
+          title: 'User B tx',
+          data: { txid: 'shared-txid', confirmations: 0 },
+        });
+      });
+      expect(result.current.notifications).toHaveLength(1);
+      expect(result.current.notifications[0].title).toBe('User B tx');
     });
   });
 });

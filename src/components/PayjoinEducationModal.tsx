@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { Shield, X, Check, ExternalLink } from 'lucide-react';
+import { lockBodyScroll } from '../utils/bodyScrollLock';
 
 interface PayjoinEducationModalProps {
   onClose: () => void;
@@ -17,12 +18,7 @@ export function PayjoinEducationModal({ onClose }: PayjoinEducationModalProps) {
     return () => document.removeEventListener('keydown', handleEscape);
   }, [onClose]);
 
-  useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, []);
+  useEffect(() => lockBodyScroll(), []);
 
   return (
     <div

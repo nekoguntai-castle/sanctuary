@@ -524,6 +524,26 @@ const registerWalletLogCapTests = (): void => {
       expect(result.current.logs.map(entry => entry.id)).toEqual(['first']);
       expect(result.current.logs[0].timestamp).toBe('2025-01-01T00:02:00Z');
     });
+
+    it('resets paused state when switching walletId so the new wallet receives live logs', async () => {
+      const { result, rerender } = renderHook(
+        ({ id }) => useWalletLogs(id),
+        { initialProps: { id: 'wallet-a' } },
+      );
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      act(() => {
+        result.current.togglePause();
+      });
+      expect(result.current.isPaused).toBe(true);
+
+      rerender({ id: 'wallet-b' });
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      expect(result.current.isPaused).toBe(false);
+
+      emitWalletLogEvent(walletLogEvent('wallet-b', 'log-b1', '2025-01-01T00:00:01Z'));
+      expect(result.current.logs.map(entry => entry.id)).toEqual(['log-b1']);
+    });
 };
 
 export function registerUseWalletLogsTests(): void {

@@ -165,8 +165,9 @@ it.each(['double-click', 'background-setup-success', 'background-setup-error'] a
       for (let i = 0; i < 30 && document.activeElement !== background; i++) await user.tab();
       expect(document.activeElement).toBe(background);
       await user.keyboard('{Enter}');
-      await waitFor(() => expect(verify).not.toBeDisabled());
-      await user.click(verify);
+      // startSetup is guarded by managementPending while verifyAndEnable is in flight
+      expect(backend.setup).toHaveBeenCalledTimes(1);
+      expect(verify).toBeDisabled();
       expect(backend.enable).toHaveBeenCalledTimes(1);
     }
 

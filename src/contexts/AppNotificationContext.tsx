@@ -12,6 +12,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import { onTerminalLogout } from '../api/refresh';
 import { useOptionalUserId } from './UserContext';
 import { createLogger } from '../utils/logger';
+import { safeJsonParse } from '../utils/safeJson';
 
 const log = createLogger('AppNotification');
 
@@ -138,6 +139,17 @@ function isStoredNotifications(value: unknown): value is StoredNotifications {
   return record.v === 1 && typeof record.userId === 'string' && Array.isArray(record.items);
 }
 
+const hydrateStoredNotifications = (items: StoredNotification[]): AppNotification[] => {
+  const now = new Date();
+  return items
+    .map((n) => ({
+      ...n,
+      createdAt: new Date(n.createdAt),
+      expiresAt: n.expiresAt ? new Date(n.expiresAt) : undefined,
+    }))
+    .filter((n: AppNotification) => !(n.expiresAt && now > n.expiresAt));
+};
+
 // Load the signed-in user's notifications. Anything else found under the key
 // (another user's, the legacy unowned array, an unknown shape) is removed.
 const loadNotifications = (userId: string): AppNotification[] => {
@@ -145,22 +157,35 @@ const loadNotifications = (userId: string): AppNotification[] => {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (!stored) return [];
 
-    const parsed: unknown = JSON.parse(stored);
-    if (!isStoredNotifications(parsed) || parsed.userId !== userId) {
+    const parsed = safeJsonParse(stored);
+    if (!parsed.success) {
+      log.error('Failed to load notifications', { error: 'Invalid stored notification JSON' });
+      return [];
+    }
+    if (!isStoredNotifications(parsed.data) || parsed.data.userId !== userId) {
       clearStoredNotifications();
       return [];
     }
 
-    const now = new Date();
-    return parsed.items.map((n) => ({
-      ...n,
-      createdAt: new Date(n.createdAt),
-      expiresAt: n.expiresAt ? new Date(n.expiresAt) : undefined,
-    })).filter((n: AppNotification) => !(n.expiresAt && now > n.expiresAt));
+    return hydrateStoredNotifications(parsed.data.items);
   } catch (err) {
     log.error('Failed to load notifications', { error: err });
     return [];
   }
+};
+
+// Parse cross-tab storage payloads for the current owner; returns null when the
+// payload belongs to another user or is malformed so the current tab ignores it.
+const parseStorageSyncNotifications = (
+  raw: string | null,
+  userId: string,
+): AppNotification[] | null => {
+  if (raw === null) return [];
+  const parsed = safeJsonParse(raw);
+  if (!parsed.success || !isStoredNotifications(parsed.data) || parsed.data.userId !== userId) {
+    return null;
+  }
+  return hydrateStoredNotifications(parsed.data.items);
 };
 
 // Save the signed-in user's persistent notifications to localStorage
@@ -217,6 +242,21 @@ export const AppNotificationProvider: React.FC<{ children: ReactNode }> = ({ chi
     setIsPanelOpen(false);
     clearStoredNotifications();
   }), []);
+
+  // Reconcile persistent notifications updated in another tab for the same user.
+  useEffect(() => {
+    if (!userId) return;
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== STORAGE_KEY) return;
+      const persisted = parseStorageSyncNotifications(event.newValue, userId);
+      if (persisted === null) return;
+      setNotifications(prev => [...prev.filter(n => !n.persistent), ...persisted]);
+    };
+
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, [userId]);
 
   // Clean up expired notifications periodically
   useEffect(() => {

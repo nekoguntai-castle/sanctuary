@@ -11,7 +11,6 @@
  * 4. CurrencyProvider - BTC price & formatting (depends on UserProvider)
  * 5. NotificationProvider - Toast notifications (no context dependencies)
  * 6. AppNotificationProvider - Badge/alert notifications (no context dependencies)
- * 7. SidebarProvider - Sidebar refresh triggers (no context dependencies)
  */
 
 import React, { ReactNode } from 'react';
@@ -21,7 +20,6 @@ import { ActiveNetworkProvider } from '../contexts/ActiveNetworkContext';
 import { CurrencyProvider } from '../contexts/CurrencyContext';
 import { NotificationProvider } from '../contexts/NotificationContext';
 import { AppNotificationProvider } from '../contexts/AppNotificationContext';
-import { SidebarProvider } from '../contexts/SidebarContext';
 
 interface AppProvidersProps {
   children: ReactNode;
@@ -35,9 +33,7 @@ export const AppProviders: React.FC<AppProvidersProps> = ({ children }) => {
           <CurrencyProvider>
             <NotificationProvider>
               <AppNotificationProvider>
-                <SidebarProvider>
-                  {children}
-                </SidebarProvider>
+                {children}
               </AppNotificationProvider>
             </NotificationProvider>
           </CurrencyProvider>

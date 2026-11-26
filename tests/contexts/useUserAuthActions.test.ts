@@ -11,12 +11,18 @@ import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useUserAuthActions } from '../../src/contexts/useUserAuthActions';
 import * as authApi from '../../src/api/auth';
+import * as twoFactorApi from '../../src/api/twoFactor';
 import { ApiError } from '../../src/api/client';
 
 vi.mock('../../src/api/auth', () => ({
   logout: vi.fn().mockResolvedValue(undefined),
   login: vi.fn(),
+  register: vi.fn(),
   requires2FA: vi.fn().mockReturnValue(false),
+  isPendingEmailVerification: vi.fn().mockReturnValue(false),
+}));
+vi.mock('../../src/api/twoFactor', () => ({
+  verify2FA: vi.fn(),
 }));
 vi.mock('../../src/api/refresh', () => ({
   triggerLogout: vi.fn(),
@@ -126,5 +132,58 @@ describe('useUserAuthActions login failures', () => {
     });
 
     expect(loginResult).toEqual({ success: false, emailVerificationRequired: false });
+  });
+
+  it('keeps isLoading true during cross-tab resync on login, verify2FA, and register', async () => {
+    const peerLoginSeqRef = { current: 0 };
+    const setIsLoading = vi.fn();
+    const resyncSession = vi.fn();
+    const { result } = renderHook(() => useUserAuthActions({
+      invalidateAuthBootstrap: vi.fn(),
+      peerLoginSeqRef,
+      resyncSession,
+      resetPreferenceTracking: vi.fn(),
+      flushPreferenceWrites: vi.fn().mockResolvedValue(undefined),
+      setError: vi.fn(),
+      setIsLoading,
+      setNotice: vi.fn(),
+      setTwoFactorPending: vi.fn(),
+      setUser: vi.fn(),
+      twoFactorPending: { tempToken: 'temp-1' },
+    }));
+
+    const apiUser = { id: 'user-1', username: 'alice' };
+
+    vi.mocked(authApi.login).mockImplementationOnce(async () => {
+      peerLoginSeqRef.current += 1;
+      return { user: apiUser } as never;
+    });
+    await act(async () => {
+      await result.current.login('alice', 'pw');
+    });
+    expect(resyncSession).toHaveBeenCalledTimes(1);
+    expect(setIsLoading).not.toHaveBeenCalledWith(false);
+
+    setIsLoading.mockClear();
+    vi.mocked(twoFactorApi.verify2FA).mockImplementationOnce(async () => {
+      peerLoginSeqRef.current += 1;
+      return { user: apiUser } as never;
+    });
+    await act(async () => {
+      await result.current.verify2FA('123456');
+    });
+    expect(resyncSession).toHaveBeenCalledTimes(2);
+    expect(setIsLoading).not.toHaveBeenCalledWith(false);
+
+    setIsLoading.mockClear();
+    vi.mocked(authApi.register).mockImplementationOnce(async () => {
+      peerLoginSeqRef.current += 1;
+      return { user: apiUser } as never;
+    });
+    await act(async () => {
+      await result.current.register('alice', 'pw', 'alice@example.com');
+    });
+    expect(resyncSession).toHaveBeenCalledTimes(3);
+    expect(setIsLoading).not.toHaveBeenCalledWith(false);
   });
 });

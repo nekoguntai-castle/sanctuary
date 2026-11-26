@@ -1,8 +1,11 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as bitcoinApi from '../../../src/api/bitcoin';
+import { getDrafts } from '../../../src/api/drafts';
+import type { Wallet } from '../../../src/api/wallets';
 import {
   checkBitcoinConnection,
+  syncDraftNotifications,
   useLayoutNotifications,
 } from '../../../src/components/Layout/useLayoutNotifications';
 
@@ -180,5 +183,104 @@ describe('useLayoutNotifications connection ownership', () => {
       actionUrl: '/admin/node-config',
       actionLabel: 'Configure Node',
     }));
+  });
+});
+
+describe('useLayoutNotifications draft sync ownership', () => {
+  const walletA = { id: 'wallet-a', name: 'Alice Vault' } as Wallet;
+  const walletB = { id: 'wallet-b', name: 'Alice Spend' } as Wallet;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getDrafts).mockReset();
+    vi.mocked(bitcoinApi.getStatus).mockResolvedValue({ connected: true });
+  });
+
+  it('stops draft sync and ignores late responses when user logs out or unmounts mid-loop', async () => {
+    const actions = createActions();
+    let resolveFirstWallet!: (drafts: Array<{ id: string }>) => void;
+    vi.mocked(getDrafts).mockImplementation(() => new Promise(resolve => {
+      resolveFirstWallet = (drafts) => resolve(drafts as never);
+    }));
+
+    const view = renderHook(
+      ({ currentUser, currentWallets }) => useLayoutNotifications({
+        user: currentUser,
+        wallets: currentWallets,
+        selectedNetwork: 'mainnet',
+        notificationActions: actions,
+      }),
+      { initialProps: { currentUser: user as { id: string; isAdmin?: boolean } | null, currentWallets: [walletA, walletB] } },
+    );
+
+    expect(getDrafts).toHaveBeenCalledTimes(1);
+    expect(getDrafts).toHaveBeenCalledWith('wallet-a');
+
+    // User logs out before wallet-a drafts resolve
+    view.rerender({ currentUser: null, currentWallets: [] });
+
+    await act(async () => {
+      resolveFirstWallet([{ id: 'draft-1' }]);
+    });
+
+    expect(actions.addNotification).not.toHaveBeenCalled();
+    expect(actions.removeNotificationsByType).not.toHaveBeenCalled();
+    // Never moved on to wallet-b
+    expect(getDrafts).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores draft fetch errors after unmount or superseding wallets update', async () => {
+    const actions = createActions();
+    let rejectFirst!: (error: Error) => void;
+    vi.mocked(getDrafts).mockImplementationOnce(() => new Promise((_, reject) => {
+      rejectFirst = reject;
+    }));
+
+    const view = renderHook(() => useLayoutNotifications({
+      user,
+      wallets: [walletA, walletB],
+      selectedNetwork: 'mainnet',
+      notificationActions: actions,
+    }));
+
+    view.unmount();
+
+    await act(async () => {
+      rejectFirst(new Error('network cancelled'));
+    });
+
+    expect(getDrafts).toHaveBeenCalledTimes(1);
+    expect(actions.addNotification).not.toHaveBeenCalled();
+  });
+
+  it('preserves exported syncDraftNotifications default behavior when current', async () => {
+    const actions = createActions();
+    vi.mocked(getDrafts)
+      .mockResolvedValueOnce([{ id: 'd1' }, { id: 'd2' }] as never)
+      .mockResolvedValueOnce([]);
+
+    await syncDraftNotifications([walletA, walletB], actions);
+
+    expect(actions.addNotification).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'pending_drafts',
+      scopeId: 'wallet-a',
+      title: '2 pending drafts',
+      message: 'Alice Vault: Resume or broadcast',
+    }));
+    expect(actions.removeNotificationsByType).toHaveBeenCalledWith('pending_drafts', 'wallet-b');
+  });
+
+  it('skips remaining wallets in syncDraftNotifications when isCurrent turns false between iterations', async () => {
+    const actions = createActions();
+    let current = true;
+    vi.mocked(getDrafts).mockImplementationOnce(async () => {
+      current = false;
+      return [{ id: 'd1' }] as never;
+    });
+
+    await syncDraftNotifications([walletA, walletB], actions, () => current);
+
+    expect(getDrafts).toHaveBeenCalledTimes(1);
+    expect(actions.addNotification).not.toHaveBeenCalled();
   });
 });

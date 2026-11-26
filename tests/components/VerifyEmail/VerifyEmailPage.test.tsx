@@ -1,6 +1,6 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { StrictMode } from 'react';
 import { VerifyEmailPage } from '../../../src/components/VerifyEmail/VerifyEmailPage';
@@ -98,5 +98,74 @@ describe('VerifyEmailPage', () => {
     await user.click(screen.getByRole('button', { name: 'Send a new link' }));
 
     expect(await screen.findByText(expected)).toBeInTheDocument();
+  });
+
+  it('resets to verifying and ignores stale completions when the query token changes while mounted', async () => {
+    let resolveFirst!: (val: { success: boolean; message: string; email: string }) => void;
+    let rejectFirst!: (err: Error) => void;
+    let resolveSecond!: (val: { success: boolean; message: string; email: string }) => void;
+    vi.mocked(authApi.verifyEmail)
+      .mockReturnValueOnce(new Promise((resolve, reject) => { resolveFirst = resolve; rejectFirst = reject; }))
+      .mockReturnValueOnce(new Promise((resolve) => { resolveSecond = resolve; }));
+
+    let navigateTo!: (path: string) => void;
+    function Harness() {
+      const navigate = useNavigate();
+      navigateTo = navigate;
+      return <VerifyEmailPage />;
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/verify-email?token=tok-1']}>
+        <Harness />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent('Verifying');
+
+    // Switch token before tok-1 settles
+    act(() => {
+      navigateTo('/verify-email?token=tok-2');
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('Verifying');
+
+    // Stale tok-1 resolves late — must be ignored
+    await act(async () => {
+      resolveFirst({ success: true, message: 'Stale token 1 verified', email: 'old@example.com' });
+      await Promise.resolve();
+    });
+    expect(screen.queryByText('Stale token 1 verified')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Verifying');
+
+    // tok-2 resolves — displayed
+    await act(async () => {
+      resolveSecond({ success: true, message: 'Token 2 verified', email: 'new@example.com' });
+      await Promise.resolve();
+    });
+    expect(await screen.findByText('Token 2 verified')).toBeInTheDocument();
+
+    // Switch to tok-3 after tok-2 succeeded — must immediately show Verifying, not stale Token 2 verified
+    let rejectThird!: (err: Error) => void;
+    vi.mocked(authApi.verifyEmail).mockReturnValueOnce(
+      new Promise((_, reject) => { rejectThird = reject; }),
+    );
+    act(() => {
+      navigateTo('/verify-email?token=tok-3');
+    });
+    expect(screen.queryByText('Token 2 verified')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Verifying');
+
+    // Switch to tok-4 before tok-3 rejects — late rejection from tok-3 must be ignored
+    vi.mocked(authApi.verifyEmail).mockReturnValueOnce(new Promise(() => {}));
+    act(() => {
+      navigateTo('/verify-email?token=tok-4');
+    });
+    await act(async () => {
+      rejectThird(new Error('stale error'));
+      await Promise.resolve();
+    });
+    expect(screen.queryByText('Email verification failed')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Verifying');
+    void rejectFirst;
   });
 });

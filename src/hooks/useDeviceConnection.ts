@@ -7,7 +7,7 @@
  * - Error handling
  */
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { HardwareDeviceModel } from '../api/devices';
 import { DeviceAccount } from '../services/deviceParsers';
 import { loadHardwareWalletRuntime } from '../services/hardwareWallet/loader';
@@ -111,6 +111,12 @@ export function useDeviceConnection(): UseDeviceConnectionState {
   const [error, setError] = useState<string | null>(null);
   const ownershipGeneration = useRef(0);
   const connectionQueue = useRef<Promise<void>>(Promise.resolve());
+
+  useEffect(() => {
+    return () => {
+      ownershipGeneration.current += 1;
+    };
+  }, []);
 
   const reset = useCallback(() => {
     ownershipGeneration.current += 1;

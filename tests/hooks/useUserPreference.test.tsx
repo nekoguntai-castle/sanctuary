@@ -94,6 +94,16 @@ describe('useUserPreference', () => {
       expect(result.current[0]).toBe('light');
     });
 
+    it('returns default value when localStorage contains malformed JSON', () => {
+      mockGetItem.mockReturnValue('{not-valid-json');
+
+      const { result } = renderHook(() =>
+        useUserPreference('theme', 'light')
+      );
+
+      expect(result.current[0]).toBe('light');
+    });
+
     it('should handle localStorage write errors gracefully', () => {
       mockGetItem.mockReturnValue(null);
       mockSetItem.mockImplementation(() => {
@@ -111,6 +121,35 @@ describe('useUserPreference', () => {
 
       // The in-memory state should still update even if localStorage fails
       expect(result.current[0]).toBe('dark');
+    });
+
+    it('does not write to localStorage on unauthenticated mount', () => {
+      mockGetItem.mockReturnValue(null);
+
+      renderHook(() => useUserPreference('theme', 'light'));
+
+      expect(mockSetItem).not.toHaveBeenCalled();
+    });
+
+    it('re-reads localStorage when key changes without writing old value under the new key', () => {
+      mockGetItem.mockImplementation((storageKey: string) => {
+        if (storageKey === 'sanctuary_pref_keyA') return JSON.stringify('valA');
+        if (storageKey === 'sanctuary_pref_keyB') return JSON.stringify('valB');
+        return null;
+      });
+
+      const { result, rerender } = renderHook(
+        ({ prefKey }) => useUserPreference(prefKey, 'default'),
+        { initialProps: { prefKey: 'keyA' } },
+      );
+
+      expect(result.current[0]).toBe('valA');
+      expect(mockSetItem).not.toHaveBeenCalled();
+
+      rerender({ prefKey: 'keyB' });
+
+      expect(result.current[0]).toBe('valB');
+      expect(mockSetItem).not.toHaveBeenCalled();
     });
   });
 

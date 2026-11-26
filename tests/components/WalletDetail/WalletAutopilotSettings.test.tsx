@@ -910,4 +910,85 @@ describe('WalletAutopilotSettings', () => {
     await screen.findByText('Enable Autopilot');
     expect(screen.queryByText('UTXO Health')).not.toBeInTheDocument();
   });
+
+  it('keeps the newest toggle when an earlier overlapping save rejects out of order', async () => {
+    mockTelegramUser();
+    let rejectFirst!: (err: Error) => void;
+    let resolveSecond!: () => void;
+    vi.mocked(walletsApi.updateWalletAutopilotSettings)
+      .mockReturnValueOnce(new Promise((_, reject) => { rejectFirst = reject; }) as never)
+      .mockReturnValueOnce(new Promise((resolve) => { resolveSecond = () => resolve(undefined as never); }) as never);
+
+    const { result } = renderHook(() => useWalletAutopilotSettingsController(walletId));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // Rapidly toggle two fields in the same tick: second must compose over first
+    act(() => {
+      result.current.handleToggle('enabled');
+      result.current.handleToggle('notifyTelegram');
+    });
+
+    expect(walletsApi.updateWalletAutopilotSettings).toHaveBeenNthCalledWith(
+      2,
+      walletId,
+      expect.objectContaining({ enabled: true, notifyTelegram: false }),
+    );
+
+    // Second succeeds first, then first rejects later
+    await act(async () => {
+      resolveSecond();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      rejectFirst(new Error('stale failure'));
+      await Promise.resolve();
+    });
+
+    expect(result.current.settings.enabled).toBe(true);
+    expect(result.current.settings.notifyTelegram).toBe(false);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('resets state and ignores stale save completions when walletId changes', async () => {
+    mockTelegramUser();
+    let resolveSaveA!: () => void;
+    vi.mocked(walletsApi.updateWalletAutopilotSettings).mockReturnValueOnce(
+      new Promise((resolve) => { resolveSaveA = () => resolve(undefined as never); }) as never,
+    );
+
+    const { result, rerender, unmount } = renderHook(
+      ({ id }) => useWalletAutopilotSettingsController(id),
+      { initialProps: { id: 'wallet-a' } },
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    act(() => {
+      result.current.handleToggle('enabled');
+    });
+    expect(result.current.saving).toBe(true);
+
+    rerender({ id: 'wallet-b' });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.saving).toBe(false);
+    expect(result.current.success).toBe(false);
+
+    // Late resolution from wallet-a must not show success on wallet-b
+    await act(async () => {
+      resolveSaveA();
+      await Promise.resolve();
+    });
+    expect(result.current.success).toBe(false);
+
+    // Succeed on wallet-b so successTimeoutRef is armed, then switch to wallet-c
+    vi.mocked(walletsApi.updateWalletAutopilotSettings).mockResolvedValueOnce(undefined as never);
+    await act(async () => {
+      result.current.handleToggle('enabled');
+      await Promise.resolve();
+    });
+    expect(result.current.success).toBe(true);
+    rerender({ id: 'wallet-c' });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.success).toBe(false);
+    unmount();
+  });
 });

@@ -865,4 +865,32 @@ describe('useDeviceConnection', () => {
       expect(result.current.clearError).toBe(clearError1);
     });
   });
+
+  describe('Unmount cleanup', () => {
+    it('cancels in-flight USB scan and releases the lease on unmount', async () => {
+      let resolveConnect!: (value: unknown) => void;
+      mockConnect.mockImplementation(
+        () => new Promise((resolve) => { resolveConnect = resolve; }),
+      );
+
+      const { result, unmount } = renderHook(() => useDeviceConnection());
+
+      let connectPromise!: Promise<void>;
+      act(() => {
+        connectPromise = result.current.connectUsb(mockModel);
+      });
+      await waitFor(() => {
+        expect(mockConnect).toHaveBeenCalled();
+      });
+
+      unmount();
+      await act(async () => {
+        resolveConnect({ connected: true, fingerprint: 'abcd1234' });
+        await connectPromise;
+      });
+
+      expect(mockGetAllXpubs).not.toHaveBeenCalled();
+      expect(mockReleaseConnection).toHaveBeenCalledWith(mockLease);
+    });
+  });
 });

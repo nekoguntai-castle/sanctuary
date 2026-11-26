@@ -69,6 +69,8 @@ export const useWalletLogs = (
     clearEpochRef.current += 1;
     logsRef.current = [];
     seenIdsRef.current.clear();
+    pausedRef.current = false;
+    setIsPaused(false);
     setLogs([]);
     setIsLoading(false);
   }, [walletId]);

@@ -526,4 +526,39 @@ describe('CreateWallet branch coverage', () => {
     expect(view.result.current.selectedSigners).toHaveLength(2);
     expect(view.result.current.quorumM).toBe(2);
   });
+
+  it('prevents duplicate wallet creation when handleCreate is invoked twice synchronously', async () => {
+    let resolveCreate!: (val: { id: string }) => void;
+    mocks.mutateAsync.mockReturnValueOnce(
+      new Promise<{ id: string }>((resolve) => { resolveCreate = resolve; }),
+    );
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <MemoryRouter>{children}</MemoryRouter>
+    );
+    const view = renderHook(() => useCreateWalletController(), { wrapper });
+    await waitFor(() => expect(view.result.current.availableDevices).toHaveLength(5));
+
+    act(() => {
+      view.result.current.setWalletType('single_sig' as any);
+      view.result.current.setWalletName('Vault');
+    });
+    act(() => {
+      view.result.current.toggleDevice('single-only');
+    });
+    expect(view.result.current.selectedSigners).toHaveLength(1);
+
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    act(() => {
+      first = view.result.current.handleCreate();
+      second = view.result.current.handleCreate();
+    });
+
+    expect(mocks.mutateAsync).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveCreate({ id: 'wallet-new' });
+      await Promise.all([first, second]);
+    });
+  });
 });

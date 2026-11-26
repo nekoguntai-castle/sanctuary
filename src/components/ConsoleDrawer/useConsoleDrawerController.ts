@@ -57,12 +57,15 @@ function getExpirationDate(days: number): string {
 }
 
 // Guards against a Console turn (send/replay) landing after the user has
-// switched to a different session while the request was in flight.
+// switched to a different session or started a fresh unsaved session while
+// the request was in flight.
 function isSessionRequestStale(
   requestSessionId: string | null,
   currentSessionId: string | null,
+  requestEpoch: number,
+  currentEpoch: number,
 ): boolean {
-  return currentSessionId !== requestSessionId;
+  return currentEpoch !== requestEpoch || currentSessionId !== requestSessionId;
 }
 
 export function useConsoleDrawerController({
@@ -94,6 +97,9 @@ export function useConsoleDrawerController({
   const [setupReason, setSetupReason] =
     useState<consoleApi.ConsoleSetupReason | null>(null);
   const selectedSessionIdRef = useRef<string | null>(null);
+  const loadGenerationRef = useRef(0);
+  const sessionEpochRef = useRef(0);
+  const turnInFlightRef = useRef(false);
   const pendingMessageCounterRef = useRef(0);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -166,6 +172,9 @@ export function useConsoleDrawerController({
   );
 
   const loadConsoleState = useCallback(async () => {
+    const loadGeneration = ++loadGenerationRef.current;
+    const isCurrentLoad = () => loadGenerationRef.current === loadGeneration;
+
     setLoading(true);
     setError(null);
     try {
@@ -174,6 +183,8 @@ export function useConsoleDrawerController({
         consoleApi.listPromptHistory({ limit: PROMPT_LIMIT }),
         consoleApi.listConsoleTools(),
       ]);
+      if (!isCurrentLoad()) return;
+
       const orderedSessions = sortSessionsByUpdatedAt(sessionResult.sessions);
       const preferredSessionId = selectedSessionIdRef.current;
       const nextSessionId = orderedSessions.some(
@@ -194,15 +205,21 @@ export function useConsoleDrawerController({
         setMessages([]);
       }
     } catch (caught) {
+      if (!isCurrentLoad()) return;
       handleConsoleError(caught, "Failed to load Sanctuary Console");
     } finally {
-      setLoading(false);
+      if (isCurrentLoad()) {
+        setLoading(false);
+      }
     }
   }, [handleConsoleError, loadSessionTurns, setSelectedSessionId]);
 
   useEffect(() => {
     if (!isOpen) return;
     void loadConsoleState();
+    return () => {
+      loadGenerationRef.current += 1;
+    };
   }, [isOpen, loadConsoleState]);
 
   useEffect(() => {
@@ -242,6 +259,7 @@ export function useConsoleDrawerController({
   }, [selectedWalletId, wallets]);
 
   const startNewSession = useCallback(() => {
+    sessionEpochRef.current += 1;
     setSelectedSessionId(null);
     setMessages([]);
     setError(null);
@@ -257,6 +275,7 @@ export function useConsoleDrawerController({
   const clearSelectedSession = useCallback(async () => {
     const sessionId = selectedSessionIdRef.current;
     if (!sessionId) {
+      sessionEpochRef.current += 1;
       clearDisplay();
       return;
     }
@@ -264,6 +283,7 @@ export function useConsoleDrawerController({
     setError(null);
     try {
       await consoleApi.deleteConsoleSession(sessionId);
+      sessionEpochRef.current += 1;
       setSessions((current) =>
         current.filter((session) => session.id !== sessionId),
       );
@@ -294,6 +314,7 @@ export function useConsoleDrawerController({
         return;
       }
 
+      sessionEpochRef.current += 1;
       setSelectedSessionId(sessionId);
       setMessages([]);
       await loadSessionTurns(sessionId);
@@ -303,11 +324,13 @@ export function useConsoleDrawerController({
 
   const sendPrompt = useCallback(async () => {
     const prompt = input.trim();
-    if (!prompt || sending) return;
+    if (!prompt || turnInFlightRef.current) return;
 
+    turnInFlightRef.current = true;
     pendingMessageCounterRef.current += 1;
     const pendingPromptId = `pending:${pendingMessageCounterRef.current}`;
     const requestSessionId = selectedSessionId ?? null;
+    const requestEpoch = sessionEpochRef.current;
 
     setInput("");
     setSending(true);
@@ -331,7 +354,14 @@ export function useConsoleDrawerController({
       setPrompts((current) =>
         mergePromptHistory(current, result.promptHistory),
       );
-      if (!isSessionRequestStale(requestSessionId, selectedSessionIdRef.current)) {
+      if (
+        !isSessionRequestStale(
+          requestSessionId,
+          selectedSessionIdRef.current,
+          requestEpoch,
+          sessionEpochRef.current,
+        )
+      ) {
         setSelectedSessionId(result.session.id);
         setMessages((current) =>
           replacePendingPromptWithTurnResult(current, pendingPromptId, result),
@@ -340,13 +370,19 @@ export function useConsoleDrawerController({
       setSetupReason(null);
       onTurnComplete?.(result);
     } catch (caught) {
+      const stale = isSessionRequestStale(
+        requestSessionId,
+        selectedSessionIdRef.current,
+        requestEpoch,
+        sessionEpochRef.current,
+      );
       const setupErrorReason = getConsoleSetupErrorReason(caught);
       if (setupErrorReason) {
-        setInput(prompt);
+        if (!stale) {
+          setInput(prompt);
+        }
         handleConsoleError(caught, "Console turn failed");
-      } else if (
-        !isSessionRequestStale(requestSessionId, selectedSessionIdRef.current)
-      ) {
+      } else if (!stale) {
         setMessages((current) =>
           appendFailedAssistantMessage(current, {
             id: `${pendingPromptId}:failed`,
@@ -357,6 +393,7 @@ export function useConsoleDrawerController({
         );
       }
     } finally {
+      turnInFlightRef.current = false;
       setSending(false);
     }
   }, [
@@ -367,7 +404,6 @@ export function useConsoleDrawerController({
     onTurnComplete,
     scope,
     selectedSessionId,
-    sending,
     setSelectedSessionId,
   ]);
 
@@ -376,7 +412,10 @@ export function useConsoleDrawerController({
       promptId: string,
       replaySensitivity: consoleApi.ConsoleSensitivity,
     ) => {
+      if (turnInFlightRef.current) return;
+      turnInFlightRef.current = true;
       const requestSessionId = selectedSessionId ?? null;
+      const requestEpoch = sessionEpochRef.current;
       setReplayingPromptId(promptId);
       setError(null);
       try {
@@ -390,7 +429,12 @@ export function useConsoleDrawerController({
           mergePromptHistory(current, result.promptHistory),
         );
         if (
-          !isSessionRequestStale(requestSessionId, selectedSessionIdRef.current)
+          !isSessionRequestStale(
+            requestSessionId,
+            selectedSessionIdRef.current,
+            requestEpoch,
+            sessionEpochRef.current,
+          )
         ) {
           setSelectedSessionId(result.session.id);
           setMessages((current) => appendTurnResult(current, result));
@@ -400,6 +444,7 @@ export function useConsoleDrawerController({
       } catch (caught) {
         handleConsoleError(caught, "Prompt replay failed");
       } finally {
+        turnInFlightRef.current = false;
         setReplayingPromptId(null);
       }
     },

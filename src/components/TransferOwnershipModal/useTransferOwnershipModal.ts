@@ -1,4 +1,4 @@
-import { useCallback,useRef,useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import * as authApi from '../../api/auth';
 import { ApiError } from '../../api/client';
@@ -24,6 +24,16 @@ export function useTransferOwnershipModal({
   // Every input or selection transition invalidates older async completions.
   const searchGenerationRef = useRef(0);
   const visibleResultsRef = useRef<authApi.SearchUser[]>([]);
+  const submittingRef = useRef(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      searchGenerationRef.current += 1;
+    };
+  }, []);
 
   const clearSearchResults = useCallback(() => {
     visibleResultsRef.current = [];
@@ -78,12 +88,14 @@ export function useTransferOwnershipModal({
 
   const handleSubmit = useCallback(async (event: FormEvent) => {
     event.preventDefault();
+    if (submittingRef.current) return;
 
     if (!selectedUser) {
       setError('Please select a recipient');
       return;
     }
 
+    submittingRef.current = true;
     setSubmitting(true);
     setError(null);
 
@@ -102,12 +114,19 @@ export function useTransferOwnershipModal({
         toUserId: selectedUser.id,
       });
 
-      onTransferInitiated();
+      if (mountedRef.current) {
+        onTransferInitiated();
+      }
     } catch (err) {
       log.error('Failed to initiate transfer', { err });
-      setError(err instanceof ApiError ? err.message : 'Failed to initiate transfer');
+      if (mountedRef.current) {
+        setError(err instanceof ApiError ? err.message : 'Failed to initiate transfer');
+      }
     } finally {
-      setSubmitting(false);
+      submittingRef.current = false;
+      if (mountedRef.current) {
+        setSubmitting(false);
+      }
     }
   }, [keepExistingUsers, message, onTransferInitiated, resourceId, resourceType, selectedUser]);
 

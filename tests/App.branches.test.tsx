@@ -94,12 +94,6 @@ vi.mock("../src/contexts/AppNotificationContext", () => ({
   useAppNotifications: () => ({ addNotification: mockAddAppNotification }),
 }));
 
-vi.mock("../src/contexts/SidebarContext", () => ({
-  SidebarProvider: ({ children }: { children: React.ReactNode }) => (
-    <>{children}</>
-  ),
-}));
-
 vi.mock("../src/providers/QueryProvider", () => ({
   QueryProvider: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
@@ -310,7 +304,7 @@ describe("App branch coverage", () => {
 
     expect(screen.getByText("Login Screen")).toBeInTheDocument();
     expect(screen.queryByText("Dashboard Page")).not.toBeInTheDocument();
-    expect(mockUseWebSocketQueryInvalidation).toHaveBeenCalled();
+    expect(mockUseWebSocketQueryInvalidation).not.toHaveBeenCalled();
     expect(mockSocketConnect).not.toHaveBeenCalled();
   });
 
@@ -328,6 +322,8 @@ describe("App branch coverage", () => {
 
     expect(screen.getByRole("heading", { name: "Email verification" })).toBeInTheDocument();
     expect(screen.queryByText("Login Screen")).not.toBeInTheDocument();
+    expect(mockUseWebSocketQueryInvalidation).not.toHaveBeenCalled();
+    expect(mockSocketConnect).not.toHaveBeenCalled();
   });
 
   it("renders the email verification page for an authenticated /verify-email too", () => {
@@ -344,8 +340,8 @@ describe("App branch coverage", () => {
 
     expect(screen.getByRole("heading", { name: "Email verification" })).toBeInTheDocument();
     expect(screen.queryByText("Dashboard Page")).not.toBeInTheDocument();
-    // Logout closes the socket, so each signed-in session connects one on any page.
-    expect(mockSocketConnect).toHaveBeenCalled();
+    expect(mockUseWebSocketQueryInvalidation).not.toHaveBeenCalled();
+    expect(mockSocketConnect).not.toHaveBeenCalled();
   });
 
   it("an admin login consumes a stashed restore hand-off", async () => {
@@ -392,6 +388,8 @@ describe("App branch coverage", () => {
     render(<App />);
 
     expect(await screen.findByText("Dashboard Page")).toBeInTheDocument();
+    expect(mockUseWebSocketQueryInvalidation).toHaveBeenCalled();
+    expect(mockSocketConnect).toHaveBeenCalled();
     expect(screen.queryByTestId("animated-background")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByText("toggle-theme"));

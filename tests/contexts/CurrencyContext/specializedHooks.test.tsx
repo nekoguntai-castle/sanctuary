@@ -1,6 +1,7 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as authApi from "../../../src/api/auth";
 import * as priceApi from "../../../src/api/price";
 import {
   useBtcPrice,
@@ -10,7 +11,7 @@ import {
 } from "../../../src/contexts/CurrencyContext";
 import { usePriceContext } from "../../../src/contexts/PriceContext";
 import { useCurrencyPreferencesContext } from "../../../src/contexts/CurrencyPreferencesContext";
-import { renderWithProviders, setupDefaultMocks } from "./helpers";
+import { authenticatedUser, renderWithProviders, setupDefaultMocks } from "./helpers";
 
 vi.mock("../../../src/utils/logger", () => ({
   createLogger: () => ({
@@ -215,5 +216,49 @@ describe("CurrencyContext - Specialized hooks", () => {
 
     // The last captured reference is identical to the one before the event.
     expect(refs[refs.length - 1]).toBe(stableRef);
+  });
+
+  it("resets a saved disabled priceProvider to auto even when /auth/me resolves after getProviders", async () => {
+    let resolveUser!: (value: typeof authenticatedUser) => void;
+    vi.mocked(authApi.getCurrentUser).mockReturnValueOnce(
+      new Promise((resolve) => { resolveUser = resolve; }) as never,
+    );
+    vi.mocked(priceApi.getProviders).mockResolvedValueOnce({
+      providers: ["mempool", "coingecko"],
+      count: 2,
+    });
+    vi.mocked(authApi.updatePreferences).mockResolvedValue({
+      ...authenticatedUser,
+      preferences: { ...authenticatedUser.preferences, priceProvider: "auto" },
+    } as never);
+
+    const TestProviderDisplay = () => {
+      const { priceProvider, availableProviders } = useCurrencySettings();
+      return (
+        <div>
+          <span data-testid="provider">{priceProvider}</span>
+          <span data-testid="providers">{availableProviders.join(",")}</span>
+        </div>
+      );
+    };
+
+    renderWithProviders(<TestProviderDisplay />);
+
+    // Providers resolve first while user is still null
+    await waitFor(() => {
+      expect(screen.getByTestId("providers")).toHaveTextContent("auto,mempool,coingecko");
+    });
+
+    // Now /auth/me resolves with a saved provider ('kraken') that is disabled
+    await act(async () => {
+      resolveUser({
+        ...authenticatedUser,
+        preferences: { ...authenticatedUser.preferences, priceProvider: "kraken" },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("provider")).toHaveTextContent("auto");
+    });
   });
 });

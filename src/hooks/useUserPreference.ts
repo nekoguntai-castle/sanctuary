@@ -14,9 +14,10 @@
  * const [layout, setLayout] = useUserPreference('viewSettings.wallets.layout', 'grid');
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { useCurrentUser, useUserPreferences } from '../contexts/UserContext';
 import { createLogger } from '../utils/logger';
+import { safeJsonParse } from '../utils/safeJson';
 import {
   asPreferenceRecord,
   buildPreferencePathPatch,
@@ -27,6 +28,21 @@ const log = createLogger('useUserPreference');
 
 const STORAGE_PREFIX = 'sanctuary_pref_';
 
+function readLocalPreference<T>(key: string, defaultValue: T): T {
+  try {
+    const stored = localStorage.getItem(STORAGE_PREFIX + key);
+    if (stored !== null) {
+      const parsed = safeJsonParse(stored);
+      if (parsed.success) {
+        return parsed.data as T;
+      }
+    }
+  } catch (err) {
+    log.debug('Failed to read localStorage preference', { key, error: err });
+  }
+  return defaultValue;
+}
+
 export function useUserPreference<T>(
   key: string,
   defaultValue: T
@@ -36,18 +52,15 @@ export function useUserPreference<T>(
   const isLoggedIn = !!user;
   const serverPreferences = asPreferenceRecord(preferences);
 
-  // Read initial value from localStorage for unauthenticated fallback
-  const [localValue, setLocalValue] = useState<T>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_PREFIX + key);
-      if (stored !== null) {
-        return JSON.parse(stored) as T;
-      }
-    } catch (err) {
-      log.debug('Failed to read localStorage preference', { key, error: err });
-    }
-    return defaultValue;
-  });
+  // Key-scoped local value so switching `key` re-reads localStorage immediately
+  // without persisting stale values under the new key or writing on mount.
+  const [storedEntry, setStoredEntry] = useState<{ key: string; value: T }>(() => ({
+    key,
+    value: readLocalPreference(key, defaultValue),
+  }));
+  const localValue = storedEntry.key === key
+    ? storedEntry.value
+    : readLocalPreference(key, defaultValue);
 
   // Derive the current value: server preferences take priority when logged in
   const serverValue = isLoggedIn
@@ -57,17 +70,6 @@ export function useUserPreference<T>(
   const currentValue = isLoggedIn
     ? (serverValue !== undefined ? serverValue : defaultValue)
     : localValue;
-
-  // Sync localStorage when the local value changes (unauthenticated mode)
-  useEffect(() => {
-    if (!isLoggedIn) {
-      try {
-        localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(localValue));
-      } catch (err) {
-        log.debug('Failed to write localStorage preference', { key, error: err });
-      }
-    }
-  }, [isLoggedIn, localValue, key]);
 
   const setValue = useCallback(
     (newValue: T) => {
@@ -79,7 +81,12 @@ export function useUserPreference<T>(
         );
         updatePreferences(update);
       } else {
-        setLocalValue(newValue);
+        setStoredEntry({ key, value: newValue });
+        try {
+          localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(newValue));
+        } catch (err) {
+          log.debug('Failed to write localStorage preference', { key, error: err });
+        }
       }
     },
     [isLoggedIn, serverPreferences, key, updatePreferences]

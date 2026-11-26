@@ -1,8 +1,5 @@
-import { useEffect } from 'react';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { useUser } from '../../contexts/UserContext';
-import { useWebSocketQueryInvalidation } from '../../hooks/websocket';
-import { websocketClient } from '../../services/websocket';
 import * as authApi from '../../api/auth';
 import { createLogger } from '../../utils/logger';
 import { reloadCurrentDocument } from '../browserNavigation';
@@ -18,14 +15,6 @@ export function useAppRoutesController(): AppRoutesController {
   // next user to log in on this tab would inherit the forced modal.
   const showPasswordModal = isAuthenticated && user?.usingDefaultPassword === true;
   const preferences = getAppPreferenceState(user);
-
-  useWebSocketQueryInvalidation();
-
-  // Live updates follow the session: logout disconnects the socket, so each
-  // login (whichever page it lands on) connects a fresh one.
-  useEffect(() => {
-    if (isAuthenticated) websocketClient.connect();
-  }, [isAuthenticated]);
 
   const handlePasswordChanged = async () => {
     try {

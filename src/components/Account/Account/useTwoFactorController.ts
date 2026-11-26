@@ -30,17 +30,24 @@ export const useTwoFactorController = (): TwoFactorController => {
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
   const startSetup = async () => {
+    if (managementPending.current) return;
+    managementPending.current = true;
+    const owner = managementRequests.begin();
     setIs2FALoading(true);
     setTwoFactorError(null);
 
     try {
       const data = await twoFactorApi.setup2FA();
+      if (!managementRequests.isCurrent(owner)) return;
       setSetupData(data);
       setShowSetupModal(true);
     } catch (error) {
-      setTwoFactorError(getTwoFactorErrorMessage(error, 'Failed to start 2FA setup'));
+      if (managementRequests.isCurrent(owner)) {
+        setTwoFactorError(getTwoFactorErrorMessage(error, 'Failed to start 2FA setup'));
+      }
     } finally {
-      setIs2FALoading(false);
+      managementPending.current = false;
+      if (managementRequests.isCurrent(owner)) setIs2FALoading(false);
     }
   };
 
@@ -89,7 +96,9 @@ export const useTwoFactorController = (): TwoFactorController => {
   };
 
   const regenerateBackupCodes = async () => {
-    if (!canRegenerateBackupCodes(disablePassword, regenerateToken)) return;
+    if (!canRegenerateBackupCodes(disablePassword, regenerateToken) || managementPending.current) return;
+    managementPending.current = true;
+    const owner = managementRequests.begin();
     setIs2FALoading(true);
     setTwoFactorError(null);
 
@@ -98,13 +107,17 @@ export const useTwoFactorController = (): TwoFactorController => {
         password: disablePassword,
         token: regenerateToken,
       });
+      if (!managementRequests.isCurrent(owner)) return;
       setBackupCodes(result.backupCodes);
       setDisablePassword('');
       setRegenerateToken('');
     } catch (error) {
-      setTwoFactorError(getTwoFactorErrorMessage(error, 'Failed to regenerate backup codes'));
+      if (managementRequests.isCurrent(owner)) {
+        setTwoFactorError(getTwoFactorErrorMessage(error, 'Failed to regenerate backup codes'));
+      }
     } finally {
-      setIs2FALoading(false);
+      managementPending.current = false;
+      if (managementRequests.isCurrent(owner)) setIs2FALoading(false);
     }
   };
 
@@ -125,6 +138,8 @@ export const useTwoFactorController = (): TwoFactorController => {
   };
 
   const closeSetup = () => {
+    managementRequests.invalidate();
+    setIs2FALoading(false);
     setShowSetupModal(false);
     setSetupData(null);
     setSetupVerifyCode('');
@@ -140,11 +155,15 @@ export const useTwoFactorController = (): TwoFactorController => {
   };
 
   const closeDisable = () => {
+    managementRequests.invalidate();
+    setIs2FALoading(false);
     setShowDisableModal(false);
     resetSensitiveFields();
   };
 
   const closeBackupCodes = () => {
+    managementRequests.invalidate();
+    setIs2FALoading(false);
     setShowBackupCodesModal(false);
     setBackupCodes([]);
     resetSensitiveFields();
