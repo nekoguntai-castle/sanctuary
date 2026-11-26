@@ -5,7 +5,9 @@
  * Mirrors the server-side createLogger API for consistency.
  */
 
-type LogLevel = "debug" | "info" | "warn" | "error";
+import { config, type ProxyLogLevel } from "./config";
+
+type LogLevel = ProxyLogLevel;
 
 export interface Logger {
   debug: (message: string, context?: Record<string, unknown>) => void;
@@ -21,9 +23,7 @@ const LOG_LEVELS: Record<LogLevel, number> = {
   error: 3,
 };
 
-const currentLevel: number =
-  LOG_LEVELS[(process.env.LOG_LEVEL?.toLowerCase() as LogLevel) || "info"] ??
-  LOG_LEVELS.info;
+const currentLevel: number = LOG_LEVELS[config.logLevel] ?? LOG_LEVELS.info;
 
 const OTHER_LOG_CONTROL_CHARS =
   /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g;

@@ -68,6 +68,8 @@ let restartAfterStop = false;
 const inFlightEvents = new Set<Promise<void>>();
 
 const RECONNECT_DELAY = 5000; // 5 seconds
+const WS_CONNECTING = 0;
+const WS_OPEN = 1;
 
 /**
  * Connect to backend WebSocket
@@ -76,6 +78,15 @@ const RECONNECT_DELAY = 5000; // 5 seconds
  */
 function connect(): void {
   if (isShuttingDown) return;
+
+  if (ws && (ws.readyState === WS_CONNECTING || ws.readyState === WS_OPEN)) {
+    return;
+  }
+
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
 
   // Check if gateway secret is configured
   if (!config.gatewaySecret) {

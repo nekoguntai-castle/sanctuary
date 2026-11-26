@@ -52,28 +52,32 @@ import {
   getFcmConfig,
   getGatewayPort,
   getGatewayRateLimitMax,
+  getTrimmedEnv,
   parseBooleanEnv,
+  parsePositiveIntEnv,
+  parseTrustProxyEnv,
 } from './config/env';
 import { exitNow } from './utils/processExit';
 
 export const config = {
   // Server
-  port: parseInt(getGatewayPort(), 10),
-  nodeEnv: process.env.NODE_ENV || 'development',
+  port: parsePositiveIntEnv(getGatewayPort(), 4000),
+  nodeEnv: getTrimmedEnv(process.env.NODE_ENV, 'development'),
+  trustProxy: parseTrustProxyEnv(process.env.TRUST_PROXY),
 
   // TLS/HTTPS configuration
   tls: {
     enabled: process.env.TLS_ENABLED === 'true',
-    certPath: process.env.TLS_CERT_PATH || '/app/config/ssl/fullchain.pem',
-    keyPath: process.env.TLS_KEY_PATH || '/app/config/ssl/privkey.pem',
-    caPath: process.env.TLS_CA_PATH || '', // Optional CA certificate chain
-    minVersion: (process.env.TLS_MIN_VERSION || 'TLSv1.2') as 'TLSv1.2' | 'TLSv1.3',
+    certPath: getTrimmedEnv(process.env.TLS_CERT_PATH, '/app/config/ssl/fullchain.pem'),
+    keyPath: getTrimmedEnv(process.env.TLS_KEY_PATH, '/app/config/ssl/privkey.pem'),
+    caPath: getTrimmedEnv(process.env.TLS_CA_PATH, ''), // Optional CA certificate chain
+    minVersion: getTrimmedEnv(process.env.TLS_MIN_VERSION, 'TLSv1.2') as 'TLSv1.2' | 'TLSv1.3',
     allowInsecureProductionHttp: process.env.GATEWAY_ALLOW_INSECURE_PRODUCTION_HTTP === 'true',
   },
 
   // Backend connection (internal network)
-  backendUrl: process.env.BACKEND_URL || 'http://backend:3001',
-  backendWsUrl: process.env.BACKEND_WS_URL || 'ws://backend:3001',
+  backendUrl: getTrimmedEnv(process.env.BACKEND_URL, 'http://backend:3001'),
+  backendWsUrl: getTrimmedEnv(process.env.BACKEND_WS_URL, 'ws://backend:3001'),
   backendRequestTimeoutMs: 5000,
 
   // JWT (must match backend)
@@ -87,8 +91,8 @@ export const config = {
 
   // Rate limiting
   rateLimit: {
-    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000', 10), // 1 minute
-    maxRequests: parseInt(getGatewayRateLimitMax(), 10), // 60 requests per minute
+    windowMs: parsePositiveIntEnv(process.env.RATE_LIMIT_WINDOW_MS, 60000), // 1 minute
+    maxRequests: parsePositiveIntEnv(getGatewayRateLimitMax(), 60), // 60 requests per minute
   },
 
   // Firebase Cloud Messaging (Android)
@@ -103,18 +107,32 @@ export const config = {
     keyId: process.env.APNS_KEY_ID || '',
     teamId: process.env.APNS_TEAM_ID || '',
     privateKey: getApnsPrivateKey(),
-    bundleId: process.env.APNS_BUNDLE_ID || 'com.sanctuary.app',
+    bundleId: getTrimmedEnv(process.env.APNS_BUNDLE_ID, 'com.sanctuary.app'),
     production: parseBooleanEnv(process.env.APNS_PRODUCTION, false),
   },
 
   // Logging
-  logLevel: process.env.LOG_LEVEL || 'info',
+  logLevel: getTrimmedEnv(process.env.LOG_LEVEL, 'info'),
 };
+
+function validateNumericConfig(errors: string[]): void {
+  if (!Number.isSafeInteger(config.port) || config.port < 1 || config.port > 65535) {
+    errors.push('PORT must be a positive integer between 1 and 65535');
+  }
+  if (!Number.isSafeInteger(config.rateLimit.windowMs) || config.rateLimit.windowMs <= 0) {
+    errors.push('RATE_LIMIT_WINDOW_MS must be a positive integer');
+  }
+  if (!Number.isSafeInteger(config.rateLimit.maxRequests) || config.rateLimit.maxRequests <= 0) {
+    errors.push('RATE_LIMIT_MAX must be a positive integer');
+  }
+}
 
 // Validate required config
 export function validateConfig(): void {
   const errors: string[] = [];
   const warnings: string[] = [];
+
+  validateNumericConfig(errors);
 
   if (!config.jwtSecret) {
     errors.push('JWT_SECRET is required');

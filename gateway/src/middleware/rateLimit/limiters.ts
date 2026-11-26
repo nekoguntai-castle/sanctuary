@@ -19,10 +19,28 @@
  */
 
 import type { Request, Response } from 'express';
-import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator, MemoryStore } from 'express-rate-limit';
 import { config } from '../../config';
 import { logSecurityEvent } from '../requestLogger';
 import { AuthenticatedRequest } from '../auth';
+
+const COARSE_GATEWAY_LIMIT_MULTIPLIER = 10;
+const rateLimitStores: MemoryStore[] = [];
+
+function createRateLimitStore(): MemoryStore {
+  const store = new MemoryStore();
+  rateLimitStores.push(store);
+  return store;
+}
+
+/**
+ * Stop all in-memory rate limiter cleanup timers during graceful shutdown.
+ */
+export function shutdownRateLimiters(): void {
+  for (const store of rateLimitStores) {
+    store.shutdown();
+  }
+}
 
 const getIpKey = (req: Request): string => {
   return req.ip ? ipKeyGenerator(req.ip) : 'unknown';
@@ -46,6 +64,22 @@ const getClientKey = (req: Request): string => {
 };
 
 /**
+ * Coarse safety valve for any exposed /api path before body parsing.
+ */
+export const coarseApiRateLimiter = rateLimit({
+  windowMs: config.rateLimit.windowMs,
+  max: config.rateLimit.maxRequests * COARSE_GATEWAY_LIMIT_MULTIPLIER,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: createRateLimitStore(),
+  skip: (req) => req.method === 'OPTIONS',
+  message: {
+    error: 'Too Many Requests',
+    message: 'Gateway request rate limit exceeded. Please slow down.',
+  },
+});
+
+/**
  * Default rate limiter - applies to all authenticated routes
  */
 export const defaultRateLimiter = rateLimit({
@@ -53,6 +87,7 @@ export const defaultRateLimiter = rateLimit({
   max: config.rateLimit.maxRequests,
   standardHeaders: true,
   legacyHeaders: false,
+  store: createRateLimitStore(),
   keyGenerator: (req) => getClientKey(req),
   handler: (req, res, _next, options) => {
     const authReq = req as AuthenticatedRequest;
@@ -83,6 +118,7 @@ export const strictRateLimiter = rateLimit({
   max: 10, // 10 requests per hour
   standardHeaders: true,
   legacyHeaders: false,
+  store: createRateLimitStore(),
   keyGenerator: (req) => getClientKey(req),
   handler: (req, res) => {
     const authReq = req as AuthenticatedRequest;
@@ -112,6 +148,7 @@ export const authRateLimiter = rateLimit({
   max: 15, // 15 login attempts per 15 minutes
   standardHeaders: true,
   legacyHeaders: false,
+  store: createRateLimitStore(),
   keyGenerator: (req) => getIpKey(req),
   handler: (req, res, _next, options) => {
     const retryAfter = retryAfterSeconds(res, options.windowMs);
@@ -148,6 +185,7 @@ export const transactionCreateRateLimiter = rateLimit({
   max: 10, // 10 transactions per minute
   standardHeaders: true,
   legacyHeaders: false,
+  store: createRateLimitStore(),
   keyGenerator: (req) => getClientKey(req),
   handler: (req, res) => {
     const authReq = req as AuthenticatedRequest;
@@ -178,6 +216,7 @@ export const broadcastRateLimiter = rateLimit({
   max: 5, // 5 broadcasts per minute
   standardHeaders: true,
   legacyHeaders: false,
+  store: createRateLimitStore(),
   keyGenerator: (req) => getClientKey(req),
   handler: (req, res) => {
     const authReq = req as AuthenticatedRequest;
@@ -208,6 +247,7 @@ export const deviceRegistrationRateLimiter = rateLimit({
   max: 3, // 3 device registrations per hour
   standardHeaders: true,
   legacyHeaders: false,
+  store: createRateLimitStore(),
   keyGenerator: (req) => getClientKey(req),
   handler: (req, res) => {
     const authReq = req as AuthenticatedRequest;
@@ -238,6 +278,7 @@ export const addressGenerationRateLimiter = rateLimit({
   max: 20, // 20 addresses per minute
   standardHeaders: true,
   legacyHeaders: false,
+  store: createRateLimitStore(),
   keyGenerator: (req) => getClientKey(req),
   handler: (req, res) => {
     const authReq = req as AuthenticatedRequest;

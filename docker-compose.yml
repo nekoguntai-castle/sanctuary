@@ -770,6 +770,7 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: 4000
+      LOG_LEVEL: ${LOG_LEVEL:-info}
 
       # TLS/HTTPS Configuration
       # Enabled by default for production mobile connections.
@@ -777,6 +778,7 @@ services:
       TLS_ENABLED: ${GATEWAY_TLS_ENABLED:-true}
       TLS_CERT_PATH: /app/config/ssl/fullchain.pem
       TLS_KEY_PATH: /app/config/ssl/privkey.pem
+      TLS_CA_PATH: ${TLS_CA_PATH:-}
       TLS_MIN_VERSION: ${GATEWAY_TLS_MIN_VERSION:-TLSv1.2}
       GATEWAY_ALLOW_INSECURE_PRODUCTION_HTTP: ${GATEWAY_ALLOW_INSECURE_PRODUCTION_HTTP:-false}
 
@@ -803,12 +805,16 @@ services:
       # private_key, and client_email fields. Inline FCM_* env vars override
       # this file path.
       FCM_SERVICE_ACCOUNT_PATH: /app/config/fcm-service-account.json
+      FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
+      FCM_PRIVATE_KEY: ${FCM_PRIVATE_KEY:-}
+      FCM_CLIENT_EMAIL: ${FCM_CLIENT_EMAIL:-}
 
       # Apple Push Notification Service (iOS)
       # Auto-enabled when APNS_KEY_ID, APNS_TEAM_ID, and key file are provided.
       # Inline APNS_PRIVATE_KEY overrides this file path.
       APNS_KEY_ID: ${APNS_KEY_ID:-}
       APNS_TEAM_ID: ${APNS_TEAM_ID:-}
+      APNS_PRIVATE_KEY: ${APNS_PRIVATE_KEY:-}
       APNS_BUNDLE_ID: ${APNS_BUNDLE_ID:-}
       APNS_PRIVATE_KEY_PATH: /app/config/apns-key.p8
       APNS_PRODUCTION: ${APNS_PRODUCTION:-false}
@@ -899,10 +905,16 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: 3100
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       # Backend URL for fetching sanitized data
       BACKEND_URL: http://backend:3001
       # LLM egress proxy sync secret (must match backend)
       LLM_EGRESS_PROXY_SECRET: "${LLM_EGRESS_PROXY_SECRET:?LLM_EGRESS_PROXY_SECRET is required - generate with openssl rand -hex 32}"
+      # Rate limiting and upstream AI request timeouts
+      AI_RATE_LIMIT_WINDOW_MS: ${AI_RATE_LIMIT_WINDOW_MS:-60000}
+      AI_RATE_LIMIT_MAX_REQUESTS: ${AI_RATE_LIMIT_MAX_REQUESTS:-10}
+      AI_REQUEST_TIMEOUT_MS: ${AI_REQUEST_TIMEOUT_MS:-30000}
+      AI_ANALYSIS_TIMEOUT_MS: ${AI_ANALYSIS_TIMEOUT_MS:-120000}
       # Optional egress policy for public/cloud OpenAI-compatible endpoints.
       # Container DNS names and numeric LAN/public IPs require explicit allowlists.
       LLM_EGRESS_PROXY_ALLOWED_HOSTS: ${LLM_EGRESS_PROXY_ALLOWED_HOSTS:-}

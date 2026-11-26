@@ -182,6 +182,27 @@ describe('proxyConfig', () => {
     expect(removeHeader).not.toHaveBeenCalledWith('cookie');
   });
 
+  it('strips browser auth cookies on mounted /api/v1 logout routes where Express strips baseUrl from req.path', () => {
+    const setHeader = vi.fn();
+    const removeHeader = vi.fn();
+    const proxyReq = { setHeader, removeHeader } as unknown;
+    const req = {
+      method: 'POST',
+      url: '/auth/logout',
+      baseUrl: '/api/v1',
+      path: '/auth/logout',
+      headers: {
+        cookie: 'sanctuary_refresh=stale-cookie; sanctuary_access=stale-access',
+      },
+      body: { refreshToken: 'mobile-body-token' },
+    } as unknown;
+
+    config.on.proxyReq(proxyReq, req);
+
+    expect(removeHeader).toHaveBeenCalledWith('cookie');
+    expect(setHeader).not.toHaveBeenCalledWith('cookie', expect.anything());
+  });
+
   it('logs proxy responses and returns 502 payload on proxy errors', () => {
     config.on.proxyRes({ statusCode: 503 }, { method: 'GET', url: '/api/v1/test' });
     expect(mockLogger.debug).toHaveBeenCalledWith(

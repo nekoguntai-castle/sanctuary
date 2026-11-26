@@ -7,7 +7,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Hoist mutable state
-const { mockApp, mockSend, mockSendEachForMulticast, mockMessaging, mockCert, mockInitializeApp, mockLogger, mockConfigRef } = vi.hoisted(() => {
+const { mockApp, mockSend, mockSendEachForMulticast, mockMessaging, mockCert, mockInitializeApp, mockDeleteApp, mockLogger, mockConfigRef } = vi.hoisted(() => {
   const mockApp = { name: 'mock-app' };
   const mockSend = vi.fn();
   const mockSendEachForMulticast = vi.fn();
@@ -17,6 +17,7 @@ const { mockApp, mockSend, mockSendEachForMulticast, mockMessaging, mockCert, mo
   }));
   const mockCert = vi.fn(() => 'mock-credential');
   const mockInitializeApp = vi.fn(() => mockApp);
+  const mockDeleteApp = vi.fn().mockResolvedValue(undefined);
   const mockLogger = {
     info: vi.fn(),
     error: vi.fn(),
@@ -32,12 +33,13 @@ const { mockApp, mockSend, mockSendEachForMulticast, mockMessaging, mockCert, mo
       },
     },
   };
-  return { mockApp, mockSend, mockSendEachForMulticast, mockMessaging, mockCert, mockInitializeApp, mockLogger, mockConfigRef };
+  return { mockApp, mockSend, mockSendEachForMulticast, mockMessaging, mockCert, mockInitializeApp, mockDeleteApp, mockLogger, mockConfigRef };
 });
 
 vi.mock('firebase-admin/app', () => ({
   cert: mockCert,
   initializeApp: mockInitializeApp,
+  deleteApp: mockDeleteApp,
 }));
 
 vi.mock('firebase-admin/messaging', () => ({
@@ -164,6 +166,37 @@ describe('FCM Service', () => {
       const freshFcm = await import('../../../../src/services/push/fcm');
 
       expect(freshFcm.isFCMAvailable()).toBe(false);
+    });
+  });
+
+  describe('shutdownFCM', () => {
+    it('deletes the initialized Firebase app and resets availability', async () => {
+      fcm.initializeFCM();
+      expect(fcm.isFCMAvailable()).toBe(true);
+
+      await fcm.shutdownFCM();
+
+      expect(mockDeleteApp).toHaveBeenCalledWith(mockApp);
+      expect(fcm.isFCMAvailable()).toBe(false);
+      expect(mockLogger.info).toHaveBeenCalledWith('FCM app shutdown');
+    });
+
+    it('is a no-op when FCM was not initialized', async () => {
+      await fcm.shutdownFCM();
+
+      expect(mockDeleteApp).not.toHaveBeenCalled();
+    });
+
+    it('logs and resets state if deleteApp rejects', async () => {
+      fcm.initializeFCM();
+      mockDeleteApp.mockRejectedValueOnce(new Error('delete failed'));
+
+      await fcm.shutdownFCM();
+
+      expect(fcm.isFCMAvailable()).toBe(false);
+      expect(mockLogger.error).toHaveBeenCalledWith('Failed to shutdown FCM app', {
+        error: 'delete failed',
+      });
     });
   });
 

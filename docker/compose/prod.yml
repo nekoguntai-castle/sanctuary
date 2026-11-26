@@ -12,21 +12,8 @@ services:
     # Don't expose postgres port in production
     # ports: [] # Explicitly empty to override any dev settings
 
-    # Resource limits
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 256M
-
-  backend:
-    # NOTE: backend health/readiness depends on worker health via base compose
-    # (docker-compose.yml). Do not remove that dependency in production.
-
-    # Resource limits
+    # Resource limits (aligned with base PostgreSQL memory tuning flags:
+    # shared_buffers=256MB, effective_cache_size=768MB, maintenance_work_mem=128MB)
     deploy:
       resources:
         limits:
@@ -35,7 +22,23 @@ services:
         reservations:
           cpus: '0.5'
           memory: 512M
+    memswap_limit: 1280M
+
+  backend:
+    # NOTE: backend health/readiness depends on worker health via base compose
+    # (docker-compose.yml). Do not remove that dependency in production.
+
+    # Resource limits (aligned with inherited NODE_OPTIONS="--max-old-space-size=1536")
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
       replicas: 1
+    memswap_limit: 2560M
 
     # Security options
     security_opt:
@@ -54,6 +57,7 @@ services:
         reservations:
           cpus: '0.1'
           memory: 64M
+    memswap_limit: 256M
 
     # Redis must write append-only data; do not set read_only=true
     security_opt:

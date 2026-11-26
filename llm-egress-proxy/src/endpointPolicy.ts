@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { isIP } from "node:net";
 
+import { readEndpointPolicyEnv } from "./config";
 import {
   isIpAllowed,
   isLocalNetworkIp,
@@ -47,20 +48,8 @@ export interface ProviderResolvedAddress {
   family: 4 | 6;
 }
 
-function parseEnvList(value: string | undefined): string[] {
-  return (value ?? "")
-    .split(",")
-    .map((entry) => entry.trim().toLowerCase())
-    .filter(Boolean);
-}
-
 export function getEndpointPolicyOptionsFromEnv(): EndpointPolicyOptions {
-  return {
-    allowedHosts: parseEnvList(process.env.LLM_EGRESS_PROXY_ALLOWED_HOSTS),
-    allowedCidrs: parseEnvList(process.env.LLM_EGRESS_PROXY_ALLOWED_CIDRS),
-    allowPublicHttps:
-      process.env.LLM_EGRESS_PROXY_ALLOW_PUBLIC_HTTPS === "true",
-  };
+  return readEndpointPolicyEnv();
 }
 
 function stripIpv6Brackets(hostname: string): string {
@@ -76,7 +65,10 @@ function stripIpv6Brackets(hostname: string): string {
  * allowlists. The port is part of the key so a provider cannot redirect to
  * another service on the same machine.
  */
-function approvalKey(endpoint: string): string | null {
+function approvalKey(endpoint: string | undefined): string | null {
+  if (!endpoint) {
+    return null;
+  }
   let url: URL;
   try {
     url = new URL(endpoint.trim());
@@ -105,16 +97,18 @@ export function setConfiguredProviderEndpoint(endpoint: string): void {
 }
 
 /**
- * Admit an admin-typed endpoint for the duration of `run` (and every redirect
- * hop it makes), e.g. to detect a provider before its endpoint is saved.
+ * Admit an admin-typed or snapshotted config endpoint for the duration of
+ * `run` (and every redirect hop it makes), isolating in-flight requests from
+ * concurrent POST /config updates to `configuredApproval`.
  */
 export function withApprovedProviderEndpoint<T>(
-  endpoint: string,
+  endpoint: string | undefined,
   run: () => Promise<T>,
 ): Promise<T> {
   const key = approvalKey(endpoint);
   const inherited = requestApprovals.getStore() ?? [];
-  return requestApprovals.run(key ? [...inherited, key] : inherited, run);
+  const next = key && !inherited.includes(key) ? [...inherited, key] : inherited;
+  return requestApprovals.run(next, run);
 }
 
 /** Env allowlists plus the endpoints an admin has approved. */

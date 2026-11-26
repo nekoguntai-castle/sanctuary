@@ -39,17 +39,30 @@ import { AuthenticatedRequest } from './auth';
 // Import shared request utilities
 import {
   generateRequestId,
-  extractClientIp,
   sanitizePath,
 } from '@sanctuary/shared/utils/request';
+import { getErrorMessage } from '@sanctuary/shared/utils/errors';
 import { generateGatewaySignature } from '@sanctuary/shared/utils/gatewayAuth';
 
 const log = createLogger('REQUEST');
 
 type GatewayAuditOutcome = 'success' | 'failure';
 
+export const MAX_CONCURRENT_AUDIT_REQUESTS = 5;
+export const MAX_PENDING_AUDIT_REQUESTS = 100;
+
+interface PendingAuditEvent {
+  event: string;
+  details: Record<string, unknown>;
+  outcome: GatewayAuditOutcome;
+}
+
+const pendingAuditQueue: PendingAuditEvent[] = [];
+const inFlightAuditRequests = new Set<Promise<void>>();
+let droppedAuditCount = 0;
+
 /**
- * Send audit event to backend (fire-and-forget)
+ * Send audit event to backend
  *
  * This posts security events to the backend's audit log endpoint
  * so they can be viewed in the admin UI. Failures are logged but
@@ -92,22 +105,73 @@ async function sendToBackendAudit(
         status: response.status,
       });
     }
-  } catch (err) {
+  } catch (error) {
     // Log but don't throw - audit failures shouldn't affect requests
     log.warn('Error sending audit event to backend', {
       event,
-      error: (err as Error).message,
+      error: getErrorMessage(error),
     });
   }
 }
 
+function flushAuditQueue(): void {
+  while (
+    inFlightAuditRequests.size < MAX_CONCURRENT_AUDIT_REQUESTS &&
+    pendingAuditQueue.length > 0
+  ) {
+    const nextEvent = pendingAuditQueue.shift()!;
+    launchAuditRequest(nextEvent);
+  }
+}
+
+function launchAuditRequest(item: PendingAuditEvent): void {
+  let tracked!: Promise<void>;
+  tracked = sendToBackendAudit(item.event, item.details, item.outcome).finally(() => {
+    inFlightAuditRequests.delete(tracked);
+    flushAuditQueue();
+  });
+  inFlightAuditRequests.add(tracked);
+}
+
+function enqueueBackendAudit(
+  event: string,
+  details: Record<string, unknown>,
+  outcome: GatewayAuditOutcome
+): void {
+  if (inFlightAuditRequests.size < MAX_CONCURRENT_AUDIT_REQUESTS) {
+    launchAuditRequest({ event, details, outcome });
+    return;
+  }
+
+  if (pendingAuditQueue.length >= MAX_PENDING_AUDIT_REQUESTS) {
+    droppedAuditCount += 1;
+    log.warn('Dropping gateway audit event: pending queue full', {
+      event,
+      queueSize: pendingAuditQueue.length,
+      droppedCount: droppedAuditCount,
+    });
+    return;
+  }
+
+  pendingAuditQueue.push({ event, details, outcome });
+}
+
 /**
- * Extract client IP from request
- * Uses shared utility with Express request types
+ * Drain all in-flight and queued audit POST requests during graceful shutdown.
+ */
+export async function drainPendingAuditRequests(): Promise<void> {
+  while (inFlightAuditRequests.size > 0 || pendingAuditQueue.length > 0) {
+    flushAuditQueue();
+    await Promise.allSettled([...inFlightAuditRequests]);
+  }
+}
+
+/**
+ * Extract client IP from request using Express's `trust proxy`-aware `req.ip`
+ * rather than blindly trusting raw client-supplied X-Forwarded-For headers.
  */
 function getClientIp(req: Request): string {
-  const forwarded = req.headers['x-forwarded-for'];
-  return extractClientIp(forwarded, req.ip || req.socket.remoteAddress);
+  return req.ip || req.socket?.remoteAddress || 'unknown';
 }
 
 /**
@@ -228,8 +292,8 @@ export function logSecurityEvent(
   // Log locally
   log.warn(`SECURITY: ${event}`, eventDetails);
 
-  // Send to backend (async, fire-and-forget); sendToBackendAudit logs and swallows transport errors.
-  void sendToBackendAudit(event, eventDetails, 'failure');
+  // Send to backend with bounded concurrency and queue cap; transport errors are logged and swallowed.
+  enqueueBackendAudit(event, eventDetails, 'failure');
 }
 
 /**

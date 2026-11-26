@@ -35,6 +35,10 @@ const backendEventsMocks = vi.hoisted(() => {
 vi.mock('ws', () => {
   return {
     default: class WebSocket extends EventEmitter {
+      static CONNECTING = 0;
+      static OPEN = 1;
+      static CLOSING = 2;
+      static CLOSED = 3;
       static instances = backendEventsMocks.wsInstances;
       readyState = 1;
       send = vi.fn();
@@ -52,10 +56,12 @@ vi.mock('ws', () => {
       }
 
       simulateOpen(): void {
+        this.readyState = 1;
         this.emit('open');
       }
 
       simulateClose(code = 1000, reason = ''): void {
+        this.readyState = 3;
         this.emit('close', code, Buffer.from(reason));
       }
 

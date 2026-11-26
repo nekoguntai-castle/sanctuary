@@ -476,6 +476,64 @@ describe('Gateway Config', () => {
         expect(config.logLevel).toBe('debug');
       });
     });
+
+    describe('trust proxy config', () => {
+      it('defaults TRUST_PROXY to false when unset or empty', async () => {
+        delete process.env.TRUST_PROXY;
+        let mod = await import('../../src/config');
+        expect(mod.config.trustProxy).toBe(false);
+
+        vi.resetModules();
+        process.env.TRUST_PROXY = '   ';
+        mod = await import('../../src/config');
+        expect(mod.config.trustProxy).toBe(false);
+      });
+
+      it('parses boolean, numeric hop count, and CIDR/subnet TRUST_PROXY values', async () => {
+        process.env.TRUST_PROXY = 'true';
+        expect((await import('../../src/config')).config.trustProxy).toBe(true);
+
+        vi.resetModules();
+        process.env.TRUST_PROXY = 'false';
+        expect((await import('../../src/config')).config.trustProxy).toBe(false);
+
+        vi.resetModules();
+        process.env.TRUST_PROXY = '1';
+        expect((await import('../../src/config')).config.trustProxy).toBe(1);
+
+        vi.resetModules();
+        process.env.TRUST_PROXY = 'loopback, 10.0.0.0/8';
+        expect((await import('../../src/config')).config.trustProxy).toBe('loopback, 10.0.0.0/8');
+      });
+    });
+
+    describe('empty and whitespace numeric env handling', () => {
+      it('treats empty/whitespace PORT and GATEWAY_PORT as unset and falls back to defaults', async () => {
+        process.env.PORT = '   ';
+        process.env.GATEWAY_PORT = '4600';
+        expect((await import('../../src/config')).config.port).toBe(4600);
+
+        vi.resetModules();
+        process.env.PORT = '';
+        process.env.GATEWAY_PORT = '  ';
+        expect((await import('../../src/config')).config.port).toBe(4000);
+      });
+
+      it('treats empty/whitespace rate limit env vars as unset and falls back to defaults', async () => {
+        process.env.RATE_LIMIT_WINDOW_MS = '  ';
+        process.env.RATE_LIMIT_MAX = '';
+        process.env.RATE_LIMIT_MAX_REQUESTS = '90';
+        let mod = await import('../../src/config');
+        expect(mod.config.rateLimit.windowMs).toBe(60000);
+        expect(mod.config.rateLimit.maxRequests).toBe(90);
+
+        vi.resetModules();
+        process.env.RATE_LIMIT_MAX = ' ';
+        process.env.RATE_LIMIT_MAX_REQUESTS = '';
+        mod = await import('../../src/config');
+        expect(mod.config.rateLimit.maxRequests).toBe(60);
+      });
+    });
   });
 
   describe('validateConfig', () => {
@@ -646,6 +704,36 @@ describe('Gateway Config', () => {
       validateConfig();
 
       expect(processExitSpy).not.toHaveBeenCalled();
+    });
+
+    it('should exit when PORT, RATE_LIMIT_WINDOW_MS, or RATE_LIMIT_MAX are not positive finite integers', async () => {
+      process.env.JWT_SECRET = 'my-secret';
+      process.env.GATEWAY_SECRET = 'this-is-a-32-character-secret!!!';
+      process.env.PORT = 'not-a-port';
+      process.env.RATE_LIMIT_WINDOW_MS = '0';
+      process.env.RATE_LIMIT_MAX = '-5';
+      const { validateConfig } = await import('../../src/config');
+
+      validateConfig();
+
+      expect(processExitSpy).toHaveBeenCalledWith(1);
+      const errorCall = consoleErrorSpy.mock.calls.flat().join(' ');
+      expect(errorCall).toContain('PORT');
+      expect(errorCall).toContain('RATE_LIMIT_WINDOW_MS');
+      expect(errorCall).toContain('RATE_LIMIT_MAX');
+    });
+
+    it('should exit when PORT is outside valid TCP port range', async () => {
+      process.env.JWT_SECRET = 'my-secret';
+      process.env.GATEWAY_SECRET = 'this-is-a-32-character-secret!!!';
+      process.env.PORT = '70000';
+      const { validateConfig } = await import('../../src/config');
+
+      validateConfig();
+
+      expect(processExitSpy).toHaveBeenCalledWith(1);
+      const errorCall = consoleErrorSpy.mock.calls.flat().join(' ');
+      expect(errorCall).toContain('PORT');
     });
   });
 });

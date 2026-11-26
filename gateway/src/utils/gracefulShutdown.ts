@@ -10,7 +10,9 @@ export interface GatewayShutdownDependencies {
   log: Logger;
   closeHttpServer: () => Promise<void>;
   stopBackendEvents: () => Promise<void>;
-  shutdownPushServices: () => void;
+  drainPendingAuditRequests: () => Promise<void>;
+  shutdownPushServices: () => void | Promise<void>;
+  shutdownRateLimiters: () => void;
   exitNow: (code: ExitCode) => void;
   timeoutMs?: number;
 }
@@ -82,10 +84,28 @@ export function createGatewayShutdownHandler(
     }
 
     try {
-      dependencies.shutdownPushServices();
+      await beginAsync(dependencies.drainPendingAuditRequests);
+    } catch (error) {
+      finalExitCode = 1;
+      dependencies.log.error('Error draining pending audit requests', {
+        error: errorMessage(error),
+      });
+    }
+
+    try {
+      await dependencies.shutdownPushServices();
     } catch (error) {
       finalExitCode = 1;
       dependencies.log.error('Error cleaning up gateway services', {
+        error: errorMessage(error),
+      });
+    }
+
+    try {
+      dependencies.shutdownRateLimiters();
+    } catch (error) {
+      finalExitCode = 1;
+      dependencies.log.error('Error shutting down rate limiters', {
         error: errorMessage(error),
       });
     }

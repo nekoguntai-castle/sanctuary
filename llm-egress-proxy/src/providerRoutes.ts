@@ -32,24 +32,26 @@ export function registerProviderRoutes(app: Express, deps: ProviderRouteDeps) {
       return res.json({ compatible: false, reason: "no_endpoint" });
     }
 
-    const decision = evaluateProviderEndpoint(aiConfig.endpoint);
-    if (!decision.allowed) {
-      return res.json({
-        compatible: false,
-        reason: decision.reason ?? "endpoint_not_allowed",
-      });
-    }
+    return withApprovedProviderEndpoint(aiConfig.endpoint, async () => {
+      const decision = evaluateProviderEndpoint(aiConfig.endpoint);
+      if (!decision.allowed) {
+        return res.json({
+          compatible: false,
+          reason: decision.reason ?? "endpoint_not_allowed",
+        });
+      }
 
-    try {
-      await listProviderModels(aiConfig, aiConfig.endpoint);
-      return res.json({
-        compatible: true,
-        endpointType: inferEndpointType(aiConfig.endpoint),
-        providerType: aiConfig.providerType ?? "ollama",
-      });
-    } catch {
-      return res.json({ compatible: false, reason: "provider_unreachable" });
-    }
+      try {
+        await listProviderModels(aiConfig, aiConfig.endpoint);
+        return res.json({
+          compatible: true,
+          endpointType: inferEndpointType(aiConfig.endpoint),
+          providerType: aiConfig.providerType ?? "ollama",
+        });
+      } catch {
+        return res.json({ compatible: false, reason: "provider_unreachable" });
+      }
+    });
   };
 
   app.post("/detect-ollama", rateLimit, async (req: Request, res: Response) => {
@@ -140,18 +142,20 @@ export function registerProviderRoutes(app: Express, deps: ProviderRouteDeps) {
 
   app.get("/list-models", rateLimit, async (_req: Request, res: Response) => {
     const aiConfig = deps.getAiConfig();
-    const configuredEndpoint = requireConfiguredEndpoint(aiConfig, res);
-    if (!configuredEndpoint) return;
+    return withApprovedProviderEndpoint(aiConfig.endpoint, async () => {
+      const configuredEndpoint = requireConfiguredEndpoint(aiConfig, res);
+      if (!configuredEndpoint) return;
 
-    try {
-      const models = await listProviderModels(aiConfig, configuredEndpoint);
-      res.json({ models });
-    } catch (error) {
-      deps.log.error("Failed to list models", {
-        error: extractErrorMessage(error),
-      });
-      res.status(502).json({ error: "Cannot connect to AI endpoint" });
-    }
+      try {
+        const models = await listProviderModels(aiConfig, configuredEndpoint);
+        res.json({ models });
+      } catch (error) {
+        deps.log.error("Failed to list models", {
+          error: extractErrorMessage(error),
+        });
+        res.status(502).json({ error: "Cannot connect to AI endpoint" });
+      }
+    });
   });
 
   app.post("/check-provider", rateLimit, checkConfiguredProvider);

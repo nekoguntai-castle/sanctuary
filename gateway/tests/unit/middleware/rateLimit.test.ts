@@ -9,6 +9,7 @@ import { Request, Response, NextFunction } from 'express';
 import express from 'express';
 import request from 'supertest';
 import {
+  coarseApiRateLimiter,
   defaultRateLimiter,
   strictRateLimiter,
   authRateLimiter,
@@ -16,6 +17,7 @@ import {
   broadcastRateLimiter,
   deviceRegistrationRateLimiter,
   addressGenerationRateLimiter,
+  shutdownRateLimiters,
 } from '../../../src/middleware/rateLimit';
 import { AuthenticatedRequest } from '../../../src/middleware/auth';
 import { logSecurityEvent } from '../../../src/middleware/requestLogger';
@@ -469,6 +471,25 @@ describe('Rate Limiting Middleware', () => {
 
       expect(mockReq.ip).toBe('192.168.1.1');
       expect(mockReq.user).toBeUndefined();
+    });
+  });
+
+  describe('coarseApiRateLimiter and shutdownRateLimiters', () => {
+    it('skips OPTIONS preflight requests and limits non-OPTIONS requests', async () => {
+      const app = express();
+      app.use('/api', coarseApiRateLimiter);
+      app.options('/api/test', (_req, res) => res.status(204).end());
+      app.get('/api/test', (_req, res) => res.status(200).json({ ok: true }));
+
+      const optionsRes = await request(app).options('/api/test');
+      expect(optionsRes.status).toBe(204);
+
+      const getRes = await request(app).get('/api/test');
+      expect(getRes.status).toBe(200);
+    });
+
+    it('shuts down all tracked rate limiter MemoryStore instances cleanly', () => {
+      expect(() => shutdownRateLimiters()).not.toThrow();
     });
   });
 

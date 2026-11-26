@@ -37,9 +37,9 @@
     {
       "id": "javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket",
       "path": "gateway/src/config.ts",
-      "startLine": 77,
-      "endLine": 77,
-      "sha256": "4544f5cb2ab3b44379194dd702daab60c182ee2ee75ed22a22ac87a6e06c37b7",
+      "startLine": 80,
+      "endLine": 80,
+      "sha256": "81410f09a53317b283280da19d93eab933813df5758835b0fea683317d6d6650",
       "reason": "Existing finding on the initial Forgejo Semgrep baseline; triage and remove this entry when fixed."
     },
     {

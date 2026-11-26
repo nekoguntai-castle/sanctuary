@@ -17,6 +17,11 @@ scrape_configs:
     docker_sd_configs:
       - host: unix:///var/run/docker.sock
         refresh_interval: 5s
+        # Single-project constraint: this static Docker SD filter (and the
+        # `/sanctuary-*` container name relabel rules below) assumes the default
+        # Compose project name (`name: sanctuary` in docker-compose.yml).
+        # Operators overriding COMPOSE_PROJECT_NAME or running multiple stacks
+        # on one host must update this label filter and relabel regexes to match.
         filters:
           - name: label
             values:

@@ -16,6 +16,8 @@
 #   HTTPS_PORT - HTTPS port inherited by base compose (default there: 443)
 #   HTTP_PORT - HTTP redirect port inherited by base compose (default there: 80)
 #   SANCTUARY_SSL_DIR - directory containing fullchain.pem and privkey.pem
+#   SANCTUARY_COMPOSE_SSL_DIR - optional daemon-visible override when Docker bind
+#     mounts require a path different from SANCTUARY_SSL_DIR
 #
 # The base compose file owns frontend port mappings. This overlay must not add
 # another ports list, because compose merges port lists and would expose both
@@ -28,4 +30,4 @@ services:
       ENABLE_SSL: "true"
       HTTPS_REDIRECT_PORT: "${HTTPS_PORT:-443}"
     volumes:
-      - ${SANCTUARY_SSL_DIR:-./docker/nginx/ssl}:/etc/nginx/ssl:ro
+      - ${SANCTUARY_COMPOSE_SSL_DIR:-${SANCTUARY_SSL_DIR:-./docker/nginx/ssl}}:/etc/nginx/ssl:ro

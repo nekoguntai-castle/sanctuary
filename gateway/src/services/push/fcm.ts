@@ -4,19 +4,21 @@
  * Sends push notifications to Android devices.
  */
 
-import { cert, initializeApp, type FirebaseError } from 'firebase-admin/app';
+import { cert, deleteApp, initializeApp, type App, type FirebaseError } from 'firebase-admin/app';
 import {
   getMessaging,
   type Message,
   type Messaging,
   type MulticastMessage,
 } from 'firebase-admin/messaging';
+import { getErrorMessage } from '@sanctuary/shared/utils/errors';
 import { config } from '../../config';
 import { createLogger } from '../../utils/logger';
 
 const log = createLogger('FCM');
 const FCM_MULTICAST_LIMIT = 500;
 
+let firebaseApp: App | undefined;
 let messaging: Messaging | undefined;
 
 /**
@@ -38,11 +40,12 @@ export function initializeFCM(): boolean {
         clientEmail: config.fcm.clientEmail,
       }),
     });
+    firebaseApp = app;
     messaging = getMessaging(app);
     log.info('FCM initialized successfully');
     return true;
-  } catch (err) {
-    log.error('Failed to initialize FCM', { error: (err as Error).message });
+  } catch (error) {
+    log.error('Failed to initialize FCM', { error: getErrorMessage(error) });
     return false;
   }
 }
@@ -52,6 +55,25 @@ export function initializeFCM(): boolean {
  */
 export function isFCMAvailable(): boolean {
   return messaging !== undefined;
+}
+
+/**
+ * Shutdown Firebase Admin SDK app (call on process exit)
+ */
+export async function shutdownFCM(): Promise<void> {
+  const app = firebaseApp;
+  firebaseApp = undefined;
+  messaging = undefined;
+  if (!app) {
+    return;
+  }
+
+  try {
+    await deleteApp(app);
+    log.info('FCM app shutdown');
+  } catch (error) {
+    log.error('Failed to shutdown FCM app', { error: getErrorMessage(error) });
+  }
 }
 
 export interface FCMNotification {

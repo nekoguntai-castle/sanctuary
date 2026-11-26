@@ -1,5 +1,6 @@
 import type { Express, Request, Response } from 'express';
 import { callExternalAI } from './aiClient';
+import { withApprovedProviderEndpoint } from './endpointPolicy';
 import type { Logger } from './logger';
 import { rateLimit } from './rateLimit';
 import {
@@ -101,7 +102,10 @@ Transaction:
 Respond with ONLY the suggested label, nothing else.
 Examples: "Exchange Deposit", "Hardware Purchase", "Salary", "Gift"`;
 
-      const suggestion = await callExternalAI(aiConfig, prompt);
+      const suggestion = await withApprovedProviderEndpoint(
+        aiConfig.endpoint,
+        () => callExternalAI(aiConfig, prompt),
+      );
 
       if (!suggestion) {
         return res.status(503).json({ error: 'AI endpoint not available' });
@@ -159,12 +163,16 @@ Examples: "Exchange Deposit", "Hardware Purchase", "Salary", "Gift"`;
 
       const recentLabels = contextResult.data?.labels?.join(', ') || 'None';
 
-      const conversion = await convertNaturalQuery({
-        aiConfig,
-        query,
-        walletId,
-        recentLabels,
-      });
+      const conversion = await withApprovedProviderEndpoint(
+        aiConfig.endpoint,
+        () =>
+          convertNaturalQuery({
+            aiConfig,
+            query,
+            walletId,
+            recentLabels,
+          }),
+      );
 
       if (!conversion.ok) {
         if (conversion.preview) {
@@ -191,7 +199,10 @@ Examples: "Exchange Deposit", "Hardware Purchase", "Salary", "Gift"`;
         });
       }
 
-      const result = await callExternalAI(aiConfig, 'Say "OK"', 10000);
+      const result = await withApprovedProviderEndpoint(
+        aiConfig.endpoint,
+        () => callExternalAI(aiConfig, 'Say "OK"', 10000),
+      );
 
       res.json({
         available: result !== null,

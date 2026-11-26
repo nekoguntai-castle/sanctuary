@@ -44,6 +44,9 @@ import {
   requestLogger,
   logSecurityEvent,
   logAuditEvent,
+  drainPendingAuditRequests,
+  MAX_CONCURRENT_AUDIT_REQUESTS,
+  MAX_PENDING_AUDIT_REQUESTS,
 } from '../../../src/middleware/requestLogger';
 
 describe('requestLogger middleware', () => {
@@ -269,7 +272,7 @@ describe('requestLogger middleware', () => {
   });
 
   describe('client IP extraction', () => {
-    it('should use X-Forwarded-For header when present', () => {
+    it('should ignore spoofed X-Forwarded-For and use Express-derived req.ip', () => {
       req.headers = {
         ...req.headers,
         'x-forwarded-for': '10.0.0.1, 192.168.1.1',
@@ -280,7 +283,7 @@ describe('requestLogger middleware', () => {
       expect(mockLogger.debug).toHaveBeenCalledWith(
         'Incoming request',
         expect.objectContaining({
-          ip: '10.0.0.1',
+          ip: '192.168.1.1',
         })
       );
     });
@@ -309,6 +312,21 @@ describe('requestLogger middleware', () => {
         'Incoming request',
         expect.objectContaining({
           ip: '10.0.0.5',
+        })
+      );
+    });
+
+    it('should fall back to unknown when neither req.ip nor req.socket.remoteAddress is present', () => {
+      req.headers = { 'x-forwarded-for': '10.0.0.1' };
+      req.ip = undefined;
+      (req as any).socket = undefined;
+
+      requestLogger(req as Request, res as Response, next);
+
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Incoming request',
+        expect.objectContaining({
+          ip: 'unknown',
         })
       );
     });
@@ -448,6 +466,56 @@ describe('logSecurityEvent', () => {
     const callArgs = mockFetch.mock.calls[0];
     const body = JSON.parse(callArgs[1].body);
     expect(body.severity).toBe('critical');
+  });
+
+  it('bounds concurrent audit POSTs, drops overflow beyond pending cap, and drains pending requests on shutdown', async () => {
+    const resolvers: Array<() => void> = [];
+    let activeCount = 0;
+    let maxObservedConcurrency = 0;
+
+    mockFetch.mockImplementation(() => {
+      activeCount++;
+      maxObservedConcurrency = Math.max(maxObservedConcurrency, activeCount);
+      return new Promise((resolve) => {
+        resolvers.push(() => {
+          activeCount--;
+          resolve({ ok: true });
+        });
+      });
+    });
+
+    const totalEvents = MAX_CONCURRENT_AUDIT_REQUESTS + MAX_PENDING_AUDIT_REQUESTS + 5;
+    for (let i = 0; i < totalEvents; i++) {
+      logSecurityEvent(`FLOOD_${i}`, { ip: '198.51.100.1' });
+    }
+
+    expect(maxObservedConcurrency).toBe(MAX_CONCURRENT_AUDIT_REQUESTS);
+    expect(mockFetch).toHaveBeenCalledTimes(MAX_CONCURRENT_AUDIT_REQUESTS);
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'Dropping gateway audit event: pending queue full',
+      expect.objectContaining({
+        queueSize: MAX_PENDING_AUDIT_REQUESTS,
+      })
+    );
+
+    let drained = false;
+    const drainPromise = drainPendingAuditRequests().then(() => {
+      drained = true;
+    });
+    await Promise.resolve();
+    expect(drained).toBe(false);
+
+    while (resolvers.length > 0) {
+      const nextResolve = resolvers.shift()!;
+      nextResolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+
+    await drainPromise;
+    expect(drained).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(MAX_CONCURRENT_AUDIT_REQUESTS + MAX_PENDING_AUDIT_REQUESTS);
+    expect(maxObservedConcurrency).toBe(MAX_CONCURRENT_AUDIT_REQUESTS);
   });
 });
 

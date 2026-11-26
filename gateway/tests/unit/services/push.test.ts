@@ -10,6 +10,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../../../src/services/push/fcm', () => ({
   initializeFCM: vi.fn(() => true),
   isFCMAvailable: vi.fn(() => true),
+  shutdownFCM: vi.fn().mockResolvedValue(undefined),
   sendToDevice: vi.fn(),
   sendToDevices: vi.fn(),
 }));
@@ -61,10 +62,11 @@ describe('Push Notification Service', () => {
   });
 
   describe('shutdownPushServices', () => {
-    it('should shutdown APNs provider', () => {
-      shutdownPushServices();
+    it('should shutdown both APNs and FCM providers', async () => {
+      await shutdownPushServices();
 
       expect(apns.shutdownAPNs).toHaveBeenCalled();
+      expect(fcm.shutdownFCM).toHaveBeenCalled();
     });
   });
 

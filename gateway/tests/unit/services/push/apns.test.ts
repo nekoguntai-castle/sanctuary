@@ -479,6 +479,24 @@ describe('APNs Service', () => {
       expect(result).toEqual({ success: 100, failed: 1, invalidTokens: [] });
     });
 
+    it('stops cleanly and counts remaining tokens as failed if shutdownAPNs runs mid-multicast', async () => {
+      const tokens = Array.from({ length: 105 }, (_, index) => `token-${index}`);
+      mockSend.mockImplementationOnce(async (_note, batch: string[]) => {
+        // Simulate concurrent shutdown while batch 1 is in flight.
+        apns.shutdownAPNs();
+        return {
+          sent: batch.map((device) => ({ device })),
+          failed: [],
+        };
+      });
+
+      const result = await apns.sendToDevices(tokens, { title: 'Test', body: 'Test' });
+
+      expect(mockSend).toHaveBeenCalledTimes(1);
+      expect(result).toEqual({ success: 100, failed: 5, invalidTokens: [] });
+      expect(mockLogger.error).not.toHaveBeenCalled();
+    });
+
     it('should not collect non-token-related errors as invalid tokens', async () => {
       mockSend.mockResolvedValue({
         sent: [],

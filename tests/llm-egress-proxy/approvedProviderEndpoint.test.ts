@@ -2,6 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   detectProviderModels: vi.fn(),
+  listOllamaModels: vi.fn(),
+  listProviderModels: vi.fn(),
+  fetchTransactionContext: vi.fn(),
+  fetchWalletLabels: vi.fn(),
+  requestProviderEndpoint: vi.fn(),
 }));
 
 vi.mock("../../llm-egress-proxy/src/providerDetection", () => ({
@@ -9,10 +14,21 @@ vi.mock("../../llm-egress-proxy/src/providerDetection", () => ({
 }));
 
 vi.mock("../../llm-egress-proxy/src/providerModels", () => ({
-  listOllamaModels: vi.fn(),
-  listProviderModels: vi.fn(),
+  listOllamaModels: mocks.listOllamaModels,
+  listProviderModels: mocks.listProviderModels,
 }));
 
+vi.mock("../../llm-egress-proxy/src/backendContextClient", () => ({
+  fetchTransactionContext: mocks.fetchTransactionContext,
+  fetchWalletLabels: mocks.fetchWalletLabels,
+  fetchWalletContext: vi.fn(),
+}));
+
+vi.mock("../../llm-egress-proxy/src/providerHttpClient", () => ({
+  requestProviderEndpoint: mocks.requestProviderEndpoint,
+}));
+
+import { callExternalAI } from "../../llm-egress-proxy/src/aiClient";
 import { registerConfigRoutes } from "../../llm-egress-proxy/src/configRoutes";
 import {
   evaluateProviderEndpoint,
@@ -20,6 +36,7 @@ import {
   validateProviderResolvedAddresses,
   withApprovedProviderEndpoint,
 } from "../../llm-egress-proxy/src/endpointPolicy";
+import { registerLabelQueryRoutes } from "../../llm-egress-proxy/src/labelQueryRoutes";
 import { registerProviderRoutes } from "../../llm-egress-proxy/src/providerRoutes";
 
 function makeApp() {
@@ -296,5 +313,119 @@ describe("admin-configured LAN provider endpoints", () => {
   it("ignores endpoints it cannot parse", () => {
     setConfiguredProviderEndpoint("not a url");
     expect(evaluateProviderEndpoint("http://192.168.1.20:11434").allowed).toBe(false);
+  });
+
+  it("binds LAN approval to snapshotted aiConfig across awaits when POST /config changes mid-flight", async () => {
+    configure("http://192.168.1.20:11434");
+    const aiConfig = {
+      enabled: true,
+      endpoint: "http://192.168.1.20:11434",
+      model: "llama3.2",
+      providerProfileId: "local",
+      providerType: "ollama",
+      apiKey: "",
+    };
+
+    const { app, routes } = makeApp();
+    registerLabelQueryRoutes(app as any, {
+      backendUrl: "http://backend:3001",
+      getAiConfig: () => aiConfig,
+      log,
+    } as any);
+
+    // Concurrent POST /config overwrites global configuredApproval while
+    // /suggest-label is awaiting backend context fetches.
+    mocks.fetchTransactionContext.mockImplementationOnce(async () => {
+      configure("http://192.168.1.30:11434");
+      return {
+        success: true,
+        data: { walletId: "w1", amount: 50000, direction: "received", date: "2026-11-25" },
+      };
+    });
+    mocks.fetchWalletLabels.mockResolvedValueOnce({
+      success: true,
+      data: { labels: ["Salary"] },
+    });
+
+    let allowedInsideTransport = false;
+    mocks.requestProviderEndpoint.mockImplementationOnce(async ({ url }: { url: string }) => {
+      allowedInsideTransport = evaluateProviderEndpoint(url).allowed;
+      return {
+        ok: true,
+        status: 200,
+        url: new URL(url),
+        headers: {},
+        body: Buffer.from(JSON.stringify({ choices: [{ message: { content: "Salary" } }] })),
+      };
+    });
+
+    const res = makeResponse();
+    await routes.post.get("/suggest-label")!(
+      { body: { transactionId: "tx-1" }, headers: { authorization: "Bearer tok" } },
+      res,
+    );
+
+    expect(allowedInsideTransport).toBe(true);
+    expect(res.json).toHaveBeenCalledWith({ suggestion: "Salary" });
+  });
+
+  it("keeps snapshotted LAN endpoint approved in callExternalAI and providerRoutes even after global approval changes", async () => {
+    configure("http://192.168.1.20:11434");
+    const snapshottedConfig = {
+      enabled: true,
+      endpoint: "http://192.168.1.20:11434",
+      model: "llama3.2",
+      providerType: "ollama",
+    };
+
+    // Change global approval before outbound provider call runs.
+    configure("http://192.168.1.99:11434");
+
+    let allowedInAiCall = false;
+    mocks.requestProviderEndpoint.mockImplementationOnce(async ({ url }: { url: string }) => {
+      allowedInAiCall = evaluateProviderEndpoint(url).allowed;
+      return {
+        ok: true,
+        status: 200,
+        url: new URL(url),
+        headers: {},
+        body: Buffer.from(JSON.stringify({ choices: [{ message: { content: "OK" } }] })),
+      };
+    });
+
+    const answer = await callExternalAI(snapshottedConfig, "ping");
+    expect(answer).toBe("OK");
+    expect(allowedInAiCall).toBe(true);
+
+    const { app, routes } = makeApp();
+    registerProviderRoutes(app as any, {
+      backendUrl: "http://backend:3001",
+      getAiConfig: () => snapshottedConfig,
+      log,
+    } as any);
+
+    let allowedInCheckProvider = false;
+    let allowedInListModels = false;
+    mocks.listProviderModels
+      .mockImplementationOnce(async (_cfg, endpoint: string) => {
+        allowedInCheckProvider = evaluateProviderEndpoint(endpoint).allowed;
+        return [];
+      })
+      .mockImplementationOnce(async (_cfg, endpoint: string) => {
+        allowedInListModels = evaluateProviderEndpoint(endpoint).allowed;
+        return [{ name: "llama3.2", size: 0, modifiedAt: "" }];
+      });
+
+    const checkRes = makeResponse();
+    await routes.post.get("/check-provider")!({}, checkRes);
+    expect(allowedInCheckProvider).toBe(true);
+    expect(checkRes.json).toHaveBeenCalledWith(expect.objectContaining({ compatible: true }));
+
+    const listRes = makeResponse();
+    await routes.get.get("/list-models")!({}, listRes);
+    expect(allowedInListModels).toBe(true);
+    expect(listRes.json).toHaveBeenCalledWith({
+      models: [{ name: "llama3.2", size: 0, modifiedAt: "" }],
+    });
   });
 });

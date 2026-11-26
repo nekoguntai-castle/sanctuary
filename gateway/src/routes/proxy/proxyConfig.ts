@@ -26,8 +26,18 @@ const BROWSER_AUTH_COOKIES = new Set([
   'sanctuary_csrf',
 ]);
 
+function getFullProxyPath(req: Request): string {
+  const baseUrl = req.baseUrl || '';
+  const path = req.path || '';
+  // http-proxy-middleware runs pathRewrite before on.proxyReq, which mutates
+  // req.url (and therefore Express 5's req.path getter) to already include
+  // baseUrl. Avoid double-prepending baseUrl when path already carries it.
+  return baseUrl && !path.startsWith(`${baseUrl}/`) ? `${baseUrl}${path}` : path;
+}
+
 function stripBrowserAuthCookies(proxyReq: ClientRequest, req: Request): void {
-  if (!BODY_AUTH_ROUTES.has(req.path)) {
+  const fullPath = getFullProxyPath(req);
+  if (!BODY_AUTH_ROUTES.has(fullPath)) {
     return;
   }
   const forwarded = req.headers.cookie

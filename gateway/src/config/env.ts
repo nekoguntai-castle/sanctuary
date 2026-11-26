@@ -25,24 +25,63 @@ export function getCorsAllowedOrigins() {
   return parsedOrigins;
 }
 
+export function getNonEmptyEnv(value: string | undefined): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+export function getTrimmedEnv(value: string | undefined, fallback: string): string {
+  return getNonEmptyEnv(value) ?? fallback;
+}
+
+export function parsePositiveIntEnv(value: string | undefined, fallback: number): number {
+  const trimmed = getNonEmptyEnv(value);
+  if (trimmed === undefined) {
+    return fallback;
+  }
+  if (!/^\d+$/.test(trimmed)) {
+    return Number.NaN;
+  }
+  const parsed = Number(trimmed);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : Number.NaN;
+}
+
+export function parseTrustProxyEnv(value: string | undefined): boolean | number | string {
+  const trimmed = getNonEmptyEnv(value);
+  if (trimmed === undefined) {
+    return false;
+  }
+
+  const normalized = trimmed.toLowerCase();
+  if (normalized === 'true') {
+    return true;
+  }
+  if (normalized === 'false') {
+    return false;
+  }
+  if (/^\d+$/.test(trimmed)) {
+    return Number(trimmed);
+  }
+  return trimmed;
+}
+
 export function getGatewayRateLimitMax() {
-  if (process.env.RATE_LIMIT_MAX !== undefined) {
-    return process.env.RATE_LIMIT_MAX;
-  }
-  if (process.env.RATE_LIMIT_MAX_REQUESTS !== undefined) {
-    return process.env.RATE_LIMIT_MAX_REQUESTS;
-  }
-  return '60';
+  return (
+    getNonEmptyEnv(process.env.RATE_LIMIT_MAX) ??
+    getNonEmptyEnv(process.env.RATE_LIMIT_MAX_REQUESTS) ??
+    '60'
+  );
 }
 
 export function getGatewayPort() {
-  if (process.env.PORT !== undefined) {
-    return process.env.PORT;
-  }
-  if (process.env.GATEWAY_PORT !== undefined) {
-    return process.env.GATEWAY_PORT;
-  }
-  return '4000';
+  return (
+    getNonEmptyEnv(process.env.PORT) ??
+    getNonEmptyEnv(process.env.GATEWAY_PORT) ??
+    '4000'
+  );
 }
 
 function readOptionalFile(filePath: string) {

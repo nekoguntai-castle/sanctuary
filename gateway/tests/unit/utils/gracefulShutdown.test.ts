@@ -21,7 +21,9 @@ function createHarness(overrides: Partial<GatewayShutdownDependencies> = {}) {
     },
     closeHttpServer: vi.fn(async () => { events.push('http-drained'); }),
     stopBackendEvents: vi.fn(async () => { events.push('events-drained'); }),
-    shutdownPushServices: vi.fn(() => { events.push('push-stopped'); }),
+    drainPendingAuditRequests: vi.fn(async () => { events.push('audit-drained'); }),
+    shutdownPushServices: vi.fn(async () => { events.push('push-stopped'); }),
+    shutdownRateLimiters: vi.fn(() => { events.push('limiters-stopped'); }),
     exitNow: vi.fn((code: 0 | 1) => { events.push(`exit:${code}`); }),
     timeoutMs: 100,
     ...overrides,
@@ -55,8 +57,10 @@ describe('gateway graceful shutdown', () => {
     eventDrain.resolve();
     await pending;
 
-    expect(events.indexOf('push-stopped')).toBeGreaterThan(events.indexOf('http-drained'));
-    expect(events.indexOf('push-stopped')).toBeGreaterThan(events.indexOf('events-drained'));
+    expect(events.indexOf('audit-drained')).toBeGreaterThan(events.indexOf('http-drained'));
+    expect(events.indexOf('audit-drained')).toBeGreaterThan(events.indexOf('events-drained'));
+    expect(events.indexOf('push-stopped')).toBeGreaterThan(events.indexOf('audit-drained'));
+    expect(events.indexOf('limiters-stopped')).toBeGreaterThan(events.indexOf('push-stopped'));
     expect(events.at(-1)).toBe('exit:0');
   });
 
@@ -96,7 +100,9 @@ describe('gateway graceful shutdown', () => {
       timeoutMs: undefined,
       stopBackendEvents: vi.fn(() => { throw new Error('event drain failed'); }),
       closeHttpServer: vi.fn(() => Promise.reject('http drain failed')),
+      drainPendingAuditRequests: vi.fn(() => Promise.reject(new Error('audit drain failed'))),
       shutdownPushServices: vi.fn(() => { throw new Error('push cleanup failed'); }),
+      shutdownRateLimiters: vi.fn(() => { throw new Error('limiter cleanup failed'); }),
     });
 
     await createGatewayShutdownHandler(dependencies)('SIGTERM');
@@ -107,8 +113,14 @@ describe('gateway graceful shutdown', () => {
     expect(dependencies.log.error).toHaveBeenCalledWith('Error closing HTTP server', {
       error: 'http drain failed',
     });
+    expect(dependencies.log.error).toHaveBeenCalledWith('Error draining pending audit requests', {
+      error: 'audit drain failed',
+    });
     expect(dependencies.log.error).toHaveBeenCalledWith('Error cleaning up gateway services', {
       error: 'push cleanup failed',
+    });
+    expect(dependencies.log.error).toHaveBeenCalledWith('Error shutting down rate limiters', {
+      error: 'limiter cleanup failed',
     });
     expect(dependencies.exitNow).toHaveBeenCalledWith(1);
   });

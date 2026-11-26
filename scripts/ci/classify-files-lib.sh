@@ -72,6 +72,9 @@ is_root_vitest_input_file() {
     config/signing-dependency-scope.json|\
     config/trezor-emulator-proof.json|\
     docker-compose.yml|\
+    docker/compose/monitoring.yml|\
+    docker/compose/prod.yml|\
+    docker/compose/ssl.yml|\
     docker/compose/tor.yml|\
     docker/monitoring/alert_rules.yml|\
     docker/monitoring/grafana/dashboards/sanctuary-wallet-sync.json|\

@@ -287,6 +287,23 @@ services:
       jaeger:
         condition: service_healthy
 
+  # ============================================
+  # Worker Extension - Enable Tracing
+  # ============================================
+  # Extends the background worker service with OpenTelemetry config
+  # when monitoring stack is enabled.
+  # ============================================
+  worker:
+    environment:
+      # OpenTelemetry Tracing Configuration
+      OTEL_TRACING_ENABLED: "true"
+      OTEL_SERVICE_NAME: sanctuary-worker
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http
+    depends_on:
+      jaeger:
+        condition: service_healthy
+
   grafana-password-migration:
     labels: *sanctuary-container-ownership
     image: sanctuary-grafana-migration:${SANCTUARY_IMAGE_TAG:-local}

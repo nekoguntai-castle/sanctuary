@@ -6,6 +6,7 @@
  */
 
 export {
+  coarseApiRateLimiter,
   defaultRateLimiter,
   strictRateLimiter,
   authRateLimiter,
@@ -13,4 +14,5 @@ export {
   broadcastRateLimiter,
   deviceRegistrationRateLimiter,
   addressGenerationRateLimiter,
+  shutdownRateLimiters,
 } from './limiters';

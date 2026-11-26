@@ -31,6 +31,32 @@ describe('Backend Events Service lifecycle', () => {
       expect(ws.listenerCount('close')).toBe(1);
       expect(ws.listenerCount('error')).toBe(1);
     });
+
+    it('does not create duplicate sockets when called while already connecting or open', () => {
+      startBackendEvents();
+      const first = wsInstances[0];
+      first.readyState = 0; // CONNECTING
+      startBackendEvents();
+      expect(wsInstances).toHaveLength(1);
+
+      first.simulateOpen();
+      startBackendEvents();
+      expect(wsInstances).toHaveLength(1);
+    });
+
+    it('clears a pending reconnect timer before opening a new socket', () => {
+      startBackendEvents();
+      wsInstances[0].simulateClose(1006, 'dropped');
+      expect(wsInstances).toHaveLength(1);
+
+      // Restarting while the 5s reconnect timer is still armed must cancel it
+      // so the timer cannot later fire and spawn a racing socket.
+      startBackendEvents();
+      expect(wsInstances).toHaveLength(2);
+
+      vi.advanceTimersByTime(10_000);
+      expect(wsInstances).toHaveLength(2);
+    });
   });
 
   describe('backend heartbeat', () => {

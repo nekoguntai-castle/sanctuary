@@ -72,8 +72,9 @@ export function initializePushServices(): void {
 /**
  * Shutdown push services (call on process exit)
  */
-export function shutdownPushServices(): void {
+export async function shutdownPushServices(): Promise<void> {
   apns.shutdownAPNs();
+  await fcm.shutdownFCM();
   log.info('Push services shutdown');
 }
 

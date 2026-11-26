@@ -105,7 +105,8 @@ export async function sendToDevice(
   pushToken: string,
   notification: APNsNotification
 ): Promise<{ success: boolean; error?: string }> {
-  if (!apnsProvider) {
+  const provider = apnsProvider;
+  if (!provider) {
     return { success: false, error: 'APNs not initialized' };
   }
 
@@ -123,7 +124,7 @@ export async function sendToDevice(
     note.payload = notification.data || {};
     note.pushType = 'alert';
 
-    const result = await apnsProvider.send(note, pushToken);
+    const result = await provider.send(note, pushToken);
 
     if (result.failed.length > 0) {
       const failure = result.failed[0];
@@ -176,8 +177,13 @@ export async function sendToDevices(
 
   const result: APNsBatchResult = { success: 0, failed: 0, invalidTokens: [] };
   for (let offset = 0; offset < pushTokens.length; offset += APNS_SEND_CONCURRENCY) {
+    const provider = apnsProvider;
+    if (!provider) {
+      result.failed += pushTokens.length - offset;
+      break;
+    }
     const batch = pushTokens.slice(offset, offset + APNS_SEND_CONCURRENCY);
-    const batchResult = await sendAPNsBatch(apnsProvider, note, batch);
+    const batchResult = await sendAPNsBatch(provider, note, batch);
     result.success += batchResult.success;
     result.failed += batchResult.failed;
     result.invalidTokens.push(...batchResult.invalidTokens);

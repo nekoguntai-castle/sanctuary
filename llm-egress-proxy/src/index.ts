@@ -7,7 +7,9 @@
  */
 
 import express, { Request, Response, NextFunction } from "express";
+import { randomBytes } from "node:crypto";
 import type { AiConfig } from "./aiClient";
+import { config } from "./config";
 import { createLogger } from "./logger";
 import { exitNow } from "./processExit";
 import { registerFatalProcessHandlers } from "./fatalProcessHandlers";
@@ -25,15 +27,14 @@ import type { ConfigBody } from "./requestSchemas";
 const log = createLogger("AI");
 
 const app = express();
-const PORT = process.env.PORT || 3100;
-const BACKEND_URL = process.env.BACKEND_URL || "http://backend:3001";
+const PORT = config.port;
+const BACKEND_URL = config.backendUrl;
 
 function generateSecureSecret(): string {
-  const crypto = require("crypto");
-  return crypto.randomBytes(32).toString("hex");
+  return randomBytes(32).toString("hex");
 }
 
-const ENV_CONFIG_SECRET = process.env.LLM_EGRESS_PROXY_SECRET;
+const ENV_CONFIG_SECRET = config.configSecret;
 const CONFIG_SECRET = ENV_CONFIG_SECRET || generateSecureSecret();
 const IS_AUTO_GENERATED_SECRET = !ENV_CONFIG_SECRET;
 

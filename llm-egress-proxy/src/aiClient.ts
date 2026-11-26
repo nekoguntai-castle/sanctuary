@@ -1,7 +1,10 @@
 import { AI_REQUEST_TIMEOUT_MS } from "./constants";
 import { createLogger } from "./logger";
 import { extractErrorMessage, normalizeChatCompletionsUrl } from "./utils";
-import { requireAllowedProviderEndpoint } from "./endpointPolicy";
+import {
+  requireAllowedProviderEndpoint,
+  withApprovedProviderEndpoint,
+} from "./endpointPolicy";
 import { requestProviderEndpoint } from "./providerHttpClient";
 
 const log = createLogger("AI");
@@ -188,94 +191,99 @@ const callChatCompletions = async (
     );
   }
 
-  try {
-    requireAllowedProviderEndpoint(aiConfig.endpoint);
-  } catch (error) {
-    const reason = extractErrorMessage(error);
-    log.error("Provider endpoint rejected", { reason });
-    return buildFailure(
-      "endpoint_not_allowed",
-      `AI endpoint rejected by proxy policy: ${reason}`,
-    );
-  }
+  return withApprovedProviderEndpoint(aiConfig.endpoint, async () => {
+    try {
+      requireAllowedProviderEndpoint(aiConfig.endpoint);
+    } catch (error) {
+      const reason = extractErrorMessage(error);
+      log.error("Provider endpoint rejected", { reason });
+      return buildFailure(
+        "endpoint_not_allowed",
+        `AI endpoint rejected by proxy policy: ${reason}`,
+      );
+    }
 
-  const endpoint = normalizeChatCompletionsUrl(aiConfig.endpoint);
-  log.info(logMessage, {
-    providerType: aiConfig.providerType ?? "unknown",
-    credentialConfigured: Boolean(aiConfig.apiKey),
-    maxTokens: options.maxTokens,
-  });
-
-  try {
-    const response = await requestProviderEndpoint({
-      url: endpoint,
-      method: "POST",
-      headers: buildProviderHeaders(aiConfig),
-      body: JSON.stringify({
-        model: aiConfig.model,
-        messages,
-        temperature: options.temperature,
-        max_tokens: options.maxTokens,
-      }),
-      timeoutMs: options.timeoutMs,
+    const endpoint = normalizeChatCompletionsUrl(aiConfig.endpoint);
+    log.info(logMessage, {
+      providerType: aiConfig.providerType ?? "unknown",
+      credentialConfigured: Boolean(aiConfig.apiKey),
+      maxTokens: options.maxTokens,
     });
 
-    if (!response.ok) {
-      const body = response.body.toString("utf8");
-      const suffix = body ? `: ${truncateErrorBody(body)}` : "";
-      log.error("External AI error", { status: response.status });
-      return buildFailure(
-        "http_error",
-        `AI endpoint returned status ${response.status}${suffix}`,
-        response.status,
-      );
-    }
-
-    let data: unknown;
     try {
-      data = parseProviderJson(response.body);
-    } catch {
-      log.error("Invalid JSON response from external AI");
+      const response = await requestProviderEndpoint({
+        url: endpoint,
+        method: "POST",
+        headers: buildProviderHeaders(aiConfig),
+        body: JSON.stringify({
+          model: aiConfig.model,
+          messages,
+          temperature: options.temperature,
+          max_tokens: options.maxTokens,
+        }),
+        timeoutMs: options.timeoutMs,
+      });
+
+      if (!response.ok) {
+        const body = response.body.toString("utf8");
+        const suffix = body ? `: ${truncateErrorBody(body)}` : "";
+        log.error("External AI error", { status: response.status });
+        return buildFailure(
+          "http_error",
+          `AI endpoint returned status ${response.status}${suffix}`,
+          response.status,
+        );
+      }
+
+      let data: unknown;
+      try {
+        data = parseProviderJson(response.body);
+      } catch {
+        log.error("Invalid JSON response from external AI");
+        return buildFailure(
+          "invalid_response",
+          "Invalid JSON response from AI endpoint",
+        );
+      }
+
+      const content = extractResponseContent(
+        data,
+        options.allowReasoningContent,
+      );
+      if (!content) {
+        log.error("No message content in response");
+        return buildFailure(
+          "invalid_response",
+          "AI endpoint response did not include message content",
+        );
+      }
+
+      return { ok: true, content };
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        log.error("Request timeout", { timeoutMs: options.timeoutMs });
+        return buildFailure(
+          "timeout",
+          `AI endpoint request timed out after ${options.timeoutMs}ms`,
+        );
+      }
+
+      if (isResponseTooLargeError(error)) {
+        log.error("AI endpoint response exceeded the response size limit");
+        return buildFailure(
+          "invalid_response",
+          "AI endpoint response exceeded the response size limit",
+        );
+      }
+
+      const message = extractErrorMessage(error);
+      log.error("Request failed", { error: message });
       return buildFailure(
-        "invalid_response",
-        "Invalid JSON response from AI endpoint",
+        "request_failed",
+        `AI endpoint request failed: ${message}`,
       );
     }
-
-    const content = extractResponseContent(data, options.allowReasoningContent);
-    if (!content) {
-      log.error("No message content in response");
-      return buildFailure(
-        "invalid_response",
-        "AI endpoint response did not include message content",
-      );
-    }
-
-    return { ok: true, content };
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      log.error("Request timeout", { timeoutMs: options.timeoutMs });
-      return buildFailure(
-        "timeout",
-        `AI endpoint request timed out after ${options.timeoutMs}ms`,
-      );
-    }
-
-    if (isResponseTooLargeError(error)) {
-      log.error("AI endpoint response exceeded the response size limit");
-      return buildFailure(
-        "invalid_response",
-        "AI endpoint response exceeded the response size limit",
-      );
-    }
-
-    const message = extractErrorMessage(error);
-    log.error("Request failed", { error: message });
-    return buildFailure(
-      "request_failed",
-      `AI endpoint request failed: ${message}`,
-    );
-  }
+  });
 };
 
 /**
